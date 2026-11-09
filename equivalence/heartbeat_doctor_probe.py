@@ -87,44 +87,81 @@ def build_doctor_cases():
     return cases
 
 
-def _error_attribute(value):
+def _error_attribute(value, seen, location):
     if isinstance(value, bytes):
         return {"type": "bytes", "base64": base64.b64encode(value).decode()}
     if isinstance(value, BaseException):
-        return _error(value)
-    if isinstance(value, (tuple, list)):
-        return [_error_attribute(item) for item in value]
-    if isinstance(value, dict):
-        return {key: _error_attribute(item) for key, item in value.items()}
+        return _error(value, seen, location)
     if value is None or isinstance(value, (str, int, float, bool)):
         return value
+    if id(value) in seen:
+        return {"type": "reference", "target": seen[id(value)], "constructorName": type(value).__name__}
+    seen[id(value)] = location
+    if isinstance(value, (tuple, list)):
+        return [_error_attribute(item, seen, f"{location}[{index}]") for index, item in enumerate(value)]
+    if isinstance(value, dict):
+        return {key: _error_attribute(item, seen, f"{location}.{key}") for key, item in value.items()}
     return {"type": type(value).__name__, "repr": repr(value)}
 
 
-def _error(error):
+def _error(error, seen=None, location="$"):
+    seen = {} if seen is None else seen
+    if id(error) in seen:
+        return {"type": "reference", "target": seen[id(error)], "constructorName": type(error).__name__}
+    seen[id(error)] = location
     value = {"name": type(error).__name__, "message": str(error), "constructorName": type(error).__name__,
-             "ownProperties": {**_error_attribute(vars(error)), "args": _error_attribute(error.args),
+             "ownProperties": {**_error_attribute(vars(error), seen, location + ".ownProperties"),
+                               "args": _error_attribute(error.args, seen, location + ".ownProperties.args"),
                                "stack": "".join(traceback.format_exception(error))}}
     for key in ("errno", "filename", "filename2"):
         if getattr(error, key, None) is not None:
-            value["ownProperties"][key] = _error_attribute(getattr(error, key))
+            value["ownProperties"][key] = _error_attribute(getattr(error, key), seen, location + ".ownProperties." + key)
     if error.__cause__ is not None:
-        value["ownProperties"]["cause"] = _error(error.__cause__)
+        value["cause"] = _error(error.__cause__, seen, location + ".cause")
+    if error.__context__ is not None:
+        value["context"] = _error(error.__context__, seen, location + ".context")
+    value["suppressContext"] = error.__suppress_context__
     return value
 
 
 def _capture_process(arguments, phase_directory, side, **options):
-    # Keep exact transport bytes even when subprocess raises before returning.
+    # Own only this direct child. A forced stop is diagnostic failure handling,
+    # never an inferred original canonical-close/state observation.
+    timeout = options.pop("timeout", None)
+    child = subprocess.Popen(arguments, stdout=subprocess.PIPE, stderr=subprocess.PIPE, **options)
     try:
-        process = subprocess.run(arguments, capture_output=True, **options)
-    except subprocess.TimeoutExpired as error:
-        for stream, value in (("stdout.json", error.output), ("stderr.log", error.stderr)):
+        stdout, stderr = child.communicate(timeout=timeout)
+    except BaseException as error:
+        receipt = {"pid": child.pid, "arguments": arguments, "reason": type(error).__name__,
+                   "pollBeforeStop": child.poll(), "forcedStopRequested": False}
+        cleanup_errors = []
+        if receipt["pollBeforeStop"] is None:
+            receipt["forcedStopRequested"] = True
+            try:
+                child.kill()
+                receipt["killReturned"] = True
+            except BaseException as cleanup_error:
+                cleanup_errors.append(cleanup_error)
+        stdout, stderr = getattr(error, "output", None), getattr(error, "stderr", None)
+        try:
+            stdout, stderr = child.communicate(timeout=5)
+            receipt["drained"] = True
+        except BaseException as cleanup_error:
+            cleanup_errors.append(cleanup_error)
+            stdout = getattr(cleanup_error, "output", None) if getattr(cleanup_error, "output", None) is not None else stdout
+            stderr = getattr(cleanup_error, "stderr", None) if getattr(cleanup_error, "stderr", None) is not None else stderr
+            receipt["drained"] = False
+        receipt["returncodeAfterDrain"] = child.poll()
+        for stream, value in (("stdout.json", stdout), ("stderr.log", stderr)):
             if value is not None:
                 (phase_directory / (side + "." + stream)).write_bytes(value)
-        (phase_directory / (side + ".timeout.json")).write_text(json.dumps(_error(error), ensure_ascii=True))
+        receipt["error"] = _error(error)
+        receipt["cleanupErrors"] = [_error(item) for item in cleanup_errors]
+        (phase_directory / (side + ".forced-stop.json")).write_text(json.dumps(receipt, ensure_ascii=True))
         raise
-    (phase_directory / (side + ".stdout.json")).write_bytes(process.stdout)
-    (phase_directory / (side + ".stderr.log")).write_bytes(process.stderr)
+    (phase_directory / (side + ".stdout.json")).write_bytes(stdout)
+    (phase_directory / (side + ".stderr.log")).write_bytes(stderr)
+    process = subprocess.CompletedProcess(arguments, child.returncode, stdout, stderr)
     process.check_returncode()
     return process
 

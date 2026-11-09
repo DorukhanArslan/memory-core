@@ -207,17 +207,17 @@ def test_timeout_retains_exact_partial_bytes_and_serializable_original_error(tmp
     output, stderr = b'partial\x00\xff\r\n', b'failure\xfe\r\n'
     original = subprocess.TimeoutExpired(["synthetic-timeout-guard"], 60, output=output, stderr=stderr)
     original.nested = {"payload": [output, ValueError("nested original error")]}
-    def timeout(*args, **kwargs):
-        assert kwargs["capture_output"] is True
-        assert "text" not in kwargs
-        raise original
-    monkeypatch.setattr(subprocess, "run", timeout)
+    child = _SyntheticChild(output, stderr, failure=original)
+    _install_child(monkeypatch, child)
     with pytest.raises(subprocess.TimeoutExpired) as caught:
         _capture_process(["synthetic-timeout-guard"], tmp_path, side, timeout=60)
     assert caught.value is original
     assert (tmp_path / (side + ".stdout.json")).read_bytes() == output
     assert (tmp_path / (side + ".stderr.log")).read_bytes() == stderr
-    recorded = json.loads((tmp_path / (side + ".timeout.json")).read_bytes())
+    receipt = json.loads((tmp_path / (side + ".forced-stop.json")).read_bytes())
+    recorded = receipt["error"]
+    assert receipt["forcedStopRequested"] is receipt["killReturned"] is receipt["drained"] is True
+    assert child.kills == 1 and receipt["returncodeAfterDrain"] == -9
     rejection = json.loads(json.dumps({"error": _error(original)}))
     assert recorded["name"] == rejection["error"]["name"] == "TimeoutExpired"
     properties = recorded["ownProperties"]
@@ -230,13 +230,86 @@ def test_timeout_retains_exact_partial_bytes_and_serializable_original_error(tmp
 @pytest.mark.parametrize("returncode", [0, 7])
 def test_process_boundary_keeps_exact_bytes_before_actual_exit_status(tmp_path, monkeypatch, returncode):
     original = subprocess.CompletedProcess(["synthetic-process-guard"], returncode, b'{"raw":"\xff"}\r\n', b'\xfe\r\n')
-    monkeypatch.setattr(subprocess, "run", lambda *args, **kwargs: original)
+    child = _SyntheticChild(original.stdout, original.stderr, returncode=returncode)
+    _install_child(monkeypatch, child)
     if returncode:
         with pytest.raises(subprocess.CalledProcessError) as caught:
             _capture_process(original.args, tmp_path, "native")
         recorded = json.loads(json.dumps(_error(caught.value)))
         assert base64.b64decode(recorded["ownProperties"]["output"]["base64"]) == original.stdout
     else:
-        assert _capture_process(original.args, tmp_path, "native") is original
+        actual = _capture_process(original.args, tmp_path, "native")
+        assert actual.args == original.args and actual.returncode == original.returncode
     assert (tmp_path / "native.stdout.json").read_bytes() == original.stdout
     assert (tmp_path / "native.stderr.log").read_bytes() == original.stderr
+    assert child.kills == 0
+
+
+class _SyntheticChild:
+    """No actual OS process or Doctor evidence is created by these guards."""
+    pid = 876543
+    def __init__(self, stdout, stderr, *, failure=None, returncode=0):
+        self.stdout_bytes, self.stderr_bytes = stdout, stderr
+        self.failure, self.exitcode, self.returncode = failure, returncode, None
+        self.calls, self.kills = [], 0
+
+    def communicate(self, *, timeout):
+        self.calls.append(timeout)
+        if len(self.calls) == 1 and self.failure is not None:
+            raise self.failure
+        if self.returncode is None:
+            self.returncode = self.exitcode
+        return self.stdout_bytes, self.stderr_bytes
+
+    def poll(self):
+        return self.returncode
+
+    def kill(self):
+        self.kills += 1
+        self.returncode = -9
+
+
+def _install_child(monkeypatch, child):
+    def launch(arguments, **options):
+        assert arguments == ["synthetic-process-guard"] or arguments == ["synthetic-timeout-guard"] or arguments == ["synthetic-interruption-guard"]
+        assert options["stdout"] is subprocess.PIPE and options["stderr"] is subprocess.PIPE
+        assert "text" not in options
+        return child
+    monkeypatch.setattr(subprocess, "Popen", launch)
+
+
+def test_error_retains_cyclic_attributes_cause_and_separate_context():
+    original = RuntimeError("cyclic original")
+    original.self = original
+    original.container = {"payload": b'\xff'}
+    original.container["again"] = original.container
+    original.__cause__ = original
+    context = ValueError("actual implicit context")
+    context.__context__ = original
+    original.__context__ = context
+    recorded = json.loads(json.dumps(_error(original)))
+    assert recorded["name"] == "RuntimeError" and recorded["message"] == "cyclic original"
+    assert recorded["ownProperties"]["self"]["target"] == "$"
+    assert recorded["ownProperties"]["container"]["again"]["target"] == "$.ownProperties.container"
+    assert recorded["cause"]["target"] == "$"
+    assert recorded["context"]["name"] == "ValueError"
+    assert recorded["context"]["context"]["target"] == "$"
+
+
+@pytest.mark.parametrize("failure", [KeyboardInterrupt("synthetic interruption"), OSError("synthetic pipe failure")])
+def test_interrupted_communication_stops_only_owned_child_and_preserves_streams_and_identity(tmp_path, monkeypatch, failure):
+    child = _SyntheticChild(b'partial\x00\xff', b'actual\xfe', failure=failure)
+    _install_child(monkeypatch, child)
+    # Previously emitted caller-state files are not replaced by forced cleanup.
+    original_state = b'{"original":"return-cut"}'
+    state = tmp_path / "native.observation.raw.json"; state.write_bytes(original_state)
+    with pytest.raises(type(failure)) as caught:
+        _capture_process(["synthetic-interruption-guard"], tmp_path, "native", timeout=60)
+    assert caught.value is failure
+    assert child.calls == [60, 5] and child.kills == 1
+    assert (tmp_path / "native.stdout.json").read_bytes() == b'partial\x00\xff'
+    assert (tmp_path / "native.stderr.log").read_bytes() == b'actual\xfe'
+    assert state.read_bytes() == original_state
+    receipt = json.loads((tmp_path / "native.forced-stop.json").read_bytes())
+    assert receipt["pid"] == child.pid and receipt["error"]["name"] == type(failure).__name__
+    assert receipt["returncodeAfterDrain"] == -9 and receipt["drained"] is True

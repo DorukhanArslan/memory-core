@@ -99,12 +99,17 @@ input/value/preparation field in the original transport traces and the decoded
 rows. Missing, extra or duplicate decoded rows are rejected before the actual
 command whitelist is evaluated. It also binds each engine's exact public
 operations and complete snapshot list to its retained raw calls and snapshots
-before comparison. The focused authority and completeness suite passes 42
+before comparison. The focused authority and completeness suite passes 45
 tests; its synthetic negative inputs are guard tests, not captured evidence.
 Both process boundaries retain exact stdout/stderr bytes before exit-status
 validation. On timeout they retain actual partial streams and the original
-exception's typed byte/nested attributes, then preserve the rejection and
-perform the same after-authentication without retrying the invocation.
+exception's typed byte/nested attributes. A shared reference table retains
+cyclic error attributes, explicit cause and separate implicit context. An
+interrupted communication stops only its owned launched child, drains its
+available original streams and records a separate forced-stop receipt, then
+rethrows the original exception and performs the same after-authentication.
+This failure cleanup never supplies canonical-close or state observations,
+changes already emitted caller state, or retries the invocation.
 
 Run a new first baseline output only after final independent authority review:
 

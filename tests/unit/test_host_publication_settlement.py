@@ -536,7 +536,12 @@ def test_partial_append_io_failure_retains_intent_without_inventing_lower_public
                     resource.setrlimit(resource.RLIMIT_FSIZE, (5, previous_limit[1]))
                     return commit()
                 except OSError as error:
-                    failures.append(error.errno)
+                    original = getattr(error, "original_exception", error)
+                    # The checked IO owner exposes Node's negative errno while
+                    # retaining the actual positive Python/kernel errno.
+                    failures.append(original.errno)
+                    if original is not error:
+                        assert error.code == "EFBIG" and error.errno == -errno.EFBIG
                     raise
                 finally:
                     resource.setrlimit(resource.RLIMIT_FSIZE, previous_limit)

@@ -288,12 +288,9 @@ def bootstrap_status(
 
 
 def _write_file_if_missing(path: Path, content: str) -> bool:
-    try:
-        with open(path, "xb") as handle:
-            handle.write(js_utf8_encode(content))
-    except FileExistsError:
-        return False
-    return True
+    from memory_core.atomic_publication import publish_bootstrap_file
+
+    return publish_bootstrap_file(path, content)
 
 
 def _differs_from_template(path: Path, template: str) -> bool:

@@ -152,6 +152,24 @@
           "symbol": "writeFileWithinRoot",
           "anchor": "export async function writeFileWithinRoot(params: {",
           "line": 151
+        },
+        {
+          "path": "src/agents/workspace-bootstrap-publish.ts",
+          "symbol": "publishBootstrapFile",
+          "anchor": "export async function publishBootstrapFile(",
+          "line": 15
+        },
+        {
+          "path": "src/agents/agent-tools.read.ts",
+          "symbol": "appendMemoryFlushContent",
+          "anchor": "async function appendMemoryFlushContent(params: {",
+          "line": 689
+        },
+        {
+          "path": "extensions/memory-core/src/short-term-promotion-apply.ts",
+          "symbol": "applyShortTermPromotions",
+          "anchor": "export async function applyShortTermPromotions(",
+          "line": 184
         }
       ],
       "python": [
@@ -159,7 +177,7 @@
           "path": "memory_core/curation.py",
           "symbol": "MemoryCurator._write_target",
           "anchor": "    def _write_target(self, name: str, before: str | None, content: str) -> None:",
-          "line": 1173
+          "line": 1194
         },
         {
           "path": "memory_core/workspace.py",
@@ -172,12 +190,52 @@
           "symbol": "workspace_file_lock",
           "anchor": "def workspace_file_lock(root: Path, rel_path: str) -> threading.Lock:",
           "line": 320
+        },
+        {
+          "path": "memory_core/atomic_publication.py",
+          "symbol": "commit_memory_content",
+          "anchor": "def commit_memory_content(",
+          "line": 385
+        },
+        {
+          "path": "memory_core/atomic_publication.py",
+          "symbol": "append_memory_content",
+          "anchor": "def append_memory_content(",
+          "line": 197
+        },
+        {
+          "path": "memory_core/atomic_publication.py",
+          "symbol": "publish_bootstrap_file",
+          "anchor": "def publish_bootstrap_file(path: Path, content: str) -> bool:",
+          "line": 280
+        },
+        {
+          "path": "memory_core/bootstrap/lifecycle.py",
+          "symbol": "_write_file_if_missing",
+          "anchor": "def _write_file_if_missing(path: Path, content: str) -> bool:",
+          "line": 290
+        },
+        {
+          "path": "memory_core/consolidation/promotion.py",
+          "symbol": "_append_to_memory",
+          "anchor": "def _append_to_memory(",
+          "line": 1529
+        },
+        {
+          "path": "memory_core/consolidation/llm_consolidation.py",
+          "symbol": "commit_deep_consolidation",
+          "anchor": "def commit_deep_consolidation(",
+          "line": 815
         }
       ],
       "implementation": "partial",
       "notes": [
         "Python curation uses a temporary file, file fsync and replacement, but suppresses parent-directory fsync errors; daily writes use a distinct append path and process-local locks.",
-        "Native commitMemoryContent classifies uncertain/committed publication and supports a guarded in-place permission fallback; these failure branches are not represented by the Python curation write contract."
+        "Native commitMemoryContent classifies uncertain/committed publication and supports a guarded in-place permission fallback; these failure branches are not represented by the Python curation write contract.",
+        "The real curator and forget callers use a shared checked publication owner with preimage checks, exclusive temporary creation, preserved regular-file modes and post-rename identity verification. Curator source admission remains stricter than the generic writer; it never opts into promotion-only in-place repair.",
+        "The actual promotion caller opts into permission fallback, restores the old bytes after an in-place write/sync failure, and deep consolidation retains real reserved lineage after dispatched publication errors. Rooted daily append preserves partial bytes and plain errors, private exclusive bootstrap creation stages all bytes before visibility, and existing bootstrap entries remain unchanged.",
+        "Development probes retain complete errors, causes, FsSafe categories, surviving bytes/modes and physical receipts. Append and replacement parent-directory fsync are best-effort; retained-directory bootstrap staging ignores only parent-sync EPERM and exposes a real published receipt on other post-publication sync failures. This distinction replaces the earlier broad parent-fsync assumption.",
+        "Genuine per-process kernel EFBIG, literal write/fsync faults, checked concurrent replacements and exclusive creation during staging are development observations only. Physical receipt bigint identities/timestamps/temp names remain noninterchangeable in the retained full-error comparison. Broader cleanup/close, indeterminate bootstrap publication, authenticated whole-condition proof and caller reconciliation for plain partial append remain unverified; no acceptance credit is assigned."
       ]
     },
     {
@@ -373,19 +431,19 @@
           "path": "memory_core/index/chunking.py",
           "symbol": "chunk_markdown",
           "anchor": "def chunk_markdown(",
-          "line": 63
+          "line": 73
         },
         {
           "path": "memory_core/index/chunking.py",
           "symbol": "curated_markdown_entry_kind",
           "anchor": "def curated_markdown_entry_kind(line: str) -> str | None:",
-          "line": 43
+          "line": 53
         },
         {
           "path": "memory_core/index/sqlite_store.py",
           "symbol": "SQLiteMemoryStore._prepare_source_chunks",
           "anchor": "    def _prepare_source_chunks(entry: IndexSourceSnapshot, tokens: int, overlap: int) -> list[MemoryChunk]:",
-          "line": 729
+          "line": 777
         }
       ],
       "implementation": "present",
@@ -471,19 +529,19 @@
           "path": "memory_core/index/chunking.py",
           "symbol": "MemoryChunk",
           "anchor": "class MemoryChunk:",
-          "line": 30
+          "line": 36
         },
         {
           "path": "memory_core/index/sqlite_store.py",
           "symbol": "SQLiteMemoryStore.reindex",
           "anchor": "    def reindex(self, workspace: MemoryWorkspace, *, force: bool = False) -> int:",
-          "line": 485
+          "line": 494
         },
         {
           "path": "memory_core/index/sqlite_store.py",
           "symbol": "SQLiteMemoryStore._prepare_source_chunks",
           "anchor": "    def _prepare_source_chunks(entry: IndexSourceSnapshot, tokens: int, overlap: int) -> list[MemoryChunk]:",
-          "line": 729
+          "line": 777
         },
         {
           "path": "memory_core/index/preparation.py",
@@ -519,7 +577,7 @@
           "path": "memory_core/index/sqlite_store.py",
           "symbol": "SQLiteMemoryStore._reindex_locked",
           "anchor": "    def _reindex_locked(self, workspace: MemoryWorkspace, *, force: bool) -> int:",
-          "line": 508
+          "line": 517
         },
         {
           "path": "memory_core/client.py",
@@ -578,7 +636,7 @@
           "path": "memory_core/index/sqlite_store.py",
           "symbol": "SQLiteMemoryStore.index_identity",
           "anchor": "    def index_identity(self, *, db: sqlite3.Connection | None = None) -> dict[str, Any]:",
-          "line": 439
+          "line": 448
         }
       ],
       "implementation": "partial",
@@ -613,7 +671,7 @@
           "path": "memory_core/index/sqlite_store.py",
           "symbol": "SQLiteMemoryStore.reindex",
           "anchor": "    def reindex(self, workspace: MemoryWorkspace, *, force: bool = False) -> int:",
-          "line": 485
+          "line": 494
         },
         {
           "path": "memory_core/workspace.py",
@@ -625,7 +683,7 @@
           "path": "memory_core/index/sqlite_store.py",
           "symbol": "read_index_source",
           "anchor": "def read_index_source(file: MemoryFile) -> IndexSourceSnapshot | None:",
-          "line": 146
+          "line": 147
         },
         {
           "path": "memory_core/session_corpus.py",
@@ -678,7 +736,7 @@
           "path": "memory_core/index/sqlite_store.py",
           "symbol": "SQLiteMemoryStore.reindex",
           "anchor": "    def reindex(self, workspace: MemoryWorkspace, *, force: bool = False) -> int:",
-          "line": 485
+          "line": 494
         },
         {
           "path": "memory_core/consolidation/origins.py",
@@ -690,7 +748,7 @@
           "path": "memory_core/index/sqlite_store.py",
           "symbol": "SQLiteMemoryStore.publish_prepared_index",
           "anchor": "    def publish_prepared_index(",
-          "line": 339
+          "line": 348
         },
         {
           "path": "memory_core/index/publication.py",
@@ -708,7 +766,7 @@
           "path": "memory_core/index/sqlite_store.py",
           "symbol": "SQLiteMemoryStore.read_published_index",
           "anchor": "    def read_published_index(self, *, db: sqlite3.Connection | None = None) -> dict:",
-          "line": 321
+          "line": 330
         },
         {
           "path": "memory_core/index/publication.py",
@@ -773,13 +831,13 @@
           "path": "memory_core/index/sqlite_store.py",
           "symbol": "SQLiteMemoryStore.reindex",
           "anchor": "    def reindex(self, workspace: MemoryWorkspace, *, force: bool = False) -> int:",
-          "line": 485
+          "line": 494
         },
         {
           "path": "memory_core/consolidation/forget.py",
           "symbol": "purge_memory_index",
           "anchor": "def purge_memory_index(store: Any, plan: IndexPlan) -> bool:",
-          "line": 537
+          "line": 541
         }
       ],
       "implementation": "partial",
@@ -815,7 +873,7 @@
           "path": "memory_core/index/sqlite_store.py",
           "symbol": "SQLiteMemoryStore.search",
           "anchor": "    def search(",
-          "line": 775
+          "line": 823
         },
         {
           "path": "memory_core/tools/memory_search.py",
@@ -827,13 +885,13 @@
           "path": "memory_core/index/sqlite_store.py",
           "symbol": "SQLiteMemoryStore._search_connection",
           "anchor": "    def _search_connection(self, signal: CancellationSignal | None) -> Iterator[sqlite3.Connection]:",
-          "line": 248
+          "line": 257
         },
         {
           "path": "memory_core/index/sqlite_store.py",
           "symbol": "SQLiteMemoryStore.index_identity",
           "anchor": "    def index_identity(self, *, db: sqlite3.Connection | None = None) -> dict[str, Any]:",
-          "line": 439
+          "line": 448
         }
       ],
       "implementation": "partial",
@@ -892,7 +950,7 @@
           "path": "memory_core/index/sqlite_store.py",
           "symbol": "SQLiteMemoryStore.search_vector_candidates",
           "anchor": "    def search_vector_candidates(",
-          "line": 957
+          "line": 1005
         },
         {
           "path": "memory_core/index/vector.py",
@@ -910,7 +968,7 @@
           "path": "memory_core/index/sqlite_store.py",
           "symbol": "SQLiteMemoryStore._search_candidates",
           "anchor": "    def _search_candidates(",
-          "line": 1087
+          "line": 1135
         }
       ],
       "implementation": "present",
@@ -1030,7 +1088,7 @@
           "path": "memory_core/index/sqlite_store.py",
           "symbol": "SQLiteMemoryStore.search_path_candidates",
           "anchor": "    def search_path_candidates(",
-          "line": 1430
+          "line": 1478
         },
         {
           "path": "memory_core/index/keyword_search.py",
@@ -1237,13 +1295,13 @@
           "path": "memory_core/index/sqlite_store.py",
           "symbol": "SQLiteMemoryStore.attach_recall_metadata",
           "anchor": "    def attach_recall_metadata(",
-          "line": 903
+          "line": 951
         },
         {
           "path": "memory_core/index/sqlite_store.py",
           "symbol": "SQLiteMemoryStore.read_recall_metadata",
           "anchor": "    def read_recall_metadata(",
-          "line": 873
+          "line": 921
         },
         {
           "path": "memory_core/index/hybrid.py",
@@ -1261,13 +1319,13 @@
           "path": "memory_core/index/sqlite_store.py",
           "symbol": "SQLiteMemoryStore._finalize_keyword_only",
           "anchor": "    def _finalize_keyword_only(",
-          "line": 1267
+          "line": 1315
         },
         {
           "path": "memory_core/index/sqlite_store.py",
           "symbol": "SQLiteMemoryStore.search",
           "anchor": "    def search(",
-          "line": 775
+          "line": 823
         },
         {
           "path": "memory_core/client.py",
@@ -1852,7 +1910,7 @@
           "path": "memory_core/index/sqlite_store.py",
           "symbol": "SQLiteMemoryStore._search_candidates",
           "anchor": "    def _search_candidates(",
-          "line": 1087
+          "line": 1135
         },
         {
           "path": "memory_core/tools/memory_get.py",
@@ -2307,7 +2365,7 @@
           "path": "memory_core/index/sqlite_store.py",
           "symbol": "read_index_source",
           "anchor": "def read_index_source(file: MemoryFile) -> IndexSourceSnapshot | None:",
-          "line": 146
+          "line": 147
         },
         {
           "path": "memory_core/session_catalog.py",
@@ -2570,7 +2628,7 @@
           "path": "memory_core/host/kit.py",
           "symbol": "on_new_session",
           "anchor": "def on_new_session(",
-          "line": 757
+          "line": 759
         }
       ],
       "implementation": "partial",
@@ -2865,7 +2923,7 @@
           "path": "memory_core/bootstrap/lifecycle.py",
           "symbol": "initialize_agent_workspace",
           "anchor": "def initialize_agent_workspace(",
-          "line": 420
+          "line": 417
         },
         {
           "path": "memory_core/bootstrap/files.py",
@@ -3149,7 +3207,7 @@
           "path": "memory_core/host/kit.py",
           "symbol": "HostKit.prepare_flush",
           "anchor": "    def prepare_flush(",
-          "line": 607
+          "line": 609
         },
         {
           "path": "memory_core/memory_flush.py",
@@ -3185,7 +3243,7 @@
           "path": "memory_core/host/kit.py",
           "symbol": "after_turn",
           "anchor": "def after_turn(",
-          "line": 557
+          "line": 559
         }
       ],
       "implementation": "present",
@@ -3632,31 +3690,31 @@
           "path": "memory_core/consolidation/llm_consolidation.py",
           "symbol": "consolidate_memory",
           "anchor": "def consolidate_memory(",
-          "line": 532
+          "line": 533
         },
         {
           "path": "memory_core/consolidation/llm_consolidation.py",
           "symbol": "apply_memory_consolidation_plan",
           "anchor": "def apply_memory_consolidation_plan(",
-          "line": 435
+          "line": 436
         },
         {
           "path": "memory_core/consolidation/llm_consolidation.py",
           "symbol": "plan_deep_consolidation",
           "anchor": "def plan_deep_consolidation(",
-          "line": 776
+          "line": 777
         },
         {
           "path": "memory_core/consolidation/llm_consolidation.py",
           "symbol": "commit_deep_consolidation",
           "anchor": "def commit_deep_consolidation(",
-          "line": 814
+          "line": 815
         },
         {
           "path": "memory_core/consolidation/llm_consolidation.py",
           "symbol": "record_deep_consolidation_history",
           "anchor": "def record_deep_consolidation_history(",
-          "line": 920
+          "line": 930
         }
       ],
       "implementation": "partial",
@@ -3885,7 +3943,7 @@
           "path": "memory_core/consolidation/forget.py",
           "symbol": "forget_memory_entries",
           "anchor": "def forget_memory_entries(",
-          "line": 679
+          "line": 667
         },
         {
           "path": "memory_core/consolidation/origins.py",
@@ -3943,19 +4001,19 @@
           "path": "memory_core/index/sqlite_store.py",
           "symbol": "SQLiteMemoryStore.reindex",
           "anchor": "    def reindex(self, workspace: MemoryWorkspace, *, force: bool = False) -> int:",
-          "line": 485
+          "line": 494
         },
         {
           "path": "memory_core/consolidation/forget.py",
           "symbol": "index fence wiring",
           "anchor": "fence = getattr(store, \"revision_fence\", None)",
-          "line": 1030
+          "line": 1018
         },
         {
           "path": "memory_core/index/sqlite_store.py",
           "symbol": "SQLiteMemoryStore.publish_prepared_index",
           "anchor": "    def publish_prepared_index(",
-          "line": 339
+          "line": 348
         }
       ],
       "implementation": "partial",
@@ -4073,7 +4131,9 @@
       "implementation": "partial",
       "notes": [
         "The default catalog now includes 61 uncredited cases using actual all-source policies, whole-result helpers, guarded three-process AgentSession persistence, SQLite worker retries and whole formatter/get/search errors. Complete raw values, input identity observations, registry revisions and physical SQL remain available; these profiles do not establish full secret-policy equivalence.",
-        "The SDK settlement owner composes actual normalization, persistence caps, model preparation, before-write handling and stored redaction. Ordinary inline images use the actual stored-image policy. Known original-input identity reuse and configured-engine differences remain ordinary visible default comparisons."
+        "The SDK settlement owner composes actual normalization, persistence caps, model preparation, before-write handling and stored redaction. Ordinary inline images use the actual stored-image policy. Known original-input identity reuse and configured-engine differences remain ordinary visible default comparisons.",
+        "Registered literal secrets, snapshot redactors and structured/model/transcript policies exist; bounded chunking and sanitization order still need comparisons at actual model/tool/transcript entry points.",
+        "Python regex translation and host-controlled secret registration are observable boundaries; helper presence does not establish the latest native pattern, diagnostic and transport policy outcomes."
       ]
     },
     {
@@ -4281,7 +4341,7 @@
           "path": "memory_core/host/kit.py",
           "symbol": "HostKit.after_turn",
           "anchor": "    def after_turn(",
-          "line": 557
+          "line": 559
         },
         {
           "path": "memory_core/turn_trust.py",
@@ -4311,7 +4371,9 @@
       "implementation": "partial",
       "notes": [
         "Two actual AgentLoop/tool/write/stored-session flows establish the bounded owner/taint/provenance condition. One authenticated unchanged dependency-free original TypeScript taint owner is used explicitly with the official release; complete outer results and separate raw coding presentation/diagnostic hashes remain retained. This does not establish the regex/mode/full-context outcome condition.",
-        "Configured Unicode Letter properties use exact Node 24.16/ICU78.3/Unicode17 facts with a reproducible generator and Unicode notice. Mixed case-folding, repeated capture, general-category Lu and direct v-mode differences remain ordinary diagnostics; unsupported source behavior is not counted as a match."
+        "Configured Unicode Letter properties use exact Node 24.16/ICU78.3/Unicode17 facts with a reproducible generator and Unicode notice. Mixed case-folding, repeated capture, general-category Lu and direct v-mode differences remain ordinary diagnostics; unsupported source behavior is not counted as a match.",
+        "Python accepts a supported subset of JavaScript regex behavior and explicitly rejects unsupported syntax; it cannot assume native RegExp acceptance for every configured source pattern.",
+        "Artifact hash/owner transitions exist, but the host supplies untrusted_turn and session metadata. Native sticky tool-result taint and persisted sender/owner state need a host adapter and end-to-end comparisons."
       ]
     },
     {
@@ -4678,7 +4740,7 @@
           "path": "memory_core/index/sqlite_store.py",
           "symbol": "SQLiteMemoryStore.reindex",
           "anchor": "    def reindex(self, workspace: MemoryWorkspace, *, force: bool = False) -> int:",
-          "line": 485
+          "line": 494
         },
         {
           "path": "memory_core/consolidation/artifacts.py",
@@ -4696,13 +4758,13 @@
           "path": "memory_core/host/kit.py",
           "symbol": "HostKit.after_turn",
           "anchor": "    def after_turn(",
-          "line": 557
+          "line": 559
         },
         {
           "path": "memory_core/index/sqlite_store.py",
           "symbol": "SQLiteMemoryStore.publish_prepared_index",
           "anchor": "    def publish_prepared_index(",
-          "line": 339
+          "line": 348
         }
       ],
       "implementation": "partial",
@@ -4897,7 +4959,7 @@
           "path": "memory_core/host/kit.py",
           "symbol": "HostKit.after_turn",
           "anchor": "    def after_turn(",
-          "line": 557
+          "line": 559
         },
         {
           "path": "demo/lab_chat.py",
@@ -4915,13 +4977,14 @@
           "path": "memory_core/host/lifecycle.py",
           "symbol": "HostSessionRunner.run_turn",
           "anchor": "    async def run_turn(",
-          "line": 582
+          "line": 722
         }
       ],
       "implementation": "host-owned",
       "notes": [
         "The low-level immutable HostKit still returns maintenance requests. HostSessionRunner adds an explicit process-local per-session admission lane, durable catalog/context recording, actual registered dispatch, due flush settlement, real writer/index completion and fail-closed repair before the next model callback.",
-        "Real SDK cancellation, rejected executor submission, session rotation, inherited callback context and committed-write/index-failure regressions are exercised. This is a stronger synchronous publication policy than the observed native background refresh, not proof of the complete original Gateway host path. Both host.turn-barrier conditions remain uncredited."
+        "Real SDK cancellation, rejected executor submission, session rotation, inherited callback context and committed-write/index-failure regressions are exercised. This is a stronger synchronous publication policy than the observed native background refresh, not proof of the complete original Gateway host path. Both host.turn-barrier conditions remain uncredited.",
+        "HostKit returns maintenance requests and keeps no per-session queue; the Lab lock serializes its turn and maintenance, but the production host must own durable finalization and admission barriers."
       ],
       "acceptancePoints": [
         "host.turn-barrier.outcomes",
@@ -4955,7 +5018,7 @@
           "path": "memory_core/host/kit.py",
           "symbol": "HostKit.on_new_session",
           "anchor": "    def on_new_session(",
-          "line": 757
+          "line": 759
         },
         {
           "path": "demo/lab_runtime.py",
@@ -4967,13 +5030,14 @@
           "path": "memory_core/host/lifecycle.py",
           "symbol": "HostSessionRunner._load",
           "anchor": "    def _load(",
-          "line": 537
+          "line": 590
         }
       ],
       "implementation": "host-owned",
       "notes": [
         "The durable catalog can reconstruct model context from session identity, and HostSessionRunner reloads its saved auxiliary state and repairs an outstanding index marker before admission. The installed SDK example performs real save, immediate recall and a fresh catalog reopen.",
-        "A complete natural two-host process-restart/model recall comparison is still required; neither the example nor durable helper coverage closes this separate host contract. The existing Lab runtime retains process-local live sessions."
+        "A complete natural two-host process-restart/model recall comparison is still required; neither the example nor durable helper coverage closes this separate host contract. The existing Lab runtime retains process-local live sessions.",
+        "Saved memory and host-supplied transcript corpora can reopen, but the Lab stores live sessions in RAM; durable transcript/SessionState storage and a fresh-process continuation path must be supplied and tested by the host."
       ],
       "acceptancePoints": [
         "host.restart-recall.outcomes",
@@ -5001,13 +5065,13 @@
           "path": "memory_core/curation.py",
           "symbol": "MemoryCurator.replace_memory_entry",
           "anchor": "    def replace_memory_entry(",
-          "line": 955
+          "line": 976
         },
         {
           "path": "memory_core/host/kit.py",
           "symbol": "HostKit.dispatcher",
           "anchor": "    def dispatcher(",
-          "line": 414
+          "line": 416
         },
         {
           "path": "memory_core/live/__init__.py",
@@ -7903,6 +7967,23 @@
         "resolveSandboxedSessionToolContext",
         "resolveSessionToolAccess",
         "runSessionToolActionWithConflictReceipt"
+      ]
+    },
+    {
+      "path": "src/agents/workspace-bootstrap-publish.ts",
+      "sha256": "abad65e904b473f569e4875664fee1d1ff53b6d3d9f8c3cdf428246f079a9659",
+      "sourceImports": [
+        "../infra/directory-durability.js",
+        "../infra/errno.js",
+        "../infra/fs-safe.js",
+        "./workspace-file-read.js",
+        "node:fs/promises",
+        "node:path"
+      ],
+      "exportedDeclarations": [
+        "WorkspaceBootstrapSeedConflictError",
+        "publishAgentInstructions",
+        "publishBootstrapFile"
       ]
     },
     {

@@ -15,6 +15,7 @@ from equivalence.get_fixture_filesystem import (
     validate_python_get_filesystem_evidence,
 )
 from equivalence.storage_path_contract import build_storage_path_contract_cases
+from equivalence.storage_path_acceptance import STORAGE_PATH_ACCEPTANCE_POINTS
 
 
 def _roots(tmp_path):
@@ -27,13 +28,13 @@ def _pair(base):
     return {"before": snapshot_get_fixture(base), "after": snapshot_get_fixture(base)}
 
 
-def test_matrix_uses_only_the_existing_whole_tool_capability_without_credit():
+def test_reviewed_matrix_registers_both_points_on_every_required_whole_tool_family():
     cases = build_storage_path_contract_cases()
     assert cases == build_storage_path_contract_cases()
-    assert len(cases) == len({case["id"] for case in cases}) == 10
-    assert sum(len(case["input"]["steps"]) for case in cases) == 98
+    assert len(cases) == len({case["id"] for case in cases}) == 11
+    assert sum(len(case["input"]["steps"]) for case in cases) == 99
     assert all(case["operation"] == "get-contract-runtime" and case["input"]["kind"] == "tool"
-               and case["requirement"] == "storage.path-safety" and case["covers"] == []
+               and case["requirement"] == "storage.path-safety" and case["covers"] == list(STORAGE_PATH_ACCEPTANCE_POINTS)
                and case["input"]["observeFilesystem"] is True for case in cases)
     assert json.loads(json.dumps(cases, allow_nan=False)) == cases
 
@@ -129,8 +130,9 @@ def test_sdk_matrix_preserves_raw_envelopes_arguments_and_owned_trees(tmp_path):
         result = run_get_contract(case["input"], evidence_directory=evidence)
         raw = json.loads((evidence / "python-raw.json").read_text())
         validate_python_get_filesystem_evidence(raw, case["input"], result)
-        assert result["filesystem"]["contentUnchanged"] is True
-        assert result["filesystem"]["writeStatsUnchanged"] is True
+        unchanged = case["input"].get("readRace") is None
+        assert result["filesystem"]["contentUnchanged"] is unchanged
+        assert result["filesystem"]["writeStatsUnchanged"] is unchanged
         if len(raw) > 1:
             altered = deepcopy(raw)
             altered[0]["params"] = {"path": "repaired.md"}

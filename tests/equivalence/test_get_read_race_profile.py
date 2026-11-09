@@ -6,6 +6,7 @@ import json
 import pytest
 
 from equivalence import get_read_race_profile as race
+from equivalence.storage_path_acceptance import STORAGE_PATH_ACCEPTANCE_POINTS
 
 
 def _case():
@@ -59,10 +60,10 @@ def test_unknown_authority_cannot_join_the_read_race_profile(capability):
         race.validate_get_read_race_profile(profile)
 
 
-def test_case_is_one_fixed_owned_mutation_without_acceptance_credit():
+def test_case_is_one_fixed_owned_mutation_required_by_both_reviewed_points():
     case = _case()
     assert [case] == race.build_storage_path_read_race_cases()
-    assert case["covers"] == []
+    assert case["covers"] == list(STORAGE_PATH_ACCEPTANCE_POINTS)
     assert case["requirement"] == "storage.path-safety"
     assert case["input"]["readRace"] == {"kind": "owned-leaf-to-symlink", "hook": "afterPreOpenLstat"}
     assert case["input"]["steps"] == [{"params": {"path": "memory/race.md"}}]

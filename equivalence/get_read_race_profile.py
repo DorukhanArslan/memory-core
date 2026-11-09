@@ -12,6 +12,8 @@ from pathlib import Path
 import stat
 from typing import Any
 
+from equivalence.storage_path_acceptance import STORAGE_PATH_ACCEPTANCE_POINTS
+
 
 GET_READ_RACE_INPUT = {"kind": "owned-leaf-to-symlink", "hook": "afterPreOpenLstat"}
 GET_READ_RACE_PROFILE = {
@@ -129,11 +131,11 @@ def prepare_get_read_race_profile(case: dict[str, Any], runtime_root: Path) -> d
 
 
 def build_storage_path_read_race_cases() -> list[dict[str, Any]]:
-    """One predeclared real OS mutation; no acceptance credit is assigned."""
+    """One reviewed real OS mutation, required with all ten static families."""
     return [{
         "id": "storage-path-read-race-owned-leaf-to-symlink",
         "requirement": "storage.path-safety",
-        "covers": [],
+        "covers": list(STORAGE_PATH_ACCEPTANCE_POINTS),
         "operation": "get-contract-runtime",
         "driverScope": (
             "The genuine provider-none memory_get factory/execute and original secure read owners "

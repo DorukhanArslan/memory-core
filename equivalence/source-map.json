@@ -52,13 +52,13 @@
           "path": "memory_core/workspace.py",
           "symbol": "MemoryWorkspace.discover_indexable_files",
           "anchor": "    def discover_indexable_files(self) -> list[MemoryFile]:",
-          "line": 609
+          "line": 610
         },
         {
           "path": "memory_core/workspace.py",
           "symbol": "list_memory_files",
           "anchor": "def list_memory_files(",
-          "line": 61
+          "line": 62
         },
         {
           "path": "memory_core/_memory_glob.py",
@@ -70,13 +70,13 @@
           "path": "memory_core/workspace.py",
           "symbol": "MemorySourceScanError",
           "anchor": "class MemorySourceScanError(",
-          "line": 205
+          "line": 206
         },
         {
           "path": "memory_core/_memory_scan_io.py",
           "symbol": "bridge_scan_io_error",
           "anchor": "def bridge_scan_io_error(",
-          "line": 30
+          "line": 32
         }
       ],
       "implementation": "partial",
@@ -96,42 +96,69 @@
       ],
       "upstream": [
         {
+          "path": "extensions/memory-core/src/tools.ts",
+          "symbol": "createMemoryGetTool",
+          "anchor": "export function createMemoryGetTool(options: MemoryToolOptions) {",
+          "line": 569
+        },
+        {
+          "path": "extensions/memory-core/src/memory-read-tool.ts",
+          "symbol": "executeMemoryReadResult",
+          "anchor": "export async function executeMemoryReadResult(",
+          "line": 55
+        },
+        {
+          "path": "packages/memory-host-sdk/src/host/read-file.ts",
+          "symbol": "readAgentMemoryFile",
+          "anchor": "export async function readAgentMemoryFile(params: {",
+          "line": 159
+        },
+        {
           "path": "packages/memory-host-sdk/src/host/read-file.ts",
           "symbol": "readMemoryFile",
           "anchor": "export async function readMemoryFile(params: {",
           "line": 34
-        },
-        {
-          "path": "extensions/memory-core/src/short-term-promotion-memory-write.ts",
-          "symbol": "resolveMemoryWritePath",
-          "anchor": "export async function resolveMemoryWritePath(",
-          "line": 48
         }
       ],
       "python": [
         {
+          "path": "memory_core/tools/get_factory.py",
+          "symbol": "create_memory_get_tool",
+          "anchor": "def create_memory_get_tool(",
+          "line": 96
+        },
+        {
           "path": "memory_core/workspace.py",
           "symbol": "MemoryWorkspace.resolve_memory_read_path",
           "anchor": "    def resolve_memory_read_path(self, raw_path: str) -> tuple[str, Path | None]:",
-          "line": 648
+          "line": 649
         },
         {
-          "path": "memory_core/workspace.py",
-          "symbol": "MemoryWorkspace.resolve_memory_path",
-          "anchor": "    def resolve_memory_path(self, rel_path: str) -> Path:",
-          "line": 639
+          "path": "memory_core/tools/get_paths.py",
+          "symbol": "resolve_memory_get_read_path",
+          "anchor": "def resolve_memory_get_read_path(",
+          "line": 85
         },
         {
-          "path": "memory_core/workspace.py",
-          "symbol": "check_writable_memory_file",
-          "anchor": "def check_writable_memory_file(root: Path, rel_path: str) -> None:",
-          "line": 338
+          "path": "memory_core/memory_read.py",
+          "symbol": "read_memory_file_bytes",
+          "anchor": "def read_memory_file_bytes(",
+          "line": 94
+        },
+        {
+          "path": "memory_core/_memory_scan_io.py",
+          "symbol": "bridge_memory_read_io_error",
+          "anchor": "def bridge_memory_read_io_error(",
+          "line": 39
         }
       ],
-      "implementation": "partial",
+      "implementation": "present",
       "notes": [
-        "Workspace Markdown read probes compare absolute, relative, traversal, encoded, symlink and non-regular requests, exact policy codes/messages and unchanged filesystem snapshots.",
-        "Configured extra roots, write admission and descriptor/path-replacement checks remain unproved. The read-only fixtures receive no full path-safety acceptance credit."
+        "Both fixed read/path conditions are independently reviewed and registered only on the complete eleven-family, 99-call genuine public-get set. Literal input hashes and family completeness prevent helper-only or reduced-input credit; root integration remains the final gate.",
+        "Actual private Linux files, encoded literal names, absolute/relative/traversal requests, symlinks, hardlinks, nonregular leaves, missing/non-directory workspaces and plain/patterned configured roots retain full public envelopes, exact error causes and nofollow pre/post filesystem evidence.",
+        "The read-only owner pins root and file identities, opens with O_NOFOLLOW/O_NONBLOCK, checks root/file/canonical-file/root containment before consuming the same descriptor, and preserves the native hardlink-allow policy and lack of a post-consumption pathname gate. Original Python IO exceptions stay available behind the attributed Node error bridge.",
+        "The separate official fs-safe afterPreOpenLstat hook is restricted to one fixed owned leaf-to-symlink mutation under the existing get operation. Hook/caller hashes, real caller stack, mutation inode facts, complete snapshots, synchronous setter-only NODE_ENV transition and actual disarming are revalidated. Generic get or other operations cannot borrow this capability.",
+        "First static, first race, corrected11 and legacy12 packets retain their original empty coverage metadata and original hashes. Broader race schedules have SDK unit guards only; retry timing, cross-platform semantics and write admission are unclaimed. Contract 3 is unchanged."
       ]
     },
     {
@@ -183,13 +210,13 @@
           "path": "memory_core/workspace.py",
           "symbol": "append_daily_memory_file",
           "anchor": "def append_daily_memory_file(",
-          "line": 364
+          "line": 365
         },
         {
           "path": "memory_core/workspace.py",
           "symbol": "workspace_file_lock",
           "anchor": "def workspace_file_lock(root: Path, rel_path: str) -> threading.Lock:",
-          "line": 320
+          "line": 321
         },
         {
           "path": "memory_core/atomic_publication.py",
@@ -690,7 +717,7 @@
           "path": "memory_core/workspace.py",
           "symbol": "MemoryWorkspace.discover_indexable_files",
           "anchor": "    def discover_indexable_files(self) -> list[MemoryFile]:",
-          "line": 609
+          "line": 610
         },
         {
           "path": "memory_core/index/sqlite_store.py",
@@ -708,7 +735,7 @@
           "path": "memory_core/workspace.py",
           "symbol": "MemoryWorkspace.discover_session_transcript_files",
           "anchor": "    def discover_session_transcript_files(self) -> list[MemoryFile]:",
-          "line": 570
+          "line": 571
         },
         {
           "path": "memory_core/index/publication.py",
@@ -1565,43 +1592,43 @@
           "path": "memory_core/tools/memory_get.py",
           "symbol": "memory_get_tool_definition",
           "anchor": "def memory_get_tool_definition(",
-          "line": 94
+          "line": 97
         },
         {
           "path": "memory_core/tools/memory_get.py",
           "symbol": "read_memory_get_params",
           "anchor": "def read_memory_get_params(params: object) -> MemoryGetParams:",
-          "line": 123
+          "line": 126
         },
         {
           "path": "memory_core/tools/memory_get.py",
           "symbol": "memory_get",
           "anchor": "def memory_get(",
-          "line": 252
+          "line": 255
         },
         {
           "path": "memory_core/tools/memory_get.py",
           "symbol": "_memory_get_text",
           "anchor": "def _memory_get_text(",
-          "line": 414
+          "line": 427
         },
         {
           "path": "memory_core/tools/memory_get.py",
           "symbol": "build_memory_read_result",
           "anchor": "def build_memory_read_result(",
-          "line": 233
+          "line": 236
         },
         {
           "path": "memory_core/tools/memory_get.py",
           "symbol": "build_memory_read_result_from_slice",
           "anchor": "def build_memory_read_result_from_slice(",
-          "line": 200
+          "line": 203
         },
         {
           "path": "memory_core/tools/get_paths.py",
           "symbol": "resolve_memory_get_path",
           "anchor": "def resolve_memory_get_path(",
-          "line": 56
+          "line": 70
         },
         {
           "path": "memory_core/tools/common.py",
@@ -1637,7 +1664,7 @@
           "path": "memory_core/tools/memory_get.py",
           "symbol": "execute_memory_get_tool",
           "anchor": "def execute_memory_get_tool(",
-          "line": 137
+          "line": 140
         },
         {
           "path": "memory_core/supplements.py",
@@ -1810,7 +1837,7 @@
           "path": "memory_core/tools/memory_get.py",
           "symbol": "memory_get",
           "anchor": "def memory_get(",
-          "line": 252
+          "line": 255
         },
         {
           "path": "memory_core/tools/get_factory.py",
@@ -1929,7 +1956,7 @@
           "path": "memory_core/tools/memory_get.py",
           "symbol": "memory_get",
           "anchor": "def memory_get(",
-          "line": 252
+          "line": 255
         }
       ],
       "implementation": "partial",
@@ -2090,7 +2117,7 @@
           "path": "memory_core/workspace.py",
           "symbol": "MemoryWorkspace.discover_session_transcript_files",
           "anchor": "    def discover_session_transcript_files(self) -> list[MemoryFile]:",
-          "line": 570
+          "line": 571
         },
         {
           "path": "memory_core/session_corpus.py",
@@ -2156,7 +2183,7 @@
           "path": "memory_core/workspace.py",
           "symbol": "MemoryWorkspace.discover_indexable_files",
           "anchor": "    def discover_indexable_files(",
-          "line": 609
+          "line": 610
         },
         {
           "path": "memory_core/consolidation/session_ingestion.py",
@@ -2372,7 +2399,7 @@
           "path": "memory_core/workspace.py",
           "symbol": "MemoryFile",
           "anchor": "class MemoryFile:",
-          "line": 514
+          "line": 515
         },
         {
           "path": "memory_core/index/sqlite_store.py",
@@ -3328,7 +3355,7 @@
           "path": "memory_core/workspace.py",
           "symbol": "append_memory_flush_file",
           "anchor": "def append_memory_flush_file(",
-          "line": 391
+          "line": 392
         }
       ],
       "implementation": "partial",
@@ -4648,7 +4675,7 @@
           "path": "memory_core/workspace.py",
           "symbol": "workspace_index_lock",
           "anchor": "def workspace_index_lock(root: Path) -> threading.RLock:",
-          "line": 326
+          "line": 327
         }
       ],
       "implementation": "partial",

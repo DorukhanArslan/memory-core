@@ -147,6 +147,16 @@ Current status of all 64 contracts:
 
 <!-- CURRENT-VERIFICATION-END -->
 
+The independently reviewed path/read batch is staged separately for the next
+integrated run. Its complete eleven-family default catalog registers both
+`storage.path-safety` conditions and all 99 genuine whole-tool calls; a literal
+family/input guard rejects reduced or helper-only claims. The corrected11 and
+legacy12 packets retain their original empty coverage metadata and hashes.
+The current verification totals above remain the last integrated baseline until
+that gate runs. [Path proof and closeout](storage_path_safety_proof.md) records
+the original source actors, real FD/error behavior, exact pre-open race
+authority, full raw filesystem evidence, and the broader SDK-only race limits.
+
 ### Storage and workspace
 
 - [x] **`storage.discovery` — Discover exactly the eligible memory files.** Compare roots, nested Markdown, case sensitivity, order, hidden artifacts and disappearing files. Exclude or admit symlinks and non-regular files exactly as the pinned reference does.

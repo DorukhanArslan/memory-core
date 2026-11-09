@@ -191,7 +191,7 @@ current limitations and retained first failures.
 | Contract | OpenClaw entry | Python entry | Python surface |
 | --- | --- | --- | --- |
 | `storage.discovery` | [listMemoryFiles](https://github.com/openclaw/openclaw/blob/bcfc88812a35243893585dbeca87ca41b48272ca/packages/memory-host-sdk/src/host/internal.ts#L266) | [MemoryWorkspace.discover_indexable_files](../memory_core/workspace.py#L609) | partial |
-| `storage.path-safety` | [readMemoryFile](https://github.com/openclaw/openclaw/blob/bcfc88812a35243893585dbeca87ca41b48272ca/packages/memory-host-sdk/src/host/read-file.ts#L34) | [MemoryWorkspace.resolve_memory_read_path](../memory_core/workspace.py#L648) | partial |
+| `storage.path-safety` | [readMemoryFile](https://github.com/openclaw/openclaw/blob/bcfc88812a35243893585dbeca87ca41b48272ca/packages/memory-host-sdk/src/host/read-file.ts#L34) | [read_memory_file_bytes](../memory_core/memory_read.py#L94) | present |
 | `storage.atomic-writes` | [commitMemoryContent](https://github.com/openclaw/openclaw/blob/bcfc88812a35243893585dbeca87ca41b48272ca/extensions/memory-core/src/short-term-promotion-memory-write.ts#L139) | [MemoryCurator._write_target](../memory_core/curation.py#L1194) | partial |
 | `storage.workspace-isolation` | [resolveMemoryHostAgentWorkspaceDir](https://github.com/openclaw/openclaw/blob/bcfc88812a35243893585dbeca87ca41b48272ca/packages/memory-host-sdk/src/host/config-utils.ts#L164) | [SubjectMemory.open](../memory_core/live/__init__.py#L390) | partial |
 | `lexical.tokenization` | [tokenize](https://github.com/openclaw/openclaw/blob/bcfc88812a35243893585dbeca87ca41b48272ca/extensions/memory-core/src/memory/tokenize.ts#L6) | [tokenize](../memory_core/index/mmr.py#L17) | present |

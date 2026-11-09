@@ -280,7 +280,9 @@ differences are retained in [the path-safety proof notes](storage_path_safety_pr
 Evidence preserves complete original wire diagnostics; only each run's exact
 owned fixture prefix receives an identity codec. General platform behavior,
 retry timing, and arbitrary replacement schedules remain unverified. The proof
-cases carry no acceptance credit pending independent review.
+packets retain their original uncredited metadata. Independent review registers
+both fixed path/read conditions only on the complete eleven-family default set;
+the integrated full gate remains the final acceptance step.
 
 ## Errors and live configuration
 

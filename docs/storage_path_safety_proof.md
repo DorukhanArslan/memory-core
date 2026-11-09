@@ -1,10 +1,16 @@
-# Memory read path proof: first uncredited comparison
+# Memory read path proof and reviewed registration
 
 This dedicated matrix exercises fixed contract #2, `storage.path-safety`, through
 the already authenticated public `memory_get` factory and complete execute
-boundary. It adds no native runtime capability, provider, index manager, worker,
-write operation, or acceptance credit. The fixed scope remains 64 contracts and
-128 acceptance points. Every new case has `covers: []`.
+boundary. The static families add no native memory owner, provider, index
+manager, worker, or write operation. One separately approved official test-hook
+capability controls the real pre-open OS mutation described below. The fixed
+scope remains 64 contracts and 128 acceptance points.
+
+All first, corrected, and public-get regression packets retain their original
+`covers: []` metadata and hashes. After independent review, the default catalog
+registers both fixed #2 conditions only on the complete eleven-family set.
+The integrated full gate remains the final step; no other contract gains credit.
 
 The isolated tree starts at `2a56ed8fed789668af77333f0c7e31ff495d3231`. Production
 Python sources were unchanged for this first comparison; their aggregate source
@@ -154,6 +160,65 @@ The final affected regression set passed **371 tests**, plus **2 public consumer
 typing checks**. It includes real leaf, parent, root, hardlink-alias, FIFO, unlink,
 and late-consumption OS scenarios, descriptor release, raw-stat completeness,
 snapshot identity, exact capability boundaries, and existing read contracts.
-Ruff and whitespace checks pass. Every new or repeat comparison keeps
-`covers: []`; the reports leave all 128 points uncovered in their isolated
-comparison scope. No acceptance points or full-equivalence claim are assigned.
+Ruff and whitespace checks pass. Every retained capture keeps `covers: []`;
+those reports leave all 128 points uncovered in their isolated comparison scope.
+Their historical coverage metadata is not rewritten after review.
+
+## Reviewed two-condition registration
+
+Independent source, security, and raw-evidence review accepted all eleven
+families for both `storage.path-safety.outcomes` and
+`storage.path-safety.boundaries`. The review replayed all 22 filesystem
+observations, eleven raw journal hashes, nine negative tamper carriers, and
+the three original hook/caller artifact hashes. It found no descriptor cleanup,
+read admission, error-shape, or source provenance gap within this profile.
+
+The default [path catalog](../equivalence/storage_path_contract.py) now returns
+all eleven families exactly once. Every family carries both condition IDs.
+The [registration guard](../equivalence/storage_path_acceptance.py) pins their
+literal IDs, all eleven reviewed input hashes, and the 99 original requests.
+Removing a family, one condition from one family, snapshots, calls, or reviewed
+fixture bytes fails before a point can be claimed. Existing source helpers and
+the old loop diagnostic retain empty coverage and cannot substitute for the
+whole-tool proof. Historical uncredited reports remain valid diagnostics.
+
+The original actor chain is:
+
+| Original owner | Python owner |
+| --- | --- |
+| `extensions/memory-core/src/tools.ts:createMemoryGetTool` | `memory_core/tools/get_factory.py:create_memory_get_tool` |
+| `extensions/memory-core/src/memory-read-tool.ts:executeMemoryReadResult` | `memory_core/tools/memory_get.py:_read_builtin` and the complete tool envelope |
+| `packages/memory-host-sdk/src/host/read-file.ts:readAgentMemoryFile/readMemoryFile` | `memory_core/workspace.py:resolve_memory_read_path` and `memory_core/tools/get_paths.py:resolve_memory_get_read_path` |
+| Official `@openclaw/fs-safe/dist/local-file-descriptor.js`, `root-read-admission.js`, `strict-file-identity.js`, `root-context.js` | `memory_core/memory_read.py:read_memory_file_bytes` |
+| Original Node system-error facts and formatter | `memory_core/_memory_scan_io.py:bridge_memory_read_io_error`, retaining the real Python exception |
+
+The compiled owners are authenticated official artifacts, separately linked to
+the unchanged pinned source; this is not a reproduced source build. Runtime
+declarations record the actual package paths, SHA-256 values, exports, original
+caller edges and loaded artifacts. The generic get profile has no hook
+permission. Only the exact whole-get race input can acquire the one official
+hook, and other operations, input changes, extra hooks, broad test mode, or
+backend overrides are rejected.
+
+This registration closes only the two fixed path/read conditions after root
+integration. The stronger race evidence is one genuine leaf-to-symlink
+replacement at the original pre-open seam. Regular replacement, parent/root
+replacement, shared-inode alias, FIFO, unlink, and late-consumption schedules
+remain SDK unit evidence. Arbitrary scheduling, retries, deadlines, general
+platform/Unicode path behavior, and write admission are not claimed.
+
+Registration validation passed **337 catalog, harness, source-map and evidence
+tests**, followed by **491 capability and cross-lane guards** in an overlapping
+suite. These include denial of the hook to generic get, helper get, search,
+session and workspace operations, and rejection of mixed profile capabilities.
+The pinned source inventory validates all 64 contracts and 128 points; source
+presence itself contributes no behavioral credit. Ruff and whitespace checks
+pass, and no production source changed during registration.
+
+`.equivalence-results/storage-path-registration-replay.json` explicitly records
+`freshNativeExecution: false`: all eleven current SDK families and 99 calls
+still match the retained authenticated Native packet, with 22 original raw
+journal hashes and 22 filesystem observations revalidated. Its SHA-256 is
+`f73a7b9aba245b68df64094c9950d725f9641f3c37642391a1088a3e16884d76`.
+All four historical packet hashes above remain unchanged. This replay checks
+registration continuity; the parent integrated full run supplies the final gate.

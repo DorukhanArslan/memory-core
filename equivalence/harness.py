@@ -294,6 +294,12 @@ def _validate_scope(scope: Any, cases: Any) -> tuple[list[dict], dict[str, set[s
                 or not set(case["covers"]) <= points[case["requirement"]]):
             raise HarnessError("cases-invalid", "Cases must have unique identities and valid acceptance-point coverage.")
         case_ids.add(case["id"])
+    from equivalence.storage_path_acceptance import validate_storage_path_acceptance_registration
+
+    try:
+        validate_storage_path_acceptance_registration(cases)
+    except (TypeError, ValueError) as error:
+        raise HarnessError("cases-invalid", "Path-safety acceptance requires its complete reviewed whole-tool family set.") from error
     return requirements, points
 
 

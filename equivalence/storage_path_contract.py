@@ -1,13 +1,15 @@
 """Dedicated whole-tool path admission inputs for fixed storage contract #2.
 
 Only private fixture inputs are declared here. The authenticated public
-memory_get factory and real filesystem owners determine every outcome. These
-cases receive no acceptance credit before paired capture and independent review.
+memory_get factory and real filesystem owners determine every outcome. Both
+fixed acceptance conditions require this complete independently reviewed set.
 """
 from __future__ import annotations
 
 from copy import deepcopy
 from typing import Any
+
+from equivalence.storage_path_acceptance import STORAGE_PATH_ACCEPTANCE_POINTS
 
 
 _PROFILE = (
@@ -17,8 +19,8 @@ _PROFILE = (
     "the genuine public tool without URL decoding or lexical path repair. Trusted "
     "plain and patterned extra roots are host configuration, never model authority. "
     "Both owned workspace and outside trees are observed before and after all reads. "
-    "Every result, rejection and actual OS error remains visible, including existing "
-    "ELOOP and patterned-root SDK gaps. This profile claims no filesystem races, "
+    "Every result, rejection and actual OS error remains visible, including complete "
+    "ELOOP causes and patterned-root admission. These static families claim no filesystem races, "
     "descriptor replacement, retry timing, deadlines, writes, provider execution, "
     "session-history visibility or general cross-platform path semantics."
 )
@@ -48,7 +50,7 @@ def build_storage_path_contract_cases() -> list[dict[str, Any]]:
         cases.append({
             "id": f"storage-path-contract-{name}",
             "requirement": "storage.path-safety",
-            "covers": [],
+            "covers": list(STORAGE_PATH_ACCEPTANCE_POINTS),
             "operation": "get-contract-runtime",
             "driverScope": _PROFILE,
             "normalizationPolicy": _POLICY,
@@ -189,4 +191,6 @@ def build_storage_path_contract_cases() -> list[dict[str, Any]]:
         {"path": "notes", "pattern": "shared/*.md"},
         {"path": "named.md", "pattern": "excluded/**"},
     ]})
-    return cases
+    from equivalence.get_read_race_profile import build_storage_path_read_race_cases
+
+    return [*cases, *build_storage_path_read_race_cases()]

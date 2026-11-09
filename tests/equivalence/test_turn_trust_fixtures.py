@@ -10,6 +10,9 @@ def test_turn_trust_inputs_are_literal_deterministic_json_and_uncredited():
     assert len({case["id"] for case in cases}) == len(cases) == 2
     assert json.loads(json.dumps(cases, ensure_ascii=False, allow_nan=False)) == cases
     assert all(case["covers"] == [] and case["input"]["kind"] == "turn-trust" for case in cases)
+    identities = [response["turnId"] for case in cases for turn in case["input"]["turns"]
+                  for attempt in turn["attempts"] for response in attempt["responses"]]
+    assert all(identity.strip() for identity in identities) and len(set(identities)) == len(identities)
     for case in cases:
         for turn in case["input"]["turns"]:
             assert "tainted" not in turn and "initiallyTainted" not in turn

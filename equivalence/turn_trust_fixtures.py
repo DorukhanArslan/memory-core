@@ -93,7 +93,15 @@ def build_turn_trust_cases():
              ]},
          ]},
     ]}
-    return [{"id": "turn-trust-" + name, "requirement": "trust.configured-redaction",
-             "operation": "turn-trust-runtime", "covers": [], "input": deepcopy(value),
-             "driverScope": PROFILE, "normalizationPolicy": POLICY}
-            for name, value in (("network-retry-new-turn", network), ("owner-and-network-error", failure))]
+    cases = []
+    for name, value in (("network-retry-new-turn", network), ("owner-and-network-error", failure)):
+        for turn in value["turns"]:
+            for attempt in turn["attempts"]:
+                for index, response in enumerate(attempt["responses"]):
+                    # Original ensureToolTurnIdentity accepts caller-provided
+                    # model response identities before any tool execution.
+                    response["turnId"] = f"{name}:{turn['id']}:{attempt['id']}:{index}"
+        cases.append({"id": "turn-trust-" + name, "requirement": "trust.configured-redaction",
+                      "operation": "turn-trust-runtime", "covers": [], "input": deepcopy(value),
+                      "driverScope": PROFILE, "normalizationPolicy": POLICY})
+    return cases

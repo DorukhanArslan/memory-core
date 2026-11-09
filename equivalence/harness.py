@@ -991,6 +991,10 @@ def run_suite(*, checkout: Path, node: Path, smoke: bool = False,
                             if len(snapshots) != 1:
                                 raise ValueError("Discovery requires one complete diagnostic record")
                             validate_storage_discovery_diagnostic(snapshots[0], case["input"], python, side="python")
+                        if case["operation"] == "get-contract-runtime" and case["input"].get("observeFilesystem") is True:
+                            from equivalence.get_fixture_filesystem import validate_python_get_filesystem_evidence
+
+                            validate_python_get_filesystem_evidence(snapshots, case["input"], python)
                         diagnostic_key = "sourceDiagnostics" if case in source_diagnostic_cases else "runtimeDiagnostics"
                         report[diagnostic_key].append({
                             "id": case["id"], "side": "python", "sha256": hashlib.sha256(raw).hexdigest(),

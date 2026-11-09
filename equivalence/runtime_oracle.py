@@ -1259,6 +1259,30 @@ class ReleaseOracleExecution:
                 raw_requests = map_get_fixture_paths(raw_requests, fixture_base)
             if not _same_json(raw_requests, row["result"].get("requests")):
                 raise RuntimeOracleError("Get-tool provider requests differ from retained raw observations.")
+            if case["input"].get("observeFilesystem") is True:
+                from equivalence.get_fixture_filesystem import (
+                    owned_get_input_path, validate_get_filesystem_observation,
+                )
+
+                if not portable_paths:
+                    raise RuntimeOracleError("Owned filesystem comparisons require their declared private-prefix codec.")
+                try:
+                    validate_get_filesystem_observation(
+                        diagnostic[0].get("filesystem"), row["result"].get("filesystem"), fixture_base,
+                    )
+                    arguments = diagnostic[0].get("nativeArguments")
+                    if not isinstance(arguments, list) or len(arguments) != len(public_steps):
+                        raise ValueError("Every actual read argument must remain in raw evidence")
+                    for index, (actual, requested) in enumerate(zip(arguments, case["input"]["steps"], strict=True)):
+                        expected = deepcopy(requested.get("params"))
+                        if isinstance(expected, dict) and isinstance(expected.get("path"), str):
+                            expected["path"] = owned_get_input_path(
+                                expected["path"], Path(fixture_base), require_owned=True,
+                            )
+                        if not _same_json(actual, {"index": index, "params": expected}):
+                            raise ValueError("Actual tool arguments differ from suffix-preserving owned-token expansion")
+                except (ValueError, TypeError, KeyError) as error:
+                    raise RuntimeOracleError("Owned get filesystem evidence failed raw snapshot or argument authority.") from error
             for index, (original, public) in enumerate(zip(diagnostic[0]["nativeEnvelopes"], public_steps, strict=True)):
                 if (not isinstance(original, dict) or original.get("index") != index
                         or not isinstance(public, dict) or set(public) not in ({"result"}, {"error"})

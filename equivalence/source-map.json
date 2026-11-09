@@ -640,7 +640,7 @@
           "path": "memory_core/host/kit.py",
           "symbol": "HostKit",
           "anchor": "class HostKit:",
-          "line": 212
+          "line": 213
         },
         {
           "path": "memory_core/index/embedding_limits.py",
@@ -1402,7 +1402,7 @@
           "path": "memory_core/host/kit.py",
           "symbol": "HostKit.__init__",
           "anchor": "    def __init__(",
-          "line": 222
+          "line": 223
         },
         {
           "path": "memory_core/tools/memory_search.py",
@@ -2693,7 +2693,7 @@
           "path": "memory_core/host/kit.py",
           "symbol": "on_new_session",
           "anchor": "def on_new_session(",
-          "line": 759
+          "line": 760
         }
       ],
       "implementation": "partial",
@@ -3297,7 +3297,7 @@
           "path": "memory_core/host/kit.py",
           "symbol": "HostKit.prepare_flush",
           "anchor": "    def prepare_flush(",
-          "line": 609
+          "line": 610
         },
         {
           "path": "memory_core/memory_flush.py",
@@ -3333,7 +3333,7 @@
           "path": "memory_core/host/kit.py",
           "symbol": "after_turn",
           "anchor": "def after_turn(",
-          "line": 559
+          "line": 560
         }
       ],
       "implementation": "present",
@@ -4471,7 +4471,7 @@
           "path": "memory_core/host/kit.py",
           "symbol": "HostKit.after_turn",
           "anchor": "    def after_turn(",
-          "line": 559
+          "line": 560
         },
         {
           "path": "memory_core/turn_trust.py",
@@ -4543,31 +4543,31 @@
           "path": "memory_core/heartbeat_scratch.py",
           "symbol": "apply_heartbeat_scratch_write",
           "anchor": "def apply_heartbeat_scratch_write(",
-          "line": 173
+          "line": 208
         },
         {
           "path": "memory_core/heartbeat_scratch.py",
           "symbol": "apply_heartbeat_scratch_delete",
           "anchor": "def apply_heartbeat_scratch_delete(",
-          "line": 215
+          "line": 250
         },
         {
           "path": "memory_core/automation.py",
           "symbol": "FileAutomationStore",
           "anchor": "class FileAutomationStore:",
-          "line": 423
+          "line": 429
         },
         {
           "path": "memory_core/heartbeat_migration.py",
           "symbol": "migrate_heartbeat_md",
           "anchor": "def migrate_heartbeat_md(",
-          "line": 724
+          "line": 754
         }
       ],
       "implementation": "partial",
       "notes": [
-        "Python implements size checks, revision tombstones and doctor-style migration with file-backed state; native scratch is keyed by a persisted cron job and writes atomically check job ownership plus scratch revision.",
-        "Python scratch is agent-keyed and its file store has no native job-deletion ownership CAS, so an in-flight write after owner deletion and reconstruction/migration diagnostics need explicit resolution."
+        "FileAutomationStore optionally persists job ownership, generations and scratch CAS; Doctor repair explicitly prepares owners and binds migration writes, verification and rollback to the captured owner, while preview remains read-only.",
+        "Legacy custom scratch stores retain their host-owned read/write/delete ABI. Native shared SQLite layout, generated identities, actual CLI hints and OS error text remain distinct observations; source inventory grants no behavioral credit."
       ]
     },
     {
@@ -4631,7 +4631,7 @@
           "path": "memory_core/host/heartbeat_run.py",
           "symbol": "HeartbeatRun",
           "anchor": "class HeartbeatRun:",
-          "line": 38
+          "line": 39
         },
         {
           "path": "memory_core/session_corpus.py",
@@ -4683,25 +4683,25 @@
           "path": "memory_core/automation.py",
           "symbol": "compute_job_next_run_at_ms",
           "anchor": "def compute_job_next_run_at_ms(",
-          "line": 275
+          "line": 281
         },
         {
           "path": "memory_core/automation.py",
           "symbol": "is_job_due",
           "anchor": "def is_job_due(",
-          "line": 306
+          "line": 312
         },
         {
           "path": "memory_core/automation.py",
           "symbol": "record_automation_job_run",
           "anchor": "def record_automation_job_run(",
-          "line": 363
+          "line": 369
         },
         {
           "path": "memory_core/heartbeat_migration.py",
           "symbol": "migrate_heartbeat_tasks",
           "anchor": "def migrate_heartbeat_tasks(",
-          "line": 1044
+          "line": 1105
         }
       ],
       "implementation": "partial",
@@ -4888,7 +4888,7 @@
           "path": "memory_core/host/kit.py",
           "symbol": "HostKit.after_turn",
           "anchor": "    def after_turn(",
-          "line": 559
+          "line": 560
         },
         {
           "path": "memory_core/index/sqlite_store.py",
@@ -5089,7 +5089,7 @@
           "path": "memory_core/host/kit.py",
           "symbol": "HostKit.after_turn",
           "anchor": "    def after_turn(",
-          "line": 559
+          "line": 560
         },
         {
           "path": "demo/lab_chat.py",
@@ -5148,7 +5148,7 @@
           "path": "memory_core/host/kit.py",
           "symbol": "HostKit.on_new_session",
           "anchor": "    def on_new_session(",
-          "line": 759
+          "line": 760
         },
         {
           "path": "demo/lab_runtime.py",
@@ -5201,7 +5201,7 @@
           "path": "memory_core/host/kit.py",
           "symbol": "HostKit.dispatcher",
           "anchor": "    def dispatcher(",
-          "line": 416
+          "line": 417
         },
         {
           "path": "memory_core/live/__init__.py",

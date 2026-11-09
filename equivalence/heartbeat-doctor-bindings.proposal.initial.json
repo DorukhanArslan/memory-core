@@ -1,0 +1,522 @@
+{
+  "schemaVersion": 1,
+  "kind": "fixed-heartbeat-scratch-doctor-bindings-proposal",
+  "status": "proposal-only-no-protected-capture",
+  "reference": {
+    "tag": "v2026.9.9",
+    "commit": "bcfc88812a35243893585dbeca87ca41b48272ca"
+  },
+  "scope": {
+    "contract": "heartbeat.scratch",
+    "acceptanceConditions": [
+      "heartbeat.scratch.outcomes",
+      "heartbeat.scratch.boundaries"
+    ],
+    "covers": [],
+    "acceptancePointsAwarded": 0,
+    "excludedClaims": [
+      "heartbeat.turn-decisions",
+      "automation.job-state",
+      "scheduler execution",
+      "provider or model execution"
+    ]
+  },
+  "runtime": {
+    "sourceBuildReproduced": false,
+    "baseAuthenticatedPackageCount": 83,
+    "additionalAuthenticatedPackageCount": 1,
+    "authenticatedPackageCount": 84,
+    "baseManifest": "equivalence/release-runtime.json",
+    "baseManifestSha256": "5f8d7efe63635bdcf633f75b028aa748d8cf3547b66efe1781b02b09bc648cf5",
+    "sharedInstallationOrManifestChangesPermitted": false,
+    "privateRuntimeRoot": "/workspace/scratch/memory-core-heartbeat-doctor-lane/.reference/release-runtime/node_modules/openclaw",
+    "additionalPackages": [
+      {
+        "name": "croner",
+        "version": "10.0.1",
+        "location": "node_modules/croner",
+        "pin": "upstream-pnpm-lock",
+        "integrity": "sha512-ixNtAJndqh173VQ4KodSdJEI6nuioBWI0V1ITNKhZZsO0pEMoDxz539T4FTTbSZ/xIOSuDnzxLVRqBVSvPNE2g==",
+        "archiveSha256": "d6d93c286125fed567b986a576ff1daa74e72d56bb63fe28248ca17cfcb00cee",
+        "archiveBytes": 36747,
+        "fileCount": 8,
+        "filesSha256": "dbf132f1899f1bbb92ec5f8fcc8519a7569337139c0004292862eeab87ce38e1",
+        "authority": "exact source-lock archive integrity and complete installed file verification in private copy only"
+      }
+    ]
+  },
+  "sourcePins": {
+    "src/commands/doctor-heartbeat-scratch-migration.ts": "399665e53f07d9f65206bc510bd503c1cfc10e81d921f18e4223e8710fab93ad",
+    "src/commands/doctor-heartbeat-cadence-migration.ts": "11d2edaa924a4bb59506b00ada33b4a8df813934b94e6a28cc08ed148823e15b",
+    "src/cron/heartbeat-monitor.ts": "86ea6523b6ee74fadcf59f32e2764488cdcb12a14e7d23df93b64f3e59d3ca1c",
+    "src/cron/service.ts": "15fae1038a96c2b86de6bd1ec8cb4da44c9a1e33878e6fd53450e4f945510d24",
+    "src/cron/service/ops-read.ts": "415b23a52f951a575f47ba429a514f11e25572981bdfd792f112755390dfe1d5",
+    "src/cron/service/ops-mutations.ts": "6ca01989c4cdaeb2d57f9de078634353c81653ec7fa0808ae5d0a0a193a2eefd",
+    "src/cron/service/store.ts": "cfa63ee5f88c8c37f6dd2432dd4c2d43083fd62cb995a29a8973a99cbe03c570",
+    "src/cron/service/ops-shared.ts": "b4ada663e95874ff78c1900c9e0553d2e53f4b6c0439c1f33042bb590e3f4286",
+    "src/cron/service/schedule-maintenance.ts": "b9a0921325904ec9465f713ed5cce4055418f07c0e73d26fe659f8e4b0050f31",
+    "src/cron/service/runtime-mutation.ts": "cccb0dc71a1fb9bc6c35a1fba6f771506185d65b36333355598315f91e308c22",
+    "src/cron/store.ts": "ea97483ca48ae30e3bc70fe329ed6f7a8c827b4a47387c791e058de2cd3a3569",
+    "src/cron/scratch-store.ts": "04dc0f6937aa65dc0aaec4ed4eefa9115b1578b26ac65b47af926260b7583712",
+    "src/cron/store/paths.ts": "89bfecb5d3c420f9e21802a0c13f3b2a31368090df0cb4d5db5ac844cf720772",
+    "src/cron/mutation-completion.ts": "693f6fba248bad06546e627df6914b85cb15d4a8f320a72a2e1bf94ce36c7471",
+    "src/state/openclaw-state-worker-owner.ts": "f6cb1576f8bd7f0ce23326e558c7c3968b202e5b03f18e5c41e86488bdc2b127",
+    "src/state/openclaw-state-worker-store.ts": "58194c48d5c2d7047fb6429e37b080b4745d6c2562b583ab54773c8612c3c9da",
+    "src/state/openclaw-state-worker-operation.ts": "8b1955de2754ecf51bf46244c26c34d07971cf723aae2d9fe37da3cf15919d20",
+    "src/state/openclaw-state-worker-context.ts": "6a33275907430d19f3b1217cd8a8e9ed6329bd31270ada2d418e70b567719858",
+    "src/state/openclaw-state-worker-context.capture.ts": "547a8cc290a4519adbe56dca11e194a662add82ec42598f4311da245d808887d",
+    "src/state/openclaw-state-worker-runtime.ts": "19c8ada98bf5baf52b3aa34702e37aae198eb9071697023a0f79a2b0f6c34c0d",
+    "src/state/openclaw-state.worker.ts": "0017e2465c09c9d1bc3701005a065a1de989bc84c4b14a265366c555a9fc56b2",
+    "src/state/openclaw-state-db-cache.ts": "88187954bc2ce8fbd0b254289640687aa205521266043b1a61e0a623cc211774",
+    "src/infra/sqlite-store.worker.ts": "c958da27fa03aa7a31b487ad98836d9419539c8c3c0d6cdce52724f82d8702a8",
+    "src/infra/sqlite-worker-broker-admission.ts": "86207904c22dc11ed744724cecc2eb7b8e4d78ef77f90d0de6571a73635ab384",
+    "src/infra/sqlite-worker-broker-lifecycle.ts": "23d9441cc986d1bd76f165f8fc7a6e32c8acd47f5f18b80652838707e399520c",
+    "src/infra/sqlite-worker-state-context.ts": "7771581f221fdd3181296664f38de3ce34c7be41b965ce1b04932dfb2bbc1cad",
+    "src/infra/node-compile-cache-env.ts": "d2735df1baf2269ec19d81019765ba002271607e65de59361d0d1b522ce348ce",
+    "src/infra/runtime-process-entrypoints.ts": "23576e3d35022ff7d7c4b4b163587d826b7e2b96b7e84533f8ac92189c7f3752",
+    "src/infra/runtime-process-url.ts": "0914e78c0e99eecfb49d0aafec3e82d8e6fa61f3a22cfbf97669c0ffc8441f1e",
+    "src/infra/runtime-worker-url.ts": "9b694a778a84725e989ad2380195557993afbf25dc97e64112f7a65b2a2087e0",
+    "src/infra/worker-cpu.ts": "41e8c54a90cb84caf392f0d7a5dfdceeef2fe5aa75cbdb85f5c32e03f803d256",
+    "src/infra/gateway-scheduler.ts": "53c5a46e4cbe447b6b58daefe30f977dae8d06cd2f44b359fca0962617fc120d",
+    "src/infra/node-sqlite.ts": "0ba2bd399fcfc0c3c3dd0e9e44d1a3ead8936c786eb7fed7e4e12ad0012171cd",
+    "src/cron/store/dispatch.worker.ts": "6a0ce907e7bab41fcc53330dc1c504d55ebe83b2465d008d2ee224f9009d501b",
+    "src/cron/store/load.worker.ts": "7615f0ab292e5fbf52eea89ca4aea90bb4c58aba748c34f0e4c28b31a8bbe6a3",
+    "src/cron/store/save.worker.ts": "0e218a30440bd2aadae49ea90a7033beadba0a15f6317856aef732aa6bf52013",
+    "src/cron/store/runtime-maintenance.worker.ts": "01ed1e4ece846ed86a0eba9d8397936f064fb722a5e8fb8e6a4c03454433fa07",
+    "src/cron/store/runtime-mutation.worker.ts": "9c7862a8a050d7c43fd0d2af338afdd9edba9d84158a15a8b281533c6c929792"
+  },
+  "compiledPins": {
+    "dist/doctor-heartbeat-scratch-migration-DZDMSbFc.mjs": "b3b13f52fe282d6aaf21873546f8c4dbd945e4814368104e0cbaaaace05442f3",
+    "dist/doctor-heartbeat-cadence-migration-B8HOzYOl.mjs": "fc8181a7ca997dd5678c7cb44f20059320c32a3e17b9fb1d76f51b93506712fb",
+    "dist/heartbeat-monitor-DczrY0HS.mjs": "e282b2e9d01967baf4c6349f5832354d6682522161059a1649514c10d84982a0",
+    "dist/service-u8zoxec7.mjs": "d8c4361ab72e313db1ed4b06b02e13eb56d6891e233a7f112eb9db5c3ba8de16",
+    "dist/scratch-store-BsjpiVxl.mjs": "17a3373733a1af33974c11601436fc3a081f21daef252e94c805eef533204768",
+    "dist/paths-D_dyKtfo.mjs": "435a2c2b69fc2071dbaa6035c224d786a80bcb5e8dd70506d1eba8ac03ef219b",
+    "dist/store-6B9iwkza.mjs": "a4f86b10d9e1031155129332feef29ab29f716a66884e322f693b3032b11e6f0",
+    "dist/infra/sqlite-store.worker.js": "b6fb8b9d214bd7d35beb77849e1c44926d4963cacd9fc13af40f8c3b43374d69",
+    "dist/state/openclaw-state.worker.js": "52fdb859d0add218690d0db4358fa5b2f2d2118379163eefb42a35c87f0715d4",
+    "dist/openclaw-state-worker-store-Dy5-mnWx.mjs": "8f2ce584b66eec3ff3c876ddab18947e8af6b2a60fbbf3aeb3e020336410e407",
+    "dist/openclaw-state-worker-runtime-DsFyroJI.mjs": "d1f270b4dcbcf0ead121226d5bfbe153adc46e78e6571884ef673f504ff65cf3",
+    "dist/runtime-maintenance.worker-obG_otbc.mjs": "254d6fc87e18d8cd1cda1ff09cc1754e80cd4d2a9322471788d43977841206ee",
+    "dist/run-receipt-write-admission-B-7HMnSF.mjs": "504fe45e1ede1f534a2469c782a739f34229611aaf867f2e001839809f7a45f6",
+    "dist/runtime-mutation.worker-DOn-FTnC.mjs": "b88b74688a2381b9719dc8ff3718220e60494c767ddba6fb4b51da800caa4a11",
+    "dist/sqlite-worker-store-D6Kl0iv0.mjs": "d26499b6fabe956da5b29630aaf9061071b8d5ec0608c84076183588aa89f1df",
+    "dist/sqlite-worker-state-context-ifl-DKqr.mjs": "6e121d5cf57f16d4be3b1df7c07ff203c2d1c32353bcab4cc5927746fee7e11f",
+    "dist/openclaw-state-worker-context-J5m6n4KL.mjs": "e238704b6f3c4a58f162cdd70565aec760d36ed8dc0f9120f8c4e4ed043e2e40",
+    "dist/runtime-process-entrypoints-Bh4reDp0.mjs": "d8031c4fff5902dc7c99a70daf2d4c8f1ce809db149e029d77c0dac2873dfc4a",
+    "dist/runtime-process-url-DpjnU3O9.mjs": "9c16d792c31a0a5af157c7e862c7a872110330adb6ce58a2570b5c264b8b3839",
+    "dist/runtime-worker-url-S0NIVxUR.mjs": "49585b6cc537babf6c8e4f795c709e3b109af37b3df46161afcf593b506a136b",
+    "dist/openclaw-state-db-cache-IdIaBoUp.mjs": "e0cddcf3fa25fc081f0edb4cc9d31c4d29dabd1206dc440dd239f1bf665a543e",
+    "dist/gateway-scheduler-TywODsdc.mjs": "92a674af56f14b9340a1c80b9f3ac0ffe8b454d97a1fa4af9a2186a4eac9fc6e",
+    "dist/node-sqlite-DRQTiYwd.mjs": "5008332cd5a0ba99eae3194a790bff4979b5b05f99c2c8c69312d7471f200504",
+    "dist/node-compile-cache-env-CpY9xPJG.mjs": "3ca2c39382ae4c1b7f0e3636af5bd96ac9ddaca3a7e668638ec96d98d2c733a5",
+    "dist/worker-cpu-EKuz4_X-.mjs": "ba8fc5f65b7ad1853164907b14579600627b67c22c9a6a9be64de7ff0b5fb506",
+    "dist/mutation-completion-LLavq40k.mjs": "3ce12370fc056c3052c8535b7676b9edda46ce8d8bc91a3fe35e66a3a25642a1"
+  },
+  "actualCompiledExports": {
+    "dist/doctor-heartbeat-scratch-migration-DZDMSbFc.mjs": {
+      "collectHeartbeatScratchMigrationFindings": "collectHeartbeatScratchMigrationFindings",
+      "maybeMigrateHeartbeatFilesToScratch": "maybeMigrateHeartbeatFilesToScratch"
+    },
+    "dist/doctor-heartbeat-cadence-migration-B8HOzYOl.mjs": {
+      "ensureHeartbeatMonitorJobs": "n",
+      "maybeMigrateHeartbeatCadenceToCron": "r",
+      "collectHeartbeatCadenceMigrationFindings": "t"
+    },
+    "dist/heartbeat-monitor-DczrY0HS.mjs": {
+      "resolveHeartbeatMonitorPlan": "i",
+      "heartbeatMonitorAddOptions": "n",
+      "applyHeartbeatMonitorJobs": "t"
+    },
+    "dist/service-u8zoxec7.mjs": {
+      "CronService": "t"
+    },
+    "dist/scratch-store-BsjpiVxl.mjs": {
+      "readHeartbeatMonitorScratchReadOnly": "a",
+      "readHeartbeatMonitorScratch": "i",
+      "hashCronScratchSource": "n",
+      "writeCronJobScratch": "o",
+      "readCronJobScratchState": "r",
+      "deleteCronJobScratch": "t"
+    },
+    "dist/paths-D_dyKtfo.mjs": {
+      "resolveCronJobsStorePathFromConfig": "n",
+      "resolveCronJobsStorePath": "t"
+    },
+    "dist/store-6B9iwkza.mjs": {
+      "loadCronJobsStoreWithConfigJobs": "i",
+      "saveCronJobsStoreChangesWithRevision": "d",
+      "saveCronJobsStoreChangesWithRevisionNative": "f",
+      "saveCronJobsStoreWithRevision": "m",
+      "saveCronJobsStoreWithRevisionNative": "h"
+    },
+    "dist/state/openclaw-state.worker.js": {
+      "createSqliteWorkerBackend": "createSqliteWorkerBackend",
+      "openExistingSqliteWorkerBackend": "openExistingSqliteWorkerBackend"
+    },
+    "dist/openclaw-state-worker-store-Dy5-mnWx.mjs": {
+      "runOpenClawStateWorkerOperation": "a",
+      "inspectOpenClawStateDatabase": "r"
+    },
+    "dist/openclaw-state-worker-runtime-DsFyroJI.mjs": {
+      "executeSharedStateCommand": "executeSharedStateCommand",
+      "prepareSharedStateCommand": "prepareSharedStateCommand"
+    },
+    "dist/runtime-maintenance.worker-obG_otbc.mjs": {
+      "scheduleUnownedCronJobsInWorker": "scheduleUnownedCronJobsInWorker",
+      "maintainCronRunHistoryInWorker": "maintainCronRunHistoryInWorker",
+      "recordCronFailureAlertOutcomeInWorker": "recordCronFailureAlertOutcomeInWorker"
+    },
+    "dist/run-receipt-write-admission-B-7HMnSF.mjs": {
+      "runCronRuntimeMutation": "n"
+    },
+    "dist/runtime-mutation.worker-DOn-FTnC.mjs": {
+      "prepareCronRuntimeMutation": "n",
+      "retainCronRuntimeMutationOutcome": "r",
+      "createCronMutationLogger": "t"
+    },
+    "dist/sqlite-worker-store-D6Kl0iv0.mjs": {
+      "openSharedStateSqliteWorkerStore": "s",
+      "runSqliteWorkerStoreOperation": "d"
+    },
+    "dist/sqlite-worker-state-context-ifl-DKqr.mjs": {
+      "captureSqliteWorkerStateContext": "t",
+      "getSqliteWorkerStateContext": "r",
+      "runWithSqliteWorkerStateContext": "i"
+    },
+    "dist/openclaw-state-worker-context-J5m6n4KL.mjs": {
+      "captureOpenClawStateWorkerContext": "r"
+    },
+    "dist/runtime-process-entrypoints-Bh4reDp0.mjs": {
+      "runtimeProcessEntrypoints": "n"
+    },
+    "dist/runtime-process-url-DpjnU3O9.mjs": {
+      "resolveRuntimeProcessEntrypointUrl": "t"
+    },
+    "dist/runtime-worker-url-S0NIVxUR.mjs": {
+      "resolveRuntimeWorkerUrl": "r",
+      "resolveRuntimeWorkerThreadExecArgv": "n"
+    },
+    "dist/openclaw-state-db-cache-IdIaBoUp.mjs": {
+      "closeOpenClawStateDatabaseByPathAsync": "s",
+      "closeOpenClawStateDatabaseAsync": "a",
+      "captureOpenClawStateWorkerContextWithAdmission": "O"
+    },
+    "dist/gateway-scheduler-TywODsdc.mjs": {
+      "GatewayScheduler": "t"
+    },
+    "dist/node-sqlite-DRQTiYwd.mjs": {
+      "requireNodeSqlite": "r",
+      "openNodeSqliteDatabase": "t"
+    },
+    "dist/node-compile-cache-env-CpY9xPJG.mjs": {
+      "resolveNodeCompileCacheEnv": "n"
+    },
+    "dist/worker-cpu-EKuz4_X-.mjs": {
+      "createCpuTrackedWorker": "n"
+    },
+    "dist/mutation-completion-LLavq40k.mjs": {
+      "withCronMutationCommitHook": "i",
+      "captureCronMutationCommit": "t",
+      "createCronMutationCompletion": "r"
+    }
+  },
+  "privateBundledOwners": [
+    {
+      "source": "src/cron/service/ops-read.ts",
+      "compiled": "dist/service-u8zoxec7.mjs",
+      "symbols": [
+        "list"
+      ],
+      "compiledDirectExport": false,
+      "role": "CronService.list delegates to original locked read operation"
+    },
+    {
+      "source": "src/cron/service/ops-mutations.ts",
+      "compiled": "dist/service-u8zoxec7.mjs",
+      "symbols": [
+        "add"
+      ],
+      "compiledDirectExport": false,
+      "role": "CronService.add delegates to original locked mutation operation"
+    },
+    {
+      "source": "src/cron/service/store.ts",
+      "compiled": "dist/service-u8zoxec7.mjs",
+      "symbols": [
+        "ensureLoaded",
+        "ensureLoadedForOperation",
+        "persistOrRestore"
+      ],
+      "compiledDirectExport": false,
+      "role": "original mutable actor load and disabled-service CRUD persistence"
+    },
+    {
+      "source": "src/state/openclaw-state-worker-owner.ts",
+      "compiled": "dist/openclaw-state-worker-store-Dy5-mnWx.mjs",
+      "symbols": [
+        "getOpenClawStateWorkerOwner"
+      ],
+      "compiledDirectExport": false,
+      "role": "owns exact canonical shared-state backend module URL and retirement"
+    },
+    {
+      "source": "src/infra/sqlite-worker-broker-admission.ts",
+      "compiled": "dist/sqlite-worker-store-D6Kl0iv0.mjs",
+      "symbols": [
+        "captureSqliteWorkerOpen"
+      ],
+      "compiledDirectExport": false,
+      "role": "resolves genuine carrier and exact backend URL"
+    },
+    {
+      "source": "src/infra/sqlite-worker-broker-lifecycle.ts",
+      "compiled": "dist/sqlite-worker-store-D6Kl0iv0.mjs",
+      "symbols": [
+        "createSqliteWorkerLifecycle"
+      ],
+      "compiledDirectExport": false,
+      "role": "creates/retires genuine Node carrier threads"
+    },
+    {
+      "source": "src/cron/store/load.worker.ts",
+      "compiled": "dist/openclaw-state-worker-runtime-DsFyroJI.mjs",
+      "symbols": [
+        "loadMutableCronStoreInWorker"
+      ],
+      "compiledDirectExport": false,
+      "role": "actual cron.loadMutable command handler"
+    },
+    {
+      "source": "src/cron/store/save.worker.ts",
+      "compiled": "dist/openclaw-state-worker-runtime-DsFyroJI.mjs",
+      "symbols": [
+        "executeCronStoreSaveCommand"
+      ],
+      "compiledDirectExport": false,
+      "role": "actual cron.saveChanges command handler"
+    },
+    {
+      "source": "src/cron/store/dispatch.worker.ts",
+      "compiled": "dist/openclaw-state-worker-runtime-DsFyroJI.mjs",
+      "symbols": [
+        "prepareCronStateWorkerCommand",
+        "isCronStateWorkerCommand",
+        "executeCronStateCommand"
+      ],
+      "compiledDirectExport": false,
+      "role": "original command dispatch and exact dynamic runtime-maintenance owner"
+    }
+  ],
+  "wholeCallerInputs": {
+    "findings": {
+      "owner": "collectHeartbeatScratchMigrationFindings",
+      "arguments": [
+        "complete literal cfg"
+      ],
+      "stateEffect": "real filesystem reads and diagnostics only; does not prepare monitor jobs"
+    },
+    "preview": {
+      "owner": "maybeMigrateHeartbeatFilesToScratch",
+      "arguments": {
+        "cfg": "complete literal cfg",
+        "shouldRepair": false,
+        "env": "owned fixture environment"
+      },
+      "stateEffect": "real source inspection and original preview notes/warnings; no monitor preparation"
+    },
+    "repair": {
+      "owner": "maybeMigrateHeartbeatFilesToScratch",
+      "arguments": {
+        "cfg": "complete literal cfg",
+        "shouldRepair": true,
+        "env": "owned fixture environment"
+      },
+      "stateEffect": "entire original migration caller including genuine cadence/CronService list/add and scratch/source/archive transitions"
+    }
+  },
+  "executionRoles": {
+    "capability": "heartbeat-scratch-doctor",
+    "node": {
+      "nodeVersion": "v24.16.0",
+      "icuVersion": "78.3",
+      "unicodeVersion": "17.0",
+      "sha256": "b2959781cc5a74c357ffa02367efa8a0330cbb1c9cb347732fdfaaaca381cbcd"
+    },
+    "caller": {
+      "role": "one genuine main Node process per reconstruction phase",
+      "gatewayMutationContext": "absent",
+      "createCronMutationCompletionWrapperPermitted": false,
+      "reason": "Adding a Gateway cron.add completion installs transactionHooks and changes original persistence to synchronous native save; this direct Doctor profile retains the original async actor path.",
+      "CronServiceConstruction": "unchanged original ensureHeartbeatMonitorJobs; no shim or facade bypass",
+      "CronServiceConfig": {
+        "cronEnabled": false,
+        "startCalled": false,
+        "enqueueSystemEvent": "original Doctor callback returns false",
+        "requestHeartbeat": "original Doctor no-op callback",
+        "runIsolatedAgentJob": "original Doctor callback returns skipped without executing automations"
+      },
+      "GatewayScheduler": "actual original constructor and stop; no injected scheduler implementation"
+    },
+    "clock": {
+      "owner": "node:test",
+      "apis": [
+        "Date"
+      ],
+      "nowMs": "exact bounded integer input.nowMs for each phase",
+      "defaultNowMs": 2000000000000,
+      "applyTo": "main and every approved actual worker before original owner imports",
+      "requireActualThreadEvidence": true,
+      "setTimeout": "unchanged",
+      "setInterval": "unchanged",
+      "performance.now": "unchanged",
+      "osFileTimestamps": "actual values retained"
+    },
+    "workerPolicy": {
+      "findings": {
+        "spawnedEntries": []
+      },
+      "preview": {
+        "spawnedEntries": []
+      },
+      "repair": {
+        "allowedSpawnedEntries": [
+          "dist/infra/sqlite-store.worker.js"
+        ],
+        "parentRole": "genuine main Doctor process",
+        "ordinarySuccessfulRepairRequiresCarrier": true,
+        "maximumConcurrentCarriersForSingleOwnedDatabase": 1,
+        "nestedWorkers": [],
+        "dynamicBackendModule": "dist/state/openclaw-state.worker.js",
+        "backendIsSeparateSpawnedWorker": false,
+        "backendExports": [
+          "createSqliteWorkerBackend",
+          "openExistingSqliteWorkerBackend"
+        ],
+        "backendRuntimeModule": "dist/openclaw-state-worker-runtime-DsFyroJI.mjs",
+        "runtimeMaintenanceModule": "dist/runtime-maintenance.worker-obG_otbc.mjs"
+      },
+      "notAllowedSpawnedEntries": [
+        "dist/state/openclaw-state-read.worker.js",
+        "dist/cron/store/read-only.worker.js",
+        "dist/state/openclaw-state-ownership.worker.js",
+        "dist/state/openclaw-state-lease-heartbeat.worker.js"
+      ],
+      "dormantImportRule": "A loaded declaration or unused runtimeProcessEntrypoints member does not authorize spawning that worker."
+    },
+    "commands": {
+      "expectedActorCommands": [
+        "cron.loadMutable",
+        "cron.scheduleUnowned",
+        "cron.saveChanges"
+      ],
+      "transportControls": [
+        "open",
+        "execute",
+        "close",
+        "result-next",
+        "execute-start",
+        "execute-frame"
+      ],
+      "originalPrivateAdmission": "Real transaction/commit/settlement MessagePorts used by runCronRuntimeMutation; retain actual nonces and bytes, never replace preparation or committed outcomes.",
+      "conditionalOriginalCommands": {
+        "database.generationMatches": {
+          "reason": "revalidate already recorded terminal-open generation",
+          "initialProfileStatus": "dormant in fresh ordinary state"
+        },
+        "database.inspectIdle": {
+          "reason": "original real60second idle timer",
+          "initialProfileStatus": "dormant; no fake timer advancement or unbounded idle fixture lifetime"
+        }
+      },
+      "notPermitted": [
+        "cron.reserveRuns",
+        "cron.activateRun",
+        "cron.finishReceipt",
+        "cron.repairRun",
+        "stateLease.acquire",
+        "stateLease.verify",
+        "stateLease.renew",
+        "stateLease.release"
+      ],
+      "schedulerBoundary": "scheduleUnowned materialization is a required genuine caller dependency; cronEnabled=false makes armTimer return without automatic execution and grants no scheduler-equivalence credit."
+    },
+    "workerEnvironment": {
+      "constructorOwner": "createSqliteWorkerLifecycle -> createCpuTrackedWorker",
+      "envFactory": {
+        "module": "dist/node-compile-cache-env-CpY9xPJG.mjs",
+        "symbol": "resolveNodeCompileCacheEnv",
+        "exportAlias": "n"
+      },
+      "compiledWorkerExecArgv": [],
+      "preservedProcessEnvironment": [
+        "NODE_OPTIONS",
+        "MEMORY_EQ_HEARTBEAT_CONTEXT"
+      ],
+      "envFactoryPossibleChangesOnly": [
+        "NODE_COMPILE_CACHE",
+        "NODE_DISABLE_COMPILE_CACHE"
+      ],
+      "preloadDelivery": "Inherited NODE_OPTIONS, not only parent --import; actual protected bootstrap required in every carrier.",
+      "stateCommandEnvironment": "Original reduced environment has resolved OPENCLAW_STATE_DIR and optional supervisor mode; distinct from actual Worker process.env.",
+      "initializationEnvironment": "Original full merge retained separately by captureOpenClawStateWorkerContextWithAdmission."
+    },
+    "backend": {
+      "sqlite": "original Node node:sqlite through openNodeSqliteDatabase/openOpenClawStateDatabase",
+      "referenceModule": "dist/node-sqlite-DRQTiYwd.mjs",
+      "alternativeBackendOrBunCapabilityPermitted": false,
+      "mainScratchOperations": "unchanged synchronous scratch-store exports on same real persisted state",
+      "workerCronOperations": "actual original carrier/backend actor; no main-thread shim"
+    },
+    "cleanup": {
+      "originalDoctorFinally": [
+        "CronService.stop cancels timers/foreign receipt monitor",
+        "GatewayScheduler.stop drains own pending jobs"
+      ],
+      "originalDoctorFinallyClosesSharedActor": false,
+      "fixtureCanonicalClose": {
+        "module": "dist/openclaw-state-db-cache-IdIaBoUp.mjs",
+        "symbol": "closeOpenClawStateDatabaseByPathAsync",
+        "exportAlias": "s",
+        "scope": "exact owned fixture state database pathname only",
+        "awaitCompletion": true
+      },
+      "alternativeWholeOwnedProcessClose": {
+        "module": "dist/openclaw-state-db-cache-IdIaBoUp.mjs",
+        "symbol": "closeOpenClawStateDatabaseAsync",
+        "exportAlias": "a"
+      },
+      "actorCloseEffect": "Registered shared owner sends carrier close; backend.close releases actual native borrow; canonical close drains/joins custody.",
+      "newLeaseOrStateReadWorkerExpected": false,
+      "newStateLeaseCommandExpected": false,
+      "workerExitEvidence": "Retain actual creation/exit and close values; do not fabricate exit code or claim cron.stop closed the actor."
+    }
+  },
+  "evidenceAndCodec": {
+    "status": "first real baseline before Doctor SDK fixes",
+    "covers": [],
+    "acceptancePointsAwarded": 0,
+    "retainedRaw": [
+      "whole cfg/shouldRepair/env requests",
+      "complete returned values and thrown names/messages/codes/causes/stacks",
+      "all actual monitor job IDs and owner state",
+      "actual timestamps/counters/nonces",
+      "actual source/archive bytes and link identities",
+      "actual claim path/PID relations and process liveness",
+      "before/after reconstruction snapshots",
+      "all imported module and process/worker bootstrap evidence",
+      "every rejection and original diagnostic stream"
+    ],
+    "rootPrefixCodec": "Only an explicitly declared proper absolute fixture-root prefix relation; preserve relative components and full raw originals.",
+    "generatedIdentityCodec": "Not enabled by this proposal; retain literal IDs/timestamps until a separate exact observed identity relation is reviewed.",
+    "cliHintsCommandsRewritePermitted": false,
+    "nfcContentOrErrorTextNormalizationPermitted": false,
+    "expectedStateOrRevisionFabricationPermitted": false,
+    "providerAndNetworkPolicy": "none/deny in every process and worker; no provider/model calls"
+  },
+  "limitations": [
+    "Static source/artifact provenance and pre-capture role proposal only; no owner or worker execution evidence yet.",
+    "Every expected bootstrap/import/command/backend/cleanup role must be validated against first actual execution.",
+    "No complete #53 condition credit before migration/OS cases, independent review and integrated full proof."
+  ]
+}

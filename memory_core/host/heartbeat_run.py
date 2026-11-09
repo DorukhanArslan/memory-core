@@ -14,6 +14,7 @@ from typing import TYPE_CHECKING
 
 from memory_core.automation import AutomationJob, AutomationStore, record_automation_job_run
 from memory_core.heartbeat import HeartbeatReplyDecision, HeartbeatTurn, decide_heartbeat_reply
+from memory_core.heartbeat_scratch import HeartbeatMonitorOwner, HeartbeatScratchWrite
 from memory_core.host.session import SessionState, TurnUsage, apply_turn_usage
 
 if TYPE_CHECKING:
@@ -50,6 +51,9 @@ class HeartbeatRun:
         started_at_ms: int,
         store: AutomationStore,
         agent_id: str,
+        scratch_owner: HeartbeatMonitorOwner | None = None,
+        scratch_revision: int = 0,
+        owned_scratch: bool = False,
     ) -> None:
         self.session = session
         self.turn = turn
@@ -61,6 +65,34 @@ class HeartbeatRun:
         self._store = store
         self._agent_id = agent_id
         self._completed = False
+        self.scratch_owner = scratch_owner
+        self._scratch_revision = scratch_revision
+        self._owned_scratch = owned_scratch
+
+    def write_scratch(self, content: str | None, *, now_ms: int | None = None) -> HeartbeatScratchWrite:
+        """Write through the exact monitor captured when this run was prepared.
+
+        A host may persist a checklist update produced by this heartbeat. Job
+        deletion/replacement, generation reuse and concurrent scratch edits are
+        checked by the real store in one transaction. This never enrolls a job
+        or starts a scheduler; legacy custom stores keep their per-agent API.
+        """
+        if self.scratch_owner is not None:
+            result = self._store.write_job_scratch(  # type: ignore[attr-defined]
+                self._agent_id, self.scratch_owner.job_id, content,
+                expected_revision=self._scratch_revision,
+                expected_owner_generation=self.scratch_owner.generation,
+                now_ms=self.started_at_ms if now_ms is None else now_ms,
+            )
+        elif self._owned_scratch or getattr(self._store, "heartbeat_ownership_enabled", False):
+            raise RuntimeError("the heartbeat run has no captured monitor owner")
+        else:
+            result = self._store.write_scratch(self._agent_id, content,
+                expected_revision=self._scratch_revision,
+                now_ms=self.started_at_ms if now_ms is None else now_ms)
+        if result.ok:
+            self._scratch_revision = result.current_revision
+        return result
 
     def complete(
         self,

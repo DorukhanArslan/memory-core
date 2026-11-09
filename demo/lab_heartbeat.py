@@ -75,6 +75,10 @@ from memory_core.heartbeat_scratch import (
     CRON_JOB_SCRATCH_MAX_BYTES,
     HeartbeatScratchState,
     HeartbeatScratchTooLargeError,
+    HeartbeatScratchWrite,
+    HeartbeatMonitorEnrollmentConflictError,
+    assert_heartbeat_scratch_content,
+    resolve_heartbeat_store_scratch,
 )
 from memory_core.host import HeartbeatRun
 from memory_core.project_name import DISPLAY_NAME
@@ -187,8 +191,10 @@ def heartbeat_state(lab: LabRuntime) -> dict[str, Any]:
         *(finding.to_json() for finding in heartbeat_task_migration_findings(store)),
     ]
     every = lab.settings.heartbeat_every
+    scratch, owner = resolve_heartbeat_store_scratch(store, HEARTBEAT_AGENT_ID)
     return {
-        "scratch": _scratch_view(store.read_scratch(HEARTBEAT_AGENT_ID)),
+        "scratch": {**_scratch_view(scratch), "monitor":
+                    {"jobId": owner.job_id, "generation": owner.generation} if owner is not None else None},
         "jobs": [_job_view(job, now) for job in store.list_jobs(agent_id=HEARTBEAT_AGENT_ID)],
         # Rows list_jobs skips (a shape memory-core does not model, values the cron store refuses).
         "skippedJobRows": [row.to_json() for row in store.skipped_job_rows()],
@@ -222,20 +228,49 @@ def write_scratch(lab: LabRuntime, payload: dict[str, Any]) -> dict[str, Any]:
     if content is not None and not isinstance(content, str):
         raise LabError(400, "content must be a string (or null to unset)", code="invalid_content")
     expected = payload.get("expectedRevision")
-    if expected is not None and (isinstance(expected, bool) or not isinstance(expected, int) or expected < 0):
+    if expected is not None and (isinstance(expected, bool) or not isinstance(expected, int) or not 0 <= expected <= 2**53 - 1):
         raise LabError(400, "expectedRevision must be a non-negative integer", code="invalid_revision")
+    captured = payload.get("monitor")
+    if captured is not None and (not isinstance(captured, dict) or set(captured) != {"jobId", "generation"}
+            or not isinstance(captured["jobId"], str) or not captured["jobId"]
+            or type(captured["generation"]) is not int or not 1 <= captured["generation"] <= 2**53 - 1):
+        raise LabError(400, "monitor must contain its captured jobId and generation", code="invalid_monitor")
     if content is not None:
         # The store keeps the well-formed text (a lone surrogate becomes U+FFFD, as upstream's
         # SQLite row); the Lab sends that text, so its JSON answer and events stay encodable.
         content = js_to_well_formed(content)
+        try:
+            assert_heartbeat_scratch_content(content)
+        except HeartbeatScratchTooLargeError as error:
+            raise LabError(400, str(error), code="scratch_too_large") from error
     store = automation_store(lab)
+    newly_enrolled = not store.heartbeat_ownership_enabled
+    enrolled_owner = None
+    if newly_enrolled:
+        # The explicit edit is host configuration, unlike read-only previews.
+        # Existing legacy content/revision is adopted only on this first opt-in.
+        try:
+            enrolled_owner = store.enroll_heartbeat_monitor(
+                HEARTBEAT_AGENT_ID, adopt_legacy_scratch=True, require_unconfigured=True)
+        except HeartbeatMonitorEnrollmentConflictError:
+            # Ownership changed after the initial read. A missing token cannot
+            # be rebound to whichever monitor currently happens to exist.
+            pass
+    selected = captured
+    if selected is None and enrolled_owner is not None:
+        selected = {"jobId": enrolled_owner.job_id, "generation": enrolled_owner.generation}
     try:
-        result = store.write_scratch(
-            HEARTBEAT_AGENT_ID, content, expected_revision=expected, now_ms=lab.now_ms()
-        )
+        if selected is None:
+            state, _owner = resolve_heartbeat_store_scratch(store, HEARTBEAT_AGENT_ID)
+            result = HeartbeatScratchWrite(False, state.current_revision, reason="revision-conflict")
+        else:
+            result = store.write_job_scratch(HEARTBEAT_AGENT_ID, selected["jobId"], content,
+                expected_revision=expected, expected_owner_generation=selected["generation"], now_ms=lab.now_ms())
     except HeartbeatScratchTooLargeError as error:
         raise LabError(400, str(error), code="scratch_too_large") from error
-    view = _scratch_view(store.read_scratch(HEARTBEAT_AGENT_ID))
+    state, active_owner = resolve_heartbeat_store_scratch(store, HEARTBEAT_AGENT_ID)
+    view = {**_scratch_view(state), "monitor":
+            {"jobId": active_owner.job_id, "generation": active_owner.generation} if active_owner is not None else None}
     if result.ok:
         summary = (
             f"heartbeat scratch kaldırıldı (rev {result.current_revision})"

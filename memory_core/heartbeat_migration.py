@@ -28,9 +28,10 @@ migration, :class:`~memory_core.automation.AutomationStore` for the task migrati
 Deviations (documented in docs/parity_matrix.md): archives live under the workspace,
 ``<root>/.memory-core/backups/heartbeat-migration/`` (upstream: ``<state>/backups/``); one call
 migrates the agents sharing one workspace root, and ``retain_source`` (of the migration and
-of its findings) stands for upstream's "a heartbeat owner of this file is disabled"; the monitor
-job is implicit (its name is
-upstream's ``Heartbeat (<agent>)``); fix hints and the job description name the memory-core
+of its findings) stands for upstream's "a heartbeat owner of this file is disabled".
+FileAutomationStore prepares durable monitor ownership on repair without adding scheduler
+jobs. Legacy custom scratch stores retain their small host-owned ABI. Fix hints and the job
+description name the memory-core
 helpers instead of ``openclaw doctor``; the legacy task timestamps come in as
 ``legacy_task_state`` and the cleaned map comes back in the result for the host to persist;
 jobs changed by another writer between planning and commit are not detected (upstream
@@ -116,11 +117,14 @@ from memory_core._heartbeat_constants import (
 from memory_core.automation import (
     AutomationJob,
     AutomationStore,
+    FileAutomationStore,
     assert_automation_jobs_can_persist,
     compute_job_next_run_at_ms,
     heartbeat_task_declaration_key,
     is_heartbeat_task_job,
 )
+from memory_core.consolidation.file_lock import pid_definitely_dead
+from memory_core.heartbeat_ownership import bounded_integer, identity
 from memory_core.bootstrap._js import (
     JS_SPACE_CLASS,
     js_json_stringify,
@@ -130,8 +134,11 @@ from memory_core.bootstrap._js import (
 from memory_core.bootstrap.tools_md import _format_error_message, _make_private_dirs, _shorten_home_path
 from memory_core.heartbeat import parse_duration_ms
 from memory_core.heartbeat_scratch import (
+    HeartbeatMonitorOwner,
     HeartbeatScratch,
+    HeartbeatScratchState,
     HeartbeatScratchStore,
+    HeartbeatScratchWrite,
     hash_heartbeat_scratch_source,
 )
 from memory_core.project_name import PACKAGE_NAME, STATE_DIRNAME
@@ -454,13 +461,9 @@ def _read_regular_text(real_path: str) -> str:
 
 
 def _is_process_alive(pid: int) -> bool:
-    try:
-        os.kill(pid, 0)
-    except PermissionError:
-        return True
-    except OSError:
-        return False
-    return True
+    # A Linux zombie is reclaimable only with actual State Z AND Threads 1.
+    # Unknown read/permission/thread evidence remains conservative and live.
+    return not pid_definitely_dead(pid)
 
 
 def _find_stale_claim(heartbeat_path: Path) -> Path | None:
@@ -721,6 +724,33 @@ def heartbeat_md_migration_findings(
     )
 
 
+class _BoundMonitorMigrationStore:
+    """Production scratch operations bound to the owner returned by repair preparation."""
+
+    def __init__(self, store: FileAutomationStore, owners: Mapping[str, HeartbeatMonitorOwner]):
+        self.store, self.owners = store, owners
+
+    def read_scratch(self, agent_id: str) -> HeartbeatScratchState:
+        monitor = self.store.read_heartbeat_monitor_scratch(agent_id)
+        if monitor is None or monitor.owner != self.owners[agent_id]:
+            raise HeartbeatMigrationError(HEARTBEAT_SCRATCH_ERROR_SCRATCH_CHANGED)
+        return monitor.state
+
+    def write_scratch(
+        self, agent_id: str, content: str | None, *, expected_revision: int | None = None,
+        source_sha256: str | None = None, now_ms: int | None = None,
+    ) -> HeartbeatScratchWrite:
+        owner = self.owners[agent_id]
+        return self.store.write_job_scratch(agent_id, owner.job_id, content,
+            expected_revision=expected_revision, expected_owner_generation=owner.generation,
+            source_sha256=source_sha256, now_ms=now_ms)
+
+    def delete_scratch(self, agent_id: str, *, expected_revision: int | None = None) -> bool:
+        owner = self.owners[agent_id]
+        return self.store.delete_job_scratch(agent_id, owner.job_id, expected_revision=expected_revision,
+                                              expected_owner_generation=owner.generation)
+
+
 def migrate_heartbeat_md(
     root: str | os.PathLike[str],
     store: HeartbeatScratchStore,
@@ -728,22 +758,53 @@ def migrate_heartbeat_md(
     agent_ids: Sequence[str] = ("main",),
     retain_source: bool = False,
     now_ms: int | None = None,
+    should_repair: bool = True,
+    monitor_agent_ids: Sequence[str] | None = None,
 ) -> HeartbeatMigrationResult:
     """Move ``<root>/HEARTBEAT.md`` into the heartbeat monitor scratch of ``agent_ids``.
 
-    Port of ``maybeMigrateHeartbeatFilesToScratch`` (``shouldRepair``) for the agents whose
+    Port of ``maybeMigrateHeartbeatFilesToScratch`` for the agents whose
     workspace is ``root``. Each agent's scratch gets the file's exact text with its SHA-256 as
     ``source_sha256``, unless that agent already has different scratch or an explicit unset
     (warned, left unchanged, file kept). The file is archived to
     ``<root>/.memory-core/backups/heartbeat-migration/<agent>-<sha256>.md`` and removed after its
     claimed bytes are verified again; ``retain_source`` keeps it in place (upstream: another
     heartbeat owner of the file is disabled). Reruns are idempotent. The ``tasks:`` block stays
-    in the scratch until :func:`migrate_heartbeat_tasks` runs.
+    in the scratch until :func:`migrate_heartbeat_tasks` runs. ``should_repair=False``
+    validates sources and returns preview warnings without enrolling, recovering claims,
+    archiving or writing. Repair explicitly prepares FileAutomationStore's durable owners,
+    including configured disabled owners in ``monitor_agent_ids`` (defaults to ``agent_ids``),
+    and binds every scratch operation to their captured identity/generation. Legacy custom
+    scratch stores retain the original read/write/delete interface and host-owned enrollment.
     """
     workspace = Path(os.path.abspath(os.path.expanduser(os.fspath(root))))
     changes: list[str] = []
     warnings: list[str] = []
+    if type(should_repair) is not bool:
+        raise TypeError("should_repair must be a boolean")
+    if not should_repair:
+        for agent_id in agent_ids:
+            for finding in heartbeat_md_migration_findings(workspace, agent_id=agent_id):
+                if finding.severity == "error":
+                    warnings.append(finding.message)
+        return HeartbeatMigrationResult((), tuple(warnings))
     stamp = int(time.time() * 1000) if now_ms is None else int(now_ms)
+    if isinstance(store, FileAutomationStore):
+        # Validate complete literal configuration before any owner is persisted.
+        import_agents = tuple(dict.fromkeys(identity(agent) for agent in agent_ids))
+        configured = tuple(dict.fromkeys(identity(agent) for agent in (
+            monitor_agent_ids if monitor_agent_ids is not None else import_agents)))
+        if not set(import_agents) <= set(configured):
+            raise ValueError("every importing agent must have a configured heartbeat monitor")
+        bounded_integer(stamp, clock=True)
+        if now_ms is not None:
+            bounded_integer(now_ms, clock=True)
+        try:
+            owners = {agent: store.ensure_heartbeat_monitor(agent, adopt_legacy_scratch=True) for agent in configured}
+        except Exception as error:
+            return HeartbeatMigrationResult((), (f"Could not prepare heartbeat monitor jobs: {_format_error_message(error)}",))
+        store = _BoundMonitorMigrationStore(store, owners)
+        agent_ids = import_agents
     groups: dict[str, tuple[_Source, list[str]]] = {}
     for agent_id in agent_ids:
         try:

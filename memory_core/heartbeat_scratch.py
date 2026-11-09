@@ -22,10 +22,12 @@ as passed (``writeCronJobScratch`` returns ``params.content``).
 
 The host owns storage. :class:`HeartbeatScratchStore` is the small interface memory-core's
 heartbeat helpers read and write through; :class:`memory_core.automation.FileAutomationStore` is
-the default file-backed implementation under ``<root>/.memory-core/``. Deviation (documented in
-docs/parity_matrix.md): upstream keys scratch by the monitor job's id and refuses a write once
-that job is deleted (``revision-conflict``); memory-core keys it by agent id and has no job rows for
-monitors, so a host that removes an agent's heartbeat calls ``delete_scratch`` itself.
+the default file-backed implementation under ``<root>/.memory-core/``. Its legacy default keeps
+agent-keyed scratch until the host explicitly enrolls a monitor. The optional
+:class:`OwnedHeartbeatScratchStore` interface adds durable job-keyed scratch, monitor lookup and
+an atomic owner/generation-plus-revision guard. Enrollment remains sticky across reopen and
+removal; reads never enroll. The file format differs from upstream's shared SQLite state and
+does not execute monitor cadence or a scheduler.
 """
 
 from __future__ import annotations
@@ -44,6 +46,11 @@ __all__ = [
     "HeartbeatScratchStore",
     "HeartbeatScratchTooLargeError",
     "HeartbeatScratchWrite",
+    "HeartbeatMonitorOwner",
+    "HeartbeatMonitorScratch",
+    "HeartbeatMonitorEnrollmentConflictError",
+    "OwnedHeartbeatScratchStore",
+    "resolve_heartbeat_store_scratch",
     "apply_heartbeat_scratch_delete",
     "apply_heartbeat_scratch_write",
     "assert_heartbeat_scratch_content",
@@ -55,6 +62,10 @@ REVISION_CONFLICT = "revision-conflict"
 
 class HeartbeatScratchTooLargeError(ValueError):
     """Scratch content over :data:`CRON_JOB_SCRATCH_MAX_BYTES` (upstream's thrown ``Error``)."""
+
+
+class HeartbeatMonitorEnrollmentConflictError(ValueError):
+    """Another configuration action already established monitor ownership."""
 
 
 def _utf8_length(content: str) -> int:
@@ -170,6 +181,30 @@ class HeartbeatScratchWrite:
         return out
 
 
+@dataclass(frozen=True)
+class HeartbeatMonitorOwner:
+    """A durable monitor identity captured before an in-flight heartbeat writes.
+
+    Generation changes on explicit re-enrollment, including reuse of a deleted
+    job id. It never changes merely because a host reopens or reads the store.
+    """
+
+    agent_id: str
+    job_id: str
+    generation: int
+
+
+@dataclass(frozen=True)
+class HeartbeatMonitorScratch:
+    """An existing monitor and its scratch; no scratch is still revision zero."""
+
+    owner: HeartbeatMonitorOwner
+    state: HeartbeatScratchState
+
+    def to_json(self) -> dict[str, Any]:
+        return {"jobId": self.owner.job_id, "state": self.state.to_json()}
+
+
 def apply_heartbeat_scratch_write(
     state: HeartbeatScratchState,
     content: str | None,
@@ -245,3 +280,53 @@ class HeartbeatScratchStore(Protocol):
     ) -> HeartbeatScratchWrite: ...
 
     def delete_scratch(self, agent_id: str, *, expected_revision: int | None = None) -> bool: ...
+
+
+class OwnedHeartbeatScratchStore(HeartbeatScratchStore, Protocol):
+    """Optional ownership extension; legacy host stores keep their existing ABI.
+
+    Enrollment belongs to explicit host configuration. Reads never enroll or
+    revive an owner. A writer captures ``HeartbeatMonitorOwner`` with the read,
+    then checks that identity and generation together with scratch revision.
+    """
+
+    @property
+    def heartbeat_ownership_enabled(self) -> bool: ...
+
+    def read_heartbeat_monitor_scratch(self, agent_id: str) -> HeartbeatMonitorScratch | None: ...
+
+    def enroll_heartbeat_monitor(
+        self, agent_id: str, job_id: str | None = None, *, adopt_legacy_scratch: bool = False,
+        require_unconfigured: bool = False,
+    ) -> HeartbeatMonitorOwner: ...
+
+    def remove_heartbeat_monitor(
+        self, agent_id: str, *, job_id: str | None = None, expected_generation: int | None = None,
+        cleanup_scratch: bool = False,
+    ) -> bool: ...
+
+    def read_job_scratch(self, agent_id: str, job_id: str) -> HeartbeatScratchState: ...
+
+    def write_job_scratch(
+        self, agent_id: str, job_id: str, content: str | None, *,
+        expected_revision: int | None = None, expected_owner_generation: int | None = None,
+        source_sha256: str | None = None, now_ms: int | None = None,
+    ) -> HeartbeatScratchWrite: ...
+
+    def delete_job_scratch(
+        self, agent_id: str, job_id: str, *, expected_revision: int | None = None,
+    ) -> bool: ...
+
+
+def resolve_heartbeat_store_scratch(
+    store: HeartbeatScratchStore, agent_id: str,
+) -> tuple[HeartbeatScratchState, HeartbeatMonitorOwner | None]:
+    """Read the actual monitor for an opted-in store without creating any state.
+
+    Legacy stores retain their per-agent contract. Once ownership is active,
+    an absent monitor produces no scratch even when an orphan row remains.
+    """
+    if getattr(store, "heartbeat_ownership_enabled", False):
+        monitor = store.read_heartbeat_monitor_scratch(agent_id)  # type: ignore[attr-defined]
+        return (monitor.state, monitor.owner) if monitor is not None else (HeartbeatScratchState(), None)
+    return store.read_scratch(agent_id), None

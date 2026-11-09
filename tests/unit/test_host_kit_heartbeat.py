@@ -59,6 +59,56 @@ def _store(root, *jobs: AutomationJob, scratch: str | None = SCRATCH) -> FileAut
     return store
 
 
+def test_owned_heartbeat_preview_reads_monitor_without_enrollment_or_writes(tmp_path):
+    store = FileAutomationStore(tmp_path, require_monitor_owner=True)
+    token = store.enroll_heartbeat_monitor("main", "monitor-main")
+    store.write_job_scratch("main", token.job_id, "# Checklist\n\n- [ ]\n", now_ms=NOW_MS)
+    before = store.path.read_bytes()
+
+    run = _kit(tmp_path).heartbeat_prompt(_session(), ensure=False, offer_tools=False)
+
+    assert run.context is None
+    assert run.scratch_owner == token
+    assert run.turn.skip_reason == "empty-heartbeat-file"
+    assert store.path.read_bytes() == before
+    assert not (tmp_path / "BOOTSTRAP.md").exists()
+
+
+def test_held_heartbeat_writer_cannot_revive_deleted_or_reused_monitor(tmp_path):
+    store = FileAutomationStore(tmp_path)
+    first = store.enroll_heartbeat_monitor("main", "monitor-main")
+    store.write_job_scratch("main", first.job_id, SCRATCH, now_ms=NOW_MS)
+    run = _kit(tmp_path).heartbeat_prompt(_session(), ensure=False, offer_tools=False)
+    assert run.scratch_owner == first
+    store.remove_heartbeat_monitor("main", cleanup_scratch=True)
+    assert run.write_scratch("late deletion").to_json() == {
+        "ok": False, "reason": "revision-conflict", "currentRevision": 0}
+
+    replacement = FileAutomationStore(tmp_path).enroll_heartbeat_monitor("main", first.job_id)
+    assert replacement.generation > first.generation
+    assert run.write_scratch("late reused id").ok is False
+    fresh = _kit(tmp_path).heartbeat_prompt(_session(), ensure=False, offer_tools=False)
+    assert fresh.write_scratch("from current owner").ok is True
+    assert FileAutomationStore(tmp_path).read_job_scratch("main", first.job_id).content == "from current owner"
+
+
+def test_owned_heartbeat_ignores_retained_orphan_instructions(tmp_path):
+    store = FileAutomationStore(tmp_path)
+    token = store.enroll_heartbeat_monitor("main", "monitor-main")
+    store.write_job_scratch("main", token.job_id, "- Retired private instructions\n", now_ms=NOW_MS)
+    store.remove_heartbeat_monitor("main")
+    before = store.path.read_bytes()
+
+    run = _kit(tmp_path).heartbeat_prompt(_session(), ensure=False, offer_tools=False)
+
+    assert run.scratch_owner is None
+    assert run.turn.scratch_content is None
+    assert "Retired private instructions" not in run.turn.message
+    assert store.path.read_bytes() == before
+    with pytest.raises(RuntimeError, match="no captured monitor"):
+        run.write_scratch("cannot target a future owner")
+
+
 def test_heartbeat_message_equals_prepare_heartbeat_turn(tmp_path):
     store = _store(tmp_path, _job("job-a", "inbox"))
     kit = _kit(tmp_path, timezone="Europe/Istanbul", time_format="12")

@@ -35,10 +35,14 @@ def _characters(value: str) -> str:
 def _class_ranges(name: str) -> str:
     def escaped(value):
         char = chr(value)
-        return '\\' + char if char in '\\[]-' else char
+        return '\\' + char if char in '\\[]-!^' else char
 
+    # Matching happens one path segment at a time. A literal slash in a glob
+    # bracket would make wcmatch parse another path segment instead of a class.
+    ranges = ((left, right) for start, end in RANGES[name]
+              for left, right in ((start, min(end, 46)), (max(start, 48), end)) if left <= right)
     return ''.join(escaped(start) if start == end else escaped(start) + '-' + escaped(end)
-                   for start, end in RANGES[name])
+                   for start, end in ranges)
 
 
 def _unicode_classes(pattern: str) -> tuple[str, bool]:

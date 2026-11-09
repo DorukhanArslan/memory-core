@@ -96,6 +96,8 @@ def test_multimodal_option_only_expands_explicit_extra_root_discovery(tmp_path):
     ('a999.md', 'a{1..1100}.md', True), ('𞛀.md', '[[:alpha:]].md', True),
     ('a.md', '[:alpha:].md', True), ('α.md', '[:alpha:].md', False),
     ('α.md', '[a[:alpha:]].md', True), ('α.md', '[[:ascii:][:alpha:]].md', True),
+    ('!.md', '[[:punct:]].md', True), ('é.md', '[[:graph:]].md', True),
+    ('\x01.md', '[[:graph:]].md', False), (' .md', '[[:graph:]].md', False),
 ])
 def test_retained_actual_node_glob_counterexamples_keep_their_original_string_semantics(name, pattern, expected):
     assert matches_posix_glob(name, pattern) is expected

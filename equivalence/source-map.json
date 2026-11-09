@@ -64,7 +64,7 @@
           "path": "memory_core/_memory_glob.py",
           "symbol": "matches_posix_glob",
           "anchor": "def matches_posix_glob(",
-          "line": 125
+          "line": 129
         }
       ],
       "implementation": "partial",

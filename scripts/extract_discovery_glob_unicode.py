@@ -9,6 +9,8 @@ from pathlib import Path
 import subprocess
 import zlib
 
+from memory_core.project_name import PACKAGE_NAME
+
 
 PROGRAM = r'''
 import fs from 'node:fs';
@@ -46,7 +48,7 @@ console.log(JSON.stringify({ranges, provenance: {
 def main() -> None:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument('--node', required=True)
-    parser.add_argument('--output', type=Path, default=Path('memory_core/_memory_glob_unicode.py'))
+    parser.add_argument('--output', type=Path, default=Path(PACKAGE_NAME) / '_memory_glob_unicode.py')
     args = parser.parse_args()
     result = subprocess.run([args.node, '--input-type=module', '-e', PROGRAM], check=True,
                             capture_output=True, text=True)

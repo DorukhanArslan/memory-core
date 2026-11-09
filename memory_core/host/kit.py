@@ -386,6 +386,8 @@ class HostKit:
         ``{"status": "error", "tool", "error"}`` payload (docs/host_kit.md, entry point 2):
         invalid JSON, a non-object, a tool :meth:`tools` does not offer, bad params and refused
         curated writes (``MemoryToolInputError``), and any other ``Exception`` a tool raises.
+        A dispatched curated publication error also retains the production
+        owner's ``publication`` state so the host can reconcile before retrying.
         ``TypeError`` for a non-string name or arguments of another type.
         """
         try:

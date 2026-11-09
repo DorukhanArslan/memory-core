@@ -44,6 +44,10 @@ Safety rules shared by every operation:
   tool calls (a host thread pool) are serialized and no edit is lost.
   The per-file lock is released before ``after_write`` runs. Writers
   in other processes are not locked out, only caught by the re-read check.
+- A dispatched rename can fail with an uncertain or committed publication. The
+  production exception and curated-tool error retain ``publication`` so the
+  host can inspect the file before retrying. These failures do not run the
+  successful-write hook or claim that no mutation occurred.
 - A write that grows a file is refused when the file would exceed its policy
   cap or when the workspace bootstrap budget
   (``memory_core.bootstrap.build_bootstrap_context_files`` with the policy's
@@ -55,8 +59,8 @@ Safety rules shared by every operation:
 - With the flag off, or an operation the policy does not allow, the tools are
   not offered and calls raise ``CurationUnavailableError``.
 
-``after_write`` is called with the ``CurationResult`` of every write that
-changed a file, typically to reindex the memory store. It runs after the write
+``after_write`` is called with the ``CurationResult`` of every successfully
+published write, typically to reindex the memory store. It runs after the write
 is committed: if it raises (an embedding provider error, an unreadable file
 during the reindex), the write stands and the result carries
 ``after_write_error`` (``afterWriteError`` in the tool payload, next to
@@ -83,11 +87,9 @@ that is not on offer raises ``CurationUnavailableError``, which is not a
 
 from __future__ import annotations
 
-import contextlib
 import json
 import os
 import re
-import secrets
 import stat
 import time
 from collections.abc import Callable, Iterable, Mapping
@@ -97,6 +99,12 @@ from pathlib import Path
 from types import MappingProxyType
 from zoneinfo import ZoneInfo, ZoneInfoNotFoundError
 
+from memory_core.atomic_publication import (
+    MemoryAtomicPublicationError,
+    MemoryWriteConflictError,
+    commit_memory_content,
+    hash_memory_content,
+)
 from memory_core.bootstrap import (
     DEFAULT_BOOTSTRAP_MAX_CHARS,
     DEFAULT_BOOTSTRAP_TOTAL_MAX_CHARS,
@@ -117,7 +125,7 @@ from memory_core.flags import FeatureFlags
 from memory_core.memory_budget import PROMOTION_SECTION_HEADING_RE, parse_memory_blocks
 from memory_core.memory_flush import SILENT_REPLY_TOKEN
 from memory_core.memory_paths import UnsafeMemoryPathError
-from memory_core.tools.common import MemoryToolInputError, format_error_message
+from memory_core.tools.common import MemoryToolError, MemoryToolInputError, format_error_message
 from memory_core.workspace import append_daily_memory_file, workspace_file_lock
 
 ADD_MEMORY_ENTRY = "add_memory_entry"
@@ -161,6 +169,17 @@ class CurationUnavailableError(CurationError):
 
 class CurationConflictError(CurationError):
     """The target file changed between read and write."""
+
+
+class CurationPublicationError(MemoryToolError):
+    """A dispatched curated write must be reconciled rather than retried blindly."""
+
+    def __init__(self, cause: MemoryAtomicPublicationError, *, tool: str):
+        super().__init__(str(cause), tool=tool)
+        self.publication, self.cause = cause.publication, cause
+
+    def to_tool_error(self, tool: str | None = None) -> dict[str, str]:
+        return {**super().to_tool_error(tool), "publication": self.publication}
 
 
 @dataclass(frozen=True)
@@ -856,6 +875,8 @@ class MemoryCurator:
             result = self._dispatch_call(name, args, memory_flush=memory_flush)
         except CurationUnavailableError:
             raise
+        except MemoryAtomicPublicationError as exc:
+            raise CurationPublicationError(exc, tool=name) from exc
         except CurationError as exc:
             raise MemoryToolInputError(str(exc), tool=name) from exc
         except OSError as exc:
@@ -1152,27 +1173,17 @@ class MemoryCurator:
 
     def _write_target(self, name: str, before: str | None, content: str) -> None:
         path = self.root / name
-        temporary = self.root / f".{name}.{secrets.token_hex(6)}.tmp"
-        mode = stat.S_IMODE(os.lstat(path).st_mode) if before is not None else None
-        flags = os.O_WRONLY | os.O_CREAT | os.O_EXCL | getattr(os, "O_NOFOLLOW", 0)
-        fd = os.open(temporary, flags, 0o600 if mode is not None else 0o666)
-        try:
-            with os.fdopen(fd, "wb") as handle:
-                handle.write(content.encode("utf-8"))
-                handle.flush()
-                os.fsync(handle.fileno())
-            if mode is not None:
-                os.chmod(temporary, mode)
+
+        def assert_admitted_preimage() -> None:
+            # Retain curation's stricter source admission immediately before
+            # publication; the generic owner does not grant broader write paths.
             if self._read_target(name) != before:
                 raise CurationConflictError(f"{name} changed during the write; read it again")
-            os.replace(temporary, path)
-        except BaseException:
-            with contextlib.suppress(FileNotFoundError):
-                os.unlink(temporary)
-            raise
-        with contextlib.suppress(OSError):
-            dir_fd = os.open(self.root, os.O_RDONLY)
-            try:
-                os.fsync(dir_fd)
-            finally:
-                os.close(dir_fd)
+
+        try:
+            commit_memory_content(path, content=content, expected_content=before or "",
+                                  expected_hash=hash_memory_content(before or ""), temp_prefix=f".{name}",
+                                  conflict_message=f"{name} changed during the write; read it again",
+                                  before_publish=assert_admitted_preimage)
+        except MemoryWriteConflictError as exc:
+            raise CurationConflictError(str(exc)) from exc

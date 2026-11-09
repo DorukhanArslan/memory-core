@@ -159,7 +159,7 @@
           "path": "memory_core/curation.py",
           "symbol": "MemoryCurator._write_target",
           "anchor": "    def _write_target(self, name: str, before: str | None, content: str) -> None:",
-          "line": 1153
+          "line": 1174
         },
         {
           "path": "memory_core/workspace.py",
@@ -172,12 +172,19 @@
           "symbol": "workspace_file_lock",
           "anchor": "def workspace_file_lock(root: Path, rel_path: str) -> threading.Lock:",
           "line": 320
+        },
+        {
+          "path": "memory_core/atomic_publication.py",
+          "symbol": "commit_memory_content",
+          "anchor": "def commit_memory_content(",
+          "line": 157
         }
       ],
       "implementation": "partial",
       "notes": [
-        "Python curation uses a temporary file, file fsync and replacement, but suppresses parent-directory fsync errors; daily writes use a distinct append path and process-local locks.",
-        "Native commitMemoryContent classifies uncertain/committed publication and supports a guarded in-place permission fallback; these failure branches are not represented by the Python curation write contract."
+        "The real curator and forget callers use a shared checked publication owner with preimage checks, exclusive temporary creation, preserved regular-file modes and post-rename identity verification. Curator source admission remains stricter than the generic writer.",
+        "Actual native/current-SDK development probes establish that temporary-file fsync ignores EPERM only and parent-directory fsync is best-effort; directory EIO is swallowed by both. Dispatched rename failures and post-publication inode changes retain actual uncertain/committed owner errors through the curated tool and host payload.",
+        "The native promotion-only in-place permission fallback, rooted append/exclusive creation, broader concurrent rename/failure branches and authenticated whole-condition proof remain unverified. Development observations grant no acceptance credit."
       ]
     },
     {
@@ -779,7 +786,7 @@
           "path": "memory_core/consolidation/forget.py",
           "symbol": "purge_memory_index",
           "anchor": "def purge_memory_index(store: Any, plan: IndexPlan) -> bool:",
-          "line": 537
+          "line": 541
         }
       ],
       "implementation": "partial",
@@ -2570,7 +2577,7 @@
           "path": "memory_core/host/kit.py",
           "symbol": "on_new_session",
           "anchor": "def on_new_session(",
-          "line": 748
+          "line": 750
         }
       ],
       "implementation": "partial",
@@ -2998,7 +3005,7 @@
       "implementation": "partial",
       "notes": [
         "Runtime markers default to Memory Core identity; native marker behavior requires the explicit OpenClaw compatibility identity.",
-        "Current-time formatting takes an explicit host 12/24-hour format and uses UTC for blank or unknown zones; native code detects host format and falls back to the host zone. Python dates also stop at years 1–9999."
+        "Current-time formatting takes an explicit host 12/24-hour format and uses UTC for blank or unknown zones; native code detects host format and falls back to the host zone. Python dates also stop at years 1\u20139999."
       ]
     },
     {
@@ -3149,7 +3156,7 @@
           "path": "memory_core/host/kit.py",
           "symbol": "HostKit.prepare_flush",
           "anchor": "    def prepare_flush(",
-          "line": 598
+          "line": 600
         },
         {
           "path": "memory_core/memory_flush.py",
@@ -3185,7 +3192,7 @@
           "path": "memory_core/host/kit.py",
           "symbol": "after_turn",
           "anchor": "def after_turn(",
-          "line": 548
+          "line": 550
         }
       ],
       "implementation": "present",
@@ -3885,7 +3892,7 @@
           "path": "memory_core/consolidation/forget.py",
           "symbol": "forget_memory_entries",
           "anchor": "def forget_memory_entries(",
-          "line": 679
+          "line": 667
         },
         {
           "path": "memory_core/consolidation/origins.py",
@@ -3949,7 +3956,7 @@
           "path": "memory_core/consolidation/forget.py",
           "symbol": "index fence wiring",
           "anchor": "fence = getattr(store, \"revision_fence\", None)",
-          "line": 1030
+          "line": 1018
         },
         {
           "path": "memory_core/index/sqlite_store.py",
@@ -4263,7 +4270,7 @@
           "path": "memory_core/host/kit.py",
           "symbol": "HostKit.after_turn",
           "anchor": "    def after_turn(",
-          "line": 548
+          "line": 550
         },
         {
           "path": "memory_core/turn_trust.py",
@@ -4672,7 +4679,7 @@
           "path": "memory_core/host/kit.py",
           "symbol": "HostKit.after_turn",
           "anchor": "    def after_turn(",
-          "line": 548
+          "line": 550
         },
         {
           "path": "memory_core/index/sqlite_store.py",
@@ -4873,7 +4880,7 @@
           "path": "memory_core/host/kit.py",
           "symbol": "HostKit.after_turn",
           "anchor": "    def after_turn(",
-          "line": 548
+          "line": 550
         },
         {
           "path": "demo/lab_chat.py",
@@ -4924,7 +4931,7 @@
           "path": "memory_core/host/kit.py",
           "symbol": "HostKit.on_new_session",
           "anchor": "    def on_new_session(",
-          "line": 748
+          "line": 750
         },
         {
           "path": "demo/lab_runtime.py",
@@ -4963,13 +4970,13 @@
           "path": "memory_core/curation.py",
           "symbol": "MemoryCurator.replace_memory_entry",
           "anchor": "    def replace_memory_entry(",
-          "line": 939
+          "line": 960
         },
         {
           "path": "memory_core/host/kit.py",
           "symbol": "HostKit.dispatcher",
           "anchor": "    def dispatcher(",
-          "line": 408
+          "line": 410
         },
         {
           "path": "memory_core/live/__init__.py",

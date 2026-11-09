@@ -279,7 +279,8 @@ def _run_excerpt(value: dict[str, Any]) -> dict[str, Any]:
 
 def _run_boundary(value: dict[str, Any], *, evidence_directory: Path | None) -> dict[str, Any]:
     from equivalence.get_fixture_filesystem import (
-        derive_get_filesystem_observation, owned_get_extra_paths, owned_get_input_path,
+        derive_get_filesystem_observation, derive_get_read_race_observation, get_fixture_read_race,
+        owned_get_extra_paths, owned_get_input_path,
         snapshot_get_fixture,
     )
     from memory_core.config import MemoryConfig
@@ -353,6 +354,7 @@ def _run_boundary(value: dict[str, Any], *, evidence_directory: Path | None) -> 
         if tool is None:
             raise ValueError("The actual SDK memory get tool was unavailable")
         steps, raw = [], []
+        race_observation = None
         for index, step in enumerate(value["steps"]):
             live_config = (replace(config, flags=replace(config.effective_flags(), memory=False))
                            if step.get("disableConfig") else config)
@@ -361,14 +363,16 @@ def _run_boundary(value: dict[str, Any], *, evidence_directory: Path | None) -> 
                 params["path"] = owned_get_input_path(
                     params["path"], directory, require_owned=bool(value.get("observeFilesystem")),
                 )
-            try:
-                envelope = tool.execute(f"fixture-{index}", params)
-            except Exception as error:
-                result = _error(error)
-                wire = result
-            else:
-                wire = {"result": envelope}
-                result = {"result": decode_search_tool_envelope(envelope)}
+            with get_fixture_read_race(value.get("readRace"), directory) as current_race:
+                try:
+                    envelope = tool.execute(f"fixture-{index}", params)
+                except Exception as error:
+                    result = _error(error)
+                    wire = result
+                else:
+                    wire = {"result": envelope}
+                    result = {"result": decode_search_tool_envelope(envelope)}
+            race_observation = current_race
             steps.append(result)
             raw.append({"index": index, "params": params, **deepcopy(wire),
                         "requests": deepcopy(requests), "fixtureBase": str(directory),
@@ -377,8 +381,11 @@ def _run_boundary(value: dict[str, Any], *, evidence_directory: Path | None) -> 
         if filesystem is not None:
             filesystem["after"] = snapshot_get_fixture(directory)
             observed["filesystem"] = derive_get_filesystem_observation(filesystem)
-            raw.append({"kind": "filesystem", "fixtureBase": str(directory),
-                        "filesystem": filesystem})
+            snapshot_record = {"kind": "filesystem", "fixtureBase": str(directory), "filesystem": filesystem}
+            if race_observation is not None:
+                snapshot_record["readRace"] = race_observation
+                observed["readRace"] = derive_get_read_race_observation(race_observation, str(directory), native=False)
+            raw.append(snapshot_record)
         _write_evidence(evidence_directory, raw)
         return map_get_fixture_paths(observed, directory) if value.get("normalizeFixturePaths") else observed
 

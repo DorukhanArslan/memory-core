@@ -43,11 +43,17 @@ for (const testCase of request.cases) {
   try {
     const binding = operations[testCase.operation];
     if (!Object.hasOwn(operations, testCase.operation)) throw Error("Unsupported release oracle operation");
+    if (context.getReadRaceProfile && (testCase.operation !== "get-contract-runtime" ||
+        testCase.input?.kind !== "tool" || JSON.stringify(testCase.input.readRace) !==
+          JSON.stringify({ kind: "owned-leaf-to-symlink", hook: "afterPreOpenLstat" }))) {
+      throw Error("The native read race capability is restricted to its exact whole-tool input");
+    }
     const adapter = await import(new URL(binding[0], import.meta.url).href);
     const result = await adapter[binding[1]](testCase.input, {
       ...context.runtime, evidenceDirectory,
       stateDirectory: context.stateDirectory, configPath: context.configPath,
       approvedReferenceSources: context.approvedReferenceSources ?? [],
+      getReadRaceProfile: context.getReadRaceProfile,
     });
     results.push({ id: testCase.id, ok: true, result });
   } catch (error) {

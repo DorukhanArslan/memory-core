@@ -259,6 +259,9 @@ def build_cases(*, include_prospective: bool = False) -> list[dict[str, Any]]:
     cases.extend(build_workspace_isolation_cases())
     cases.extend(build_storage_path_cases())
     cases.extend(build_storage_path_contract_cases())
+    from equivalence.get_read_race_profile import build_storage_path_read_race_cases
+
+    cases.extend(build_storage_path_read_race_cases())
     from equivalence.redaction_fixtures import build_redaction_cases
 
     cases.extend(build_redaction_cases())

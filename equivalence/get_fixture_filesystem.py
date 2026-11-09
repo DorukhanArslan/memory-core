@@ -8,7 +8,9 @@ raw because reading a file can update them.
 from __future__ import annotations
 
 import base64
+from contextlib import contextmanager
 from copy import deepcopy
+import io
 import os
 from pathlib import Path
 import stat
@@ -18,6 +20,113 @@ from typing import Any
 _POSIX = ("mode", "uid", "gid", "nlink", "rdev")
 _WRITE_STAT = ("dev", "ino", "mode", "nlink", "uid", "gid", "rdev", "size",
                "blksize", "blocks", "mtimeNs", "ctimeNs")
+_RACE_ENV = ("NODE_ENV", "VITEST", "FS_SAFE_NATIVE_MODE", "OPENCLAW_FS_SAFE_NATIVE_MODE",
+             "FS_SAFE_PYTHON_MODE", "OPENCLAW_FS_SAFE_PYTHON_MODE")
+
+
+@contextmanager
+def get_fixture_read_race(input: Any, base: Path):
+    """Perform one fixed owned OS mutation immediately before the real SDK open.
+
+    Both baseline pathlib and the checked descriptor owner still call their real
+    IO operation. Neither bytes nor errors are supplied by this fixture seam.
+    """
+    if input is None:
+        yield None
+        return
+    from equivalence.get_read_race_profile import GET_READ_RACE_INPUT
+
+    if input != GET_READ_RACE_INPUT:
+        raise ValueError("Only the fixed owned pre-open mutation is approved")
+    filename, backup, target = (base / "workspace/memory/race.md",
+                                base / "workspace/memory/race.before.md", base / "outside/secret.md")
+    def environment():
+        return {key: os.environ.get(key) for key in _RACE_ENV}
+    observed: dict[str, Any] = {**deepcopy(input), "events": ["arm"],
+                               "environment": {"before": environment(), "dispatch": None},
+                               "mutation": None, "actualOpen": None}
+    prior_io_open, prior_os_open = io.open, os.open
+    dispatched = False
+
+    def mutate(path):
+        nonlocal dispatched
+        if not isinstance(path, str | bytes | os.PathLike) or os.fsdecode(path) != str(filename):
+            return False
+        if dispatched:
+            raise ValueError("The fixed read-race mutation must dispatch exactly once")
+        dispatched = True
+        observed["events"].append("dispatch")
+        observed["environment"]["dispatch"] = environment()
+        before = filename.lstat()
+        filename.rename(backup)
+        filename.symlink_to(target)
+        observed["mutation"] = {
+            "path": str(filename), "backup": str(backup), "target": str(target),
+            "beforeStat": _raw_stat(before), "backupStat": _raw_stat(backup.lstat()),
+            "afterStat": _raw_stat(filename.lstat()), "targetStat": _raw_stat(target.lstat()),
+            "linkTarget": os.readlink(filename),
+        }
+        return True
+
+    def opened(call, path, *args, **kwargs):
+        changed = mutate(path)
+        try:
+            result = call(path, *args, **kwargs)
+        except BaseException as error:
+            if changed:
+                observed["actualOpen"] = {"ok": False, "type": type(error).__name__,
+                                          "message": str(error), "errno": getattr(error, "errno", None)}
+            raise
+        if changed:
+            descriptor = result if isinstance(result, int) else result.fileno()
+            observed["actualOpen"] = {"ok": True, "rawStat": _raw_stat(os.fstat(descriptor))}
+        return result
+
+    io.open = lambda path, *args, **kwargs: opened(prior_io_open, path, *args, **kwargs)
+    os.open = lambda path, *args, **kwargs: opened(prior_os_open, path, *args, **kwargs)
+    try:
+        yield observed
+    finally:
+        io.open, os.open = prior_io_open, prior_os_open
+        observed["events"].append("disarm")
+        observed["environment"]["afterDisarm"] = environment()
+
+
+def derive_get_read_race_observation(raw: Any, base: str, *, native: bool) -> dict[str, Any]:
+    """Validate the one real mutation; all detailed OS/environment data stay raw."""
+    from equivalence.get_read_race_profile import GET_READ_RACE_INPUT
+
+    if not isinstance(raw, dict) or any(raw.get(key) != value for key, value in GET_READ_RACE_INPUT.items()):
+        raise ValueError("The actual read race must retain its exact original hook and mutation kind")
+    if raw.get("events") != ["arm", "dispatch", "disarm"]:
+        raise ValueError("The fixed read race must arm, dispatch once and disarm")
+    mutation, environment = raw.get("mutation"), raw.get("environment")
+    expected = {"path": base + "/workspace/memory/race.md", "backup": base + "/workspace/memory/race.before.md",
+                "target": base + "/outside/secret.md"}
+    if (not isinstance(mutation, dict) or any(mutation.get(key) != value for key, value in expected.items())
+            or mutation.get("linkTarget") != expected["target"]):
+        raise ValueError("The race mutation must remain exactly within its two owned roots")
+    format = "node-bigint-stats" if native else "python-os-stat"
+    facts = {key: _facts({"rawStat": mutation[key]}, format)
+             for key in ("beforeStat", "backupStat", "afterStat", "targetStat")}
+    if (_kind(int(facts["beforeStat"]["mode"])) != "file"
+            or _kind(int(facts["afterStat"]["mode"])) != "symlink"
+            or _kind(int(facts["targetStat"]["mode"])) != "file"
+            or any(facts["beforeStat"][key] != facts["backupStat"][key] for key in ("dev", "ino"))):
+        raise ValueError("Race identity evidence must show the actual original inode and replacement symlink")
+    before = environment.get("before") if isinstance(environment, dict) else None
+    if (not isinstance(before, dict) or set(before) != set(_RACE_ENV)
+            or environment.get("dispatch") != before or environment.get("afterDisarm") != before):
+        raise ValueError("Actual reads and disarm must retain the original runtime/backend environment")
+    if native:
+        if (set(environment) != {"before", "duringSetter", "afterSetter", "dispatch", "afterDisarm"}
+                or environment["duringSetter"] != {**before, "NODE_ENV": "test"}
+                or environment["afterSetter"] != before or raw.get("installedHookKeys") != ["afterPreOpenLstat"]
+                or raw.get("hookCleared") is not True
+                or not isinstance(raw.get("callerStack"), str)
+                or "/@openclaw/fs-safe/dist/local-file-descriptor.js:41:" not in raw["callerStack"]):
+            raise ValueError("The original native pre-open owner and narrow setter-only environment must be attested")
+    return {**GET_READ_RACE_INPUT, "dispatches": 1, "disarmed": True}
 
 
 def _kind(mode: int) -> str:
@@ -164,12 +273,17 @@ def validate_python_get_filesystem_evidence(snapshots: list[Any], arguments: dic
     if len(snapshots) != len(arguments["steps"]) + 1:
         raise ValueError("Every SDK operation and the complete filesystem observation are required")
     record = snapshots[-1]
-    if not isinstance(record, dict) or set(record) != {"kind", "fixtureBase", "filesystem"} or record["kind"] != "filesystem":
+    if (not isinstance(record, dict) or set(record) != {"kind", "fixtureBase", "filesystem", *(
+        ["readRace"] if arguments.get("readRace") is not None else []
+    )} or record["kind"] != "filesystem"):
         raise ValueError("SDK snapshot evidence requires its complete owned record")
     base = record["fixtureBase"]
     if not isinstance(base, str) or not Path(base).is_absolute():
         raise ValueError("SDK fixture observations require their actual absolute owned root")
     validate_get_filesystem_observation(record["filesystem"], public.get("filesystem"), base)
+    if arguments.get("readRace") is not None:
+        if not _same_json(derive_get_read_race_observation(record.get("readRace"), base, native=False), public.get("readRace")):
+            raise ValueError("SDK race results lost their actual OS mutation evidence")
     for index, (original, requested, observed) in enumerate(zip(
         snapshots[:-1], arguments["steps"], public["steps"], strict=True,
     )):

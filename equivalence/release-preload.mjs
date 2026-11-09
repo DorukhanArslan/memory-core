@@ -28,6 +28,18 @@ if (context.entryProvenanceProfile !== undefined) {
     throw Error("Unapproved compiled entry provenance profile capability");
   }
 }
+if (context.getReadRaceProfile !== undefined) {
+  const value = context.getReadRaceProfile;
+  if (!value || Object.keys(value).sort().join() !== "hook,inputKind,kind,module,mutation,operation,sha256" ||
+      value.kind !== "approved-get-read-race-profile" || value.operation !== "get-contract-runtime" ||
+      value.inputKind !== "tool" || value.hook !== "afterPreOpenLstat" || value.mutation !== "owned-leaf-to-symlink" ||
+      value.module !== "node_modules/@openclaw/fs-safe/dist/test-hooks.js" ||
+      value.sha256 !== "207753c214f21d77c7cc82b947f24705c937009a73057ddb08a8ef058334e273" ||
+      context.entryProvenanceProfile !== undefined || context.approvedNodeRuntime !== undefined ||
+      (context.approvedReferenceSources ?? []).length || (context.fixtureSourceCaptures ?? []).length) {
+    throw Error("Unapproved get read race hook capability");
+  }
+}
 const permitted = new Map();
 for (const entry of context.allowedLocal) {
   permitted.set(fs.realpathSync(entry.path), { kind: "oracle", path: fs.realpathSync(entry.path), sha256: entry.sha256 });
@@ -80,7 +92,8 @@ if (context.approvedNodeRuntime !== undefined) {
 }
 trace({ event: "bootstrap", isMainThread, ppid: process.ppid, contextSha256: hash(rawContext), preloadSha256: own.sha256,
         fetchDenied: true, providerMode: "none", ...(approvedNodeRuntime ? { runtime: approvedNodeRuntime } : {}),
-        ...(context.entryProvenanceProfile ? { entryProfile: context.entryProvenanceProfile } : {}) });
+        ...(context.entryProvenanceProfile ? { entryProfile: context.entryProvenanceProfile } : {}),
+        ...(context.getReadRaceProfile ? { getReadRaceProfile: context.getReadRaceProfile } : {}) });
 // Native workers can log directly while retiring after the result is ready.
 // Reserve stdout for the runner's single process.stdout.write JSON envelope.
 // This executes in every worker as well as the parent, before native imports.
@@ -192,6 +205,14 @@ registerHooks({
     if (lexical && isCapturePath(lexical)) fixtureCaptureAuthority(lexical);
     const resolved = nextResolve(specifier, resolveContext);
     const record = authority(resolved.url);
+    if (record?.kind === "release" && record.package === "node_modules/@openclaw/fs-safe" &&
+        record.path === "dist/test-hooks.js" && resolveContext.parentURL?.startsWith("file:")) {
+      const parent = authority(resolveContext.parentURL);
+      if (parent?.kind === "oracle" && (!context.getReadRaceProfile ||
+          path.basename(parent.path) !== "get-contract-runtime.mjs" || record.sha256 !== context.getReadRaceProfile.sha256)) {
+        throw Error("Only the declared whole-get race profile may import the official test hook directly");
+      }
+    }
     if (record && resolved.url.endsWith(".node")) trace({ event: "resolve-native", ...record });
     return resolved;
   },

@@ -336,6 +336,12 @@ def _oracle(node: Path, script: Path, checkout: Path, cases: list[dict], timeout
 
                 if len(cases) == 1 and cases[0]["operation"] in ENTRY_PROVENANCE_PROFILES:
                     context_options["entry_profile"] = prepare_entry_provenance_profile(cases[0]["operation"], node)
+                if len(cases) == 1 and cases[0].get("input", {}).get("readRace") is not None:
+                    from equivalence.get_read_race_profile import prepare_get_read_race_profile
+
+                    context_options["get_read_race_profile"] = prepare_get_read_race_profile(
+                        cases[0], Path(release_runtime["runtimeRoot"]),
+                    )
                 execution = resources.enter_context(ReleaseOracleExecution(
                     release_runtime, _adapter_identity(), **context_options))
                 # Only this reviewed preload is supplied. User Node options,
@@ -804,6 +810,10 @@ def run_suite(*, checkout: Path, node: Path, smoke: bool = False,
 
                 report["entryProvenanceRuntimeBindings"] = prepare_entry_provenance_bindings(checkout, Path(runtime_config["runtimeRoot"]))
                 report["entryProvenanceNodeAuthority"] = prepare_model_node_authority(node)
+            if any(case.get("input", {}).get("readRace") is not None for case in runtime_cases):
+                from equivalence.get_read_race_profile import prepare_get_read_race_bindings
+
+                report["getReadRaceRuntimeBindings"] = prepare_get_read_race_bindings(Path(runtime_config["runtimeRoot"]))
             observed_release = {}
             for case in runtime_cases:
                 # The real manager retains global state owners. Each distinct

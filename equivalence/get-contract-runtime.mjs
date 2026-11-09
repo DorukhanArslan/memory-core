@@ -124,6 +124,64 @@ function ownedExtraPaths(values, base) {
   });
 }
 
+const raceEnvironmentKeys = ["NODE_ENV", "VITEST", "FS_SAFE_NATIVE_MODE", "OPENCLAW_FS_SAFE_NATIVE_MODE",
+  "FS_SAFE_PYTHON_MODE", "OPENCLAW_FS_SAFE_PYTHON_MODE"];
+const raceEnvironment = () => Object.fromEntries(raceEnvironmentKeys.map((key) => [key, process.env[key] ?? null]));
+
+async function installOwnedReadRace(input, runtimeConfig, directory, raw) {
+  const profile = runtimeConfig.getReadRaceProfile;
+  if (!profile || profile.kind !== "approved-get-read-race-profile" || profile.operation !== "get-contract-runtime" ||
+      profile.inputKind !== "tool" || profile.hook !== "afterPreOpenLstat" || profile.mutation !== "owned-leaf-to-symlink" ||
+      profile.module !== "node_modules/@openclaw/fs-safe/dist/test-hooks.js" ||
+      profile.sha256 !== "207753c214f21d77c7cc82b947f24705c937009a73057ddb08a8ef058334e273" ||
+      !input || Object.keys(input).sort().join() !== "hook,kind" || input.hook !== profile.hook || input.kind !== profile.mutation) {
+    throw Error("The official read hook requires its exact narrow owned-race capability");
+  }
+  // Import under the normal runtime environment. Test mode exists only during
+  // the synchronous official setter call below, before any real tool execution.
+  const { __setFsSafeTestHooksForTest: setHooks, getFsSafeTestHooks: getHooks } = await import(
+    pathToFileURL(path.resolve(runtimeConfig.runtimeRoot, "../@openclaw/fs-safe/dist/test-hooks.js")).href);
+  const filename = path.join(directory, "workspace/memory/race.md");
+  const backup = path.join(directory, "workspace/memory/race.before.md");
+  const target = path.join(directory, "outside/secret.md");
+  const observation = { ...structuredClone(input), events: ["arm"],
+    environment: { before: raceEnvironment(), duringSetter: null, afterSetter: null, dispatch: null, afterDisarm: null },
+    mutation: null, installedHookKeys: null, hookCleared: false, callerStack: null };
+  raw.readRace = observation;
+  let dispatched = false;
+  const hooks = { async afterPreOpenLstat(actualPath) {
+    if (actualPath !== filename || dispatched) throw Error("The fixed owned read-race hook must dispatch exactly once for its literal file");
+    dispatched = true;
+    observation.events.push("dispatch");
+    observation.callerStack = new Error("Actual original pre-open hook dispatch").stack;
+    observation.environment.dispatch = raceEnvironment();
+    const before = await fs.lstat(filename, { bigint: true });
+    await fs.rename(filename, backup);
+    await fs.symlink(target, filename);
+    observation.mutation = { path: filename, backup, target, beforeStat: rawStat(before),
+      backupStat: rawStat(await fs.lstat(backup, { bigint: true })),
+      afterStat: rawStat(await fs.lstat(filename, { bigint: true })),
+      targetStat: rawStat(await fs.lstat(target, { bigint: true })), linkTarget: await fs.readlink(filename) };
+  } };
+  const priorNodeEnvironment = process.env.NODE_ENV;
+  try {
+    process.env.NODE_ENV = "test";
+    observation.environment.duringSetter = raceEnvironment();
+    setHooks(hooks);
+  } finally {
+    if (priorNodeEnvironment === undefined) delete process.env.NODE_ENV;
+    else process.env.NODE_ENV = priorNodeEnvironment;
+  }
+  observation.environment.afterSetter = raceEnvironment();
+  observation.installedHookKeys = Object.keys(getHooks());
+  return () => {
+    setHooks(undefined);
+    observation.hookCleared = getHooks() === undefined;
+    observation.events.push("disarm");
+    observation.environment.afterDisarm = raceEnvironment();
+  };
+}
+
 async function executeGetContractRuntime(input, runtimeConfig) {
   if (!runtimeConfig?.runtimeRoot || !path.isAbsolute(runtimeConfig.runtimeRoot) ||
       !runtimeConfig.evidenceDirectory || !path.isAbsolute(runtimeConfig.evidenceDirectory)) {
@@ -232,16 +290,20 @@ async function executeGetContractRuntime(input, runtimeConfig) {
         ? { ...cfg, memory: { ...cfg.memory, search: { ...cfg.memory.search, enabled: false } } } : cfg;
       let result;
       let completed = false;
+      let disarm;
       try {
         const params = structuredClone(step.params);
         if (typeof params?.path === "string") params.path = expandOwnedGetInput(params.path, directory, false, input.observeFilesystem === true);
         raw.nativeArguments.push({ index, params: structuredClone(params) });
+        if (input.readRace) disarm = await installOwnedReadRace(input.readRace, runtimeConfig, directory, raw);
         result = await tool.execute(`fixture-${index}`, params);
         completed = true;
       } catch (error) {
         const value = { error: publicError(error) };
         raw.nativeEnvelopes.push({ index, ...value });
         steps.push(value);
+      } finally {
+        if (disarm) disarm();
       }
       if (completed) {
         raw.nativeEnvelopes.push({ index, result });
@@ -253,6 +315,8 @@ async function executeGetContractRuntime(input, runtimeConfig) {
       raw.filesystem.after = await snapshotGetFixture(directory);
       result.filesystem = deriveGetFilesystemObservation(raw.filesystem);
     }
+    if (input.readRace) result.readRace = { ...structuredClone(input.readRace),
+      dispatches: raw.readRace.events.filter((event) => event === "dispatch").length, disarmed: raw.readRace.hookCleared };
     return input.normalizeFixturePaths ? mapGetFixturePaths(result, directory) : result;
   } finally {
     await fs.mkdir(runtimeConfig.evidenceDirectory, { recursive: true });

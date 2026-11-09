@@ -85,3 +85,36 @@ semantics, and write admission are also outside this batch. Contract #3 is uncha
 The focused fixture, evidence, and existing read regressions passed 65 tests;
 Ruff, Python compilation, Node syntax checking, and whitespace checks passed.
 These checks add no acceptance credit.
+
+## First controlled OS replacement
+
+A separate one-call case uses the already loaded official
+`@openclaw/fs-safe/dist/test-hooks.js` setter, authenticated with its two genuine
+callers. The only installed hook is `afterPreOpenLstat`. It runs after the
+original file's lstat observation and before the original async open, renames
+that owned file to an owned backup, and creates a real symlink to the sibling
+owned outside sentinel. It supplies no read result, file bytes, descriptor,
+policy error, backend override, or replacement filesystem implementation.
+
+The exact hook capability is restricted to this literal case under the existing
+whole-get operation. Direct oracle imports of the hook are denied to other
+operations. Imports run under the normal environment; `NODE_ENV=test` exists
+only during the synchronous setter invocation and is restored before tool
+execution. The raw record attests before/during/after environment, actual
+mutation identities, original caller stack, arming, one dispatch, and clearing
+the hook. `VITEST` and native backend variables remain untouched.
+
+`.equivalence-results/storage-path-read-race-first.json` retains **0 matched,
+1 mismatched, 0 blocked**, no runner errors, and no credit. Its SHA-256 is
+`3f2e9a04982215740a83d5d84f77d64c668768a9ff493f6f381266e3d500becc`.
+It predates the secure descriptor read fix. The SDK actually consumes the
+outside sentinel through its previous `Path.read_bytes()` call. Native returns
+`symlink open blocked | ELOOP: too many symbolic links encountered, open
+'<owned path>' | ELOOP`. The observed filesystem mutation and race facts match;
+both unchanged flags are false because the fixture deliberately mutated the
+filesystem. This is an external OS input, not a product write.
+
+The genuine dispatch stack includes `local-file-descriptor.js:41` and
+`root-impl.js:454`; all 2,885 release artifacts remain authenticated. No backend
+fallback was installed. The first ten-case packet and this race packet remain
+unchanged after subsequent production work.

@@ -634,19 +634,26 @@ class ReleaseOracleExecution:
 
     def __init__(self, config: dict, adapter_hashes: dict[str, str], *, fixture_captures: bool = False,
                  turn_taint_source: dict | None = None, model_node_runtime: dict | None = None,
-                 entry_profile: dict | None = None):
+                 entry_profile: dict | None = None, get_read_race_profile: dict | None = None):
         self.config = deepcopy(config)
         self.adapter_hashes = dict(adapter_hashes)
         self.fixture_captures = fixture_captures
         self.turn_taint_source = deepcopy(turn_taint_source)
         self.model_node_runtime = deepcopy(model_node_runtime)
         self.entry_profile = deepcopy(entry_profile)
+        self.get_read_race_profile = deepcopy(get_read_race_profile)
         self.env: dict[str, str] = {}
         self._temporary = None
         self._entered = False
 
     def __enter__(self):
         try:
+            if self.get_read_race_profile is not None:
+                from equivalence.get_read_race_profile import validate_get_read_race_profile
+
+                self.get_read_race_profile = validate_get_read_race_profile(self.get_read_race_profile)
+                if any(value is not None for value in (self.entry_profile, self.model_node_runtime, self.turn_taint_source)) or self.fixture_captures:
+                    raise RuntimeOracleError("Get read race authority cannot borrow other native profile capabilities.")
             if self.entry_profile is not None:
                 self.entry_profile = validate_entry_provenance_profile(self.entry_profile)
                 if self.model_node_runtime is not None or self.turn_taint_source is not None or self.fixture_captures:
@@ -722,6 +729,8 @@ class ReleaseOracleExecution:
             if self.entry_profile is not None:
                 self._context["approvedNodeRuntime"] = self.entry_profile["nodeRuntime"]
                 self._context["entryProvenanceProfile"] = self.entry_profile
+            if self.get_read_race_profile is not None:
+                self._context["getReadRaceProfile"] = self.get_read_race_profile
             if self.fixture_captures:
                 fixture = str((ROOT / "equivalence/flush-execution.mjs").resolve())
                 if fixture not in self._locals:
@@ -878,6 +887,13 @@ class ReleaseOracleExecution:
         case = cases[0]
         row = result["results"][0]
         operation = case.get("operation")
+        if self.get_read_race_profile is not None:
+            from equivalence.get_read_race_profile import prepare_get_read_race_profile
+
+            if self.get_read_race_profile != prepare_get_read_race_profile(case, Path(self.config["runtimeRoot"])):
+                raise RuntimeOracleError("The get race capability cannot authorize another operation, hook or mutation.")
+        elif case.get("input", {}).get("readRace") is not None:
+            raise RuntimeOracleError("A read race requires its explicit narrow native hook capability.")
         if (self.entry_profile is not None) is not (operation in ENTRY_PROVENANCE_PROFILES):
             raise RuntimeOracleError("The entry capability is restricted to its three explicit compiled profiles.")
         if self.entry_profile is not None:
@@ -963,9 +979,12 @@ class ReleaseOracleExecution:
                 raise RuntimeOracleError("The actual native process or worker omitted its approved model binary authority.")
             if self.entry_profile is not None and first.get("entryProfile") != self.entry_profile:
                 raise RuntimeOracleError("The actual entry process or worker omitted its exact compiled profile authority.")
+            if self.get_read_race_profile is not None and first.get("getReadRaceProfile") != self.get_read_race_profile:
+                raise RuntimeOracleError("The native read race omitted its exact protected hook capability.")
             bootstrap.append({"pid": pid, "threadId": thread, "isMainThread": thread == 0,
                               **({"runtime": first["runtime"]} if node_authority is not None else {}),
-                              **({"entryProfile": first["entryProfile"]} if self.entry_profile is not None else {})})
+                              **({"entryProfile": first["entryProfile"]} if self.entry_profile is not None else {}),
+                              **({"getReadRaceProfile": first["getReadRaceProfile"]} if self.get_read_race_profile is not None else {})})
             if thread == 0:
                 process_parents[pid] = first.get("ppid")
             for event in events[1:]:
@@ -1270,6 +1289,18 @@ class ReleaseOracleExecution:
                     validate_get_filesystem_observation(
                         diagnostic[0].get("filesystem"), row["result"].get("filesystem"), fixture_base,
                     )
+                    if case["input"].get("readRace") is not None:
+                        from equivalence.get_fixture_filesystem import derive_get_read_race_observation
+                        from equivalence.get_read_race_profile import OWNER_HASHES
+
+                        for relative, digest in OWNER_HASHES.items():
+                            package, owner = relative.rsplit("/dist/", 1)
+                            if loaded.get((package, "dist/" + owner), {}).get("sha256") != digest:
+                                raise ValueError("The real pre-open hook and descriptor/root caller owners did not execute")
+                        if not _same_json(derive_get_read_race_observation(
+                            diagnostic[0].get("readRace"), fixture_base, native=True,
+                        ), row["result"].get("readRace")):
+                            raise ValueError("The actual native read-race observations differ from their raw OS facts")
                     arguments = diagnostic[0].get("nativeArguments")
                     if not isinstance(arguments, list) or len(arguments) != len(public_steps):
                         raise ValueError("Every actual read argument must remain in raw evidence")

@@ -21,9 +21,13 @@ outside ``u`` mode, ``\\1`` beyond the group count is an octal escape, named gro
 are mapped to numbered groups. Patterns without the ``u`` flag run over UTF-16 code units (the
 caller converts the text), patterns with it over code points.
 
+The six exact Letter aliases (``L``, ``Letter``, ``gc=L``, ``gc=Letter``,
+``General_Category=L``, ``General_Category=Letter``) under ``u`` use pinned Unicode 17 ranges.
+The ``P`` form materializes its complement before the existing case-folding stage.
+
 Deviations (reported as ``unsupported`` instead of guessing; such an entry is dropped like an
 invalid one and noted by :func:`memory_core.redact.unsupported_redact_patterns`):
-``\\p{..}``/``\\P{..}`` property escapes, look-behind assertions Python cannot compile (variable
+other ``\\p{..}``/``\\P{..}`` property escapes, look-behind assertions Python cannot compile (variable
 width), ``\\S``/``\\W``... negated shorthands inside a class that Python cannot express (``\\S``),
 repeat counts beyond Python's limit. Known engine differences kept: a backreference to a group
 that did not participate fails in Python and matches empty in JavaScript, captures inside a
@@ -39,6 +43,7 @@ from functools import lru_cache
 from typing import Literal
 
 from memory_core.bootstrap._js import JS_IU_WORD_CLASS, JS_SPACE_CLASS, js_trim
+from memory_core.unicode_letter_property import letter_property_class_body
 
 _ASTRAL_RE = re.compile("[\U00010000-\U0010ffff]")
 _SURROGATE_PAIR_RE = re.compile("[\ud800-\udbff][\udc00-\udfff]")
@@ -622,6 +627,22 @@ class _Translator:
             self.pos = saved
         return _chr(code)
 
+    def _property_escape(self) -> str:
+        """Read a supported property token, retaining set/range syntax at the caller."""
+        negate = self._peek() == "P"
+        self.pos += 1
+        if self._peek() != "{":
+            raise self._fail("invalid unicode property escape")
+        end = self.src.find("}", self.pos + 1)
+        if end < 0:
+            raise self._fail("unterminated unicode property escape")
+        name = self.src[self.pos + 1:end]
+        self.pos = end + 1
+        body = letter_property_class_body(name, unicode_mode=self.unicode, negate=negate)
+        if body is None:
+            raise UnsupportedRegexError("unicode property escape")
+        return body
+
     def _atom_escape(self) -> tuple[str, bool]:
         self.pos += 1  # backslash
         char = self._peek()
@@ -651,7 +672,7 @@ class _Translator:
             self.pos += 1
             return f"(?:(?<=[{word}])(?=[{word}])|(?<![{word}])(?![{word}]))", False
         if char in ("p", "P") and self.unicode:
-            raise UnsupportedRegexError("unicode property escape")
+            return f"[{self._property_escape()}]", True
         if char == "k" and (self.unicode or self.group_names_present):
             self.pos += 1
             if self._peek() != "<":
@@ -801,7 +822,7 @@ class _Translator:
             self.pos += 1
             return ("char", "-", False)
         if escaped in ("p", "P") and self.unicode:
-            raise UnsupportedRegexError("unicode property escape")
+            return ("set", self._property_escape(), False)
         if escaped in "123456789" or escaped == "0":
             if self.unicode:
                 if escaped == "0" and not _ascii_digit(self._peek(1)):

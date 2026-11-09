@@ -2819,13 +2819,13 @@
           "path": "memory_core/session_transcript_append.py",
           "symbol": "resolve_message_append_parent",
           "anchor": "def resolve_message_append_parent(",
-          "line": 193
+          "line": 215
         },
         {
           "path": "memory_core/session_transcript_append.py",
           "symbol": "messages_match_for_replay",
           "anchor": "def messages_match_for_replay(",
-          "line": 165
+          "line": 187
         }
       ],
       "implementation": "host-owned",
@@ -4007,25 +4007,25 @@
           "path": "memory_core/redact.py",
           "symbol": "redact_sensitive_text",
           "anchor": "def redact_sensitive_text(",
-          "line": 1957
+          "line": 1960
         },
         {
           "path": "memory_core/redact.py",
           "symbol": "redact_model_visible_secrets",
           "anchor": "def redact_model_visible_secrets(",
-          "line": 2479
+          "line": 2484
         },
         {
           "path": "memory_core/redact.py",
           "symbol": "create_sensitive_text_redactor",
           "anchor": "def create_sensitive_text_redactor(",
-          "line": 2005
+          "line": 2008
         },
         {
           "path": "memory_core/session_transcript_append.py",
           "symbol": "redact_message_for_storage",
           "anchor": "def redact_message_for_storage(",
-          "line": 61
+          "line": 65
         },
         {
           "path": "memory_core/model_tool_result.py",
@@ -4245,13 +4245,13 @@
           "path": "memory_core/redact_user_patterns.py",
           "symbol": "compile_config_regex",
           "anchor": "def compile_config_regex(",
-          "line": 879
+          "line": 900
         },
         {
           "path": "memory_core/redact.py",
           "symbol": "configure_logging_redaction",
           "anchor": "def configure_logging_redaction(",
-          "line": 1871
+          "line": 1874
         },
         {
           "path": "memory_core/consolidation/artifact_provenance.py",
@@ -4834,7 +4834,7 @@
           "path": "memory_core/redact_user_patterns.py",
           "symbol": "compile_config_regex",
           "anchor": "def compile_config_regex(",
-          "line": 879
+          "line": 900
         }
       ],
       "implementation": "partial",

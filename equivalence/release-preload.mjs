@@ -51,8 +51,23 @@ function trace(event) {
   if (fs.existsSync(traceFile) && fs.statSync(traceFile).size > 8 * 1024 * 1024) throw Error("Runtime trace limit exceeded");
   fs.appendFileSync(traceFile, JSON.stringify({ ...event, pid: process.pid, threadId }) + "\n", { mode: 0o600 });
 }
+let approvedNodeRuntime;
+if (context.approvedNodeRuntime !== undefined) {
+  const expected = context.approvedNodeRuntime;
+  const required = { nodeVersion: "v24.16.0", icuVersion: "78.3", unicodeVersion: "17.0",
+    sha256: "b2959781cc5a74c357ffa02367efa8a0330cbb1c9cb347732fdfaaaca381cbcd" };
+  if (!expected || Object.keys(expected).sort().join() !== "execPath,icuVersion,nodeVersion,sha256,unicodeVersion" ||
+      !path.isAbsolute(expected.execPath) || Object.entries(required).some(([key, value]) => expected[key] !== value)) {
+    throw Error("Unapproved model boundary executable capability");
+  }
+  approvedNodeRuntime = { execPath: fs.realpathSync(process.execPath), nodeVersion: process.version,
+    icuVersion: process.versions.icu, unicodeVersion: process.versions.unicode, sha256: hash(fs.readFileSync(process.execPath)) };
+  if (JSON.stringify(approvedNodeRuntime) !== JSON.stringify({ execPath: expected.execPath, ...required })) {
+    throw Error("The actual process or worker changed the approved binary or Unicode engine");
+  }
+}
 trace({ event: "bootstrap", isMainThread, ppid: process.ppid, contextSha256: hash(rawContext), preloadSha256: own.sha256,
-        fetchDenied: true, providerMode: "none" });
+        fetchDenied: true, providerMode: "none", ...(approvedNodeRuntime ? { runtime: approvedNodeRuntime } : {}) });
 // Native workers can log directly while retiring after the result is ready.
 // Reserve stdout for the runner's single process.stdout.write JSON envelope.
 // This executes in every worker as well as the parent, before native imports.

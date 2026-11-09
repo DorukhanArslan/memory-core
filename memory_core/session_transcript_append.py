@@ -28,6 +28,10 @@ from memory_core.transcript_tree import (
     is_session_transcript_side_append_entry, parse_session_transcript_tree_entry,
     scan_session_transcript_tree,
 )
+from memory_core.transcript_image_redaction import (
+    sanitize_transcript_image_data_url_field, sanitize_transcript_image_record,
+    should_preserve_nested_transcript_image_data_url_fields,
+)
 
 
 class TranscriptTurnAdmissionConflictError(ValueError):
@@ -71,7 +75,7 @@ def redact_message_for_storage(
     seen: set[int] = set()
 
     def walk(value: Any, field: str | None = None, location: str = "nested",
-             model_visible: bool = False) -> tuple[Any, bool]:
+             model_visible: bool = False, preserve_image_data_url_fields: bool = False) -> tuple[Any, bool]:
         if isinstance(value, str):
             result = (
                 redact_transcript_structured_field_value(
@@ -96,15 +100,32 @@ def redact_message_for_storage(
                     item, field,
                     "assistant-content-block" if location == "assistant-content-array" else "nested",
                     model_visible,
+                    preserve_image_data_url_fields,
                 )
                 result.append(replacement)
                 changed |= changed_item
         else:
+            sanitized_image = sanitize_transcript_image_record(value)
+            source = sanitized_image if sanitized_image is not None else value
+            changed = source is not value
             result = {}
             changes: set[str] = set()
-            for key, item in value.items():
+            for key, item in source.items():
                 if (model_visible and key == "text" and isinstance(item, str)
                         and is_prepared_model_visible_tool_text(value, item, logging_config)):
+                    result[key] = item
+                    continue
+                if isinstance(item, str):
+                    image_url = sanitize_transcript_image_data_url_field(
+                        source, key, item, preserve_image_data_url_fields,
+                    )
+                    if image_url is not None:
+                        result[key] = image_url
+                        if image_url != item:
+                            changes.add(key)
+                            changed = True
+                        continue
+                if key == "data" and sanitized_image is not None:
                     result[key] = item
                     continue
                 identity = location == "root" and key == "idempotencyKey"
@@ -123,6 +144,7 @@ def redact_message_for_storage(
                 replacement, changed_item = walk(
                     item, key, child_location,
                     model_visible or (location == "root" and value.get("role") == "toolResult" and key == "content"),
+                    preserve_image_data_url_fields or should_preserve_nested_transcript_image_data_url_fields(source, key),
                 )
                 result[key] = replacement
                 if changed_item:

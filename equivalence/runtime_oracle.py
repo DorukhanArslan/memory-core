@@ -83,7 +83,22 @@ _OPERATIONS = {
     "workspace-isolation-runtime": (
         "workspace-isolation-runtime.mjs", "dist/extensions/memory-core/manager-runtime.js", True,
     ),
+    "model-session-runtime": (
+        "model-session-runtime.mjs", "dist/session-manager-a8MFS1Kk.mjs", False,
+    ),
+    "model-tool-result-runtime": (
+        "model-tool-result-runtime.mjs", "dist/embedded-agent-tool-results-Bhhd5B_V.mjs", False,
+    ),
+    "trust-worker-runtime": (
+        "trust-worker-profile-runtime.mjs", "dist/session-files-DVVT4Ngb.mjs", False,
+    ),
+    "model-tool-error-runtime": (
+        "model-tool-error-runtime.mjs", "dist/tools-DotaQGXh.mjs", False,
+    ),
 }
+
+MODEL_RUNTIME_OPERATIONS = frozenset({"model-session-runtime", "model-tool-result-runtime",
+                                      "trust-worker-runtime", "model-tool-error-runtime"})
 
 
 class RuntimeOracleError(ValueError):
@@ -608,17 +623,22 @@ class ReleaseOracleExecution:
     """One fresh provider-none process with a trusted preload inherited by workers."""
 
     def __init__(self, config: dict, adapter_hashes: dict[str, str], *, fixture_captures: bool = False,
-                 turn_taint_source: dict | None = None):
+                 turn_taint_source: dict | None = None, model_node_runtime: dict | None = None):
         self.config = deepcopy(config)
         self.adapter_hashes = dict(adapter_hashes)
         self.fixture_captures = fixture_captures
         self.turn_taint_source = deepcopy(turn_taint_source)
+        self.model_node_runtime = deepcopy(model_node_runtime)
         self.env: dict[str, str] = {}
         self._temporary = None
         self._entered = False
 
     def __enter__(self):
         try:
+            if self.model_node_runtime is not None:
+                from equivalence.model_runtime_authority import validate_model_node_authority
+
+                self.model_node_runtime = validate_model_node_authority(self.model_node_runtime)
             if self.turn_taint_source is not None:
                 from equivalence.turn_trust_source_authority import validate_turn_taint_source_authority
 
@@ -681,6 +701,8 @@ class ReleaseOracleExecution:
                 "fixtureSourceCaptures": [],
                 "approvedReferenceSources": [self.turn_taint_source] if self.turn_taint_source else [],
             }
+            if self.model_node_runtime is not None:
+                self._context["approvedNodeRuntime"] = self.model_node_runtime
             if self.fixture_captures:
                 fixture = str((ROOT / "equivalence/flush-execution.mjs").resolve())
                 if fixture not in self._locals:
@@ -837,6 +859,8 @@ class ReleaseOracleExecution:
         case = cases[0]
         row = result["results"][0]
         operation = case.get("operation")
+        if (self.model_node_runtime is not None) is not (operation in MODEL_RUNTIME_OPERATIONS):
+            raise RuntimeOracleError("The approved model binary capability is restricted to its declared compiled boundary profiles.")
         if (self.turn_taint_source is not None) is not (operation == "turn-trust-runtime"):
             raise RuntimeOracleError("The single source-owner capability is restricted to the declared mixed turn-trust profile.")
         if self.turn_taint_source is not None:
@@ -903,7 +927,10 @@ class ReleaseOracleExecution:
                     or first.get("preloadSha256") != self._preload_digest
                     or first.get("fetchDenied") is not True or first.get("providerMode") != "none"):
                 raise RuntimeOracleError("Runtime thread bootstrap protection was not attested.")
-            bootstrap.append({"pid": pid, "threadId": thread, "isMainThread": thread == 0})
+            if self.model_node_runtime is not None and first.get("runtime") != self.model_node_runtime:
+                raise RuntimeOracleError("The actual native process or worker omitted its approved model binary authority.")
+            bootstrap.append({"pid": pid, "threadId": thread, "isMainThread": thread == 0,
+                              **({"runtime": first["runtime"]} if self.model_node_runtime is not None else {})})
             if thread == 0:
                 process_parents[pid] = first.get("ppid")
             for event in events[1:]:
@@ -1060,6 +1087,25 @@ class ReleaseOracleExecution:
         diagnostic = _json(raw)
         if not isinstance(diagnostic, list):
             raise RuntimeOracleError("Native lifecycle diagnostics must retain raw snapshot rows.")
+        if operation in {"model-session-runtime", "model-tool-result-runtime"}:
+            from equivalence.model_runtime_evidence import validate_model_session_raw, validate_model_tool_result_raw
+
+            validator = (validate_model_session_raw if operation == "model-session-runtime" else validate_model_tool_result_raw)
+            validator(row, case, diagnostic, evidence.parent, runtime_root=self.config["runtimeRoot"], bootstrap=bootstrap,
+                      release_by_pid=release_by_pid, local_by_pid=local_by_pid, process_parents=process_parents,
+                      worker_imports=worker_imports)
+        if operation == "trust-worker-runtime":
+            from equivalence.trust_worker_profile_evidence import validate_trust_worker_profile_raw
+
+            validate_trust_worker_profile_raw(row, case, diagnostic, evidence.parent, runtime_root=self.config["runtimeRoot"],
+                bootstrap=bootstrap, release_by_pid=release_by_pid, local_by_pid=local_by_pid,
+                process_parents=process_parents, worker_imports=worker_imports)
+        if operation == "model-tool-error-runtime":
+            from equivalence.model_tool_error_evidence import validate_model_tool_error_raw
+
+            validate_model_tool_error_raw(row, case, diagnostic, evidence.parent, runtime_root=self.config["runtimeRoot"],
+                bootstrap=bootstrap, release_by_pid=release_by_pid, local_by_pid=local_by_pid,
+                process_parents=process_parents, worker_imports=worker_imports)
         if operation == "transcript-boundary-runtime":
             from equivalence.transcript_boundary_evidence import validate_transcript_boundary_raw
 

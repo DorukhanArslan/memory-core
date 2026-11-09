@@ -1,0 +1,1091 @@
+{
+  "capture": "Five retained actual original worker scheduling observations. Only exact runtime and owned fixture path prefixes transported; no result, error, revision or attempt changes.",
+  "referenceCommit": "bcfc88812a35243893585dbeca87ca41b48272ca",
+  "observations": [
+    {
+      "id": "registry-stable",
+      "input": {
+        "secret": "worker-fixture-credential",
+        "sessionKind": "interactive",
+        "mutations": 0
+      },
+      "runtimeRoot": "/reference/openclaw",
+      "native": {
+        "scope": {
+          "agentId": "main",
+          "sessionId": "worker-fixture",
+          "sessionKey": "agent:main:dm:worker-fixture",
+          "storePath": "/fixture/workspace/state/agents/main/sessions/sessions.json"
+        },
+        "filename": "agent:main:dm:worker-fixture",
+        "source": {
+          "agentId": "main",
+          "artifactKind": "active-session",
+          "sessionFile": "agent:main:dm:worker-fixture",
+          "sessionId": "worker-fixture",
+          "transcriptSource": "sqlite",
+          "storePath": "/fixture/workspace/state/agents/main/sessions/sessions.json",
+          "updatedAtMs": 1000,
+          "sessionKey": "agent:main:dm:worker-fixture",
+          "sessionKind": "interactive"
+        },
+        "enumerated": [
+          {
+            "agentId": "main",
+            "artifactKind": "active-session",
+            "sessionFile": "agent:main:dm:worker-fixture",
+            "sessionId": "worker-fixture",
+            "transcriptSource": "sqlite",
+            "storePath": "/fixture/workspace/state/agents/main/sessions/sessions.json",
+            "updatedAtMs": 1000,
+            "sessionKey": "agent:main:dm:worker-fixture",
+            "sessionKind": "interactive"
+          }
+        ],
+        "clock": {
+          "owner": "node:test",
+          "apis": [
+            "Date"
+          ],
+          "nowMs": 1000,
+          "dateConstructorReplaced": true,
+          "setTimeoutUnchanged": true
+        },
+        "before": [
+          {
+            "type": "session",
+            "version": 4,
+            "id": "worker-fixture",
+            "timestamp": "1970-01-01T00:00:01.000Z",
+            "cwd": "/fixture/work"
+          },
+          {
+            "type": "message",
+            "id": "user-1",
+            "parentId": null,
+            "timestamp": "1970-01-01T00:00:01.000Z",
+            "message": {
+              "role": "user",
+              "content": "Remember worker-fixture-credential",
+              "timestamp": 1000
+            }
+          }
+        ],
+        "after": [
+          {
+            "type": "session",
+            "version": 4,
+            "id": "worker-fixture",
+            "timestamp": "1970-01-01T00:00:01.000Z",
+            "cwd": "/fixture/work"
+          },
+          {
+            "type": "message",
+            "id": "user-1",
+            "parentId": null,
+            "timestamp": "1970-01-01T00:00:01.000Z",
+            "message": {
+              "role": "user",
+              "content": "Remember worker-fixture-credential",
+              "timestamp": 1000
+            }
+          }
+        ],
+        "expected": "file:///reference/openclaw/dist/config/sessions/session-transcript.worker.js",
+        "observations": [
+          {
+            "event": "worker-created",
+            "url": "file:///reference/openclaw/dist/config/sessions/session-transcript.worker.js",
+            "threadId": 1
+          },
+          {
+            "event": "preparation-dispatch",
+            "ordinal": 1,
+            "url": "file:///reference/openclaw/dist/config/sessions/session-transcript.worker.js",
+            "threadId": 1,
+            "message": {
+              "input": {
+                "kind": "session-entry",
+                "absPath": "agent:main:dm:worker-fixture",
+                "options": {
+                  "agentId": "main",
+                  "sessionId": "worker-fixture",
+                  "sessionKey": "agent:main:dm:worker-fixture",
+                  "storePath": "/fixture/workspace/state/agents/main/sessions/sessions.json",
+                  "updatedAtMs": 1000,
+                  "sessionKind": "interactive"
+                },
+                "redaction": {
+                  "registryRevision": 0,
+                  "registeredSecretValues": []
+                }
+              },
+              "taskId": 1,
+              "interactive": false,
+              "nativeSections": {
+                "$type": "SharedArrayBuffer",
+                "byteLength": 4
+              },
+              "sampleMemory": true
+            }
+          },
+          {
+            "event": "actual-preparation-reply",
+            "ordinal": 1,
+            "url": "file:///reference/openclaw/dist/config/sessions/session-transcript.worker.js",
+            "threadId": 1,
+            "reply": {
+              "status": "ok",
+              "value": {
+                "ok": true,
+                "value": {
+                  "entry": {
+                    "path": "sessions/main/worker-fixture.jsonl",
+                    "absPath": "agent:main:dm:worker-fixture",
+                    "mtimeMs": 1000,
+                    "revisionMs": 1002,
+                    "size": 291,
+                    "hash": "ab1d51cac95d8d0163255b304a543f6b83c3faada58786452381fd3cce370f39",
+                    "content": "User: Remember worker-fixture-credential",
+                    "lineMap": [
+                      2
+                    ],
+                    "messageTimestampsMs": [
+                      1000000
+                    ],
+                    "lineProvenance": [
+                      {
+                        "originClass": "untrusted",
+                        "sessionKind": "interactive",
+                        "observedAt": 1000000
+                      }
+                    ],
+                    "sessionKind": "interactive"
+                  },
+                  "resetRecallCutoff": {
+                    "state": "absent"
+                  }
+                }
+              },
+              "taskId": 1
+            }
+          }
+        ],
+        "mutations": [],
+        "callbackObservations": [],
+        "result": {
+          "path": "sessions/main/worker-fixture.jsonl",
+          "absPath": "agent:main:dm:worker-fixture",
+          "mtimeMs": 1000,
+          "revisionMs": 1002,
+          "size": 291,
+          "hash": "ab1d51cac95d8d0163255b304a543f6b83c3faada58786452381fd3cce370f39",
+          "content": "User: Remember worker-fixture-credential",
+          "lineMap": [
+            2
+          ],
+          "messageTimestampsMs": [
+            1000000
+          ],
+          "lineProvenance": [
+            {
+              "originClass": "untrusted",
+              "sessionKind": "interactive",
+              "observedAt": 1000000
+            }
+          ],
+          "sessionKind": "interactive"
+        },
+        "attempts": 1
+      }
+    },
+    {
+      "id": "registry-changed-once",
+      "input": {
+        "secret": "worker-fixture-credential",
+        "sessionKind": "interactive",
+        "mutations": 1
+      },
+      "runtimeRoot": "/reference/openclaw",
+      "native": {
+        "scope": {
+          "agentId": "main",
+          "sessionId": "worker-fixture",
+          "sessionKey": "agent:main:dm:worker-fixture",
+          "storePath": "/fixture/workspace/state/agents/main/sessions/sessions.json"
+        },
+        "filename": "agent:main:dm:worker-fixture",
+        "source": {
+          "agentId": "main",
+          "artifactKind": "active-session",
+          "sessionFile": "agent:main:dm:worker-fixture",
+          "sessionId": "worker-fixture",
+          "transcriptSource": "sqlite",
+          "storePath": "/fixture/workspace/state/agents/main/sessions/sessions.json",
+          "updatedAtMs": 1000,
+          "sessionKey": "agent:main:dm:worker-fixture",
+          "sessionKind": "interactive"
+        },
+        "enumerated": [
+          {
+            "agentId": "main",
+            "artifactKind": "active-session",
+            "sessionFile": "agent:main:dm:worker-fixture",
+            "sessionId": "worker-fixture",
+            "transcriptSource": "sqlite",
+            "storePath": "/fixture/workspace/state/agents/main/sessions/sessions.json",
+            "updatedAtMs": 1000,
+            "sessionKey": "agent:main:dm:worker-fixture",
+            "sessionKind": "interactive"
+          }
+        ],
+        "clock": {
+          "owner": "node:test",
+          "apis": [
+            "Date"
+          ],
+          "nowMs": 1000,
+          "dateConstructorReplaced": true,
+          "setTimeoutUnchanged": true
+        },
+        "before": [
+          {
+            "type": "session",
+            "version": 4,
+            "id": "worker-fixture",
+            "timestamp": "1970-01-01T00:00:01.000Z",
+            "cwd": "/fixture/work"
+          },
+          {
+            "type": "message",
+            "id": "user-1",
+            "parentId": null,
+            "timestamp": "1970-01-01T00:00:01.000Z",
+            "message": {
+              "role": "user",
+              "content": "Remember worker-fixture-credential",
+              "timestamp": 1000
+            }
+          }
+        ],
+        "after": [
+          {
+            "type": "session",
+            "version": 4,
+            "id": "worker-fixture",
+            "timestamp": "1970-01-01T00:00:01.000Z",
+            "cwd": "/fixture/work"
+          },
+          {
+            "type": "message",
+            "id": "user-1",
+            "parentId": null,
+            "timestamp": "1970-01-01T00:00:01.000Z",
+            "message": {
+              "role": "user",
+              "content": "Remember worker-fixture-credential",
+              "timestamp": 1000
+            }
+          }
+        ],
+        "expected": "file:///reference/openclaw/dist/config/sessions/session-transcript.worker.js",
+        "observations": [
+          {
+            "event": "worker-created",
+            "url": "file:///reference/openclaw/dist/config/sessions/session-transcript.worker.js",
+            "threadId": 1
+          },
+          {
+            "event": "preparation-dispatch",
+            "ordinal": 1,
+            "url": "file:///reference/openclaw/dist/config/sessions/session-transcript.worker.js",
+            "threadId": 1,
+            "message": {
+              "input": {
+                "kind": "session-entry",
+                "absPath": "agent:main:dm:worker-fixture",
+                "options": {
+                  "agentId": "main",
+                  "sessionId": "worker-fixture",
+                  "sessionKey": "agent:main:dm:worker-fixture",
+                  "storePath": "/fixture/workspace/state/agents/main/sessions/sessions.json",
+                  "updatedAtMs": 1000,
+                  "sessionKind": "interactive"
+                },
+                "redaction": {
+                  "registryRevision": 0,
+                  "registeredSecretValues": []
+                }
+              },
+              "taskId": 1,
+              "interactive": false,
+              "nativeSections": {
+                "$type": "SharedArrayBuffer",
+                "byteLength": 4
+              },
+              "sampleMemory": true
+            }
+          },
+          {
+            "event": "actual-preparation-reply",
+            "ordinal": 1,
+            "url": "file:///reference/openclaw/dist/config/sessions/session-transcript.worker.js",
+            "threadId": 1,
+            "reply": {
+              "status": "ok",
+              "value": {
+                "ok": true,
+                "value": {
+                  "entry": {
+                    "path": "sessions/main/worker-fixture.jsonl",
+                    "absPath": "agent:main:dm:worker-fixture",
+                    "mtimeMs": 1000,
+                    "revisionMs": 1002,
+                    "size": 291,
+                    "hash": "ab1d51cac95d8d0163255b304a543f6b83c3faada58786452381fd3cce370f39",
+                    "content": "User: Remember worker-fixture-credential",
+                    "lineMap": [
+                      2
+                    ],
+                    "messageTimestampsMs": [
+                      1000000
+                    ],
+                    "lineProvenance": [
+                      {
+                        "originClass": "untrusted",
+                        "sessionKind": "interactive",
+                        "observedAt": 1000000
+                      }
+                    ],
+                    "sessionKind": "interactive"
+                  },
+                  "resetRecallCutoff": {
+                    "state": "absent"
+                  }
+                }
+              },
+              "taskId": 1
+            }
+          },
+          {
+            "event": "preparation-dispatch",
+            "ordinal": 2,
+            "url": "file:///reference/openclaw/dist/config/sessions/session-transcript.worker.js",
+            "threadId": 1,
+            "message": {
+              "input": {
+                "kind": "session-entry",
+                "absPath": "agent:main:dm:worker-fixture",
+                "options": {
+                  "agentId": "main",
+                  "sessionId": "worker-fixture",
+                  "sessionKey": "agent:main:dm:worker-fixture",
+                  "storePath": "/fixture/workspace/state/agents/main/sessions/sessions.json",
+                  "updatedAtMs": 1000,
+                  "sessionKind": "interactive"
+                },
+                "redaction": {
+                  "registryRevision": 1,
+                  "registeredSecretValues": [
+                    "worker-fixture-credential"
+                  ]
+                }
+              },
+              "taskId": 2,
+              "interactive": false,
+              "nativeSections": {
+                "$type": "SharedArrayBuffer",
+                "byteLength": 4
+              },
+              "sampleMemory": true
+            }
+          },
+          {
+            "event": "actual-preparation-reply",
+            "ordinal": 2,
+            "url": "file:///reference/openclaw/dist/config/sessions/session-transcript.worker.js",
+            "threadId": 1,
+            "reply": {
+              "status": "ok",
+              "value": {
+                "ok": true,
+                "value": {
+                  "entry": {
+                    "path": "sessions/main/worker-fixture.jsonl",
+                    "absPath": "agent:main:dm:worker-fixture",
+                    "mtimeMs": 1000,
+                    "revisionMs": 1002,
+                    "size": 291,
+                    "hash": "c2c62e776a22509d45ea5d13fd953763f06b269d92797ce5761e0e8d4c593622",
+                    "content": "User: Remember worker\u2026tial",
+                    "lineMap": [
+                      2
+                    ],
+                    "messageTimestampsMs": [
+                      1000000
+                    ],
+                    "lineProvenance": [
+                      {
+                        "originClass": "untrusted",
+                        "sessionKind": "interactive",
+                        "observedAt": 1000000
+                      }
+                    ],
+                    "sessionKind": "interactive"
+                  },
+                  "resetRecallCutoff": {
+                    "state": "absent"
+                  }
+                }
+              },
+              "taskId": 2
+            }
+          }
+        ],
+        "mutations": [
+          {
+            "ordinal": 1,
+            "value": "worker-fixture-credential",
+            "before": 0,
+            "after": 1
+          }
+        ],
+        "callbackObservations": [],
+        "result": {
+          "path": "sessions/main/worker-fixture.jsonl",
+          "absPath": "agent:main:dm:worker-fixture",
+          "mtimeMs": 1000,
+          "revisionMs": 1002,
+          "size": 291,
+          "hash": "c2c62e776a22509d45ea5d13fd953763f06b269d92797ce5761e0e8d4c593622",
+          "content": "User: Remember worker\u2026tial",
+          "lineMap": [
+            2
+          ],
+          "messageTimestampsMs": [
+            1000000
+          ],
+          "lineProvenance": [
+            {
+              "originClass": "untrusted",
+              "sessionKind": "interactive",
+              "observedAt": 1000000
+            }
+          ],
+          "sessionKind": "interactive"
+        },
+        "attempts": 2
+      }
+    },
+    {
+      "id": "registry-changed-twice",
+      "input": {
+        "secret": "worker-fixture-credential",
+        "sessionKind": "interactive",
+        "mutations": 2
+      },
+      "runtimeRoot": "/reference/openclaw",
+      "native": {
+        "scope": {
+          "agentId": "main",
+          "sessionId": "worker-fixture",
+          "sessionKey": "agent:main:dm:worker-fixture",
+          "storePath": "/fixture/workspace/state/agents/main/sessions/sessions.json"
+        },
+        "filename": "agent:main:dm:worker-fixture",
+        "source": {
+          "agentId": "main",
+          "artifactKind": "active-session",
+          "sessionFile": "agent:main:dm:worker-fixture",
+          "sessionId": "worker-fixture",
+          "transcriptSource": "sqlite",
+          "storePath": "/fixture/workspace/state/agents/main/sessions/sessions.json",
+          "updatedAtMs": 1000,
+          "sessionKey": "agent:main:dm:worker-fixture",
+          "sessionKind": "interactive"
+        },
+        "enumerated": [
+          {
+            "agentId": "main",
+            "artifactKind": "active-session",
+            "sessionFile": "agent:main:dm:worker-fixture",
+            "sessionId": "worker-fixture",
+            "transcriptSource": "sqlite",
+            "storePath": "/fixture/workspace/state/agents/main/sessions/sessions.json",
+            "updatedAtMs": 1000,
+            "sessionKey": "agent:main:dm:worker-fixture",
+            "sessionKind": "interactive"
+          }
+        ],
+        "clock": {
+          "owner": "node:test",
+          "apis": [
+            "Date"
+          ],
+          "nowMs": 1000,
+          "dateConstructorReplaced": true,
+          "setTimeoutUnchanged": true
+        },
+        "before": [
+          {
+            "type": "session",
+            "version": 4,
+            "id": "worker-fixture",
+            "timestamp": "1970-01-01T00:00:01.000Z",
+            "cwd": "/fixture/work"
+          },
+          {
+            "type": "message",
+            "id": "user-1",
+            "parentId": null,
+            "timestamp": "1970-01-01T00:00:01.000Z",
+            "message": {
+              "role": "user",
+              "content": "Remember worker-fixture-credential",
+              "timestamp": 1000
+            }
+          }
+        ],
+        "after": [
+          {
+            "type": "session",
+            "version": 4,
+            "id": "worker-fixture",
+            "timestamp": "1970-01-01T00:00:01.000Z",
+            "cwd": "/fixture/work"
+          },
+          {
+            "type": "message",
+            "id": "user-1",
+            "parentId": null,
+            "timestamp": "1970-01-01T00:00:01.000Z",
+            "message": {
+              "role": "user",
+              "content": "Remember worker-fixture-credential",
+              "timestamp": 1000
+            }
+          }
+        ],
+        "expected": "file:///reference/openclaw/dist/config/sessions/session-transcript.worker.js",
+        "observations": [
+          {
+            "event": "worker-created",
+            "url": "file:///reference/openclaw/dist/config/sessions/session-transcript.worker.js",
+            "threadId": 1
+          },
+          {
+            "event": "preparation-dispatch",
+            "ordinal": 1,
+            "url": "file:///reference/openclaw/dist/config/sessions/session-transcript.worker.js",
+            "threadId": 1,
+            "message": {
+              "input": {
+                "kind": "session-entry",
+                "absPath": "agent:main:dm:worker-fixture",
+                "options": {
+                  "agentId": "main",
+                  "sessionId": "worker-fixture",
+                  "sessionKey": "agent:main:dm:worker-fixture",
+                  "storePath": "/fixture/workspace/state/agents/main/sessions/sessions.json",
+                  "updatedAtMs": 1000,
+                  "sessionKind": "interactive"
+                },
+                "redaction": {
+                  "registryRevision": 0,
+                  "registeredSecretValues": []
+                }
+              },
+              "taskId": 1,
+              "interactive": false,
+              "nativeSections": {
+                "$type": "SharedArrayBuffer",
+                "byteLength": 4
+              },
+              "sampleMemory": true
+            }
+          },
+          {
+            "event": "actual-preparation-reply",
+            "ordinal": 1,
+            "url": "file:///reference/openclaw/dist/config/sessions/session-transcript.worker.js",
+            "threadId": 1,
+            "reply": {
+              "status": "ok",
+              "value": {
+                "ok": true,
+                "value": {
+                  "entry": {
+                    "path": "sessions/main/worker-fixture.jsonl",
+                    "absPath": "agent:main:dm:worker-fixture",
+                    "mtimeMs": 1000,
+                    "revisionMs": 1002,
+                    "size": 291,
+                    "hash": "ab1d51cac95d8d0163255b304a543f6b83c3faada58786452381fd3cce370f39",
+                    "content": "User: Remember worker-fixture-credential",
+                    "lineMap": [
+                      2
+                    ],
+                    "messageTimestampsMs": [
+                      1000000
+                    ],
+                    "lineProvenance": [
+                      {
+                        "originClass": "untrusted",
+                        "sessionKind": "interactive",
+                        "observedAt": 1000000
+                      }
+                    ],
+                    "sessionKind": "interactive"
+                  },
+                  "resetRecallCutoff": {
+                    "state": "absent"
+                  }
+                }
+              },
+              "taskId": 1
+            }
+          },
+          {
+            "event": "preparation-dispatch",
+            "ordinal": 2,
+            "url": "file:///reference/openclaw/dist/config/sessions/session-transcript.worker.js",
+            "threadId": 1,
+            "message": {
+              "input": {
+                "kind": "session-entry",
+                "absPath": "agent:main:dm:worker-fixture",
+                "options": {
+                  "agentId": "main",
+                  "sessionId": "worker-fixture",
+                  "sessionKey": "agent:main:dm:worker-fixture",
+                  "storePath": "/fixture/workspace/state/agents/main/sessions/sessions.json",
+                  "updatedAtMs": 1000,
+                  "sessionKind": "interactive"
+                },
+                "redaction": {
+                  "registryRevision": 1,
+                  "registeredSecretValues": [
+                    "worker-fixture-credential"
+                  ]
+                }
+              },
+              "taskId": 2,
+              "interactive": false,
+              "nativeSections": {
+                "$type": "SharedArrayBuffer",
+                "byteLength": 4
+              },
+              "sampleMemory": true
+            }
+          },
+          {
+            "event": "actual-preparation-reply",
+            "ordinal": 2,
+            "url": "file:///reference/openclaw/dist/config/sessions/session-transcript.worker.js",
+            "threadId": 1,
+            "reply": {
+              "status": "ok",
+              "value": {
+                "ok": true,
+                "value": {
+                  "entry": {
+                    "path": "sessions/main/worker-fixture.jsonl",
+                    "absPath": "agent:main:dm:worker-fixture",
+                    "mtimeMs": 1000,
+                    "revisionMs": 1002,
+                    "size": 291,
+                    "hash": "c2c62e776a22509d45ea5d13fd953763f06b269d92797ce5761e0e8d4c593622",
+                    "content": "User: Remember worker\u2026tial",
+                    "lineMap": [
+                      2
+                    ],
+                    "messageTimestampsMs": [
+                      1000000
+                    ],
+                    "lineProvenance": [
+                      {
+                        "originClass": "untrusted",
+                        "sessionKind": "interactive",
+                        "observedAt": 1000000
+                      }
+                    ],
+                    "sessionKind": "interactive"
+                  },
+                  "resetRecallCutoff": {
+                    "state": "absent"
+                  }
+                }
+              },
+              "taskId": 2
+            }
+          }
+        ],
+        "mutations": [
+          {
+            "ordinal": 1,
+            "value": "worker-fixture-credential",
+            "before": 0,
+            "after": 1
+          },
+          {
+            "ordinal": 2,
+            "value": "unrelated-worker-credential-2",
+            "before": 1,
+            "after": 2
+          }
+        ],
+        "callbackObservations": [],
+        "error": {
+          "name": "Error",
+          "message": "Session transcript redaction changed during preparation; retry the operation."
+        },
+        "attempts": 2
+      }
+    },
+    {
+      "id": "registry-duplicate-membership",
+      "input": {
+        "secret": "worker-fixture-credential",
+        "sessionKind": "interactive",
+        "mutations": 1,
+        "initiallyRegistered": true
+      },
+      "runtimeRoot": "/reference/openclaw",
+      "native": {
+        "scope": {
+          "agentId": "main",
+          "sessionId": "worker-fixture",
+          "sessionKey": "agent:main:dm:worker-fixture",
+          "storePath": "/fixture/workspace/state/agents/main/sessions/sessions.json"
+        },
+        "filename": "agent:main:dm:worker-fixture",
+        "source": {
+          "agentId": "main",
+          "artifactKind": "active-session",
+          "sessionFile": "agent:main:dm:worker-fixture",
+          "sessionId": "worker-fixture",
+          "transcriptSource": "sqlite",
+          "storePath": "/fixture/workspace/state/agents/main/sessions/sessions.json",
+          "updatedAtMs": 1000,
+          "sessionKey": "agent:main:dm:worker-fixture",
+          "sessionKind": "interactive"
+        },
+        "enumerated": [
+          {
+            "agentId": "main",
+            "artifactKind": "active-session",
+            "sessionFile": "agent:main:dm:worker-fixture",
+            "sessionId": "worker-fixture",
+            "transcriptSource": "sqlite",
+            "storePath": "/fixture/workspace/state/agents/main/sessions/sessions.json",
+            "updatedAtMs": 1000,
+            "sessionKey": "agent:main:dm:worker-fixture",
+            "sessionKind": "interactive"
+          }
+        ],
+        "clock": {
+          "owner": "node:test",
+          "apis": [
+            "Date"
+          ],
+          "nowMs": 1000,
+          "dateConstructorReplaced": true,
+          "setTimeoutUnchanged": true
+        },
+        "before": [
+          {
+            "type": "session",
+            "version": 4,
+            "id": "worker-fixture",
+            "timestamp": "1970-01-01T00:00:01.000Z",
+            "cwd": "/fixture/work"
+          },
+          {
+            "type": "message",
+            "id": "user-1",
+            "parentId": null,
+            "timestamp": "1970-01-01T00:00:01.000Z",
+            "message": {
+              "role": "user",
+              "content": "Remember worker-fixture-credential",
+              "timestamp": 1000
+            }
+          }
+        ],
+        "after": [
+          {
+            "type": "session",
+            "version": 4,
+            "id": "worker-fixture",
+            "timestamp": "1970-01-01T00:00:01.000Z",
+            "cwd": "/fixture/work"
+          },
+          {
+            "type": "message",
+            "id": "user-1",
+            "parentId": null,
+            "timestamp": "1970-01-01T00:00:01.000Z",
+            "message": {
+              "role": "user",
+              "content": "Remember worker-fixture-credential",
+              "timestamp": 1000
+            }
+          }
+        ],
+        "expected": "file:///reference/openclaw/dist/config/sessions/session-transcript.worker.js",
+        "observations": [
+          {
+            "event": "worker-created",
+            "url": "file:///reference/openclaw/dist/config/sessions/session-transcript.worker.js",
+            "threadId": 1
+          },
+          {
+            "event": "preparation-dispatch",
+            "ordinal": 1,
+            "url": "file:///reference/openclaw/dist/config/sessions/session-transcript.worker.js",
+            "threadId": 1,
+            "message": {
+              "input": {
+                "kind": "session-entry",
+                "absPath": "agent:main:dm:worker-fixture",
+                "options": {
+                  "agentId": "main",
+                  "sessionId": "worker-fixture",
+                  "sessionKey": "agent:main:dm:worker-fixture",
+                  "storePath": "/fixture/workspace/state/agents/main/sessions/sessions.json",
+                  "updatedAtMs": 1000,
+                  "sessionKind": "interactive"
+                },
+                "redaction": {
+                  "registryRevision": 1,
+                  "registeredSecretValues": [
+                    "worker-fixture-credential"
+                  ]
+                }
+              },
+              "taskId": 1,
+              "interactive": false,
+              "nativeSections": {
+                "$type": "SharedArrayBuffer",
+                "byteLength": 4
+              },
+              "sampleMemory": true
+            }
+          },
+          {
+            "event": "actual-preparation-reply",
+            "ordinal": 1,
+            "url": "file:///reference/openclaw/dist/config/sessions/session-transcript.worker.js",
+            "threadId": 1,
+            "reply": {
+              "status": "ok",
+              "value": {
+                "ok": true,
+                "value": {
+                  "entry": {
+                    "path": "sessions/main/worker-fixture.jsonl",
+                    "absPath": "agent:main:dm:worker-fixture",
+                    "mtimeMs": 1000,
+                    "revisionMs": 1002,
+                    "size": 291,
+                    "hash": "c2c62e776a22509d45ea5d13fd953763f06b269d92797ce5761e0e8d4c593622",
+                    "content": "User: Remember worker\u2026tial",
+                    "lineMap": [
+                      2
+                    ],
+                    "messageTimestampsMs": [
+                      1000000
+                    ],
+                    "lineProvenance": [
+                      {
+                        "originClass": "untrusted",
+                        "sessionKind": "interactive",
+                        "observedAt": 1000000
+                      }
+                    ],
+                    "sessionKind": "interactive"
+                  },
+                  "resetRecallCutoff": {
+                    "state": "absent"
+                  }
+                }
+              },
+              "taskId": 1
+            }
+          }
+        ],
+        "mutations": [
+          {
+            "ordinal": 1,
+            "value": "worker-fixture-credential",
+            "before": 1,
+            "after": 1
+          }
+        ],
+        "callbackObservations": [],
+        "result": {
+          "path": "sessions/main/worker-fixture.jsonl",
+          "absPath": "agent:main:dm:worker-fixture",
+          "mtimeMs": 1000,
+          "revisionMs": 1002,
+          "size": 291,
+          "hash": "c2c62e776a22509d45ea5d13fd953763f06b269d92797ce5761e0e8d4c593622",
+          "content": "User: Remember worker\u2026tial",
+          "lineMap": [
+            2
+          ],
+          "messageTimestampsMs": [
+            1000000
+          ],
+          "lineProvenance": [
+            {
+              "originClass": "untrusted",
+              "sessionKind": "interactive",
+              "observedAt": 1000000
+            }
+          ],
+          "sessionKind": "interactive"
+        },
+        "attempts": 1
+      }
+    },
+    {
+      "id": "observer-live-policy",
+      "input": {
+        "secret": "worker-fixture-credential",
+        "sessionKind": "interactive",
+        "mutations": 1,
+        "observer": true
+      },
+      "runtimeRoot": "/reference/openclaw",
+      "native": {
+        "scope": {
+          "agentId": "main",
+          "sessionId": "worker-fixture",
+          "sessionKey": "agent:main:dm:worker-fixture",
+          "storePath": "/fixture/workspace/state/agents/main/sessions/sessions.json"
+        },
+        "filename": "agent:main:dm:worker-fixture",
+        "source": {
+          "agentId": "main",
+          "artifactKind": "active-session",
+          "sessionFile": "agent:main:dm:worker-fixture",
+          "sessionId": "worker-fixture",
+          "transcriptSource": "sqlite",
+          "storePath": "/fixture/workspace/state/agents/main/sessions/sessions.json",
+          "updatedAtMs": 1000,
+          "sessionKey": "agent:main:dm:worker-fixture",
+          "sessionKind": "interactive"
+        },
+        "enumerated": [
+          {
+            "agentId": "main",
+            "artifactKind": "active-session",
+            "sessionFile": "agent:main:dm:worker-fixture",
+            "sessionId": "worker-fixture",
+            "transcriptSource": "sqlite",
+            "storePath": "/fixture/workspace/state/agents/main/sessions/sessions.json",
+            "updatedAtMs": 1000,
+            "sessionKey": "agent:main:dm:worker-fixture",
+            "sessionKind": "interactive"
+          }
+        ],
+        "clock": {
+          "owner": "node:test",
+          "apis": [
+            "Date"
+          ],
+          "nowMs": 1000,
+          "dateConstructorReplaced": true,
+          "setTimeoutUnchanged": true
+        },
+        "before": [
+          {
+            "type": "session",
+            "version": 4,
+            "id": "worker-fixture",
+            "timestamp": "1970-01-01T00:00:01.000Z",
+            "cwd": "/fixture/work"
+          },
+          {
+            "type": "message",
+            "id": "user-1",
+            "parentId": null,
+            "timestamp": "1970-01-01T00:00:01.000Z",
+            "message": {
+              "role": "user",
+              "content": "Remember worker-fixture-credential",
+              "timestamp": 1000
+            }
+          }
+        ],
+        "after": [
+          {
+            "type": "session",
+            "version": 4,
+            "id": "worker-fixture",
+            "timestamp": "1970-01-01T00:00:01.000Z",
+            "cwd": "/fixture/work"
+          },
+          {
+            "type": "message",
+            "id": "user-1",
+            "parentId": null,
+            "timestamp": "1970-01-01T00:00:01.000Z",
+            "message": {
+              "role": "user",
+              "content": "Remember worker-fixture-credential",
+              "timestamp": 1000
+            }
+          }
+        ],
+        "expected": "file:///reference/openclaw/dist/config/sessions/session-transcript.worker.js",
+        "observations": [],
+        "mutations": [
+          {
+            "ordinal": 1,
+            "value": "worker-fixture-credential",
+            "before": 0,
+            "after": 1,
+            "cut": "transcript-callback"
+          }
+        ],
+        "callbackObservations": [
+          {
+            "ordinal": 1,
+            "message": {
+              "role": "user",
+              "content": "Remember worker-fixture-credential",
+              "timestamp": 1000
+            },
+            "observedAt": 1000000
+          }
+        ],
+        "result": {
+          "path": "sessions/main/worker-fixture.jsonl",
+          "absPath": "agent:main:dm:worker-fixture",
+          "mtimeMs": 1000,
+          "revisionMs": 1002,
+          "size": 291,
+          "hash": "c2c62e776a22509d45ea5d13fd953763f06b269d92797ce5761e0e8d4c593622",
+          "content": "User: Remember worker\u2026tial",
+          "lineMap": [
+            2
+          ],
+          "messageTimestampsMs": [
+            1000000
+          ],
+          "lineProvenance": [
+            {
+              "originClass": "untrusted",
+              "sessionKind": "interactive",
+              "observedAt": 1000000
+            }
+          ],
+          "sessionKind": "interactive"
+        },
+        "attempts": 0
+      }
+    }
+  ]
+}

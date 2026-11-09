@@ -459,12 +459,14 @@ class FileAutomationStore:
             return {"version": 1, "scratch": {}, "jobs": []}
         if not isinstance(data, dict):
             raise ValueError(f"{self.path} is not an automation store")
+        # An owned catalog must validate the original persisted version. Legacy
+        # defaults must not repair a missing owned-store version before refusal.
+        _owners.validate_catalog(data)
         data.setdefault("version", 1)
         if not isinstance(data.get("scratch"), dict):
             data["scratch"] = {}
         if not isinstance(data.get("jobs"), list):
             data["jobs"] = []
-        _owners.validate_catalog(data)
         return data
 
     def _save(self, data: dict[str, Any]) -> None:

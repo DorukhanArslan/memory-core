@@ -133,3 +133,21 @@ revision, tombstone or expected-native state.
 Doctor work remains a separate next proposal using the already authenticated
 private `croner@10.0.1` archive. No doctor capture, condition credit, source-map
 promotion or integrated full gate was performed for this fix handoff.
+
+## Independent review correction
+
+Independent read-only review found that `_load` filled the legacy default
+`version: 1` before validating an existing ownership catalog. Removing the
+required top-level version could therefore bypass refusal and a subsequent
+write could silently restore it. The correction validates the original owned
+catalog before applying any legacy defaults. Missing or invalid owned-store
+versions now refuse reads and writes with byte-identical persistence; a store
+without an ownership catalog retains the existing legacy default behavior.
+
+Seven new parameterized/version compatibility tests exercise existing and
+freshly reopened stores, monitor/job reads, job-bound and per-agent writes, and
+`save_jobs`. The expanded focused selection passes 96 tests. This correction is
+not represented by the historical 17-case producer hash `b2326ef`: that packet
+remains unchanged and its claim remains limited to the recorded inputs. No
+native packet was rerun for this previously unexercised malformed SDK state.
+Subsequent full-gate or Doctor evidence must bind the corrected SDK source hash.

@@ -400,3 +400,41 @@ print(json.dumps(result.to_json()),flush=True)
         if process.poll() is None:
             process.kill()
             process.communicate(timeout=10)
+
+
+@pytest.mark.parametrize("version", ["missing", None, False, "1", 0, 2])
+def test_owned_original_top_level_version_is_refused_before_legacy_defaults(tmp_path, version):
+    store, owner = _enrolled(tmp_path)
+    store.write_job_scratch("main", owner.job_id, "preserve private content", now_ms=NOW)
+    data = json.loads(store.path.read_text())
+    if version == "missing":
+        del data["version"]
+    else:
+        data["version"] = version
+    store.path.write_text(json.dumps(data))
+    before = store.path.read_bytes()
+
+    for reopened in (store, FileAutomationStore(tmp_path), _owned(tmp_path)):
+        for operation in (
+            lambda: reopened.read_heartbeat_monitor_scratch("main"),
+            lambda: reopened.read_job_scratch("main", owner.job_id),
+            lambda: reopened.write_job_scratch("main", owner.job_id, "must not publish", now_ms=NOW + 1),
+            lambda: reopened.write_scratch("main", "must not repair", now_ms=NOW + 1),
+            lambda: reopened.save_jobs([]),
+        ):
+            with pytest.raises(ValueError, match="version"):
+                operation()
+            assert store.path.read_bytes() == before
+
+
+def test_unowned_legacy_store_retains_missing_version_default_compatibility(tmp_path):
+    store = FileAutomationStore(tmp_path)
+    store.write_scratch("main", "legacy content", now_ms=NOW)
+    data = json.loads(store.path.read_text())
+    del data["version"]
+    store.path.write_text(json.dumps(data))
+
+    reopened = FileAutomationStore(tmp_path)
+    assert reopened.read_scratch("main").content == "legacy content"
+    assert reopened.write_scratch("main", "legacy update", now_ms=NOW + 1).ok
+    assert json.loads(store.path.read_text())["version"] == 1

@@ -263,6 +263,9 @@ def build_cases(*, include_prospective: bool = False) -> list[dict[str, Any]]:
     from equivalence.entry_provenance_fixtures import build_entry_provenance_cases
 
     cases.extend(build_entry_provenance_cases())
+    from equivalence.promotion_ranking_fixtures import build_promotion_ranking_cases
+
+    cases.extend(build_promotion_ranking_cases())
     if include_prospective:
         from equivalence.flush_contract import build_prospective_flush_contract_cases
         from equivalence.session_projection import build_prospective_session_projection_cases
@@ -278,6 +281,10 @@ def build_cases(*, include_prospective: bool = False) -> list[dict[str, Any]]:
 def run_python(case: dict[str, Any]) -> Any:
     """Execute the installed Python implementation; never manufacture a match."""
     operation, arguments = case["operation"], case["input"]
+    if operation == "promotion-ranking-runtime":
+        from equivalence.promotion_ranking_runtime import run_promotion_ranking
+
+        return run_promotion_ranking(arguments, evidence_directory=case.get("_diagnosticDirectory"))
     if operation in {"entry-memory-publication-runtime", "entry-session-publication-runtime", "entry-provider-preparation-runtime"}:
         from equivalence.entry_provenance_runtime import run_entry_provenance
 

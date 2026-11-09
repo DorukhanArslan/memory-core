@@ -8,8 +8,10 @@ from memory_core import (
     SessionState, MemoryConfig,
 )
 from memory_core.host.managed_index import ManagedSQLiteMemoryStore
+from memory_core.host.session_publication import SessionPublicationController
 from memory_core.live import JsonlTraceSink, SubjectMemory
 from memory_core.session_catalog import MemorySessionCatalog
+from memory_core.workspace import MemoryWorkspace
 
 
 def wrong_payload(payload: dict[str, Any]) -> str:
@@ -47,3 +49,14 @@ async def invalid_lifecycle(runner: HostSessionRunner, workspace: Path) -> None:
 def invalid_managed(store: ManagedSQLiteMemoryStore, config: MemoryConfig) -> None:
     store.search("needle", max_results="many")  # E: arg-type
     ManagedSQLiteMemoryStore(config, "not a workspace")  # E: arg-type
+
+
+def invalid_session_publication(store: ManagedSQLiteMemoryStore, workspace: MemoryWorkspace,
+                                catalog: MemorySessionCatalog, controller: SessionPublicationController) -> None:
+    store.reindex_sources(workspace, sources={42})  # E: arg-type
+    store.reindex_sources(workspace, sources={"sessions"}, paths=[42])  # E: list-item
+    store.reindex_sources(workspace, sources={"memory"}, force_sources="yes")  # E: arg-type
+    store.bind_session_publication(None)  # E: arg-type
+    controller.wait_idle(timeout="soon")  # E: arg-type
+    SessionPublicationController(store, workspace, "invalid catalog")  # E: arg-type
+    catalog.subscribe_transcript_changes("invalid callback")  # E: arg-type

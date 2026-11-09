@@ -15,6 +15,10 @@ differences. It also awards zero conditions; historical captures stay unchanged.
 The next [managed-index package](host_restart_managed_closeout.md) records three
 matching restart scenarios and one remaining sessions mismatch. It keeps the
 same 64/128 verified baseline and does not relabel this maintenance evidence.
+The later [session publication owner package](session_publication_closeout.md)
+adds scoped refresh, real committed notifications and query-generation custody.
+It also awards zero conditions; managed runner integration and fresh process
+comparison remain open.
 
 This package integrates already reviewed fixes for the existing promotion and
 heartbeat contracts. It adds no acceptance condition and awards **zero new

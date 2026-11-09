@@ -5,7 +5,7 @@ import os
 import re
 import stat
 import threading
-from collections.abc import Callable, Mapping, Sequence
+from collections.abc import Callable, Collection, Mapping, Sequence
 from dataclasses import dataclass
 from pathlib import Path
 from typing import TYPE_CHECKING
@@ -568,11 +568,13 @@ class MemoryWorkspace:
             for path in files
         ]
 
-    def discover_session_transcript_files(self) -> list[MemoryFile]:
+    def discover_session_transcript_files(self, *, paths: Collection[str] | None = None) -> list[MemoryFile]:
         files: list[MemoryFile] = []
         session_dir = self.root / "memory" / ".dreams" / "session-corpus"
         if session_dir.is_dir():
             for path in sorted(session_dir.iterdir()):
+                if paths is not None and path.relative_to(self.root).as_posix() not in paths:
+                    continue
                 resolved_path = path.resolve()
                 if SESSION_CORPUS_FILE_RE.fullmatch(path.name) and self.is_path_inside_root(
                     resolved_path
@@ -591,6 +593,8 @@ class MemoryWorkspace:
                 catalog=self.session_catalog,
             )
             for item in corpus.discover_files():
+                if paths is not None and item.rel_path not in paths:
+                    continue
                 entry = corpus.read_index_entry(item)
                 if entry is None:
                     continue
@@ -607,19 +611,33 @@ class MemoryWorkspace:
                 ))
         return files
 
-    def discover_indexable_files(self) -> list[MemoryFile]:
+    def discover_indexable_files(self, *, sources: Collection[str] | None = None,
+                                 paths: Collection[str] | None = None) -> list[MemoryFile]:
         # memory-core extension: files under memory/.dreams/session-corpus/ are
         # indexed once, as source "sessions" (the lab writes its chat corpus
         # there as YYYY-MM-DD.md). Upstream has no sessions scan of that
         # directory; its recursive memory walk would index such a `.md` as a
         # memory file, and upstream's own corpus files are `.txt`, which the
         # memory walk never picks up.
-        sources = set(self.index_sources) if self.index_sources is not None else {"memory", "sessions"}
-        session_files = self.discover_session_transcript_files() if "sessions" in sources else []
+        configured = set(self.index_sources) if self.index_sources is not None else {"memory", "sessions"}
+        selected = configured if sources is None else configured.intersection(sources)
+        session_files = (self.discover_session_transcript_files() if paths is None else
+                         self.discover_session_transcript_files(paths=paths)) if "sessions" in selected else []
         session_paths = {file.rel_path for file in session_files}
+        def selected_memory(file: MemoryFile) -> bool:
+            if paths is not None and file.rel_path not in paths:
+                return False
+            # The lab's legacy session-corpus files retain their existing
+            # source classification even when only memory is being refreshed.
+            if "sessions" in configured and "sessions" not in selected:
+                relative = Path(file.rel_path)
+                if (relative.parent.as_posix() == "memory/.dreams/session-corpus"
+                        and SESSION_CORPUS_FILE_RE.fullmatch(relative.name)):
+                    return False
+            return file.rel_path not in session_paths
         memory_files = [
-            file for file in self.discover_memory_files() if file.rel_path not in session_paths
-        ] if "memory" in sources else [
+            file for file in self.discover_memory_files() if selected_memory(file)
+        ] if "memory" in selected else [
         ]
         return [*memory_files, *session_files]
 

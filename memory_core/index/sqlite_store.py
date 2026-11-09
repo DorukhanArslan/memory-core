@@ -11,9 +11,9 @@ import sqlite3
 import stat
 import time
 import unicodedata
-from collections.abc import Callable, Iterator, Sequence
+from collections.abc import Callable, Collection, Iterator, Sequence
 from contextlib import closing, contextmanager
-from pathlib import Path
+from pathlib import Path, PurePosixPath
 from typing import Any, TypeVar
 
 from memory_core.cancellation import CancellationSignal
@@ -106,6 +106,7 @@ from memory_core.index.temporal_decay import (
     apply_temporal_decay_to_hybrid_results,
 )
 from memory_core.index.vector import cosine_similarity, decode_memory_embedding
+from memory_core.session_visibility import normalize_session_agent_id
 from memory_core.workspace import MemoryFile, MemoryWorkspace, workspace_index_lock
 
 # OpenClaw caps per-keyword FTS fallback probes so long conversational queries
@@ -130,6 +131,19 @@ EMBEDDING_CACHE_MAX_ENTRIES = 50_000
 
 class MemoryIndexSourceChangedError(RuntimeError):
     """A prepared source or index generation changed before publication."""
+
+
+class MemoryIndexRequiresFullReindexError(RuntimeError):
+    """A selected refresh cannot establish or change the full index owner."""
+
+
+@dataclasses.dataclass(frozen=True)
+class _IndexSourceSelection:
+    sources: frozenset[str]
+    paths: frozenset[str] | None
+
+    def includes(self, key: tuple[str, str]) -> bool:
+        return key[0] in self.sources and (self.paths is None or key[1] in self.paths)
 
 
 @dataclasses.dataclass(frozen=True)
@@ -274,6 +288,14 @@ class SQLiteMemoryStore:
             if remove_listener is not None:
                 remove_listener()
             db.close()
+
+    def _on_search_snapshot(self, db: sqlite3.Connection) -> None:
+        """Optional host admission after a real valid reader snapshot is pinned.
+
+        The default does nothing. Explicit runtimes may enqueue maintenance;
+        they must retain this transaction's ordinary retrieval ownership.
+        """
+        return None
 
     def _init_schema(self) -> None:
         with self.connect() as db:
@@ -521,7 +543,45 @@ class SQLiteMemoryStore:
         with workspace_index_lock(workspace.root):
             return self._reindex_locked(workspace, force=force)
 
-    def _reindex_locked(self, workspace: MemoryWorkspace, *, force: bool) -> int:
+    def reindex_sources(self, workspace: MemoryWorkspace, *, sources: Collection[str],
+                        paths: Collection[str] | None = None, force_sources: bool = False) -> int:
+        """Refresh an explicit source domain without replacing unrelated rows.
+
+        ``paths=None`` reconciles every path in the selected corpora. An empty
+        path collection selects nothing. Missing/ineligible sources are removed
+        only inside that domain; unselected memory and transcript rows remain.
+        ``force_sources`` reparses the selection under the existing namespace.
+        A cold, mismatched or invalidated index requires ordinary full reindex;
+        this method never silently broadens a selected publication into one.
+        Returns the actual number of eligible selected source files.
+        Ordinary publisher cleanup of orphan rows is unchanged; the selection
+        preserves unrelated published sources rather than certifying orphans.
+        """
+        if isinstance(sources, (str, bytes)):
+            raise ValueError("Selected sources must be a collection of memory/sessions names")
+        selected_sources = frozenset(sources)
+        if not selected_sources or not selected_sources <= {"memory", "sessions"}:
+            raise ValueError("Selected sources must contain only memory/sessions names")
+        if isinstance(paths, (str, bytes)):
+            raise ValueError("Selected paths must be a collection of canonical relative paths")
+        selected_paths = frozenset(paths) if paths is not None else None
+        if selected_paths is not None and any(
+            not isinstance(path, str) or not path or "\\" in path
+            or PurePosixPath(path).is_absolute() or ".." in PurePosixPath(path).parts
+            or str(PurePosixPath(path)) != path for path in selected_paths
+        ):
+            raise ValueError("Selected paths must be canonical relative paths")
+        if type(force_sources) is not bool:
+            raise TypeError("force_sources must be a boolean")
+        if (Path(self.config.workspace_dir).resolve() != workspace.root.resolve()
+                or normalize_session_agent_id(self.config.agent_id) != normalize_session_agent_id(workspace.agent_id)):
+            raise ValueError("The selected refresh configuration and workspace must have the same owner")
+        selection = _IndexSourceSelection(selected_sources, selected_paths)
+        with workspace_index_lock(workspace.root):
+            return self._reindex_locked(workspace, force=False, selection=selection, force_sources=force_sources)
+
+    def _reindex_locked(self, workspace: MemoryWorkspace, *, force: bool,
+                        selection: _IndexSourceSelection | None = None, force_sources: bool = False) -> int:
         fence = self.revision_fence
         expected_fence = fence.read() if fence is not None else None
         same_database = fence is not None and fence.same_database(self.path)
@@ -556,19 +616,26 @@ class SQLiteMemoryStore:
             force or bool(needs_rebuild) or previous_workspace != workspace_root
             or self.index_identity()["status"] != "valid"
         )
-        snapshots = self._read_source_snapshots(workspace)
+        if selection is not None and rebuild:
+            raise MemoryIndexRequiresFullReindexError(
+                "Selected source refresh requires a current full index for this workspace; call reindex(workspace)."
+            )
+        snapshots = (self._read_source_snapshots(workspace) if selection is None else
+                     self._read_source_snapshots(workspace, selection=selection))
         def content_hash(key, value):
             return value.rsplit(":", 1)[-1] if key[0] == "sessions" and value.startswith("sqlite:") else value
 
         changed = {
             key for key, entry in snapshots.items()
-            if rebuild or key in metadata_missing
+            if rebuild or force_sources or key in metadata_missing
             or key not in previous_sources
             or previous_sources[key][1] != previous_counts.get(key, 0)
             or content_hash(key, previous_sources[key][0]) != content_hash(key, entry.hash)
         }
-        removed = (set(previous_sources) | set(previous_counts)) - snapshots.keys()
-        remaining_old = snapshots.keys() - changed
+        previous_keys = set(previous_sources) | set(previous_counts)
+        selected_previous = previous_keys if selection is None else {key for key in previous_keys if selection.includes(key)}
+        removed = selected_previous - snapshots.keys()
+        remaining_old = (snapshots.keys() - changed if selection is None else previous_keys - changed - removed)
         active_dimensions = (
             meta.get("vectorDims") if provider is not None and isinstance(meta, dict)
             and any(previous_counts.get(key, 0) for key in remaining_old) else None
@@ -577,6 +644,10 @@ class SQLiteMemoryStore:
             isinstance(active_dimensions, bool) or not isinstance(active_dimensions, int)
             or active_dimensions <= 0
         ):
+            if selection is not None:
+                raise MemoryIndexRequiresFullReindexError(
+                    "Selected source refresh cannot repair an invalid vector namespace; call reindex(workspace)."
+                )
             # A malformed legacy dimension cannot authorize mixing old vectors
             # with newly generated ones. Rebuild all sources instead.
             rebuild = True
@@ -609,7 +680,8 @@ class SQLiteMemoryStore:
             # revision, before another host projection could hide the cause.
             if fence is not None:
                 fence.assert_unchanged(expected_fence)
-            current = self._read_source_snapshots(workspace)
+            current = (self._read_source_snapshots(workspace) if selection is None else
+                       self._read_source_snapshots(workspace, selection=selection))
             if ({key: entry.hash for key, entry in current.items()}
                     != {key: entry.hash for key, entry in snapshots.items()}):
                 raise MemoryIndexSourceChangedError(
@@ -829,9 +901,12 @@ class SQLiteMemoryStore:
         ) if js_trim(chunk.text)]
 
     @staticmethod
-    def _read_source_snapshots(workspace: MemoryWorkspace) -> dict[tuple[str, str], IndexSourceSnapshot]:
+    def _read_source_snapshots(workspace: MemoryWorkspace, *,
+                               selection: _IndexSourceSelection | None = None) -> dict[tuple[str, str], IndexSourceSnapshot]:
         snapshots = {}
-        for file in workspace.discover_indexable_files():
+        files = (workspace.discover_indexable_files() if selection is None else
+                 workspace.discover_indexable_files(sources=selection.sources, paths=selection.paths))
+        for file in files:
             entry = read_index_source(file)
             if entry is not None:
                 if entry.source == "memory":
@@ -1192,6 +1267,7 @@ class SQLiteMemoryStore:
                         or self.index_identity(db=db)["status"] != "valid"):
                     on_partial_results(None)
                     return []
+                self._on_search_snapshot(db)
                 prepared_revision = self.index_revision(db=db)
                 prepared_keyword = self._search_keyword_with_fallback(
                     db, query, candidates, source_filter, signal,
@@ -1229,6 +1305,7 @@ class SQLiteMemoryStore:
                 if on_partial_results is not None:
                     on_partial_results(None)
                 return []
+            self._on_search_snapshot(db)
             same_generation = (prepared_revision is not None
                                and self.index_revision(db=db) == prepared_revision)
             if (prepared_revision is not None and not same_generation

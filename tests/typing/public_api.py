@@ -23,9 +23,10 @@ from memory_core import (
 from memory_core.adapters.langgraph import tool_messages, transcript_rows, turn_usage
 from memory_core.host import FlushOutcome, FlushRequest
 from memory_core.host.managed_index import ManagedSQLiteMemoryStore
+from memory_core.host.session_publication import SessionPublicationController
 from memory_core.index.hybrid import HybridResult
 from memory_core.workspace import MemoryWorkspace
-from memory_core.session_catalog import MemorySessionCatalog
+from memory_core.session_catalog import MemorySessionCatalog, SessionTranscriptChange
 from memory_core.live import (
     JsonlTraceSink,
     LiveTurnContext,
@@ -128,10 +129,24 @@ async def live_contract(workspace: Path) -> None:
 
 def managed_contract(workspace: Path) -> None:
     config = MemoryConfig(workspace_dir=workspace, flags=FeatureFlags(vector_search=False))
-    memory_workspace = MemoryWorkspace(workspace)
+    catalog = MemorySessionCatalog(workspace / "catalog.sqlite")
+    memory_workspace = MemoryWorkspace(workspace, session_catalog=catalog)
     store = ManagedSQLiteMemoryStore(config, memory_workspace)
+    controller = SessionPublicationController(store, memory_workspace, catalog)
+    store.bind_session_publication(controller)
+
+    def committed(change: SessionTranscriptChange) -> None:
+        assert_type(change.revision, int)
+
+    unsubscribe = catalog.subscribe_transcript_changes(committed)
+    unsubscribe()
     assert_type(store.search("needle", max_results=3, sources={"memory"}), list[HybridResult])
     assert_type(store.status(), dict[str, Any])
     assert_type(store.reindex(memory_workspace, force=True), int)
+    assert_type(store.reindex_sources(memory_workspace, sources={"sessions"},
+                                     paths={"sessions/main/session.jsonl"}), int)
+    assert_type(controller.wait_idle(timeout=0.5), bool)
+    assert_type(controller.flush(reconcile=True), dict[str, Any])
+    assert_type(controller.status(), dict[str, Any])
     store.close()
     assert_type(store.closed, bool)

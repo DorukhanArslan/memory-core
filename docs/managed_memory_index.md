@@ -56,8 +56,11 @@ preserved. Workspace, index, agent and catalog ownership are checked.
 already admitted by this instance. A caller stopping its wait does not terminate
 an ongoing physical publication; close still waits for it. It does not fence
 unrelated processes or inherited raw SQL helpers. The store holds no idle DB
-connection. The owner supplies cold bootstrap, not a background file watcher,
-session debounce scheduler or provider fallback.
+connection. The owner supplies cold bootstrap. Hosts can explicitly bind the
+[session publication controller](session_publication.md) for committed session
+queues and publication after read-generation admission. Construction alone
+starts no session work. Background memory-file watching and provider fallback
+remain outside this owner.
 
 For `HostSessionRunner`, bind the same session catalog and artifact-provenance
 store to the memory, managed store and kit, then use the existing runner

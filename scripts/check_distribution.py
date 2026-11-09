@@ -299,6 +299,35 @@ with tempfile.TemporaryDirectory() as scratch:
     assert "warning" not in repeated
     managed_store.close()
     assert managed_store.closed and managed_store.lifecycle_snapshot()["activeOperations"] == 0
+    publication_module = importlib.import_module(package_name + ".host.session_publication")
+    workspace_module = importlib.import_module(package_name + ".workspace")
+    queued_root = root / "queued-sessions"
+    queued_catalog = catalog_module.MemorySessionCatalog(root / "queued-catalog.sqlite",
+        clock_ms=lambda: 1794182400000)
+    queued_workspace = workspace_module.MemoryWorkspace(queued_root, session_catalog=queued_catalog,
+        index_sources=("memory", "sessions"))
+    queued_workspace.append_daily_memory("memory/2026-11-09.md", "- The queuedcedar project is ready.")
+    queued_config = core.MemoryConfig(workspace_dir=queued_root, flags=flags)
+    queued_store = managed_module.ManagedSQLiteMemoryStore(queued_config, queued_workspace)
+    queued_store.reindex(queued_workspace)
+    publication = publication_module.SessionPublicationController(queued_store, queued_workspace, queued_catalog)
+    queued_store.bind_session_publication(publication)
+    try:
+        assert publication.status()["notStarted"] is True
+        assert queued_store.search("queuedcedar", sources={"memory"})
+        assert publication.wait_idle(timeout=5)
+        queued_catalog.upsert_session("agent:main:queued", {"sessionId": "queued", "updatedAt": 1794182400000})
+        queued_catalog.append_message("queued", {"role": "user", "content": "Remember the queuedjuniper preference."},
+            session_key="agent:main:queued", event_id="queued:1", now_ms=1794182400000)
+        assert publication.status()["pending"] is True
+        queued_store.reindex_sources(queued_workspace, sources={"memory"})
+        assert not queued_store.search("queuedjuniper", sources={"sessions"})
+        publication.flush(timeout=5)
+        assert queued_store.search("queuedjuniper", sources={"sessions"})
+        assert queued_store.lifecycle_snapshot()["sessionReadAdmissionCount"] >= 3
+    finally:
+        queued_store.close()
+    assert publication.status()["closed"] is True
 print("installed core imports and FTS host lifecycle passed")
 print("installed session authority and compressed archive consumers passed")
 print("installed durable append, continuation and replay consumers passed")
@@ -306,6 +335,7 @@ print("installed real dispatch, live write provenance and stored turn trust cons
 print("installed extra discovery, Unicode facts and workspace owner consumers passed")
 print("installed serialized save, immediate recall and reopened context consumers passed")
 print("installed managed cold bootstrap, live notice, warm recall and physical close consumer passed")
+print("installed selected-source publication, committed session queue and read-generation consumers passed")
 '''
 
 

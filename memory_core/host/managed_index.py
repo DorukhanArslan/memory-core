@@ -3,17 +3,18 @@
 Ordinary ``HostKit.open`` remains eager. Hosts selecting this owner construct a
 ``Memory``/``HostKit`` around it without an initial reindex. Repairs use the
 normal checked SQLite publisher; status and notices describe those real calls.
-Background refresh, provider lifecycle and session scheduling are not supplied
-by this owner.
+An optional explicitly bound session controller starts after a real search read
+generation is acquired. Ordinary construction does not start background work.
 """
 from __future__ import annotations
 
 from collections import deque
-from collections.abc import Callable, Iterator, Sequence
+from collections.abc import Callable, Collection, Iterator, Sequence
 from contextlib import closing, contextmanager
 from copy import deepcopy
 import threading
-from typing import Any
+import sqlite3
+from typing import TYPE_CHECKING, Any
 
 from memory_core.bootstrap._js import js_trim
 from memory_core.cancellation import CancellationSignal
@@ -27,6 +28,9 @@ from memory_core.session_catalog import normalize_session_agent_id
 from memory_core.tools.common import format_error_message
 from memory_core.tools.deadline import MemorySearchDeadlineControl
 from memory_core.workspace import MemoryWorkspace, workspace_index_lock
+
+if TYPE_CHECKING:
+    from memory_core.host.session_publication import SessionPublicationController
 
 
 class ManagedSQLiteMemoryStore(SQLiteMemoryStore):
@@ -71,13 +75,18 @@ class ManagedSQLiteMemoryStore(SQLiteMemoryStore):
         self._repairs: deque[dict[str, Any]] = deque(maxlen=256)
         self._operation_count = 0
         self._repair_count = 0
+        self._session_publication: SessionPublicationController | None = None
+        self._read_admissions: deque[dict[str, Any]] = deque(maxlen=256)
+        self._read_admission_count = 0
         super().__init__(config, None, revision_fence=revision_fence, artifact_provenance=artifact_provenance)
 
     @contextmanager
     def _operation(self, name: str) -> Iterator[dict[str, Any]]:
         with self._condition:
             depth = getattr(self._local, "depth", 0)
-            if self._closed or self._closing and not depth:
+            draining_publication = (name == "reindex-sources" and self._session_publication is not None
+                                    and self._session_publication.owns_current_job())
+            if self._closed or self._closing and not depth and not draining_publication:
                 raise RuntimeError("Memory index manager is closed")
             self._active_operations += 1
             self._local.depth = depth + 1
@@ -144,7 +153,52 @@ class ManagedSQLiteMemoryStore(SQLiteMemoryStore):
                            "automaticRebuildNotice": self._automatic_rebuild_notice}}
             if self._last_sync_error is not None:
                 result["lastSyncError"] = self._last_sync_error
+            if self._session_publication is not None:
+                result["custom"]["sessionPublication"] = self._session_publication.status()
             return result
+
+    def bind_session_publication(self, controller: SessionPublicationController) -> None:
+        """Opt in to lazy session publication for this exact store and corpus.
+
+        Binding is inert. The first valid nonempty search starts the controller
+        only after SQLite has admitted its real read generation. This does not
+        alter the eager publication barrier of ``HostSessionRunner``.
+        """
+        from memory_core.host.session_publication import SessionPublicationController
+
+        if not isinstance(controller, SessionPublicationController):
+            raise TypeError("A managed session publisher requires SessionPublicationController")
+        if (controller.store is not self or controller.workspace is not self._workspace
+                or controller.catalog is not self._bound_catalog):
+            raise ValueError("The session controller must belong to this exact managed index and catalog")
+        with self._condition:
+            if self._closed or self._closing:
+                raise RuntimeError("Memory index manager is closed")
+            if self._active_operations:
+                raise RuntimeError("Bind session publication before admitting managed operations")
+            if self._session_publication is not None and self._session_publication is not controller:
+                raise RuntimeError("This managed index already has a session publication owner")
+            self._assert_workspace(self._workspace)
+            self._session_publication = controller
+
+    def _on_search_snapshot(self, db: sqlite3.Connection) -> None:
+        controller = self._session_publication
+        if controller is None:
+            return
+        # The caller has already read index identity in this transaction: BEGIN
+        # alone would not pin SQLite's deferred read snapshot.
+        revision = self.index_revision(db=db)
+        with self._condition:
+            self._read_admission_count += 1
+            operations = getattr(self._local, "operations", ())
+            self._read_admissions.append({"id": self._read_admission_count,
+                "operationId": operations[-1] if operations else None,
+                "revision": revision, "threadId": threading.get_ident()})
+            # Closing and first acquisition share this admission gate. An
+            # already admitted query can finish its reader without starting
+            # new controller work after close has begun.
+            if not self._closing and not self._closed:
+                controller.start()
 
     def reindex(self, workspace: MemoryWorkspace, *, force: bool = False) -> int:
         """Publish only the bound workspace; preserve the original return/error."""
@@ -160,6 +214,19 @@ class ManagedSQLiteMemoryStore(SQLiteMemoryStore):
             self._last_sync_error = None
             self._update(operation, returned=result, after=self._read_state(),
                          revisionAfter=self.read_published_index()["revision"])
+            return result
+
+    def reindex_sources(self, workspace: MemoryWorkspace, *, sources: Collection[str],
+                        paths: Collection[str] | None = None, force_sources: bool = False) -> int:
+        """Refresh an explicit source scope under the managed admission lane."""
+        with self._operation("reindex-sources") as operation:
+            self._assert_workspace(workspace)
+            self._update(operation, request={"sources": list(sources),
+                "paths": None if paths is None else list(paths), "forceSources": force_sources},
+                revisionBefore=self.index_revision())
+            result = super().reindex_sources(workspace, sources=sources, paths=paths,
+                                             force_sources=force_sources)
+            self._update(operation, returned=result, revisionAfter=self.index_revision())
             return result
 
     @staticmethod
@@ -234,7 +301,8 @@ class ManagedSQLiteMemoryStore(SQLiteMemoryStore):
     def lifecycle_snapshot(self) -> dict[str, Any]:
         """Copy actual admitted operations/repair receipts, including after close."""
         with self._condition:
-            return deepcopy({"workspace": str(self._bound_workspace), "indexPath": str(self._bound_index),
+            controller = self._session_publication
+            snapshot = deepcopy({"workspace": str(self._bound_workspace), "indexPath": str(self._bound_index),
                 "agentId": self._bound_agent, "activeOperations": self._active_operations,
                 "closing": self._closing, "closed": self._closed,
                 "automaticRebuildNotice": self._automatic_rebuild_notice,
@@ -242,7 +310,13 @@ class ManagedSQLiteMemoryStore(SQLiteMemoryStore):
                 "operationCount": self._operation_count, "repairCount": self._repair_count,
                 "operationJournalTruncated": self._operation_count > len(self._operations),
                 "repairJournalTruncated": self._repair_count > len(self._repairs),
-                "operations": list(self._operations), "repairs": list(self._repairs)})
+                "operations": list(self._operations), "repairs": list(self._repairs),
+                "sessionReadAdmissionCount": self._read_admission_count,
+                "sessionReadJournalTruncated": self._read_admission_count > len(self._read_admissions),
+                "sessionReadAdmissions": list(self._read_admissions)})
+        if controller is not None:
+            snapshot["sessionPublication"] = controller.status()
+        return snapshot
 
     @property
     def closed(self) -> bool:
@@ -254,10 +328,24 @@ class ManagedSQLiteMemoryStore(SQLiteMemoryStore):
         with self._condition:
             if getattr(self._local, "depth", 0):
                 raise RuntimeError("An active managed index operation cannot close its own owner")
+            controller = self._session_publication
+            if controller is not None and controller.owns_current_job():
+                raise RuntimeError("A session publication job cannot close its own managed index")
+            while self._closing:
+                self._condition.wait()
             if self._closed:
                 return
             self._closing = True
             self._condition.notify_all()
+        try:
+            if controller is not None:
+                controller.close()
+        except BaseException:
+            with self._condition:
+                self._closing = False
+                self._condition.notify_all()
+            raise
+        with self._condition:
             while self._active_operations:
                 self._condition.wait()
             self._closed = True

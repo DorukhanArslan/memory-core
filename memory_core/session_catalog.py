@@ -7,9 +7,10 @@ guessing ownership or reset state from transcript filenames.
 
 from __future__ import annotations
 
+from collections import deque
 from collections.abc import Callable, Mapping, Sequence
 from contextlib import closing
-from dataclasses import dataclass
+from dataclasses import dataclass, field as dataclass_field
 import json
 import hashlib
 import math
@@ -19,8 +20,9 @@ import re
 import sqlite3
 import time
 import threading
-from typing import Any
+from typing import Any, Literal
 from uuid import uuid4
+from weakref import WeakValueDictionary
 
 from memory_core.bootstrap._js import js_json_stringify, js_trim, js_truthy, js_utf8_encode
 from memory_core.project_name import DIST_NAME
@@ -37,7 +39,7 @@ from memory_core.session_transcript_append import (
     timestamp_ms_to_iso,
 )
 from memory_core.session_visibility import is_incognito_session_key, resolve_session_agent_id
-from memory_core.tools.common import MemoryToolError
+from memory_core.tools.common import MemoryToolError, format_error_message
 from memory_core.transcript_tree import UNSET, select_visible_transcript_events
 
 
@@ -308,6 +310,47 @@ class SessionCatalogSnapshot:
     revision: int
 
 
+@dataclass(frozen=True)
+class SessionTranscriptChange:
+    """Committed dirty hint, read from the transaction that changed a transcript.
+
+    ``store_path`` is the physical catalog authority, not its session-store
+    compatibility locator. Revisions describe this commit; another transaction
+    may already have committed by the time a listener reads the catalog.
+    """
+
+    agent_id: str
+    session_id: str
+    session_key: str
+    store_path: Path
+    revision: int
+    catalog_revision: int
+    mutation_at_ms: float
+    generation: str | None
+    operation: Literal["append-message", "append-events", "replace-events"]
+
+
+@dataclass(frozen=True)
+class SessionTranscriptListenerFailure:
+    change: SessionTranscriptChange
+    listener_id: int
+    error_type: str
+    error_message: str
+
+
+@dataclass
+class _TranscriptListeners:
+    lock: Any = dataclass_field(default_factory=threading.RLock)
+    listeners: dict[int, Callable[[SessionTranscriptChange], None]] = dataclass_field(default_factory=dict)
+    next_id: int = 0
+    failure_count: int = 0
+    failures: deque[SessionTranscriptListenerFailure] = dataclass_field(default_factory=lambda: deque(maxlen=128))
+
+
+_transcript_listener_states: WeakValueDictionary[tuple[int, str, str, str], _TranscriptListeners] = WeakValueDictionary()
+_transcript_listener_states_lock = threading.RLock()
+
+
 class MemorySessionCatalog:
     """An agent-scoped durable catalog, independent of OpenClaw's binary schema.
 
@@ -337,7 +380,103 @@ class MemorySessionCatalog:
         self._catalog_owner_path = self.path
         self._memory_uri: str | None = None
         self._memory_lock: Any = None
+        self._listener_identity: tuple[int, str, str, str] | None = None
+        self._listeners: _TranscriptListeners | None = None
         self._initialize_schema()
+
+    def _transcript_listeners(self) -> _TranscriptListeners:
+        storage = ("volatile", self._memory_uri) if self._memory_uri is not None else ("durable", str(self.path))
+        identity = (os.getpid(), *storage, self.agent_id)
+        with _transcript_listener_states_lock:
+            if self._listener_identity != identity or self._listeners is None:
+                state = _transcript_listener_states.get(identity)
+                if state is None:
+                    state = _TranscriptListeners()
+                    _transcript_listener_states[identity] = state
+                self._listener_identity, self._listeners = identity, state
+            return self._listeners
+
+    def subscribe_transcript_changes(
+        self, listener: Callable[[SessionTranscriptChange], None],
+    ) -> Callable[[], None]:
+        """Subscribe to committed transcript changes in this process and namespace.
+
+        Same-storage, same-agent catalog instances share listeners; independent
+        volatile stores retain their exact backing URI rather than sharing the
+        reserved sentinel filename. Append-message,
+        raw append-events and replace-events commits notify after the connection
+        closes; metadata, archive and tombstone changes are outside this stream.
+        A concurrent commit can deliver out of order, so consumers retain the
+        actual revisions rather than counting callbacks. Unsubscribe prevents
+        future dispatch; a callback already admitted may finish.
+        """
+        if not callable(listener):
+            raise TypeError("A transcript change listener must be callable")
+        state = self._transcript_listeners()
+        with state.lock:
+            state.next_id += 1
+            identifier = state.next_id
+            state.listeners[identifier] = listener
+
+        def unsubscribe() -> None:
+            with state.lock:
+                state.listeners.pop(identifier, None)
+
+        return unsubscribe
+
+    def transcript_listener_diagnostics(self) -> tuple[SessionTranscriptListenerFailure, ...]:
+        """Return immutable snapshots of the last 128 ordinary listener failures."""
+        state = self._transcript_listeners()
+        with state.lock:
+            return tuple(state.failures)
+
+    @property
+    def transcript_listener_failure_count(self) -> int:
+        state = self._transcript_listeners()
+        with state.lock:
+            return state.failure_count
+
+    def _transcript_change(
+        self, db: sqlite3.Connection, session_id: str,
+        operation: Literal["append-message", "append-events", "replace-events"],
+    ) -> SessionTranscriptChange:
+        row = db.execute(
+            "SELECT w.session_key,w.revision,w.mutation_at,s.generation,c.revision AS catalog_revision "
+            "FROM memory_session_windows w "
+            "JOIN memory_session_catalog_state c ON c.agent=w.agent "
+            "LEFT JOIN memory_session_transcript_state s ON s.agent=w.agent AND s.session_id=w.session_id "
+            "WHERE w.agent=? AND w.session_id=?", (self.agent_id, session_id),
+        ).fetchone()
+        if row is None:
+            raise RuntimeError("A committed transcript change requires its transaction-owned window")
+        return SessionTranscriptChange(
+            self.agent_id, session_id, row["session_key"], self.path, row["revision"],
+            row["catalog_revision"], row["mutation_at"], row["generation"], operation,
+        )
+
+    def _publish_transcript_change(self, change: SessionTranscriptChange) -> None:
+        state = self._transcript_listeners()
+        with state.lock:
+            listeners = tuple(state.listeners.items())
+        for identifier, listener in listeners:
+            with state.lock:
+                if state.listeners.get(identifier) is not listener:
+                    continue
+            try:
+                listener(change)
+            except Exception as error:
+                # The transaction is already committed. Observer failure cannot
+                # turn a persisted append into an apparent producer failure.
+                try:
+                    message = format_error_message(error)
+                except Exception:
+                    message = "Transcript listener diagnostic could not be formatted"
+                failure = SessionTranscriptListenerFailure(
+                    change, identifier, type(error).__name__, message,
+                )
+                with state.lock:
+                    state.failure_count += 1
+                    state.failures.append(failure)
 
     def _initialize_schema(self) -> None:
         with closing(self._connect()) as db:
@@ -705,6 +844,8 @@ class MemorySessionCatalog:
             db.execute("UPDATE memory_session_windows SET revision=revision+1,transcript_updated_at=?,mutation_at=? WHERE agent=? AND session_id=?",
                        (activity_at, mutation_at, self.agent_id, session_id))
             self._changed(db)
+            change = self._transcript_change(db, session_id, "replace-events" if replace else "append-events")
+        self._publish_transcript_change(change)
 
     def append_events(
         self, session_id: str, events: Sequence[object], *, updated_at_ms: float | None = None,
@@ -866,7 +1007,9 @@ class MemorySessionCatalog:
             anchor = self._message_anchor(db, session_id, session_key, events, event, seq)
             if anchor is not None:
                 result["anchor"] = anchor
-            return result
+            change = self._transcript_change(db, session_id, "append-message")
+        self._publish_transcript_change(change)
+        return result
 
     def read_anchor(
         self, session_id: str, entry_id: str, *, session_key: str,

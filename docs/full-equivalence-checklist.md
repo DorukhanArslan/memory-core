@@ -90,8 +90,13 @@ The [producer publication/managed-index package](host_restart_managed_closeout.m
 aligns real producer metadata publication and adds cold-search bootstrap.
 Its separate managed family has **3 matches and 1 sessions mismatch**, zero
 blocked/errors, with **6,929 passing regressions** and **1,648 uncredited skips**.
-Both installed offline package consumers pass. A genuine session-publication
-controller is the next work. All restart packets award zero conditions and keep
+Both installed offline package consumers pass. The later
+[session publication owner package](session_publication_closeout.md) implements
+scoped atomic refresh, real post-commit notifications, a session queue and
+query read-generation admission. Its explicit managed runner and fresh paired
+process comparison remain the next work. The changed SDK passes **6,991 full
+regressions**, with **1,648 uncredited skips**, and both offline installed
+package consumers. All restart packets award zero conditions and keep
 the last verified baseline at 64/128; the current changed SDK is not a new full-catalog pass.
 
 | Contract status | Contracts | Verified conditions | Remaining conditions |

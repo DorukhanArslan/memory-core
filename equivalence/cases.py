@@ -255,6 +255,9 @@ def build_cases(*, include_prospective: bool = False) -> list[dict[str, Any]]:
     cases.extend(build_session_projection_cases())
     cases.extend(build_storage_discovery_cases())
     cases.extend(build_storage_path_cases())
+    from equivalence.redaction_fixtures import build_redaction_cases
+
+    cases.extend(build_redaction_cases())
     if include_prospective:
         from equivalence.flush_contract import build_prospective_flush_contract_cases
         from equivalence.session_projection import build_prospective_session_projection_cases
@@ -270,6 +273,20 @@ def build_cases(*, include_prospective: bool = False) -> list[dict[str, Any]]:
 def run_python(case: dict[str, Any]) -> Any:
     """Execute the installed Python implementation; never manufacture a match."""
     operation, arguments = case["operation"], case["input"]
+    if operation in {"redaction-policy-source", "model-session-runtime", "model-tool-result-runtime"}:
+        from equivalence.redaction_sdk import run_redaction_policy, run_model_sessions, run_model_tool_result
+
+        runner = {"redaction-policy-source": run_redaction_policy, "model-session-runtime": run_model_sessions,
+                  "model-tool-result-runtime": run_model_tool_result}[operation]
+        return runner(arguments, evidence_directory=case.get("_diagnosticDirectory"))
+    if operation == "trust-worker-runtime":
+        from equivalence.trust_worker_profile import run_trust_worker
+
+        return run_trust_worker(arguments, evidence_directory=case.get("_diagnosticDirectory"))
+    if operation == "model-tool-error-runtime":
+        from equivalence.tool_error_profile import run_tool_error_profile
+
+        return run_tool_error_profile(arguments, evidence_directory=case.get("_diagnosticDirectory"))
     if operation == "turn-trust-runtime":
         from equivalence.turn_trust_runtime import run_turn_trust
 

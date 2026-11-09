@@ -304,8 +304,9 @@ def _oracle(node: Path, script: Path, checkout: Path, cases: list[dict], timeout
         raise HarnessError("oracle-missing", "The independent TypeScript oracle runner is missing.")
     if not isinstance(timeout, (int, float)) or isinstance(timeout, bool) or not 0 < timeout <= 120:
         raise HarnessError("timeout-invalid", "The oracle requires a finite timeout of at most 120 seconds.")
+    source_policy = len(cases) == 1 and cases[0]["operation"] == "redaction-policy-source"
     body = json.dumps({"cases": cases, "dependencies": dependencies,
-                       "bindings": bindings}, ensure_ascii=False, allow_nan=False)
+                       "bindings": bindings}, ensure_ascii=source_policy, allow_nan=False)
     # No provider credentials, runtime switches, Node options or user auth state
     # cross into the source-only oracle. There is one dispatch and no retry.
     env = {"PATH": str(node.parent) + os.pathsep + os.defpath, "LANG": "en_US.UTF-8", "TZ": "UTC"}
@@ -325,6 +326,12 @@ def _oracle(node: Path, script: Path, checkout: Path, cases: list[dict], timeout
                     from equivalence.turn_trust_source_authority import prepare_turn_taint_source_authority
 
                     context_options["turn_taint_source"] = prepare_turn_taint_source_authority(checkout)
+                from equivalence.runtime_oracle import MODEL_RUNTIME_OPERATIONS
+
+                if len(cases) == 1 and cases[0]["operation"] in MODEL_RUNTIME_OPERATIONS:
+                    from equivalence.model_runtime_authority import prepare_model_node_authority
+
+                    context_options["model_node_runtime"] = prepare_model_node_authority(node)
                 execution = resources.enter_context(ReleaseOracleExecution(
                     release_runtime, _adapter_identity(), **context_options))
                 # Only this reviewed preload is supplied. User Node options,
@@ -347,6 +354,8 @@ def _oracle(node: Path, script: Path, checkout: Path, cases: list[dict], timeout
             }), encoding="utf-8")
             env.update({"OPENCLAW_STATE_DIR": str(source_root / "state"),
                         "OPENCLAW_CONFIG_PATH": str(source_config)})
+            if source_policy:
+                env.update({"OPENCLAW_HOME": str(source_root), "HOME": str(source_root)})
         # Native retry helpers use TS parameter properties. Node's own source
         # loader executes these with its built-in transform support; no modified
         # reference files or precompiled stand-ins are used.
@@ -361,6 +370,16 @@ def _oracle(node: Path, script: Path, checkout: Path, cases: list[dict], timeout
         if len(stdout.encode("utf-8")) > _MAX_OUTPUT_BYTES:
             raise HarnessError("oracle-output-limit", "The TypeScript oracle exceeded the bounded result size.")
         result = _json(stdout)
+        if source_policy:
+            from equivalence.model_runtime_authority import prepare_model_node_authority
+            from equivalence.redaction_policy_evidence import validate_redaction_policy_source_execution
+
+            try:
+                validate_redaction_policy_source_execution(result, cases[0], node_authority=prepare_model_node_authority(node),
+                    process_pid=process.pid, coordinator_pid=os.getpid(), fixture_root=source_root)
+            except (OSError, ValueError):
+                raise HarnessError("redaction-source-evidence-invalid",
+                                   "The isolated all-source policy caller lost its actual owner, runtime or complete output evidence.") from None
         if execution is not None:
             try:
                 result = execution.collect(result, cases)
@@ -382,6 +401,21 @@ def _oracle(node: Path, script: Path, checkout: Path, cases: list[dict], timeout
                         "caseIds": [case["id"] for case in cases], "captureStatus": "unavailable-or-unsafe",
                     }
                 raise failure from None
+    except HarnessError as error:
+        if source_policy and stdout:
+            def source_stream(value):
+                original = value.encode("utf-8")
+                retained = original[:4 * 1024 * 1024]
+                return {"sha256": hashlib.sha256(original).hexdigest(), "bytes": len(original),
+                        "retainedBytes": len(retained), "truncated": len(retained) != len(original),
+                        "text": retained.decode("utf-8", errors="replace")}
+
+            error.rejected_evidence = {
+                "schemaVersion": 1, "kind": "rejected-all-source-policy-diagnostics",
+                "validationStatus": "rejected", "authenticationStatus": "unverified", "caseIds": [cases[0]["id"]],
+                "coverageCredit": False, "stdout": source_stream(stdout), "stderr": source_stream(stderr),
+            }
+        raise
     except subprocess.TimeoutExpired:
         if process is not None:
             if os.name == "posix":
@@ -490,9 +524,12 @@ def run_suite(*, checkout: Path, node: Path, smoke: bool = False,
             "session-contract-runtime", "session-contract-helper-runtime",
             "transcript-boundary-runtime", "durable-session-runtime",
             "turn-trust-runtime",
+            "model-session-runtime", "model-tool-result-runtime", "trust-worker-runtime", "model-tool-error-runtime",
         }
         runtime_cases = [case for case in cases if case["operation"] in runtime_operations]
         source_cases = [case for case in cases if case["operation"] not in runtime_operations]
+        policy_source_cases = [case for case in source_cases if case["operation"] == "redaction-policy-source"]
+        ordinary_source_cases = [case for case in source_cases if case["operation"] != "redaction-policy-source"]
         report["manifestSha256"] = {"reference": _digest(reference_path), "scope": _digest(scope_path)}
         source_map = ROOT / "equivalence/source-map.json"
         if (reference_path.resolve() == ROOT / "equivalence/reference.json"
@@ -523,23 +560,53 @@ def run_suite(*, checkout: Path, node: Path, smoke: bool = False,
         native_storage = required_artifact_execution or bool(reuse_operations)
         cache_bindings = any(case["operation"] == "embedding-cache" for case in cases)
         publication_bindings = any(case["operation"] == "index-publication" for case in cases)
-        if native_storage:
+        if native_storage or policy_source_cases:
             from equivalence.dependencies import prepare_dependencies
 
             try:
                 dependencies = prepare_dependencies(checkout, dependency_root)
-                bindings = _reference_bindings(checkout, cache=cache_bindings,
-                                               publication=publication_bindings,
-                                               reuse_operations=reuse_operations)
+                if native_storage:
+                    bindings = _reference_bindings(checkout, cache=cache_bindings,
+                                                   publication=publication_bindings,
+                                                   reuse_operations=reuse_operations)
             except (OSError, ValueError, RuntimeError):
                 raise HarnessError("reference-dependencies-unavailable",
                                    "Verified native dependencies and binding provenance are required; "
                                    "prepare them with python -m equivalence.dependencies --install.") from None
         adapter_hashes = _adapter_identity()
         report["adapterSha256"] = adapter_hashes
-        oracle = (_oracle(node, oracle_path, checkout, source_cases, timeout_seconds,
+        oracle = (_oracle(node, oracle_path, checkout, ordinary_source_cases, timeout_seconds,
                           dependencies=dependencies, bindings=bindings)
-                  if source_cases else {"results": [], "sources": []})
+                  if ordinary_source_cases else {"results": [], "sources": [], "dependencySources": []})
+        if policy_source_cases:
+            from equivalence.model_runtime_authority import prepare_model_node_authority
+            from equivalence.redaction_policy_evidence import prepare_redaction_policy_source_bindings
+
+            report["redactionPolicySourceBindings"] = prepare_redaction_policy_source_bindings(checkout)
+            report["modelNodeAuthority"] = prepare_model_node_authority(node)
+            report["sourcePolicyDiagnostics"] = []
+            source_members = {entry["path"]: entry for entry in oracle["sources"]}
+            dependency_members = {(entry["package"], entry["path"]): entry for entry in oracle.get("dependencySources", [])}
+            for case in policy_source_cases:
+                try:
+                    native = _oracle(node, oracle_path, checkout, [case], timeout_seconds, dependencies=dependencies)
+                except HarnessError:
+                    report["failedReferenceCaseId"] = case["id"]
+                    raise
+                oracle["results"].extend(native["results"])
+                report["sourcePolicyDiagnostics"].append({"id": case["id"], "sourceExecution": native["sourceExecution"]})
+                for entry in native["sources"]:
+                    if entry["path"] in source_members and source_members[entry["path"]] != entry:
+                        raise HarnessError("source-changed", "An isolated source owner changed between cases.")
+                    source_members[entry["path"]] = entry
+                for entry in native.get("dependencySources", []):
+                    key = (entry["package"], entry["path"])
+                    if key in dependency_members and dependency_members[key] != entry:
+                        raise HarnessError("dependency-changed", "An isolated source dependency changed between cases.")
+                    dependency_members[key] = entry
+            oracle["sources"] = [source_members[key] for key in sorted(source_members)]
+            oracle["dependencySources"] = [dependency_members[key] for key in sorted(dependency_members)]
+        report["runtimeDiagnostics"] = []
         runtime_config = None
         if runtime_cases:
             from equivalence.release_runtime import prepare_release_runtime
@@ -656,7 +723,7 @@ def run_suite(*, checkout: Path, node: Path, smoke: bool = False,
                 except (OSError, ValueError):
                     raise HarnessError("session-contract-runtime-owner-unavailable",
                                        "The reviewed native session admission/visibility owners could not be verified.") from None
-            report["releaseSources"], report["releaseTraces"], report["runtimeDiagnostics"] = [], [], []
+            report["releaseSources"], report["releaseTraces"] = [], []
             if any(case["operation"] == "transcript-boundary-runtime" for case in runtime_cases):
                 from equivalence.transcript_boundary_runtime_bindings import prepare_transcript_boundary_runtime_bindings
 
@@ -689,6 +756,31 @@ def run_suite(*, checkout: Path, node: Path, smoke: bool = False,
                 except (OSError, ValueError):
                     raise HarnessError("turn-trust-runtime-owner-unavailable",
                                        "The original mixed-source turn and release tool owners could not be verified.") from None
+            new_model_operations = {case["operation"] for case in runtime_cases} & {
+                "model-session-runtime", "model-tool-result-runtime", "trust-worker-runtime", "model-tool-error-runtime"}
+            model_binding_preparers = {}
+            if new_model_operations:
+                from equivalence.model_runtime_authority import prepare_model_node_authority
+
+                report["modelNodeAuthority"] = prepare_model_node_authority(node)
+            if "model-session-runtime" in new_model_operations:
+                from equivalence.model_runtime_bindings import prepare_model_session_runtime_bindings
+
+                model_binding_preparers["modelSessionRuntimeBindings"] = prepare_model_session_runtime_bindings
+            if "model-tool-result-runtime" in new_model_operations:
+                from equivalence.model_runtime_bindings import prepare_model_tool_result_runtime_bindings
+
+                model_binding_preparers["modelToolResultRuntimeBindings"] = prepare_model_tool_result_runtime_bindings
+            if "trust-worker-runtime" in new_model_operations:
+                from equivalence.trust_worker_runtime_bindings import prepare_trust_worker_runtime_bindings
+
+                model_binding_preparers["trustWorkerRuntimeBindings"] = prepare_trust_worker_runtime_bindings
+            if "model-tool-error-runtime" in new_model_operations:
+                from equivalence.model_tool_error_bindings import prepare_model_tool_error_runtime_bindings
+
+                model_binding_preparers["modelToolErrorRuntimeBindings"] = prepare_model_tool_error_runtime_bindings
+            for name, prepare in model_binding_preparers.items():
+                report[name] = prepare(checkout, Path(runtime_config["runtimeRoot"]))
             observed_release = {}
             for case in runtime_cases:
                 # The real manager retains global state owners. Each distinct
@@ -712,6 +804,11 @@ def run_suite(*, checkout: Path, node: Path, smoke: bool = False,
             try:
                 if prepare_release_runtime(checkout, release_runtime_root) != runtime_config:
                     raise ValueError("Runtime artifacts changed.")
+                for name, prepare in model_binding_preparers.items():
+                    if prepare(checkout, Path(runtime_config["runtimeRoot"])) != report[name]:
+                        raise ValueError("A model runtime source/export declaration changed.")
+                if new_model_operations and prepare_model_node_authority(node) != report["modelNodeAuthority"]:
+                    raise ValueError("The approved model boundary executable changed.")
                 if flush_runtime and prepare_flush_runtime_bindings(
                     checkout, Path(runtime_config["runtimeRoot"]),
                 ) != report["flushRuntimeBindings"]:
@@ -761,11 +858,15 @@ def run_suite(*, checkout: Path, node: Path, smoke: bool = False,
                 validate_dependency_sources(dependencies, oracle.get("dependencySources", []))
                 if required_artifact_execution and not oracle.get("dependencySources"):
                     raise ValueError("Native dependency execution evidence is missing.")
-                current_bindings = _reference_bindings(checkout, cache=cache_bindings,
-                                                       publication=publication_bindings,
-                                                       reuse_operations=reuse_operations)
-                if current_bindings != bindings:
-                    raise ValueError("Binding provenance changed.")
+                if bindings is not None:
+                    current_bindings = _reference_bindings(checkout, cache=cache_bindings,
+                                                           publication=publication_bindings,
+                                                           reuse_operations=reuse_operations)
+                    if current_bindings != bindings:
+                        raise ValueError("Binding provenance changed.")
+                if policy_source_cases and (prepare_redaction_policy_source_bindings(checkout) != report["redactionPolicySourceBindings"]
+                        or prepare_model_node_authority(node) != report["modelNodeAuthority"]):
+                    raise ValueError("The isolated all-source policy or executable authority changed.")
             except (OSError, ValueError, RuntimeError):
                 raise HarnessError("oracle-dependency-mismatch",
                                    "Native dependency bytes or export provenance changed during execution.") from None
@@ -794,8 +895,9 @@ def run_suite(*, checkout: Path, node: Path, smoke: bool = False,
             raise HarnessError("reference-changed", "The reference checkout changed during comparison.")
         report["sources"] = oracle.get("sources", [])
         native_rows = {row["id"]: row for row in oracle["results"]}
+        evidence_cases = [*runtime_cases, *policy_source_cases]
         python_diagnostics = (Path(resources.enter_context(tempfile.TemporaryDirectory(
-            prefix="memory-python-runtime-evidence-"))) if runtime_cases else None)
+            prefix="memory-python-runtime-evidence-"))) if evidence_cases else None)
         for case in cases:
             row = {"id": case["id"], "requirement": case["requirement"], "covers": case["covers"],
                    "operation": case["operation"], "input": case["input"]}
@@ -818,15 +920,16 @@ def run_suite(*, checkout: Path, node: Path, smoke: bool = False,
             else:
                 try:
                     python_case = deepcopy(case)
-                    if case in runtime_cases:
+                    if case in evidence_cases:
                         directory = python_diagnostics / hashlib.sha256(case["id"].encode()).hexdigest()
                         python_case["_diagnosticDirectory"] = directory
                         row["referenceMode"] = (
                             "authenticated-mixed-original-source-and-release"
-                            if case["operation"] == "turn-trust-runtime" else "authenticated-official-release"
+                            if case["operation"] == "turn-trust-runtime" else
+                            "authenticated-all-source-redaction-policy" if case in policy_source_cases else "authenticated-official-release"
                         )
                     python = python_runner(python_case)
-                    if case in runtime_cases:
+                    if case in evidence_cases:
                         evidence = directory / "python-raw.json"
                         info = evidence.lstat()
                         if (not stat.S_ISREG(info.st_mode) or info.st_nlink != 1

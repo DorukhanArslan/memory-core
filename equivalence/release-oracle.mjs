@@ -26,6 +26,10 @@ const operations = {
   "transcript-boundary-runtime": ["transcript-boundary-runtime.mjs", "runTranscriptBoundaryRuntime"],
   "durable-session-runtime": ["durable-session-runtime.mjs", "runDurableSessionRuntime"],
   "turn-trust-runtime": ["turn-trust-runtime.mjs", "runTurnTrustRuntime"],
+  "model-session-runtime": ["model-session-runtime.mjs", "runModelSessionRuntime"],
+  "model-tool-result-runtime": ["model-tool-result-runtime.mjs", "runModelToolResultRuntime"],
+  "trust-worker-runtime": ["trust-worker-profile-runtime.mjs", "runTrustWorkerRuntime"],
+  "model-tool-error-runtime": ["model-tool-error-runtime.mjs", "runModelToolErrorRuntime"],
 };
 const results = [];
 for (const testCase of request.cases) {

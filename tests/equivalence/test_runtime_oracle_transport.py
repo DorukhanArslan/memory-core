@@ -97,6 +97,35 @@ def test_context_uses_reviewed_preload_and_owned_state_without_runtime_credentia
     assert config["kind"] == "labelled-release-transport-fixture"
 
 
+def test_model_binary_capability_cannot_expand_an_existing_runtime_profile(transport):
+    from equivalence.model_runtime_authority import APPROVED_NODE_RUNTIME
+
+    execution, _config, case, result = transport
+    execution.model_node_runtime = {"execPath": "/reviewed/node", **APPROVED_NODE_RUNTIME}
+    with pytest.raises(RuntimeOracleError, match="restricted"):
+        execution.collect(result, [case])
+
+
+@pytest.mark.parametrize("operation", ("model-session-runtime", "model-tool-result-runtime", "trust-worker-runtime", "model-tool-error-runtime"))
+def test_new_model_profiles_cannot_omit_the_reviewed_binary_capability(transport, operation):
+    execution, _config, case, result = transport
+    case["operation"] = operation
+    with pytest.raises(RuntimeOracleError, match="restricted"):
+        execution.collect(result, [case])
+
+
+def test_model_binary_capability_does_not_grant_reference_source_imports(transport):
+    from equivalence.model_runtime_authority import APPROVED_NODE_RUNTIME
+
+    _execution, config, _case, _result = transport
+    adapters = {path.name: _hash(path.read_bytes()) for path in (ROOT / "equivalence").glob("*.mjs")}
+    authority = {"execPath": "/reviewed/node", **APPROVED_NODE_RUNTIME}
+    with ReleaseOracleExecution(config, adapters, model_node_runtime=authority) as execution:
+        assert execution._context["approvedNodeRuntime"] == authority
+        assert execution._context["approvedReferenceSources"] == []
+        assert execution._context["fixtureSourceCaptures"] == []
+
+
 def test_real_preload_keeps_worker_console_on_stderr_and_denies_unreviewed_execution(transport):
     """An optional Node transport check; the labelled files are not parity evidence."""
     node = shutil.which("node")

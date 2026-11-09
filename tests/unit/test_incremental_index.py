@@ -193,8 +193,12 @@ def test_default_cache_capacity_is_applied_at_store_writes(tmp_path, monkeypatch
     })
     store.reindex(workspace)
     assert len(cache_rows(store)) == 2
+    cached = {row[3] for row in cache_rows(store)}
+    missing_texts = {text for text in ("alpha", "beta", "gamma")
+                     if hashlib.sha256(text.encode()).hexdigest() not in cached}
+    before = len(provider.calls)
     store.reindex(workspace, force=True)
-    assert len(provider.calls[-1]) == 1
+    assert {text for call in provider.calls[before:] for text in call} == missing_texts
     assert len(cache_rows(store)) == 2
     assert store.count_chunks() == 3
 
@@ -228,8 +232,9 @@ def test_dimension_change_invalidates_cache_and_explicit_retry_rebuilds_all_sour
         store.reindex(workspace)
     assert published(store) == before
     assert cache_rows(store) == []
+    before_retry = len(provider.calls)
     assert store.reindex(workspace) == 2
-    assert set(provider.calls[-1]) == {"alpha", "beta"}
+    assert sorted(text for call in provider.calls[before_retry:] for text in call) == ["alpha", "beta"]
     assert store.read_index_meta()["vectorDims"] == 2
     assert {len(json.loads(row[0])) for row in rows(store, "SELECT embedding FROM chunks")} == {2}
 

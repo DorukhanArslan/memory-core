@@ -52,24 +52,24 @@ Comparisons must not normalize away behavior. A platform-specific path, generate
 Entries remain pending until their complete acceptance conditions are verified against `v2026.9.9`. Their detailed acceptance points and stable identifiers are in [scope.json](../equivalence/scope.json). A helper that already exists in Python still needs the new differential evidence. A known difference must stay visible until its implementation and tests agree. Bounded passing subsets are recorded below without closing the containing contract.
 
 <!-- CURRENT-VERIFICATION-START -->
-The latest verified bounded baseline has **54/128 acceptance conditions (42.2%)**, with
-**74 conditions** remaining. This percentage counts unweighted verified conditions; it is
+The latest verified bounded baseline has **62/128 acceptance conditions (48.4%)**, with
+**66 conditions** remaining. This percentage counts unweighted verified conditions; it is
 not engineering effort, elapsed work or a time estimate. The fixed scope remains 64 contracts
-and 128 conditions. The latest entry-provenance-and-host-publication batch targeted **+2** and verified
-**+2**, from **52 to 54/128**.
+and 128 conditions. The latest atomic-write, path-read, memory-budget, bootstrap and ranking batch targeted **+8** and verified
+**+8**, from **54 to 62/128**.
 
-The fresh integrated report executes **1,303 cases: 1,291 matches,
-12 visible uncredited differences and 0 blocked cases**, with no runner errors.
-All **5,519 regression tests** and both clean package consumers pass. The same 1,625
+The fresh integrated report executes **1,395 cases: 1,381 matches,
+14 visible uncredited differences and 0 blocked cases**, with no runner errors.
+All **6,433 regression tests** and both clean package consumers pass. The same 1,625
 historical/live skips grant no acceptance credit. The full gate remains `mismatched`;
 these results do not establish complete OpenClaw equivalence.
 
 | Contract status | Contracts | Verified conditions | Remaining conditions |
 | --- | ---: | ---: | ---: |
-| Complete | 25 | 50 | 0 |
-| Partial | 4 | 4 | 4 |
-| Pending verification | 35 | 0 | 70 |
-| Total | 64 | 54 | 74 |
+| Complete | 28 | 56 | 0 |
+| Partial | 6 | 6 | 6 |
+| Pending verification | 30 | 0 | 60 |
+| Total | 64 | 62 | 66 |
 
 Pending verification can include existing implementation. Partial contracts retain one open
 condition. Infrastructure sections 1–3 remain **20/22 tasks completed**; infrastructure and
@@ -81,8 +81,8 @@ Current status of all 64 contracts:
 | No. | Contract | Status | Verified conditions |
 | ---: | --- | --- | ---: |
 | 1 | `storage.discovery` | Complete | 2/2 |
-| 2 | `storage.path-safety` | Pending verification | 0/2 |
-| 3 | `storage.atomic-writes` | Pending verification | 0/2 |
+| 2 | `storage.path-safety` | Complete | 2/2 |
+| 3 | `storage.atomic-writes` | Complete | 2/2 |
 | 4 | `storage.workspace-isolation` | Complete | 2/2 |
 | 5 | `lexical.tokenization` | Complete | 2/2 |
 | 6 | `lexical.fts-query` | Complete | 2/2 |
@@ -110,18 +110,18 @@ Current status of all 64 contracts:
 | 28 | `sessions.visibility-lineage` | Complete | 2/2 |
 | 29 | `sessions.reset-hook` | Pending verification | 0/2 |
 | 30 | `sessions.durable-context` | Complete | 2/2 |
-| 31 | `prompt.bootstrap-discovery` | Pending verification | 0/2 |
+| 31 | `prompt.bootstrap-discovery` | Partial | 1/2 |
 | 32 | `prompt.bootstrap-budget` | Complete | 2/2 |
 | 33 | `prompt.runtime-context` | Pending verification | 0/2 |
 | 34 | `prompt.history-repair` | Pending verification | 0/2 |
 | 35 | `flush.plan-target` | Pending verification | 0/2 |
 | 36 | `flush.trigger-usage` | Complete | 2/2 |
 | 37 | `flush.execute-finalize` | Partial | 1/2 |
-| 38 | `compaction.memory-budget` | Pending verification | 0/2 |
+| 38 | `compaction.memory-budget` | Complete | 2/2 |
 | 39 | `compaction.context-assembly` | Pending verification | 0/2 |
 | 40 | `compaction.provider-overflow` | Pending verification | 0/2 |
 | 41 | `promotion.recall-signals` | Pending verification | 0/2 |
-| 42 | `promotion.ranking-gates` | Pending verification | 0/2 |
+| 42 | `promotion.ranking-gates` | Partial | 1/2 |
 | 43 | `promotion.apply-reconcile` | Pending verification | 0/2 |
 | 44 | `promotion.deep-consolidation` | Pending verification | 0/2 |
 | 45 | `dreaming.light` | Pending verification | 0/2 |
@@ -147,21 +147,19 @@ Current status of all 64 contracts:
 
 <!-- CURRENT-VERIFICATION-END -->
 
-The independently reviewed path/read batch is staged separately for the next
-integrated run. Its complete eleven-family default catalog registers both
-`storage.path-safety` conditions and all 99 genuine whole-tool calls; a literal
-family/input guard rejects reduced or helper-only claims. The corrected11 and
-legacy12 packets retain their original empty coverage metadata and hashes.
-The current verification totals above remain the last integrated baseline until
-that gate runs. [Path proof and closeout](storage_path_safety_proof.md) records
-the original source actors, real FD/error behavior, exact pre-open race
-authority, full raw filesystem evidence, and the broader SDK-only race limits.
+The integrated path/read proof now verifies both `storage.path-safety` conditions
+with all eleven families and 99 genuine whole-tool calls. Its literal family/input
+guard rejects reduced or helper-only claims. The corrected11 and legacy12 packets
+retain their original empty coverage metadata and hashes; fresh registered proof
+is recorded in the integrated closeout below. [Path proof](storage_path_safety_proof.md)
+records the original source actors, checked descriptor/error behavior, exact
+pre-open race authority, full raw filesystem evidence and broader SDK-only limits.
 
 ### Storage and workspace
 
 - [x] **`storage.discovery` — Discover exactly the eligible memory files.** Compare roots, nested Markdown, case sensitivity, order, hidden artifacts and disappearing files. Exclude or admit symlinks and non-regular files exactly as the pinned reference does.
-- [ ] **`storage.path-safety` — Enforce memory path and read boundaries.** Exercise absolute, relative, traversal, encoded and symlink paths. Compare rejected operations, result shapes and absence of unintended writes.
-- [ ] **`storage.atomic-writes` — Publish writes atomically.** Compare append, replace, exclusive creation and concurrent rename outcomes. Inject write, flush, fsync and publication failures and inspect the surviving files.
+- [x] **`storage.path-safety` — Enforce memory path and read boundaries.** Exercise absolute, relative, traversal, encoded and symlink paths. Compare rejected operations, result shapes and absence of unintended writes.
+- [x] **`storage.atomic-writes` — Publish writes atomically.** Compare append, replace, exclusive creation and concurrent rename outcomes. Inject write, flush, fsync and publication failures and inspect the surviving files.
 - [x] **`storage.workspace-isolation` — Keep workspace and subject state separate.** Reuse one host configuration across distinct workspaces and subjects. Prove files, indexes, recalls and maintenance state cannot cross the selected boundary.
 
 ### Lexical and chunking
@@ -217,7 +215,7 @@ authority, full raw filesystem evidence, and the broader SDK-only race limits.
 - [ ] **`flush.plan-target` — Match flush plan and target selection.** Compare enabled/disabled configuration, model selection, timezone and daily target validation. Compare prompts, reserve terms and failure before a target can be safely prepared.
 - [x] **`flush.trigger-usage` — Match flush trigger accounting.** Feed fresh/stale usage, missing usage, transcript byte limits and compaction counters. Compare trigger decisions, heartbeat exclusions and retry/exhaustion state.
 - [ ] **`flush.execute-finalize` — Match flush execution and finalization.** Run the same labelled model/tool sequence through both hosts. Compare append-only writes, index readiness, provenance and successful or failed cycle stamps.
-- [ ] **`compaction.memory-budget` — Match curated memory budget compaction.** Exercise promotion sections mixed with user text and exact size/loss limits. Compare preserved bytes, removed sections, deferral and reconciliation markers.
+- [x] **`compaction.memory-budget` — Match curated memory budget compaction.** Exercise promotion sections mixed with user text and exact size/loss limits. Compare preserved bytes, removed sections, deferral and reconciliation markers.
 - [ ] **`compaction.context-assembly` — Match context assembly and compaction replay.** Compare active transcript projections, summaries, checkpoints, tool-result bounds and replay decisions. Retain trailing required results and provider continuation data across restart.
 - [ ] **`compaction.provider-overflow` — Match overflow recovery behavior.** Drive preflight and mid-turn overflow, truncation, compact/retry and terminal failures. Compare dispatch counts, protected messages and exact continuation/admission decisions.
 
@@ -1891,3 +1889,78 @@ follows those fixes; the failures were not discarded or converted into matches.
 Reference execution uses the authenticated official compiled release and the exact
 approved Node 24.16.0 / ICU 78.3 / Unicode 17 binary. `sourceBuildReproduced` remains
 false. **74 conditions remain unverified**, and the full gate remains `mismatched`.
+
+
+### Atomic, path, budget, bootstrap and ranking closeout — 2026-11-09
+
+The fixed scope remains 64 contracts / 128 conditions, SHA-256
+`a8e066e63970dd0be734485d62a5932640894b8c0a42f47ac3eb67f784cbc7b9`.
+This batch targets and verifies **eight conditions**, from 54 to **62/128 (48.4%)**.
+These are unweighted acceptance counts; they do not measure engineering effort.
+There are **66 conditions remaining: 28 contracts complete, six partial and 30 pending**.
+
+| Requirement | Required outcome families | Required boundary families | Verified conditions |
+| --- | ---: | ---: | ---: |
+| `storage.path-safety` | 11/11 | 11/11 | 2/2 |
+| `storage.atomic-writes` | 41/41 | 32/32 | 2/2 |
+| `compaction.memory-budget` | 13/13 | 13/13 | 2/2 |
+| `prompt.bootstrap-discovery` | 9/9 | 9/11 | 1/2 |
+| `promotion.ranking-gates` | 15/15 | 15/16 | 1/2 |
+
+The fresh full comparison ran on clean implementation
+`21177bf519e3e0d2b07454b32fc9734fd7361bbf`: **155 SDK source files**, SHA-256
+`38f3c9ce2fcca74060c81b01ad17f893d6a5cd5d186061eed1a2f9158929192d`.
+The retained report, `.equivalence-results/atomic-path-budget-bootstrap-ranking-full.json`,
+has SHA-256 `6bd983bcbb1ec99e40e757f544085bd036f38e02c37ef212a987794e1650f2eb`
+and contains 274,817,208 bytes. From 07:14:50 to 07:52:42 UTC it executed
+**1,395 cases: 1,381 matched, 14 ordinary differences, zero blocked and no runner errors**,
+in 2,272.705012 seconds. No previously matching case regressed. The earlier get-tool
+symlink-loop cause diagnostic now also matches. All original 1,303 cases remain,
+with 92 new registered families; source inventory itself adds no credit.
+
+The real SDK changes include checked-descriptor reads, primary/cleanup error preservation
+and no-replace publication, identity-aware budget markers and newline-preserving preimages,
+actual bootstrap path/provenance classification, and canonical recall/phase views with
+JavaScript numeric gates and scoring. Embedding batching/cache corrections are included
+as production improvements, with **no embedding-cache condition credit** in this batch.
+The narrow upstream plugin identifier remains stable across SDK rebranding.
+
+Detailed source, authority, raw-channel and first-failure limits are retained in the
+[atomic closeout](../equivalence/ATOMIC_PUBLICATION_CLOSEOUT.md),
+[path proof](storage_path_safety_proof.md), [budget closeout](memory_budget_closeout.md),
+[bootstrap proof](bootstrap_discovery_equivalence.md) and
+[ranking closeout](promotion_ranking_closeout.md). Independent executable/source/backend
+capabilities are mutually exclusive; exact operation, input-kind and complete reviewed
+literal guards run before imports where required. The real atomic return checkpoint
+remains distinct from process-exit cleanup. The read-race hook is confined to its one
+reviewed fixture in the main thread. No worker, source or provider authority is borrowed
+from another lane.
+
+The first full regression run on `21177bf` is retained unchanged in
+`.equivalence-results/atomic-path-budget-bootstrap-ranking-regressions.log`:
+**6,432 passed, one failed, 1,625 skipped** in 529.42 seconds. Its sole failure injected
+an error through `Path.read_bytes`, which the checked-descriptor reader no longer uses.
+Test-only commit `27ec24bd73f4019d194902568a866c95a34df6ea` injects the same real read error
+through `os.read` on the actual target descriptor and verifies one attempted read and
+redacted public diagnostics. It changes no SDK, adapter, catalog or Native runtime bytes.
+The fresh clean full rerun at that commit passes **6,433 tests, zero failures and the same
+1,625 historical/live skips** in 499.41 seconds. Its retained log is
+`/workspace/scratch/memory-core-equivalence-next-regression-fix/.equivalence-results/atomic-path-budget-bootstrap-ranking-regressions-read-fault-fixed.log`.
+Both clean offline wheel and sdist consumers pass on `21177bf`, with the identical SDK
+source hash, including real save/immediate recall/reopen and ten invalid typed calls.
+The first failed run was not replaced by the passing rerun.
+
+The 14 visible differences comprise the earlier Unicode collation, compressed same-size
+transcript cache and first warm-flush recall diagnostics; eight redaction/identity/regex
+boundary differences; two bootstrap default-layout/legacy-state selection differences;
+and the stronger rejection of malformed primitive promotion provenance. The latter
+three still cover their registered boundary conditions, which therefore remain open.
+No raw-secret strong cache or weaker trust admission was introduced for matching results.
+The report has 64 uncovered conditions plus these two covered-but-unverified conditions;
+**64 uncovered does not mean only 64 conditions remain**.
+
+Reference execution uses the authenticated official compiled release, exact pinned source
+and approved Node 24.16.0 / ICU 78.3 / Unicode 17 binary. `sourceBuildReproduced` remains
+false. There were **zero paid provider calls and no forwarded provider credentials**.
+The full gate intentionally remains `mismatched`; these bounded results establish neither
+complete OpenClaw equivalence nor the still-unverified host restart/turn conditions.

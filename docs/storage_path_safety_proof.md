@@ -66,21 +66,27 @@ The mismatches are concrete production differences:
 The other lexical, traversal, encoded, null-byte, hardlink, workspace-root, and
 plain-extra-root batches match. No production fix preceded this first report.
 
-## Remaining production work
+## Production follow-up
 
-The refusal causes need an IO-boundary correction using actual filesystem facts
-and the attributed Node system-error bridge, retaining original Python exceptions.
-Patterned roots need public API/type support and the same normalization/matching
-policy already used by discovery. These are production changes, not output
-normalization or comparison repairs.
+Commit `e1273befa21329fe82fa8245cbd660abbb3d4abe` corrects refusal causes at their
+actual IO boundaries using the attributed Node system-error bridge, retaining
+original Python exceptions. It adds public path/pattern root support using the
+existing discovery normalization and matcher. These are production changes;
+the comparisons do not repair output or synthesize expected results.
 
-The current production reader separately validates a path and calls
-`Path.read_bytes()`. Native secure IO pins file/root identities, uses a nofollow
-open, and checks identity and canonical containment around consumption. This
-matrix does not schedule descriptor/path replacement races and cannot establish
-that stronger equivalence. A deterministic OS scenario and coordinated production
-design are required before claiming it. Retry timing, deadlines, general platform
-semantics, and write admission are also outside this batch. Contract #3 is unchanged.
+The previous production reader separately validated a path and called
+`Path.read_bytes()`. The replacement read owner now follows the original
+local-descriptor and root-admission owners: pin root and leaf identities, open
+with nofollow/nonblocking flags, check root/file/canonical-file/root identity and
+containment, then consume the same descriptor. It reuses the existing descriptor
+byte loop and IO fact bridge. Hardlinks retain the native allow policy, all
+rejection paths close descriptors, and no extra post-consumption pathname gate
+is added. The original consumed descriptor remains authoritative.
+
+The separate genuine pre-open replacement scenario below covers one exact OS
+cut. Other replacement schedules have SDK unit guards, but no native proof is
+claimed for them. Retry timing, deadlines, general platform semantics, and write
+admission remain outside this batch. Contract #3 is unchanged.
 
 The focused fixture, evidence, and existing read regressions passed 65 tests;
 Ruff, Python compilation, Node syntax checking, and whitespace checks passed.
@@ -118,3 +124,36 @@ The genuine dispatch stack includes `local-file-descriptor.js:41` and
 `root-impl.js:454`; all 2,885 release artifacts remain authenticated. No backend
 fallback was installed. The first ten-case packet and this race packet remain
 unchanged after subsequent production work.
+
+## Corrected committed comparisons
+
+The same ten original static inputs and the separate race input were compared
+again on clean commit `e1273befa21329fe82fa8245cbd660abbb3d4abe`. Every input was
+asserted unchanged against its retained first packet before execution. Production
+source SHA-256 is
+`d694238b1ffda6b6ec20b4867136be5106729ea827a573c178b817fb9f198cb3`, across 151 Python
+source files.
+
+`.equivalence-results/storage-path-contract-corrected11.json` records **11 matched,
+0 mismatched, 0 blocked**, 99 complete whole-tool calls, and no runner errors.
+Each batch retains 2,885 authenticated release files. Its SHA-256 is
+`d9ffe25b271e06fe961072bf272a314531713ab45ac7c356dd0e1ff923472a0f`.
+All static before/after content and write-stat observations stay unchanged.
+The intentionally mutated race fixture retains matching changed observations;
+the SDK now returns the complete original symlink/open/ELOOP refusal instead of
+consuming the outside sentinel.
+
+The 12 previously accepted whole-get batches were also repeated with their
+original product inputs, clearing only this repeat report's coverage metadata.
+`.equivalence-results/storage-path-get-regression12.json` records **12 matched,
+0 mismatched, 0 blocked**, 65 complete calls, and no runner errors on the same
+clean committed source. Its SHA-256 is
+`21c334b2a2436eb7e2509f6bd8ce6a1532702b702036bfb584eac7e81059f992`.
+
+The final affected regression set passed **371 tests**, plus **2 public consumer
+typing checks**. It includes real leaf, parent, root, hardlink-alias, FIFO, unlink,
+and late-consumption OS scenarios, descriptor release, raw-stat completeness,
+snapshot identity, exact capability boundaries, and existing read contracts.
+Ruff and whitespace checks pass. Every new or repeat comparison keeps
+`covers: []`; the reports leave all 128 points uncovered in their isolated
+comparison scope. No acceptance points or full-equivalence claim are assigned.

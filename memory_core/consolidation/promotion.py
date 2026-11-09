@@ -1556,7 +1556,12 @@ def _append_to_memory(
     )
     if budget_chars > 0 and utf16_len(content) > budget_chars:
         return (), f"MEMORY.md budget exceeded ({utf16_len(content)} > {budget_chars} chars)"
-    path.write_text(content, encoding="utf-8")
+    from memory_core.atomic_publication import commit_memory_content, hash_memory_content
+
+    target = path.resolve() if path.is_symlink() else path
+    commit_memory_content(target, content=content, expected_content=existing,
+                          expected_hash=hash_memory_content(existing), temp_prefix=f"{path.name}.promotion",
+                          allow_in_place_fallback=True)
     return dropped_dates, None
 
 

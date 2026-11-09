@@ -15,6 +15,7 @@ await fs.mkdir(root, { recursive: true });
 if (input.initial !== null) {
   await fs.writeFile(target, input.initial); await fs.chmod(target, input.mode);
 }
+if (input.parentMode !== undefined) await fs.chmod(root, input.parentMode);
 const { commitMemoryContent } = await import(pathToFileURL(path.join(runtimeRoot,
   "dist/short-term-promotion-memory-write-DLJgScco.mjs")).href);
 const methods = ["open", "rename", "readFile", "stat", "lstat", "unlink", "mkdir", "chmod", "writeFile", "rm", "copyFile"];
@@ -31,26 +32,42 @@ const fault = (stage, file) => {
     throw Object.assign(new Error(input.fault.message), { code: input.fault.code, path: file, syscall: stage });
   }
 };
-const errorEnvelope = (error) => ({ name: error.name, message: error.message,
-  code: error.code ?? null, path: error.path ?? null, publication: error.publication ?? null,
-  cause: error.cause === undefined ? null : errorEnvelope(error.cause) });
-const rawError = (error) => ({ type: error.constructor.name, name: error.name, message: error.message,
-  properties: Object.fromEntries(Object.getOwnPropertyNames(error).map((key) =>
-    [key, error[key] instanceof Error ? rawError(error[key]) : error[key]])) });
+const errorEnvelope = (error) => {
+  const observe = (value) => value instanceof Error ? errorEnvelope(value)
+    : Array.isArray(value) ? value.map(observe) : value !== null && typeof value === "object"
+      ? Object.fromEntries(Object.entries(value).map(([key, item]) => [key, observe(item)])) : value;
+  const privateKeys = new Set(["name", "message", "stack", "code", "path", "cause", "publication", "errno", "syscall"]);
+  return { name: error.name, message: error.message, code: error.code ?? null, path: error.path ?? null,
+    publication: error.publication ?? null, cause: error.cause === undefined ? null : errorEnvelope(error.cause),
+    ...Object.fromEntries(Object.getOwnPropertyNames(error).filter((key) => !privateKeys.has(key))
+      .map((key) => [key, observe(error[key])])) };
+};
+const rawError = (error) => {
+  const observe = (value) => value instanceof Error ? rawError(value) : Array.isArray(value) ? value.map(observe)
+    : value !== null && typeof value === "object" ? Object.fromEntries(Object.entries(value).map(([key, item]) => [key, observe(item)])) : value;
+  return { type: error.constructor.name, name: error.name, message: error.message,
+    properties: Object.fromEntries(Object.getOwnPropertyNames(error).map((key) => [key, observe(error[key])])) };
+};
 try {
   for (const name of methods) fs[name] = async (...args) => {
     raw.calls.push({ operation: name, arguments: args.map(value) });
     if (name === "rename") fault("rename-before", args[1]);
+    if (name === "open" && args[1] === "wx") raw.tempPaths.push(String(args[0]));
     const returned = await original[name](...args);
     if (name === "open") {
       const filename = String(args[0]);
-      if (args[1] === "wx") raw.tempPaths.push(filename);
       for (const operation of ["write", "writeFile", "sync", "truncate", "chmod", "stat", "close"]) {
         const invoke = returned[operation].bind(returned);
         returned[operation] = async (...parameters) => {
           raw.calls.push({ operation: "handle." + operation, path: filename, fd: returned.fd, arguments: parameters.map(value) });
           if (operation === "sync" && raw.tempPaths.includes(filename)) fault("temp-sync", filename);
           if (operation === "sync" && filename === root) fault("parent-sync", filename);
+          if (operation === "sync" && args[1] === "r+") fault("fallback-sync", filename);
+          if (operation === "writeFile" && args[1] === "r+" && input.fault?.stage === "fallback-write-partial" && armed) {
+            const bytes = Buffer.from(parameters[0], "utf8").subarray(0, input.partialBytes);
+            await returned.write(bytes, 0, bytes.length, 0);
+            fault("fallback-write-partial", filename);
+          }
           return await invoke(...parameters);
         };
       }
@@ -74,7 +91,7 @@ try {
   };
   const parameters = { filePath: target, tempPrefix: ".MEMORY.atomic-probe", content: input.replacement,
     expectedContent: input.initial ?? "", expectedHash: (await import("node:crypto")).createHash("sha256").update(input.initial ?? "").digest("hex"),
-    allowInPlaceFallback: false };
+    allowInPlaceFallback: input.allowInPlaceFallback === true };
   raw.commitRequest = parameters;
   const returned = await commitMemoryContent(parameters);
   result = { status: "fulfilled", returned: returned ?? null };

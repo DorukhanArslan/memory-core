@@ -103,6 +103,8 @@ explicit constructor policies override the inherited values. Each `memory_search
 uses the actual `SessionState.session_key`. Model arguments cannot replace the requester,
 policy or catalog. See [Session Authority](session_authority.md) for complete SDK wiring,
 explicit transcript persistence/index refresh and guarded current-session source reads.
+The registered search factory measures acquisition with the kit's `now_ms` clock
+and validates that the captured store belongs to the configured workspace/index.
 
 - Every option is an input some core function already takes:
   `layout`, `templates`, `seed_bootstrap` (`initialize_agent_workspace`); `timezone` and
@@ -215,7 +217,7 @@ inbound user message
      (a host whose steps run apart keeps TurnState.from_context(context).to_json())
   model call (host): system_prompt, repair_tool_calls(history), runtime_context, user message
     each tool call:
-    dispatch(name, args, session)      ->  execute_memory_search_tool (+ recall signals)
+    dispatch(name, args, session)      ->  registered memory_search factory (+ recall signals)
                                            execute_memory_get_tool
                                            MemoryCurator.dispatch (+ reindex)
     <- JSON payload, sent back to the model
@@ -296,10 +298,14 @@ def dispatch(
 ) -> dict[str, Any]
 ```
 
-- Composes `execute_memory_search_tool(config, store, args, agent_session_key=session.session_key,
-  runtime_identity=identity)`, `execute_memory_get_tool(config, args)` and
+- Composes `create_memory_search_tool(config, store, context=..., agent_session_key=session.session_key,
+  runtime_identity=identity).execute(...)`, `execute_memory_get_tool(config, args)` and
   `MemoryCurator.dispatch(name, args)` on `HostKit.curator`, built from `Memory.curator(layout,
   policy, timezone, now_ms)` (whose `after_write` reindexes after MEMORY.md, USER.md and daily-note writes).
+  Search returns the factory's complete actual `details` through the kit's established
+  payload API. Its context preserves the host clock, visibility and source policy;
+  disabled search and a foreign store are refused before retrieval. Recall tracking
+  still follows successful tool execution.
 - Arguments: a mapping, its JSON text (parsed once for every tool) or `None` (read as `{}`).
   Blank text reads as `{}`. Parsing JSON text is host-transport glue and deliberately differs from
   the core's `asToolParamsRecord` (`as_tool_params_record`, where a string reads as `{}`): the kit
@@ -1251,7 +1257,7 @@ follows Task 9.
 
 - Goal: one tool-call entry point with the error contract and recall tracking.
 - Files: `memory_core/host/kit.py`, `tests/unit/test_host_kit_dispatch.py`.
-- Tests first: `test_dispatch_memory_search_equals_execute_memory_search_tool`,
+- Tests first: `test_dispatch_memory_search_equals_registered_factory_details`,
   `test_dispatch_accepts_mappings_json_text_and_none`,
   `test_dispatch_invalid_json_returns_an_error_payload`,
   `test_dispatch_non_object_json_returns_an_error_payload`,

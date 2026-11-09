@@ -640,7 +640,7 @@
           "path": "memory_core/host/kit.py",
           "symbol": "HostKit",
           "anchor": "class HostKit:",
-          "line": 213
+          "line": 212
         },
         {
           "path": "memory_core/index/embedding_limits.py",
@@ -1402,7 +1402,7 @@
           "path": "memory_core/host/kit.py",
           "symbol": "HostKit.__init__",
           "anchor": "    def __init__(",
-          "line": 223
+          "line": 222
         },
         {
           "path": "memory_core/tools/memory_search.py",
@@ -2693,7 +2693,7 @@
           "path": "memory_core/host/kit.py",
           "symbol": "on_new_session",
           "anchor": "def on_new_session(",
-          "line": 760
+          "line": 763
         }
       ],
       "implementation": "partial",
@@ -3297,7 +3297,7 @@
           "path": "memory_core/host/kit.py",
           "symbol": "HostKit.prepare_flush",
           "anchor": "    def prepare_flush(",
-          "line": 610
+          "line": 613
         },
         {
           "path": "memory_core/memory_flush.py",
@@ -3333,7 +3333,7 @@
           "path": "memory_core/host/kit.py",
           "symbol": "after_turn",
           "anchor": "def after_turn(",
-          "line": 560
+          "line": 563
         }
       ],
       "implementation": "present",
@@ -4471,7 +4471,7 @@
           "path": "memory_core/host/kit.py",
           "symbol": "HostKit.after_turn",
           "anchor": "    def after_turn(",
-          "line": 560
+          "line": 563
         },
         {
           "path": "memory_core/turn_trust.py",
@@ -4888,7 +4888,7 @@
           "path": "memory_core/host/kit.py",
           "symbol": "HostKit.after_turn",
           "anchor": "    def after_turn(",
-          "line": 560
+          "line": 563
         },
         {
           "path": "memory_core/index/sqlite_store.py",
@@ -5089,7 +5089,7 @@
           "path": "memory_core/host/kit.py",
           "symbol": "HostKit.after_turn",
           "anchor": "    def after_turn(",
-          "line": 560
+          "line": 563
         },
         {
           "path": "demo/lab_chat.py",
@@ -5148,7 +5148,7 @@
           "path": "memory_core/host/kit.py",
           "symbol": "HostKit.on_new_session",
           "anchor": "    def on_new_session(",
-          "line": 760
+          "line": 763
         },
         {
           "path": "demo/lab_runtime.py",
@@ -5201,7 +5201,7 @@
           "path": "memory_core/host/kit.py",
           "symbol": "HostKit.dispatcher",
           "anchor": "    def dispatcher(",
-          "line": 417
+          "line": 416
         },
         {
           "path": "memory_core/live/__init__.py",

@@ -190,7 +190,7 @@ def test_successful_tool_content_is_unchanged(lab, monkeypatch):
     assert "model" not in record["result"]
     assert record["result"]["citations"] == "auto"
     assert set(record["result"]["debug"]) == {
-        "backend", "effectiveMode", "searchMs", "hits", "candidateHits",
+        "backend", "effectiveMode", "managerMs", "searchMs", "hits", "candidateHits",
         "withheldHits", "searchWindow", "toolMs", "outsideSearchMs",
     }
 

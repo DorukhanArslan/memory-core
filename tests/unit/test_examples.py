@@ -7,7 +7,6 @@ from pathlib import Path
 import examples.basic_usage as basic_usage
 import examples.live_streaming as live_streaming
 import examples.quickstart as quickstart
-import memory_core.tools.memory_search as memory_search_module
 from memory_core import TurnUsage
 from memory_core.live import LiveIdentityStore
 
@@ -117,7 +116,13 @@ class _StubLLM:
 
 
 def test_quickstart_runs_the_memory_tools_and_the_flush(tmp_path: Path, monkeypatch, capsys):
-    monkeypatch.setattr(memory_search_module.time, "time", lambda: 1.0)
+    open_kit = quickstart.HostKit.open
+
+    def open_with_clock(*args, **options):
+        options["now_ms"] = lambda: 1_790_375_400_000
+        return open_kit(*args, **options)
+
+    monkeypatch.setattr(quickstart.HostKit, "open", open_with_clock)
     printed = []
 
     def stdout_so_far():
@@ -146,7 +151,7 @@ def test_quickstart_runs_the_memory_tools_and_the_flush(tmp_path: Path, monkeypa
     empty = {
         "results": [], "provider": "none", "citations": "auto",
         "debug": {
-            "backend": "builtin", "effectiveMode": "n/a", "searchMs": 0,
+            "backend": "builtin", "effectiveMode": "n/a", "managerMs": 0, "searchMs": 0,
             "hits": 0, "candidateHits": 0, "withheldHits": 0,
             "searchWindow": 200, "toolMs": 0, "outsideSearchMs": 0,
         },

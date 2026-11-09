@@ -88,6 +88,13 @@ the host kit. 0.1.0 is `main` at `b829bad` (2026-09-27), which had no build syst
 
 ### Changed
 
+- Host search dispatch (2026-11-09): `HostKit` uses the registered search factory
+  with its existing host clock, source policy and session visibility. Acquisition
+  timing and store ownership checks now run at the real tool boundary; disabled
+  search refuses retrieval. The returned payload remains the complete factory
+  details. Explicit restart-policy diagnostics retain remaining provenance,
+  cold-index and transcript-publication differences without new equivalence credit.
+
 - CI portability repairs (2026-10-09, tooling/tests): a name-only project rename updates
   its existing lock entries without resolving dependencies, so an empty offline uv cache
   no longer interrupts the rename. Locked dependency versions, hashes and markers stay

@@ -26,7 +26,7 @@ The reference repository is `https://github.com/openclaw/openclaw.git`. Python-o
 
 The [source map](equivalence-source-map.md) links all 64 contracts and 128 acceptance points
 to the pinned upstream code and the current Python implementation. The inventory records
-192 upstream source modules, their tracked hashes, literal dependencies and exported
+193 upstream source modules, their tracked hashes, literal dependencies and exported
 declarations. Source presence and inventory validation do not establish behavior or add
 any differential-test coverage.
 
@@ -52,24 +52,24 @@ Comparisons must not normalize away behavior. A platform-specific path, generate
 Entries remain pending until their complete acceptance conditions are verified against `v2026.9.9`. Their detailed acceptance points and stable identifiers are in [scope.json](../equivalence/scope.json). A helper that already exists in Python still needs the new differential evidence. A known difference must stay visible until its implementation and tests agree. Bounded passing subsets are recorded below without closing the containing contract.
 
 <!-- CURRENT-VERIFICATION-START -->
-The latest verified bounded baseline has **52/128 acceptance conditions (40.6%)**, with
-**76 conditions** remaining. This percentage counts unweighted verified conditions; it is
+The latest verified bounded baseline has **54/128 acceptance conditions (42.2%)**, with
+**74 conditions** remaining. This percentage counts unweighted verified conditions; it is
 not engineering effort, elapsed work or a time estimate. The fixed scope remains 64 contracts
-and 128 conditions. The latest storage-and-turn-trust batch targeted **+5** and verified
-**+5**, from **47 to 52/128**.
+and 128 conditions. The latest entry-provenance-and-host-publication batch targeted **+2** and verified
+**+2**, from **52 to 54/128**.
 
-The fresh integrated report executes **1,239 cases: 1,235 matches,
-4 visible uncredited differences and 0 blocked cases**, with no runner errors.
-All **4,768 regression tests** and both clean package consumers pass. The same 1,625
+The fresh integrated report executes **1,303 cases: 1,291 matches,
+12 visible uncredited differences and 0 blocked cases**, with no runner errors.
+All **5,519 regression tests** and both clean package consumers pass. The same 1,625
 historical/live skips grant no acceptance credit. The full gate remains `mismatched`;
 these results do not establish complete OpenClaw equivalence.
 
 | Contract status | Contracts | Verified conditions | Remaining conditions |
 | --- | ---: | ---: | ---: |
-| Complete | 24 | 48 | 0 |
+| Complete | 25 | 50 | 0 |
 | Partial | 4 | 4 | 4 |
-| Pending verification | 36 | 0 | 72 |
-| Total | 64 | 52 | 76 |
+| Pending verification | 35 | 0 | 70 |
+| Total | 64 | 54 | 74 |
 
 Pending verification can include existing implementation. Partial contracts retain one open
 condition. Infrastructure sections 1–3 remain **20/22 tasks completed**; infrastructure and
@@ -89,7 +89,7 @@ Current status of all 64 contracts:
 | 7 | `lexical.bm25` | Complete | 2/2 |
 | 8 | `chunking.markdown-boundaries` | Complete | 2/2 |
 | 9 | `chunking.utf16-cjk-budget` | Complete | 2/2 |
-| 10 | `chunking.entry-provenance` | Pending verification | 0/2 |
+| 10 | `chunking.entry-provenance` | Complete | 2/2 |
 | 11 | `indexing.identity` | Partial | 1/2 |
 | 12 | `indexing.incremental-sync` | Complete | 2/2 |
 | 13 | `indexing.transaction-publication` | Complete | 2/2 |
@@ -161,7 +161,7 @@ Current status of all 64 contracts:
 - [x] **`lexical.bm25` — Match BM25 rank conversion.** Compare positive, negative, zero and boundary ranks, including supported non-finite input representations. Report numerical differences rather than masking score-gate changes with a blanket tolerance.
 - [x] **`chunking.markdown-boundaries` — Match Markdown chunk boundaries.** Compare ordered chunks, lines, overlap, empty content, headings and per-entry curated files. Read the original source through every returned line range.
 - [x] **`chunking.utf16-cjk-budget` — Match UTF-16 and CJK chunk budgets.** Exercise surrogate pairs, malformed surrogates, CJK weighting and exact budget boundaries. Compare truncation and overlap without splitting valid pairs or changing source ranges.
-- [ ] **`chunking.entry-provenance` — Retain chunk identity and provenance.** Compare chunk hashes, entry boundaries, source identities and provenance fields. Verify unchanged and changed inputs produce the reference identities and invalidation decisions.
+- [x] **`chunking.entry-provenance` — Retain chunk identity and provenance.** Compare chunk hashes, entry boundaries, source identities and provenance fields. Verify unchanged and changed inputs produce the reference identities and invalidation decisions.
 
 ### Index lifecycle
 
@@ -1819,3 +1819,65 @@ cause shape, first recall during a native background refresh, and same-size/same
 compressed transcript cache freshness. No score tolerance or diagnostic reassignment hides
 them. The full gate remains **mismatched**, not full equivalence. There were zero paid provider
 calls and no provider credentials forwarded. This closeout changes documentation only.
+
+### Entry provenance and serialized SDK host closeout — 2026-11-09
+
+The fixed scope remains 64 contracts / 128 conditions, SHA-256
+`a8e066e63970dd0be734485d62a5932640894b8c0a42f47ac3eb67f784cbc7b9`.
+This batch targets and verifies **two conditions**, from 52 to **54/128 (42.2%)**:
+both `chunking.entry-provenance` conditions require all three complete comparisons:
+
+- `entry-provenance-canonical-collision-invalidation`: genuine ID upsert, unchanged
+  and same-size changed source invalidation, complete published state and SQL.
+- `entry-provenance-provider-entry-fragments`: actual original text preparation and
+  source-index kernel, ordered byte-limited fragments and retained entry spans.
+- `entry-provenance-session-provenance-replacement-reset`: real persisted session
+  replacement, revision/provenance refresh, line mappings and valid/invalid reset fences.
+
+The clean integrated implementation is `2a56ed8fed789668af77333f0c7e31ff495d3231`:
+150 SDK source files, SHA-256
+`61088d9e3eb8fd20b107fa9bda2c653ec1c34fb857b7e41a3af0b38904cd313d`.
+The full report is `.equivalence-results/host-publication-entry-complete-pipe-full.json`,
+SHA-256 `bd33601f27e6c427becb3834add45078c7cf3af20eb0153dea1084d09ed5042d`.
+It completed in 1,844.807131 seconds: **1,303 cases, 1,291 matched, 12 mismatched,
+zero blocked and no runner errors**. All three required entry profiles matched.
+All 5,519 regressions pass; the same 1,625 historical/live skips add no credit.
+Both clean offline wheel and sdist consumers were verified on `67e3051`, with the
+identical SDK source hash; subsequent changes affect documentation, report transport
+and tests. Installed consumers exercise save/immediate recall/reopen and reject ten
+invalid typed API calls. No paid provider calls were made.
+
+The SDK now also exposes the serialized host turn flow, durable publication intent,
+committed/uncertain outcomes and an explicit current-memory acknowledgment API. These
+checks cover real producers, partial IO, cancellation and later turns. The lane is
+for cooperating runners in one process; it does not establish cross-process custody.
+Its stronger uncertainty policy and the atomic writer development fixes grant no
+`host.turn-barrier` or `storage.atomic-writes` conditions in this batch. The earlier
+atomic development packet remains 31/32 with its physical-receipt difference, rather
+than being presented as a successful protected whole-operation proof.
+
+The four earlier uncredited differences remain visible: Unicode path collation,
+symlink-loop cause text, compressed same-size transcript cache freshness and first
+recall after a warm flush index. The 61 added redaction/model boundary cases contribute
+53 matches and eight additional ordinary differences: four source regular-expression
+engine differences, two original-input identity reuse differences and two session
+regular-expression engine differences. None receives condition credit. In particular,
+no strong global cache retaining raw secret inputs was added to imitate a WeakMap.
+The historical small collector's reported 6/6 was corrected to its actual 4/6; the
+original failed artifact and correction remain retained, with no credit from either.
+
+Two integrated attempts failed and remain retained. The first attempted report
+(`host-publication-entry-full.*`, implementation `67e3051`) could not encode a genuine
+lone UTF-16 surrogate to UTF-8; its empty output is not evidence of any case count.
+The escaped-JSON rerun (`host-publication-entry-escaped-full.*`, `af9988b`) retained a
+blocked report: the genuine model-session UTF-16 boundary child's synchronous stdout
+write hit `EAGAIN`, leaving partial JSON and exit code 1. Its original streams and
+unverified traces are retained. The transport now writes one complete JSON envelope
+and awaits the actual stdout callback, without rerunning a model operation. The exact
+failed case then matched in a fresh protected comparison; 115 focused transport/guard
+checks include a complete two-megabyte Unicode output. The successful full run above
+follows those fixes; the failures were not discarded or converted into matches.
+
+Reference execution uses the authenticated official compiled release and the exact
+approved Node 24.16.0 / ICU 78.3 / Unicode 17 binary. `sourceBuildReproduced` remains
+false. **74 conditions remain unverified**, and the full gate remains `mismatched`.

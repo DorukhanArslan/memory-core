@@ -26,6 +26,9 @@ from memory_core.index._js_log1p import log1p
     ("7fefffffffffffff", "40862e42fefa39ef"),
     ("4065e00000000000", "4014ae935b3cb89e"),
     ("4067000000000000", "4014e1a4f518c72b"),
+    ("c000000000000000", "7ff4000000000000"),
+    ("fff0000000000000", "7ff4000000000000"),
+    ("fff8000000000000", "7ff4000000000000"),
 ])
 def test_original_logarithm_preserves_the_complete_binary64_result(input_bits, output_bits):
     value = struct.unpack(">d", bytes.fromhex(input_bits))[0]

@@ -777,7 +777,7 @@ def rank_short_term_promotion_candidates(
     *,
     config: MemoryConfig,
     now_ms: int,
-    limit: int,
+    limit: int | float | None,
     min_score: float,
     min_recall_count: int,
     min_unique_queries: int,
@@ -809,10 +809,18 @@ def rank_short_term_promotion_candidates(
         )
         if not evaluation.reasons and not is_promotion_origin_blocked(evaluation.provenance)
     ]
+    bound = None
+    if isinstance(limit, (int, float)) and not isinstance(limit, bool):
+        try:
+            if math.isfinite(limit):
+                bound = max(0, math.floor(limit))
+        except OverflowError:
+            # An unbounded Python integer is nonfinite as a JavaScript Number.
+            pass
     return sorted(
         candidates,
         key=lambda c: (-c.score, -c.recall_count, locale_sort_key(c.path)),
-    )[:limit]
+    )[:bound]
 
 
 def evaluate_short_term_promotion_candidates(

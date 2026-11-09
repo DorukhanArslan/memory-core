@@ -61,7 +61,7 @@ def _rank(config: MemoryConfig, **options: Any):
     return rank_short_term_promotion_candidates(
         config=config,
         now_ms=NOW_MS,
-        limit=10,
+        limit=options.pop("limit", 10),
         min_recall_count=0,
         min_unique_queries=0,
         **{"min_score": 0, **options},
@@ -169,3 +169,17 @@ def test_frequency_only_score_keeps_the_original_binary64_threshold_decision(tmp
     candidates = _rank(config, weights=weights, min_score=0.45815690999132613)
     assert len(candidates) == 1
     assert candidates[0].components["frequency"] == 0.45815690999132613
+
+
+@pytest.mark.parametrize(("limit", "expected"), [
+    (-1, 0), (.5, 0), (1.9, 1), (None, 2), (True, 2),
+    (float("inf"), 2), (float("nan"), 2), (10**1000, 2),
+])
+def test_rank_limit_matches_finite_floor_clamp_and_unbounded_options(tmp_path: Path, limit, expected):
+    config = _workspace(tmp_path)
+    filename = tmp_path / "memory/.dreams/short-term-recall.json"
+    store = json.loads(filename.read_text())
+    store["entries"]["second"] = {**store["entries"]["boundary"], "key": "second",
+                                     "path": "memory/2026-04-02.md"}
+    filename.write_text(json.dumps(store))
+    assert len(_rank(config, limit=limit)) == expected

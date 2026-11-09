@@ -60,6 +60,7 @@ _LP4 = 2.222219843214978396e-01
 _LP5 = 1.818357216161805012e-01
 _LP6 = 1.531383769920937332e-01
 _LP7 = 1.479819860511658591e-01
+_SIGNALING_NAN = struct.unpack(">d", bytes.fromhex("7ff4000000000000"))[0]
 
 
 def _high(value: float) -> int:
@@ -78,7 +79,7 @@ def log1p(x: float) -> float:
     c = 0.0
     if hx < 0x3FDA827A:
         if ax >= 0x3FF00000:
-            return -math.inf if x == -1.0 else math.nan
+            return -math.inf if x == -1.0 else _SIGNALING_NAN
         if ax < 0x3E200000:
             if 1.80143985094819840000e16 + x > 0.0 and ax < 0x3C900000:
                 return x

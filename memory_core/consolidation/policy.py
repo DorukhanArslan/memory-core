@@ -24,7 +24,7 @@ from memory_core.bootstrap._js import js_trim
 # still only runs when the host calls it; this is the policy's `enabled` value.
 DEFAULT_DEEP_DREAMING_ENABLED = True
 # dreaming.ts:42-51 DEFAULT_MEMORY_DEEP_DREAMING_*. These are the deep-phase gates, not
-# short-term-promotion.ts's own DEFAULT_PROMOTION_MIN_RECALL_COUNT / _MIN_UNIQUE_QUERIES (3 / 2).
+# short-term promotion fallbacks. The current v2026.9.9 reference also uses 3 / 3.
 # The minimum score is 0.75 at v2026.9.6 (b2cc5f50420 #115715; 0.8 at the pin).
 DEFAULT_DEEP_DREAMING_LIMIT = 10
 DEFAULT_DEEP_DREAMING_MIN_SCORE = 0.75

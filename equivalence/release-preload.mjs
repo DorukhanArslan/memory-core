@@ -24,6 +24,7 @@ if (context.entryProvenanceProfile !== undefined) {
       profile.kind !== "approved-entry-provenance-profile" || !Object.hasOwn(kinds, profile.operation) ||
       profile.inputKind !== kinds[profile.operation] || context.bootstrapDiscoveryProfile !== undefined ||
       context.memoryBudgetProfile !== undefined || context.getReadRaceProfile !== undefined ||
+      context.promotionRankingProfile !== undefined ||
       JSON.stringify(profile.nodeRuntime) !== JSON.stringify(context.approvedNodeRuntime) ||
       (context.approvedReferenceSources ?? []).length || (context.fixtureSourceCaptures ?? []).length) {
     throw Error("Unapproved compiled entry provenance profile capability");
@@ -39,6 +40,7 @@ if (context.atomicPublicationProfile !== undefined) {
       !context.atomicCaseBinding || context.atomicCaseBinding.operation !== profile.operation ||
       context.entryProvenanceProfile !== undefined || context.bootstrapDiscoveryProfile !== undefined ||
       context.memoryBudgetProfile !== undefined || context.getReadRaceProfile !== undefined ||
+      context.promotionRankingProfile !== undefined ||
       (context.approvedReferenceSources ?? []).length || (context.fixtureSourceCaptures ?? []).length) {
     throw Error("Unapproved atomic original-owner profile capability");
   }
@@ -55,6 +57,7 @@ if (bootstrapProfile !== undefined) {
       context.approvedNodeRuntime !== undefined || context.entryProvenanceProfile !== undefined ||
       context.atomicPublicationProfile !== undefined || context.atomicCaseBinding !== undefined ||
       context.memoryBudgetProfile !== undefined || context.getReadRaceProfile !== undefined ||
+      context.promotionRankingProfile !== undefined ||
       JSON.stringify(Object.keys(identity).sort()) !== JSON.stringify(["execPath", "icuVersion", "nodeVersion", "sha256", "unicodeVersion"]) ||
       (context.approvedReferenceSources ?? []).length || (context.fixtureSourceCaptures ?? []).length) {
     throw Error("Unapproved compiled bootstrap execution scope");
@@ -74,7 +77,7 @@ if (context.memoryBudgetProfile !== undefined) {
       JSON.stringify(profile.nodeRuntime) !== JSON.stringify(context.approvedNodeRuntime) ||
       context.entryProvenanceProfile !== undefined || context.atomicPublicationProfile !== undefined ||
       context.atomicCaseBinding !== undefined || context.bootstrapDiscoveryProfile !== undefined ||
-      context.getReadRaceProfile !== undefined ||
+      context.getReadRaceProfile !== undefined || context.promotionRankingProfile !== undefined ||
       (context.approvedReferenceSources ?? []).length ||
       (context.fixtureSourceCaptures ?? []).length) {
     throw Error("Unapproved compiled memory-budget profile capability");
@@ -90,8 +93,22 @@ if (context.getReadRaceProfile !== undefined) {
       !isMainThread || context.entryProvenanceProfile !== undefined || context.approvedNodeRuntime !== undefined ||
       context.atomicPublicationProfile !== undefined || context.atomicCaseBinding !== undefined ||
       context.bootstrapDiscoveryProfile !== undefined || context.memoryBudgetProfile !== undefined ||
+      context.promotionRankingProfile !== undefined ||
       (context.approvedReferenceSources ?? []).length || (context.fixtureSourceCaptures ?? []).length) {
     throw Error("Unapproved get read race hook capability");
+  }
+}
+if (context.promotionRankingProfile !== undefined) {
+  const profile = context.promotionRankingProfile;
+  if (!profile || Object.keys(profile).sort().join() !== "inputKind,kind,nodeRuntime,operation" ||
+      profile.kind !== "approved-promotion-ranking-profile" || profile.operation !== "promotion-ranking-runtime" ||
+      profile.inputKind !== "promotion-ranking" || context.entryProvenanceProfile !== undefined ||
+      context.atomicPublicationProfile !== undefined || context.atomicCaseBinding !== undefined ||
+      context.bootstrapDiscoveryProfile !== undefined || context.memoryBudgetProfile !== undefined ||
+      context.getReadRaceProfile !== undefined ||
+      JSON.stringify(profile.nodeRuntime) !== JSON.stringify(context.approvedNodeRuntime) ||
+      (context.approvedReferenceSources ?? []).length || (context.fixtureSourceCaptures ?? []).length) {
+    throw Error("Unapproved compiled promotion ranking profile capability");
   }
 }
 const permitted = new Map();
@@ -150,7 +167,8 @@ trace({ event: "bootstrap", isMainThread, ppid: process.ppid, contextSha256: has
         ...(context.atomicPublicationProfile ? { atomicProfile: context.atomicPublicationProfile } : {}),
         ...(bootstrapProfile ? { runtime: bootstrapRuntime, bootstrapProfile } : {}),
         ...(context.memoryBudgetProfile ? { budgetProfile: context.memoryBudgetProfile } : {}),
-        ...(context.getReadRaceProfile ? { getReadRaceProfile: context.getReadRaceProfile } : {}) });
+        ...(context.getReadRaceProfile ? { getReadRaceProfile: context.getReadRaceProfile } : {}),
+        ...(context.promotionRankingProfile ? { promotionProfile: context.promotionRankingProfile } : {}) });
 // Native workers can log directly while retiring after the result is ready.
 // Reserve stdout for the runner's single process.stdout.write JSON envelope.
 // This executes in every worker as well as the parent, before native imports.

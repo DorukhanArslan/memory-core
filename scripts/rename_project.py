@@ -84,6 +84,7 @@ PROTECTED = (
     r"entries\.memory-core\b",
     r'"entries":\s*\{\s*"memory-core"',
     r'\.get\("entries", \{\}\)\s*\.get\("memory-core"',
+    r'OPENCLAW_BUILTIN_MEMORY_PLUGIN_ID = "memory-core"',
     # Identifiers that name the upstream component, and the locals that hold its config entry
     # (by their context: bare, they are the project's own snake and camel forms).
     r"(?<![\w$])(?:initialize_memory_core_workspace|_memory_core_plugin_config"

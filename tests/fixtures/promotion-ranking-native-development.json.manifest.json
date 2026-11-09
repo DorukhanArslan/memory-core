@@ -1,0 +1,11 @@
+{
+  "kind": "retained-protected-promotion-ranking-development",
+  "acceptanceProof": false,
+  "coverage": false,
+  "origin": ".equivalence-results/promotion-native-guarded-development-first.json",
+  "description": "One protected original-only development invocation. Complete original result, raw SQLite/API receipts, same-run worker/process traces and collector maps; no paired proof or invented success rows.",
+  "rawBytes": 3848247,
+  "rawSha256": "451b07cfe069d92de6f826cdabddc6a876b6af7d0a07b8bfa533389d880f1343",
+  "gzipBytes": 600560,
+  "gzipSha256": "d794753be24c86dad8a5b354666d388d4af072797308995d9034ccfc1ebae2ab"
+}

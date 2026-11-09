@@ -40,6 +40,7 @@ const operations = {
   "atomic-bootstrap-runtime": ["atomic-publication-runtime.mjs", "runAtomicBootstrapRuntime"],
   "memory-budget-runtime": ["memory-budget-runtime.mjs", "runMemoryBudgetRuntime"],
   "memory-budget-apply-runtime": ["memory-budget-runtime.mjs", "runMemoryBudgetRuntime"],
+  "promotion-ranking-runtime": ["promotion-ranking-runtime.mjs", "runPromotionRankingRuntime"],
 };
 function sameGetReadRaceLiteral(actual, expected) {
   if (actual === expected) return true;
@@ -64,6 +65,47 @@ for (const testCase of request.cases) {
   const evidenceDirectory = path.join(context.evidenceDirectory, caseHash);
   fs.mkdirSync(evidenceDirectory, { recursive: true });
   try {
+    const entryProfile = context.entryProvenanceProfile;
+    const entryKinds = { "entry-memory-publication-runtime": "published-memory",
+      "entry-session-publication-runtime": "session-projection", "entry-provider-preparation-runtime": "prepared-provider" };
+    if ((entryProfile !== undefined) !== Object.hasOwn(entryKinds, testCase.operation) ||
+        entryProfile !== undefined && (entryProfile.operation !== testCase.operation ||
+          entryProfile.inputKind !== entryKinds[testCase.operation] || testCase.input?.kind !== entryProfile.inputKind)) {
+      throw Error("The entry capability cannot execute another operation or input contract before import");
+    }
+    const atomicProfile = context.atomicPublicationProfile;
+    const atomicKinds = { "atomic-commit-runtime": "commit", "atomic-append-runtime": "append", "atomic-bootstrap-runtime": "bootstrap" };
+    if ((atomicProfile !== undefined) !== Object.hasOwn(atomicKinds, testCase.operation) ||
+        atomicProfile !== undefined && (atomicProfile.operation !== testCase.operation ||
+          atomicProfile.inputKind !== atomicKinds[testCase.operation] || testCase.input?.kind !== atomicProfile.inputKind)) {
+      throw Error("The atomic capability cannot execute another operation or input contract before import");
+    }
+    if (atomicProfile !== undefined) {
+      const binding = context.atomicCaseBinding;
+      if (!binding || binding.id !== testCase.id || binding.operation !== testCase.operation ||
+          typeof binding.inputJson !== "string" ||
+          crypto.createHash("sha256").update(binding.inputJson).digest("hex") !== binding.inputSha256 ||
+          !sameGetReadRaceLiteral(testCase.input, JSON.parse(binding.inputJson))) {
+        throw Error("The atomic capability requires its complete literal return-checkpoint input before import");
+      }
+    }
+    const modelKinds = { "model-session-runtime": "model-session", "model-tool-result-runtime": "model-helper",
+      "trust-worker-runtime": null, "model-tool-error-runtime": null };
+    const modelAuthority = context.approvedNodeRuntime !== undefined && context.entryProvenanceProfile === undefined &&
+      context.atomicPublicationProfile === undefined && context.memoryBudgetProfile === undefined &&
+      context.promotionRankingProfile === undefined;
+    if (modelAuthority !== Object.hasOwn(modelKinds, testCase.operation) ||
+        modelAuthority && modelKinds[testCase.operation] !== null && testCase.input?.kind !== modelKinds[testCase.operation]) {
+      throw Error("The model binary capability cannot execute another operation or input contract before import");
+    }
+    const mixedTurnSource = (context.approvedReferenceSources ?? []).length !== 0;
+    if (mixedTurnSource !== (testCase.operation === "turn-trust-runtime") ||
+        mixedTurnSource && testCase.input?.kind !== "turn-trust") {
+      throw Error("The single-source turn capability cannot execute another operation or input contract before import");
+    }
+    if (((context.fixtureSourceCaptures ?? []).length !== 0) !== (testCase.operation === "flush-execution-runtime")) {
+      throw Error("The fixture source capture capability cannot execute another operation before import");
+    }
     const bootstrapProfile = context.bootstrapDiscoveryProfile;
     if ((bootstrapProfile !== undefined) !== (testCase.operation === "bootstrap-discovery-runtime")) {
       throw Error("The bootstrap executable capability is restricted to its exact compiled caller before import");
@@ -80,6 +122,12 @@ for (const testCase of request.cases) {
     if (budgetProfile !== undefined && (budgetProfile.operation !== testCase.operation ||
         budgetProfile.inputKind !== budgetKinds[testCase.operation] || testCase.input?.kind !== budgetProfile.inputKind)) {
       throw Error("A different operation or input kind cannot borrow the memory-budget caller before import");
+    }
+    const promotionProfile = context.promotionRankingProfile;
+    if ((promotionProfile !== undefined) !== (testCase.operation === "promotion-ranking-runtime") ||
+        promotionProfile !== undefined && (promotionProfile.operation !== testCase.operation ||
+          promotionProfile.inputKind !== "promotion-ranking" || testCase.input?.kind !== promotionProfile.inputKind)) {
+      throw Error("The independent ranking capability cannot execute another operation or input contract before import");
     }
     const binding = operations[testCase.operation];
     if (!Object.hasOwn(operations, testCase.operation)) throw Error("Unsupported release oracle operation");

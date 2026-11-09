@@ -22,6 +22,7 @@ from equivalence.entry_provenance_profile import ENTRY_PROVENANCE_PROFILES, vali
 from equivalence.atomic_publication_profile import (ATOMIC_PUBLICATION_PROFILES, validate_atomic_publication_profile,
                                                    validate_atomic_case_binding)
 from equivalence.memory_budget_profile import MEMORY_BUDGET_PROFILES, validate_memory_budget_profile
+from equivalence.promotion_ranking_bindings import PROMOTION_RANKING_OPERATION, validate_promotion_ranking_profile
 
 
 ROOT = Path(__file__).resolve().parents[1]
@@ -122,6 +123,9 @@ _OPERATIONS = {
     ),
     "memory-budget-runtime": ("memory-budget-runtime.mjs", "dist/memory-budget-BodJnew-.mjs", False),
     "memory-budget-apply-runtime": ("memory-budget-runtime.mjs", "dist/short-term-promotion-MX1vHJuE.mjs", False),
+    PROMOTION_RANKING_OPERATION: (
+        "promotion-ranking-runtime.mjs", "dist/short-term-promotion-MX1vHJuE.mjs", False,
+    ),
 }
 
 MODEL_RUNTIME_OPERATIONS = frozenset({"model-session-runtime", "model-tool-result-runtime",
@@ -653,7 +657,8 @@ class ReleaseOracleExecution:
                  turn_taint_source: dict | None = None, model_node_runtime: dict | None = None,
                  entry_profile: dict | None = None, atomic_profile: dict | None = None,
                  atomic_case: dict | None = None, bootstrap_profile: dict | None = None,
-                 memory_budget_profile: dict | None = None, get_read_race_profile: dict | None = None):
+                 memory_budget_profile: dict | None = None, get_read_race_profile: dict | None = None,
+                 promotion_profile: dict | None = None):
         self.config = deepcopy(config)
         self.adapter_hashes = dict(adapter_hashes)
         self.fixture_captures = fixture_captures
@@ -665,18 +670,24 @@ class ReleaseOracleExecution:
         self.bootstrap_profile = deepcopy(bootstrap_profile)
         self.memory_budget_profile = deepcopy(memory_budget_profile)
         self.get_read_race_profile = deepcopy(get_read_race_profile)
+        self.promotion_profile = deepcopy(promotion_profile)
         self.env: dict[str, str] = {}
         self._temporary = None
         self._entered = False
 
     def __enter__(self):
         try:
+            capabilities = (self.model_node_runtime, self.entry_profile, self.atomic_profile,
+                self.bootstrap_profile, self.memory_budget_profile, self.promotion_profile,
+                self.get_read_race_profile, self.turn_taint_source)
+            if sum(value is not None for value in capabilities) + bool(self.fixture_captures) > 1:
+                raise RuntimeOracleError("Independent native profiles cannot borrow one another's executable, source, backend or hook capabilities.")
             if self.get_read_race_profile is not None:
                 from equivalence.get_read_race_profile import validate_get_read_race_profile
 
                 if any(value is not None for value in (
                     self.entry_profile, self.model_node_runtime, self.turn_taint_source, self.atomic_profile,
-                    self.atomic_case, self.bootstrap_profile, self.memory_budget_profile,
+                    self.atomic_case, self.bootstrap_profile, self.memory_budget_profile, self.promotion_profile,
                 )) or self.fixture_captures:
                     raise RuntimeOracleError("Get read race authority cannot borrow other native profile capabilities.")
                 self.get_read_race_profile = validate_get_read_race_profile(self.get_read_race_profile)
@@ -684,11 +695,18 @@ class ReleaseOracleExecution:
                 self.memory_budget_profile = validate_memory_budget_profile(self.memory_budget_profile)
                 if (self.entry_profile is not None or self.model_node_runtime is not None
                         or self.turn_taint_source is not None or self.fixture_captures or self.atomic_profile is not None
-                        or self.atomic_case is not None or self.bootstrap_profile is not None or self.get_read_race_profile is not None):
+                        or self.atomic_case is not None or self.bootstrap_profile is not None or self.get_read_race_profile is not None or self.promotion_profile is not None):
                     raise RuntimeOracleError("Memory budget cannot borrow entry, model, source or fixture-source capabilities.")
+            if self.promotion_profile is not None:
+                self.promotion_profile = validate_promotion_ranking_profile(self.promotion_profile)
+                if (self.entry_profile is not None or self.model_node_runtime is not None
+                        or self.turn_taint_source is not None or self.fixture_captures or self.atomic_profile is not None
+                        or self.atomic_case is not None or self.bootstrap_profile is not None
+                        or self.memory_budget_profile is not None or self.get_read_race_profile is not None):
+                    raise RuntimeOracleError("Promotion ranking cannot borrow another compiled/model/source capability.")
             if self.entry_profile is not None:
                 self.entry_profile = validate_entry_provenance_profile(self.entry_profile)
-                if self.model_node_runtime is not None or self.turn_taint_source is not None or self.fixture_captures or self.atomic_profile is not None or self.bootstrap_profile is not None or self.memory_budget_profile is not None or self.get_read_race_profile is not None:
+                if self.model_node_runtime is not None or self.turn_taint_source is not None or self.fixture_captures or self.atomic_profile is not None or self.bootstrap_profile is not None or self.memory_budget_profile is not None or self.get_read_race_profile is not None or self.promotion_profile is not None:
                     raise RuntimeOracleError("Entry provenance cannot borrow model, source-owner or fixture-source capabilities.")
             if self.atomic_profile is not None:
                 self.atomic_profile = validate_atomic_publication_profile(self.atomic_profile)
@@ -697,7 +715,7 @@ class ReleaseOracleExecution:
                     raise RuntimeOracleError("The atomic return checkpoint cannot borrow a different case owner.")
                 if any((self.entry_profile is not None, self.model_node_runtime is not None,
                         self.turn_taint_source is not None, self.fixture_captures, self.bootstrap_profile is not None,
-                        self.memory_budget_profile is not None, self.get_read_race_profile is not None)):
+                        self.memory_budget_profile is not None, self.get_read_race_profile is not None, self.promotion_profile is not None)):
                     raise RuntimeOracleError("Atomic publication cannot borrow model, entry, source or fixture capabilities.")
             elif self.atomic_case is not None:
                 raise RuntimeOracleError("An atomic case binding cannot escape its approved original-owner capability.")
@@ -710,7 +728,7 @@ class ReleaseOracleExecution:
 
                 if any((self.fixture_captures, self.turn_taint_source is not None, self.model_node_runtime is not None,
                         self.entry_profile is not None, self.atomic_profile is not None,
-                        self.memory_budget_profile is not None, self.get_read_race_profile is not None)):
+                        self.memory_budget_profile is not None, self.get_read_race_profile is not None, self.promotion_profile is not None)):
                     raise RuntimeOracleError("The compiled bootstrap profile cannot borrow model, entry, atomic, source or fixture-capture capabilities.")
                 self.bootstrap_profile = validate_bootstrap_discovery_profile(self.bootstrap_profile)
             if self.turn_taint_source is not None:
@@ -791,6 +809,9 @@ class ReleaseOracleExecution:
                 self._context["memoryBudgetProfile"] = self.memory_budget_profile
             if self.get_read_race_profile is not None:
                 self._context["getReadRaceProfile"] = self.get_read_race_profile
+            if self.promotion_profile is not None:
+                self._context["approvedNodeRuntime"] = self.promotion_profile["nodeRuntime"]
+                self._context["promotionRankingProfile"] = self.promotion_profile
             if self.fixture_captures:
                 fixture = str((ROOT / "equivalence/flush-execution.mjs").resolve())
                 if fixture not in self._locals:
@@ -970,6 +991,12 @@ class ReleaseOracleExecution:
                 raise RuntimeOracleError("The get race capability cannot authorize another operation, hook or mutation.")
         elif case.get("input", {}).get("readRace") is not None:
             raise RuntimeOracleError("A read race requires its explicit narrow native hook capability.")
+        if (self.promotion_profile is not None) is not (operation == PROMOTION_RANKING_OPERATION):
+            raise RuntimeOracleError("The ranking capability is restricted to its exact compiled operation.")
+        if self.promotion_profile is not None:
+            validate_promotion_ranking_profile(self.promotion_profile)
+            if case.get("input", {}).get("kind") != "promotion-ranking":
+                raise RuntimeOracleError("The ranking capability cannot impersonate another input contract.")
         if (self.entry_profile is not None) is not (operation in ENTRY_PROVENANCE_PROFILES):
             raise RuntimeOracleError("The entry capability is restricted to its three explicit compiled profiles.")
         if self.entry_profile is not None:
@@ -1016,11 +1043,12 @@ class ReleaseOracleExecution:
                 or row.get("id") != case.get("id") or type(row.get("ok")) is not bool
                 or set(row) != ({"id", "ok", "result"} if row["ok"] else {"id", "ok", "error"})):
             raise RuntimeOracleError("The release oracle returned an unexpected case identity.")
-        if row["ok"] and (not isinstance(row["result"], dict) or row["result"].get("provider") != "none"):
+        if row["ok"] and (not isinstance(row["result"], dict)
+                or operation != PROMOTION_RANKING_OPERATION and row["result"].get("provider") != "none"):
             raise RuntimeOracleError("Release memory fixtures require provider none.")
         if operation == "turn-trust-runtime" and not row["ok"]:
             raise RuntimeOracleError("The real turn-trust caller did not complete its registered execution and persistence flow.")
-        if operation in {*MODEL_RUNTIME_OPERATIONS, *ENTRY_PROVENANCE_PROFILES, *ATOMIC_PUBLICATION_PROFILES, *MEMORY_BUDGET_PROFILES} and not row["ok"]:
+        if operation in {*MODEL_RUNTIME_OPERATIONS, *ENTRY_PROVENANCE_PROFILES, *ATOMIC_PUBLICATION_PROFILES, *MEMORY_BUDGET_PROFILES, PROMOTION_RANKING_OPERATION} and not row["ok"]:
             raise RuntimeOracleError("The real model boundary caller did not complete its declared original execution and output transport.")
         if operation == "bootstrap-discovery-runtime" and not row["ok"]:
             raise RuntimeOracleError("The genuine compiled bootstrap caller did not complete its full observation flow.")
@@ -1045,7 +1073,7 @@ class ReleaseOracleExecution:
             if filename is None:
                 raise RuntimeOracleError("A release thread trace has an invalid identity.")
             raw = _regular(trace, MAX_SINGLE_TRACE_BYTES)
-            if self.entry_profile is not None or self.memory_budget_profile is not None:
+            if self.entry_profile is not None or self.memory_budget_profile is not None or self.promotion_profile is not None:
                 entry_trace_files.append({"name": trace.name, "bytes": len(raw), "sha256": _digest(raw),
                                           "text": raw.decode("utf-8")})
             if self.bootstrap_profile is not None:
@@ -1068,7 +1096,8 @@ class ReleaseOracleExecution:
             node_authority = (self.model_node_runtime
                               or (self.entry_profile["nodeRuntime"] if self.entry_profile is not None else None)
                               or (self.atomic_profile["nodeRuntime"] if self.atomic_profile is not None else None)
-                              or (self.memory_budget_profile["nodeRuntime"] if self.memory_budget_profile is not None else None))
+                              or (self.memory_budget_profile["nodeRuntime"] if self.memory_budget_profile is not None else None)
+                              or (self.promotion_profile["nodeRuntime"] if self.promotion_profile is not None else None))
             if node_authority is not None and first.get("runtime") != node_authority:
                 raise RuntimeOracleError("The actual native process or worker omitted its approved model binary authority.")
             if self.entry_profile is not None and first.get("entryProfile") != self.entry_profile:
@@ -1094,6 +1123,10 @@ class ReleaseOracleExecution:
                 bootstrap[-1]["budgetProfile"] = deepcopy(first["budgetProfile"])
             if self.get_read_race_profile is not None:
                 bootstrap[-1]["getReadRaceProfile"] = deepcopy(first["getReadRaceProfile"])
+            if self.promotion_profile is not None and first.get("promotionProfile") != self.promotion_profile:
+                raise RuntimeOracleError("The actual ranking process or worker omitted its independent profile authority.")
+            if self.promotion_profile is not None:
+                bootstrap[-1]["promotionProfile"] = deepcopy(first["promotionProfile"])
             if thread == 0:
                 process_parents[pid] = first.get("ppid")
             for event in events[1:]:
@@ -1285,6 +1318,19 @@ class ReleaseOracleExecution:
             validate_memory_budget_raw(row, case, diagnostic, evidence.parent, runtime_root=self.config["runtimeRoot"],
                 bootstrap=bootstrap, release_by_pid=release_by_pid, local_by_pid=local_by_pid,
                 worker_imports=worker_imports, process_parents=process_parents)
+        promotion_transport = None
+        if operation == PROMOTION_RANKING_OPERATION:
+            from equivalence.promotion_ranking_evidence import validate_promotion_ranking_raw
+
+            promotion_transport = {"kind": "actual-promotion-ranking-validator-inputs", "adapterRoot": str(ROOT),
+                "runtimeRoot": self.config["runtimeRoot"], "profile": deepcopy(self.promotion_profile),
+                "bootstrap": deepcopy(bootstrap), "processParents": deepcopy(process_parents),
+                "releaseByPid": {str(pid): sorted(paths) for pid, paths in release_by_pid.items()},
+                "localByPid": {str(pid): sorted(paths) for pid, paths in local_by_pid.items()},
+                "workerImports": deepcopy(worker_imports), "rawProcessWorkerTraces": deepcopy(entry_trace_files)}
+            validate_promotion_ranking_raw(row, case, diagnostic, evidence.parent, runtime_root=self.config["runtimeRoot"],
+                bootstrap=bootstrap, release_by_pid=release_by_pid, local_by_pid=local_by_pid,
+                worker_imports=worker_imports, process_parents=process_parents, adapter_root=str(ROOT))
         if operation in ENTRY_PROVENANCE_PROFILES:
             from equivalence.entry_provenance_evidence import validate_entry_provenance_raw
             from equivalence.entry_provenance_bindings import COMPILED_HASHES as ENTRY_ARTIFACTS
@@ -1529,7 +1575,7 @@ class ReleaseOracleExecution:
                                   "networkFetchDenied": True, "provider": "none",
                                   "nativeBinaryPolicy": "all artifact bytes authenticated before and after execution"}
         answer["runtimeDiagnostics"] = [{"id": case["id"], "sha256": _digest(raw),
-                                          "rawSnapshots": _json(raw) if self.entry_profile is not None or self.memory_budget_profile is not None else diagnostic}]
+                                          "rawSnapshots": _json(raw) if self.entry_profile is not None or self.memory_budget_profile is not None or self.promotion_profile is not None else diagnostic}]
         if operation in ATOMIC_PUBLICATION_PROFILES:
             answer["releaseTrace"]["atomicReturnLifecycle"] = atomic_transport
         if entry_transport is not None:
@@ -1538,6 +1584,8 @@ class ReleaseOracleExecution:
             answer["releaseTrace"]["bootstrapDiscoveryTransport"] = bootstrap_transport
         if budget_transport is not None:
             answer["releaseTrace"]["memoryBudgetTransport"] = budget_transport
+        if promotion_transport is not None:
+            answer["releaseTrace"]["promotionRankingTransport"] = promotion_transport
         if self.turn_taint_source is not None:
             if len(reference_source_imports) != 1:
                 raise RuntimeOracleError("The mixed profile must actually load its sole original source owner exactly once.")

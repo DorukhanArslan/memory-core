@@ -46,6 +46,8 @@ from memory_core.bootstrap._js import (
 from memory_core.config import MemoryConfig
 from memory_core.project_name import DISPLAY_NAME
 from memory_core.index.cjk_chars import truncate_utf16_safe
+from memory_core.index._js_exp import exp as _js_exp
+from memory_core.index._js_log1p import log1p as _js_log1p
 from memory_core.consolidation._util import (
     DAY_MS,
     clamp_score,
@@ -90,6 +92,7 @@ from memory_core.consolidation.policy import (
 )
 from memory_core.consolidation.recall import (
     is_contaminated_dreaming_snippet,
+    is_short_term_memory_path,
     is_short_term_session_corpus_path,
     is_workspace_contained_path,
     normalize_memory_path,
@@ -98,8 +101,8 @@ from memory_core.consolidation.store import (
     acquire_short_term_promotion_lock,
     hold_workspace_lock_marker,
     phase_signal_store_path,
-    read_phase_signal_store,
-    read_recall_store,
+    read_canonical_phase_signal_store as read_phase_signal_store,
+    read_canonical_recall_store as read_recall_store,
     recall_store_lock,
     recall_store_path,
     write_recall_store,
@@ -321,9 +324,9 @@ def run_short_term_promotion(
     timezone: str,
     limit: int = 5,
     min_score: float = DEFAULT_DEEP_DREAMING_MIN_SCORE,
-    min_recall_count: int = DEFAULT_DEEP_DREAMING_MIN_RECALL_COUNT,
-    min_unique_queries: int = DEFAULT_DEEP_DREAMING_MIN_UNIQUE_QUERIES,
-    max_age_days: int = -1,
+    min_recall_count: int | float = DEFAULT_DEEP_DREAMING_MIN_RECALL_COUNT,
+    min_unique_queries: int | float = DEFAULT_DEEP_DREAMING_MIN_UNIQUE_QUERIES,
+    max_age_days: int | float = -1,
     recency_half_life_days: float = DEFAULT_RECENCY_HALF_LIFE_DAYS,
     memory_file_max_chars: int = DEFAULT_MEMORY_FILE_MAX_CHARS,
     max_promoted_snippet_tokens: int = DEFAULT_DEEP_DREAMING_MAX_PROMOTED_SNIPPET_TOKENS,
@@ -546,7 +549,7 @@ def _js_number_text(value: float) -> str:
 def _to_finite_score(value: Any, fallback: float) -> float:
     try:
         number = float(value)
-    except (TypeError, ValueError):
+    except (TypeError, ValueError, OverflowError):
         return fallback
     return number if math.isfinite(number) and 0 <= number <= 1 else fallback
 
@@ -554,7 +557,7 @@ def _to_finite_score(value: Any, fallback: float) -> float:
 def _to_finite_non_negative_int(value: Any, fallback: int) -> int:
     try:
         number = float(value)
-    except (TypeError, ValueError):
+    except (TypeError, ValueError, OverflowError):
         return fallback
     if not math.isfinite(number):
         return fallback
@@ -618,9 +621,9 @@ def _plan_apply_stage(
     daily_provenance: Mapping[str, MemoryArtifactProvenance],
     limit: int,
     min_score: float,
-    min_recall_count: int,
-    min_unique_queries: int,
-    max_age_days: int,
+    min_recall_count: int | float,
+    min_unique_queries: int | float,
+    max_age_days: int | float,
 ) -> _ApplyPlan:
     """The pre-lock half of ``applyShortTermPromotions``: authoritative copies, gates, limit, rehydration."""
     from memory_core.consolidation.llm_consolidation import is_consolidation_candidate_eligible
@@ -629,8 +632,8 @@ def _plan_apply_stage(
     store = read_recall_store(recall_store_path(workspace_dir), now_ms)
     entries = _readable_store_entries(store)
     min_score = _to_finite_score(min_score, DEFAULT_DEEP_DREAMING_MIN_SCORE)
-    min_recall_count = _to_finite_non_negative_int(min_recall_count, 3)
-    min_unique_queries = _to_finite_non_negative_int(min_unique_queries, 2)
+    min_recall_count = _to_finite_non_negative_int(min_recall_count, DEFAULT_DEEP_DREAMING_MIN_RECALL_COUNT)
+    min_unique_queries = _to_finite_non_negative_int(min_unique_queries, DEFAULT_DEEP_DREAMING_MIN_UNIQUE_QUERIES)
     max_age = _to_finite_non_negative_int(max_age_days, -1)
     selection_limit = (
         max(0, math.floor(limit))
@@ -775,11 +778,11 @@ def rank_short_term_promotion_candidates(
     *,
     config: MemoryConfig,
     now_ms: int,
-    limit: int,
+    limit: int | float | None,
     min_score: float,
-    min_recall_count: int,
-    min_unique_queries: int,
-    max_age_days: int = -1,
+    min_recall_count: int | float,
+    min_unique_queries: int | float,
+    max_age_days: int | float = -1,
     recency_half_life_days: float = DEFAULT_RECENCY_HALF_LIFE_DAYS,
     include_promoted: bool = False,
     weights: Mapping[str, float] | None = None,
@@ -807,10 +810,18 @@ def rank_short_term_promotion_candidates(
         )
         if not evaluation.reasons and not is_promotion_origin_blocked(evaluation.provenance)
     ]
+    bound = None
+    if isinstance(limit, (int, float)) and not isinstance(limit, bool):
+        try:
+            if math.isfinite(limit):
+                bound = max(0, math.floor(limit))
+        except OverflowError:
+            # An unbounded Python integer is nonfinite as a JavaScript Number.
+            pass
     return sorted(
         candidates,
         key=lambda c: (-c.score, -c.recall_count, locale_sort_key(c.path)),
-    )[:limit]
+    )[:bound]
 
 
 def evaluate_short_term_promotion_candidates(
@@ -818,14 +829,18 @@ def evaluate_short_term_promotion_candidates(
     config: MemoryConfig,
     now_ms: int,
     min_score: float,
-    min_recall_count: int,
-    min_unique_queries: int,
-    max_age_days: int = -1,
+    min_recall_count: int | float,
+    min_unique_queries: int | float,
+    max_age_days: int | float = -1,
     recency_half_life_days: float = DEFAULT_RECENCY_HALF_LIFE_DAYS,
     include_promoted: bool = False,
     weights: Mapping[str, float] | None = None,
 ) -> list[PromotionEvaluation]:
     """Score every live recall entry and list the gates it fails, best score first."""
+    min_score = _to_finite_score(min_score, DEFAULT_DEEP_DREAMING_MIN_SCORE)
+    min_recall_count = _to_finite_non_negative_int(min_recall_count, DEFAULT_DEEP_DREAMING_MIN_RECALL_COUNT)
+    min_unique_queries = _to_finite_non_negative_int(min_unique_queries, DEFAULT_DEEP_DREAMING_MIN_UNIQUE_QUERIES)
+    max_age_days = _to_finite_non_negative_int(max_age_days, -1)
     store = read_recall_store(recall_store_path(config.workspace_dir), now_ms)
     phase_signals = read_phase_signal_store(phase_signal_store_path(config.workspace_dir), now_ms)
     phase_entries = phase_signals.get("entries", {})
@@ -833,9 +848,15 @@ def evaluate_short_term_promotion_candidates(
     evaluations = []
     for raw in store["entries"].values():
         key = str(raw.get("key") or "")
+        path = str(raw.get("path") or "")
         if not key or (not include_promoted and raw.get("promotedAt")):
             continue
-        if is_contaminated_dreaming_snippet(str(raw.get("snippet") or "")):
+        if not is_short_term_memory_path(path):
+            continue
+        if is_contaminated_dreaming_snippet(
+            str(raw.get("snippet") or ""),
+            allow_transcript_turn_snippet=is_short_term_session_corpus_path(path),
+        ):
             continue
         recall_count = to_int(raw.get("recallCount"), 0)
         daily_count = to_int(raw.get("dailyCount"), 0)
@@ -1246,7 +1267,7 @@ def _evaluation_to_candidate(evaluation: PromotionEvaluation) -> PromotionCandid
         path=evaluation.path,
         start_line=evaluation.start_line,
         end_line=evaluation.end_line,
-        snippet=evaluation.snippet,
+        snippet=normalize_snippet(evaluation.snippet),
         recall_count=evaluation.recall_count,
         daily_count=evaluation.daily_count,
         grounded_count=evaluation.grounded_count,
@@ -1259,7 +1280,9 @@ def _evaluation_to_candidate(evaluation: PromotionEvaluation) -> PromotionCandid
         last_recalled_at=evaluation.last_recalled_at,
         age_days=evaluation.age_days,
         concept_tags=evaluation.concept_tags,
-        components=dict(evaluation.components),
+        # The phase boost contributes to the score, while the public candidate
+        # exposes the six weighted components. Evaluations retain its diagnostic.
+        components={key: evaluation.components[key] for key in PROMOTION_COMPONENT_WEIGHTS},
         recall_days=evaluation.recall_days,
         claim_hash=evaluation.claim_hash,
         project_key=evaluation.project_key,
@@ -1290,7 +1313,7 @@ def _candidate_components(
         if math.isfinite(recency_half_life_days) and recency_half_life_days > 0
         else DEFAULT_RECENCY_HALF_LIFE_DAYS
     )
-    recency = math.exp(-(math.log(2) / half_life_days) * age_days)
+    recency = _js_exp(-(math.log(2) / half_life_days) * age_days)
     concept_tags = [value for value in entry.get("conceptTags", []) if isinstance(value, str)]
     consolidation = max(
         _calculate_consolidation_component(recall_days),
@@ -1298,7 +1321,7 @@ def _candidate_components(
     )
     key = str(entry.get("key") or "")
     return {
-        "frequency": clamp_score(math.log1p(max(0, signal_count)) / math.log1p(10)),
+        "frequency": clamp_score(_js_log1p(max(0, signal_count)) / _js_log1p(10)),
         "relevance": clamp_score(avg_score),
         "diversity": clamp_score(max(0, context_diversity) / 5),
         "recency": clamp_score(recency),
@@ -1348,15 +1371,15 @@ def _recency_component(age_days: float, half_life_days: float) -> float:
         return 1.0
     if not math.isfinite(half_life_days) or half_life_days <= 0:
         return 1.0
-    return math.exp(-(math.log(2) / half_life_days) * age_days)
+    return _js_exp(-(math.log(2) / half_life_days) * age_days)
 
 
 def _phase_signal_boost(entry: Any, now_ms: int = 0) -> float:
     """``calculatePhaseSignalBoost``: log-scaled light and REM hits, decayed by their age."""
     if not isinstance(entry, dict):
         return 0.0
-    light_strength = clamp_score(math.log1p(max(0, to_int(entry.get("lightHits"), 0))) / math.log1p(6))
-    rem_strength = clamp_score(math.log1p(max(0, to_int(entry.get("remHits"), 0))) / math.log1p(6))
+    light_strength = clamp_score(_js_log1p(max(0, to_int(entry.get("lightHits"), 0))) / _js_log1p(6))
+    rem_strength = clamp_score(_js_log1p(max(0, to_int(entry.get("remHits"), 0))) / _js_log1p(6))
     light_age = _phase_signal_age_days(entry.get("lastLightAt"), now_ms)
     rem_age = _phase_signal_age_days(entry.get("lastRemAt"), now_ms)
     light_recency = 0.0 if light_age is None else clamp_score(_recency_component(light_age, 14))
@@ -1389,7 +1412,7 @@ def _calculate_consolidation_component(recall_days: list[str]) -> float:
     if len(parsed) <= 1:
         return 0.2
     span_days = max(0.0, (parsed[-1] - parsed[0]) / DAY_MS)
-    spacing = clamp_score(math.log1p(len(parsed) - 1) / math.log1p(4))
+    spacing = clamp_score(_js_log1p(len(parsed) - 1) / _js_log1p(4))
     span = clamp_score(span_days / 7)
     return clamp_score(0.55 * spacing + 0.45 * span)
 

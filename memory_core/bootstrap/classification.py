@@ -13,6 +13,9 @@ from typing import TYPE_CHECKING, Any
 
 from memory_core.bootstrap._js import js_trim
 
+# This is the pinned upstream plugin config identifier, independent of SDK branding.
+OPENCLAW_BUILTIN_MEMORY_PLUGIN_ID = "memory-core"
+
 if TYPE_CHECKING:
     from memory_core.bootstrap.files import WorkspaceBootstrapFile
     from memory_core.consolidation.artifact_provenance import MemoryArtifactProvenanceStore
@@ -37,7 +40,7 @@ def _builtin_memory_runtime_available(config: Mapping[str, Any] | None) -> bool:
     selection = js_trim(selection) if isinstance(selection, str) else ""
     if selection.lower() == "none":
         return False
-    selected = selection or "memory-core"
+    selected = selection or OPENCLAW_BUILTIN_MEMORY_PLUGIN_ID
     denied = plugins.get("deny")
     if isinstance(denied, (list, tuple)) and selected in {
         js_trim(item).lower() for item in denied if isinstance(item, str)
@@ -52,7 +55,7 @@ def _builtin_memory_runtime_available(config: Mapping[str, Any] | None) -> bool:
                     enabled = entry["enabled"]
     if enabled is False:
         return False
-    if selected != "memory-core":
+    if selected != OPENCLAW_BUILTIN_MEMORY_PLUGIN_ID:
         raise UnsupportedBootstrapMemoryRuntimeError(
             f"Bootstrap memory runtime {selected!r} is not implemented by the portable SDK"
         )

@@ -118,6 +118,12 @@
           "symbol": "readMemoryFile",
           "anchor": "export async function readMemoryFile(params: {",
           "line": 34
+        },
+        {
+          "path": "extensions/memory-core/src/short-term-promotion-memory-write.ts",
+          "symbol": "resolveMemoryWritePath",
+          "anchor": "export async function resolveMemoryWritePath(",
+          "line": 48
         }
       ],
       "python": [
@@ -150,6 +156,18 @@
           "symbol": "bridge_memory_read_io_error",
           "anchor": "def bridge_memory_read_io_error(",
           "line": 39
+        },
+        {
+          "path": "memory_core/workspace.py",
+          "symbol": "MemoryWorkspace.resolve_memory_path",
+          "anchor": "    def resolve_memory_path(self, rel_path: str) -> Path:",
+          "line": 640
+        },
+        {
+          "path": "memory_core/workspace.py",
+          "symbol": "check_writable_memory_file",
+          "anchor": "def check_writable_memory_file(root: Path, rel_path: str) -> None:",
+          "line": 339
         }
       ],
       "implementation": "present",
@@ -158,7 +176,9 @@
         "Actual private Linux files, encoded literal names, absolute/relative/traversal requests, symlinks, hardlinks, nonregular leaves, missing/non-directory workspaces and plain/patterned configured roots retain full public envelopes, exact error causes and nofollow pre/post filesystem evidence.",
         "The read-only owner pins root and file identities, opens with O_NOFOLLOW/O_NONBLOCK, checks root/file/canonical-file/root containment before consuming the same descriptor, and preserves the native hardlink-allow policy and lack of a post-consumption pathname gate. Original Python IO exceptions stay available behind the attributed Node error bridge.",
         "The separate official fs-safe afterPreOpenLstat hook is restricted to one fixed owned leaf-to-symlink mutation under the existing get operation. Hook/caller hashes, real caller stack, mutation inode facts, complete snapshots, synchronous setter-only NODE_ENV transition and actual disarming are revalidated. Generic get or other operations cannot borrow this capability.",
-        "First static, first race, corrected11 and legacy12 packets retain their original empty coverage metadata and original hashes. Broader race schedules have SDK unit guards only; retry timing, cross-platform semantics and write admission are unclaimed. Contract 3 is unchanged."
+        "First static, first race, corrected11 and legacy12 packets retain their original empty coverage metadata and original hashes. Broader race schedules have SDK unit guards only; retry timing, cross-platform semantics and write admission are unclaimed. Contract 3 is unchanged.",
+        "Workspace Markdown read probes compare absolute, relative, traversal, encoded, symlink and non-regular requests, exact policy codes/messages and unchanged filesystem snapshots.",
+        "Configured extra roots, write admission and descriptor/path-replacement checks remain unproved. The read-only fixtures receive no full path-safety acceptance credit."
       ]
     },
     {
@@ -246,7 +266,7 @@
           "path": "memory_core/consolidation/promotion.py",
           "symbol": "_append_to_memory",
           "anchor": "def _append_to_memory(",
-          "line": 1533
+          "line": 1556
         },
         {
           "path": "memory_core/consolidation/llm_consolidation.py",
@@ -265,7 +285,8 @@
         "The real curator and forget callers use a shared checked publication owner with preimage checks, exclusive temporary creation, preserved regular-file modes and post-rename identity verification. Curator source admission remains stricter than the generic writer; it never opts into promotion-only in-place repair.",
         "The actual promotion caller opts into permission fallback, restores the old bytes after an in-place write/sync failure, and deep consolidation retains real reserved lineage after dispatched publication errors. Rooted daily append preserves partial bytes and plain errors, private exclusive bootstrap creation stages all bytes before visibility, and existing bootstrap entries remain unchanged.",
         "Development probes retain complete errors, causes, FsSafe categories, surviving bytes/modes and physical receipts. Append and replacement parent-directory fsync are best-effort; retained-directory bootstrap staging ignores only parent-sync EPERM and exposes a real published receipt on other post-publication sync failures. This distinction replaces the earlier broad parent-fsync assumption.",
-        "Genuine per-process kernel EFBIG, literal write/fsync faults, checked concurrent replacements and exclusive creation during staging are development observations only. Physical receipt bigint identities/timestamps/temp names remain noninterchangeable in the retained full-error comparison. Broader cleanup/close, indeterminate bootstrap publication, authenticated whole-condition proof and caller reconciliation for plain partial append remain unverified; no acceptance credit is assigned."
+        "Genuine per-process kernel EFBIG, literal write/fsync faults, checked concurrent replacements and exclusive creation during staging are development observations only. Physical receipt bigint identities/timestamps/temp names remain noninterchangeable in the retained full-error comparison. Broader cleanup/close, indeterminate bootstrap publication, authenticated whole-condition proof and caller reconciliation for plain partial append remain unverified; no acceptance credit is assigned.",
+        "The SDK session runner durably records a producer intent before actual provenance/file mutation and retains it across partial IO, terminal cancellation or failed final state persistence. This SDK reconciliation policy does not turn development probes into native atomic-write equivalence credit."
       ]
     },
     {
@@ -3003,7 +3024,7 @@
           "path": "memory_core/bootstrap/classification.py",
           "symbol": "classify_workspace_memory_paths",
           "anchor": "def classify_workspace_memory_paths(",
-          "line": 62
+          "line": 65
         }
       ],
       "implementation": "partial",
@@ -3125,7 +3146,7 @@
       "implementation": "partial",
       "notes": [
         "Runtime markers default to Memory Core identity; native marker behavior requires the explicit OpenClaw compatibility identity.",
-        "Current-time formatting takes an explicit host 12/24-hour format and uses UTC for blank or unknown zones; native code detects host format and falls back to the host zone. Python dates also stop at years 1\u20139999."
+        "Current-time formatting takes an explicit host 12/24-hour format and uses UTC for blank or unknown zones; native code detects host format and falls back to the host zone. Python dates also stop at years 1–9999."
       ]
     },
     {
@@ -3436,7 +3457,7 @@
           "path": "memory_core/consolidation/promotion.py",
           "symbol": "_commit_promotion",
           "anchor": "def _commit_promotion(",
-          "line": 924
+          "line": 945
         }
       ],
       "implementation": "present",
@@ -3643,6 +3664,18 @@
           "symbol": "normalizeWeights",
           "anchor": "export function normalizeWeights(weights?: Partial<PromotionWeights>): PromotionWeights {",
           "line": 542
+        },
+        {
+          "path": "extensions/memory-core/src/short-term-promotion-utils.ts",
+          "symbol": "normalizeShortTermRecallStore",
+          "anchor": "export function normalizeShortTermRecallStore(",
+          "line": 327
+        },
+        {
+          "path": "extensions/memory-core/src/short-term-promotion-store.ts",
+          "symbol": "normalizeShortTermPhaseSignalStore",
+          "anchor": "function normalizeShortTermPhaseSignalStore(",
+          "line": 99
         }
       ],
       "python": [
@@ -3650,19 +3683,43 @@
           "path": "memory_core/consolidation/promotion.py",
           "symbol": "rank_short_term_promotion_candidates",
           "anchor": "def rank_short_term_promotion_candidates(",
-          "line": 774
+          "line": 777
         },
         {
           "path": "memory_core/consolidation/promotion.py",
           "symbol": "evaluate_short_term_promotion_candidates",
           "anchor": "def evaluate_short_term_promotion_candidates(",
-          "line": 816
+          "line": 827
         },
         {
           "path": "memory_core/consolidation/recall.py",
           "symbol": "is_contaminated_dreaming_snippet",
           "anchor": "def is_contaminated_dreaming_snippet(raw: str, *, allow_transcript_turn_snippet: bool = False) -> bool:",
           "line": 607
+        },
+        {
+          "path": "memory_core/consolidation/store.py",
+          "symbol": "read_canonical_recall_store",
+          "anchor": "def read_canonical_recall_store(",
+          "line": 262
+        },
+        {
+          "path": "memory_core/consolidation/store.py",
+          "symbol": "read_canonical_phase_signal_store",
+          "anchor": "def read_canonical_phase_signal_store(",
+          "line": 271
+        },
+        {
+          "path": "memory_core/consolidation/store_normalization.py",
+          "symbol": "normalize_short_term_recall_store",
+          "anchor": "def normalize_short_term_recall_store(",
+          "line": 100
+        },
+        {
+          "path": "memory_core/consolidation/store_normalization.py",
+          "symbol": "normalize_short_term_phase_signal_store",
+          "anchor": "def normalize_short_term_phase_signal_store(",
+          "line": 147
         }
       ],
       "implementation": "partial",
@@ -3702,25 +3759,25 @@
           "path": "memory_core/consolidation/promotion.py",
           "symbol": "run_short_term_promotion",
           "anchor": "def run_short_term_promotion(",
-          "line": 316
+          "line": 319
         },
         {
           "path": "memory_core/consolidation/promotion.py",
           "symbol": "_plan_apply_stage",
           "anchor": "def _plan_apply_stage(",
-          "line": 612
+          "line": 615
         },
         {
           "path": "memory_core/consolidation/promotion.py",
           "symbol": "_commit_promotion",
           "anchor": "def _commit_promotion(",
-          "line": 924
+          "line": 945
         },
         {
           "path": "memory_core/consolidation/promotion.py",
           "symbol": "build_promotion_applied_event",
           "anchor": "def build_promotion_applied_event(",
-          "line": 1193
+          "line": 1214
         }
       ],
       "implementation": "present",
@@ -4879,7 +4936,7 @@
           "path": "memory_core/consolidation/promotion.py",
           "symbol": "evaluate_short_term_promotion_candidates",
           "anchor": "def evaluate_short_term_promotion_candidates(",
-          "line": 816
+          "line": 827
         },
         {
           "path": "memory_core/index/identity.py",
@@ -6173,6 +6230,27 @@
         "recordGroundedShortTermCandidates",
         "recordShortTermRecalls",
         "resolveShortTermSourcePathCandidates"
+      ]
+    },
+    {
+      "path": "extensions/memory-core/src/short-term-promotion-store.ts",
+      "sha256": "556c7e10323eb889e857d2cda41a5a6cd78e7e456ee99b2205b491dac547ea84",
+      "sourceImports": [
+        "./dreaming-state.js",
+        "./short-term-promotion-types.js",
+        "./short-term-promotion-utils.js",
+        "openclaw/plugin-sdk/string-coerce-runtime"
+      ],
+      "exportedDeclarations": [
+        "emptyPhaseSignalStore",
+        "normalizeShortTermPhaseSignalStore",
+        "readPhaseSignalStore",
+        "readShortTermStore",
+        "readStore",
+        "resolvePhaseSignalPath",
+        "resolveStorePath",
+        "writePhaseSignalStore",
+        "writeStore"
       ]
     },
     {

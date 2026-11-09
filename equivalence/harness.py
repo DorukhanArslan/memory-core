@@ -300,6 +300,11 @@ def _validate_scope(scope: Any, cases: Any) -> tuple[list[dict], dict[str, set[s
         validate_storage_path_acceptance_registration(cases)
     except (TypeError, ValueError) as error:
         raise HarnessError("cases-invalid", "Path-safety acceptance requires its complete reviewed whole-tool family set.") from error
+    from equivalence.promotion_ranking_acceptance import validate_promotion_ranking_acceptance
+    try:
+        validate_promotion_ranking_acceptance(cases)
+    except ValueError as error:
+        raise HarnessError("cases-invalid", str(error)) from None
     return requirements, points
 
 
@@ -363,6 +368,10 @@ def _oracle(node: Path, script: Path, checkout: Path, cases: list[dict], timeout
                     context_options["get_read_race_profile"] = prepare_get_read_race_profile(
                         cases[0], Path(release_runtime["runtimeRoot"]),
                     )
+                if len(cases) == 1 and cases[0]["operation"] == "promotion-ranking-runtime":
+                    from equivalence.promotion_ranking_bindings import prepare_promotion_ranking_profile
+
+                    context_options["promotion_profile"] = prepare_promotion_ranking_profile(node)
                 execution = resources.enter_context(ReleaseOracleExecution(
                     release_runtime, _adapter_identity(), **context_options))
                 # Only this reviewed preload is supplied. User Node options,
@@ -561,6 +570,7 @@ def run_suite(*, checkout: Path, node: Path, smoke: bool = False,
             "atomic-commit-runtime", "atomic-append-runtime", "atomic-bootstrap-runtime",
             "bootstrap-discovery-runtime",
             "memory-budget-runtime", "memory-budget-apply-runtime",
+            "promotion-ranking-runtime",
         }
         runtime_cases = [case for case in cases if case["operation"] in runtime_operations]
         source_cases = [case for case in cases if case["operation"] not in runtime_operations]
@@ -863,6 +873,14 @@ def run_suite(*, checkout: Path, node: Path, smoke: bool = False,
                 from equivalence.get_read_race_profile import prepare_get_read_race_bindings
 
                 report["getReadRaceRuntimeBindings"] = prepare_get_read_race_bindings(Path(runtime_config["runtimeRoot"]))
+            if any(case["operation"] == "promotion-ranking-runtime" for case in runtime_cases):
+                from equivalence.promotion_ranking_bindings import (
+                    prepare_promotion_ranking_bindings, prepare_promotion_ranking_profile,
+                )
+
+                report["promotionRankingRuntimeBindings"] = prepare_promotion_ranking_bindings(
+                    checkout, Path(runtime_config["runtimeRoot"]))
+                report["promotionRankingProfile"] = prepare_promotion_ranking_profile(node)
             observed_release = {}
             for case in runtime_cases:
                 # The real manager retains global state owners. Each distinct
@@ -901,6 +919,11 @@ def run_suite(*, checkout: Path, node: Path, smoke: bool = False,
                     if (prepare_memory_budget_bindings(checkout, Path(runtime_config["runtimeRoot"])) != report["memoryBudgetRuntimeBindings"]
                             or prepare_model_node_authority(node) != report["memoryBudgetNodeAuthority"]):
                         raise ValueError("Memory-budget source/artifact/profile or executable authority changed.")
+                if "promotionRankingRuntimeBindings" in report:
+                    if (prepare_promotion_ranking_bindings(checkout, Path(runtime_config["runtimeRoot"]))
+                            != report["promotionRankingRuntimeBindings"]
+                            or prepare_promotion_ranking_profile(node) != report["promotionRankingProfile"]):
+                        raise ValueError("Promotion rank source, artifact or executable authority changed.")
                 if new_model_operations and prepare_model_node_authority(node) != report["modelNodeAuthority"]:
                     raise ValueError("The approved model boundary executable changed.")
                 if bootstrap_runtime and (

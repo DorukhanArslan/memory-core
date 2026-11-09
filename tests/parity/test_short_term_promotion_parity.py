@@ -21,6 +21,7 @@ from memory_core.consolidation import (
     run_short_term_promotion,
 )
 from memory_core.embeddings.base import FakeEmbeddingProvider
+from memory_core.consolidation.promotion import evaluate_short_term_promotion_candidates
 from memory_core.runtime_identity import OPENCLAW_COMPAT_RUNTIME_IDENTITY
 from memory_core.index.sqlite_store import SQLiteMemoryStore
 
@@ -411,8 +412,13 @@ def test_candidate_output_includes_score_components_and_phase_boost(tmp_path: Pa
     )
 
     assert boosted[0].components["frequency"] > 0
-    assert boosted[0].components["phaseBoost"] > 0
-    assert boosted[0].components["phaseBoost"] <= 0.15
+    assert "phaseBoost" not in boosted[0].components
+    evaluations = evaluate_short_term_promotion_candidates(
+        config=config, now_ms=now, min_score=0, min_recall_count=1, min_unique_queries=1,
+    )
+    boosted_evaluation = next(item for item in evaluations if item.key == boosted[0].key)
+    assert 0 < boosted_evaluation.components["phaseBoost"] <= 0.15
+    assert boosted_evaluation.score == boosted[0].score
     assert boosted[0].score >= candidates[0].score
 
 

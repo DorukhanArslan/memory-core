@@ -32,9 +32,8 @@ def test_case_catalog_is_deterministic_unique_and_standard_json():
         "chunking.markdown-boundaries", "chunking.utf16-cjk-budget", "chunking.entry-provenance",
         "prompt.bootstrap-budget", "flush.trigger-usage", "sessions.transcript-filtering",
         "flush.plan-target",
-        "flush.execute-finalize",
-        "compaction.memory-budget",
-        "prompt.bootstrap-discovery",
+        "flush.execute-finalize", "compaction.memory-budget",
+        "prompt.bootstrap-discovery", "promotion.ranking-gates",
     }
 
 

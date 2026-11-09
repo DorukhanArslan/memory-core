@@ -164,7 +164,7 @@ in 1,086 cases.
 The newly observed OS-specific loop diagnostic remains uncredited alongside the earlier two
 differences. No claim of full equivalence follows from these bounded results.
 
-The current inventory maps **193 upstream modules**, with 15 present and 49 partial
+The current inventory maps **196 upstream modules**, with 17 present and 47 partial
 Python counterparts. Durable catalog and session-runner owners now provide partial SDK
 counterparts for the three previously host-owned rows; this source classification adds no
 behavioral credit. Original Gateway host acceptance remains incomplete. The shared-deadline package maps the actual control,

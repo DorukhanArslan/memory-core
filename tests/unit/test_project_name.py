@@ -35,6 +35,10 @@ import demo
 from demo import lab_runtime
 from probe_kit import project_name
 from probe_kit.runtime_identity import PROBE_KIT_RUNTIME_IDENTITY as identity
+from probe_kit.bootstrap.classification import (
+    OPENCLAW_BUILTIN_MEMORY_PLUGIN_ID,
+    _builtin_memory_runtime_available,
+)
 
 print(json.dumps({
     "names": [
@@ -47,6 +51,8 @@ print(json.dumps({
     ],
     "identity": [identity.runtime_context_begin, identity.heartbeat_transcript_prompt],
     "lab": [demo.LAB_TITLE, lab_runtime.LAB_WORKSPACE_DIRNAME, lab_runtime.CHAT_API_KEY_ENV],
+    "upstream_plugin": [OPENCLAW_BUILTIN_MEMORY_PLUGIN_ID,
+        _builtin_memory_runtime_available({"plugins": {"slots": {"memory": "memory-core"}}})],
 }))
 """
 
@@ -175,6 +181,7 @@ def test_a_probe_rename_renames_the_package_and_every_derived_name(probe_tree):
         "names": ["probe-kit", "Probe Kit", "probe_kit", "PROBE_KIT", "PROBE_KIT_", ".probe-kit"],
         "identity": ["<<<BEGIN_PROBE_KIT_INTERNAL_CONTEXT>>>", "[Probe Kit heartbeat poll]"],
         "lab": ["Probe Kit Lab", "probe-kit-lab-workspace", "PROBE_KIT_DEMO_OPENAI_API_KEY"],
+        "upstream_plugin": [UPSTREAM_COMPONENT, True],
     }
     assert rename_project.read_declaration(probe_tree) == rename_project.ProjectName(
         PROBE_DIST, PROBE_DISPLAY

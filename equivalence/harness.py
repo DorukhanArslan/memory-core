@@ -1716,7 +1716,7 @@ def run_suite(*, checkout: Path, node: Path, smoke: bool = False,
                             if (original.get("validationStatus") != "verified"
                                     or len(original["rawSnapshots"]) != 1 or len(snapshots) != 1):
                                 raise ValueError("Query-sync outcomes require one authenticated original and SDK capture")
-                            if validate_pair(case, original["rawSnapshots"][0], snapshots[0], native["result"], python) is not True:
+                            if validate_pair(case, original["rawSnapshots"][0], snapshots[0], native["result"], python, approved_node=node) is not True:
                                 raise ValueError("Query-sync outcome custody did not affirmatively validate")
                             query_sync_diagnostic["validationStatus"] = "verified"
                             row["runtimeEvidenceValidated"] = True

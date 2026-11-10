@@ -179,7 +179,7 @@ Its final complete catalog on clean `b27624d` validates the sessions-only
 source-coherence correction and confirms the same 70, with no additional point.
 Source inventory itself still awards no behavioral credit.
 
-The current inventory maps **225 upstream modules**, with 18 present and 46 partial
+The current inventory maps **237 upstream modules**, with 18 present and 46 partial
 Python counterparts. Durable catalog and session-runner owners now provide partial SDK
 counterparts for the three previously host-owned rows; this source classification adds no
 behavioral credit. Original Gateway host acceptance remains incomplete. The shared-deadline package maps the actual control,
@@ -225,6 +225,26 @@ semantic-provider latency, or absence of speculative internal FTS queries is
 inferred. Original source and publisher release evidence stay separate; the
 release build is not independently reproduced.
 
+The developing query-sync outcome map now includes the original default manager, public
+tool, source discovery, dirty notifications, actual read-generation leases, scoped
+maintenance/publication workers, watcher resources and original close settlement.
+Its bindings declare **54 tracked source owners and 29 official compiled owners**
+as separate authorities. The union adds 12 source modules to the prior 225,
+bringing the current inventory to **237 upstream modules**; compiled artifacts are not
+included in that count. The existing SDK provider-none `ManagedSQLiteMemoryStore`
+`memory_publication="on-search"` profile and public search factory are now mapped
+explicitly. SDK production code is unchanged by this authority/fixture package.
+
+The source classification stays `partial`; inventory adds **zero conditions**.
+The verified baseline remains **71/128**, with **57 remaining**. The proposed
+seven-schedule outcome family targets **72/128**, pending its actual fresh full
+**1,444-case comparison and independent proof**. Only the original
+`indexing.query-sync.outcomes` condition is targeted. Forced-sync/retry policy,
+unavailable outcomes and dispatch counts retain their separate uncovered boundary
+condition. A warm first query may retain an old generation; original close joins
+already-admitted work and does not flush future watcher timers. No source map
+statement promises immediate freshness or final mtime/count parity.
+
 The historical maintenance baseline has **62/128 conditions**, with **66 remaining**:
 28 contracts complete, 6 partial and 30 pending. These are unweighted verification
 counts, not engineering-effort percentages. The fresh integrated catalog records
@@ -251,7 +271,7 @@ current limitations and retained first failures.
 | `indexing.incremental-sync` | [MemoryManagerSyncBase.executeSourceSync](https://github.com/openclaw/openclaw/blob/bcfc88812a35243893585dbeca87ca41b48272ca/extensions/memory-core/src/memory/manager-sync-base.ts#L294) | [SQLiteMemoryStore.reindex](../memory_core/index/sqlite_store.py#L551) | partial |
 | `indexing.transaction-publication` | [publishMemoryDatabaseTables](https://github.com/openclaw/openclaw/blob/bcfc88812a35243893585dbeca87ca41b48272ca/extensions/memory-core/src/memory/manager-db-kernel.ts#L108) | [SQLiteMemoryStore.reindex](../memory_core/index/sqlite_store.py#L551) | present |
 | `indexing.embedding-cache` | [loadMemoryEmbeddingCache](https://github.com/openclaw/openclaw/blob/bcfc88812a35243893585dbeca87ca41b48272ca/extensions/memory-core/src/memory/manager-embedding-cache.ts#L40) | [load_memory_embedding_cache](../memory_core/index/embedding_cache.py#L86) | partial |
-| `indexing.query-sync` | [MemorySearchOrchestration.searchCandidates](https://github.com/openclaw/openclaw/blob/bcfc88812a35243893585dbeca87ca41b48272ca/extensions/memory-core/src/memory/manager-search-orchestration.ts#L109) | [SQLiteMemoryStore.search](../memory_core/index/sqlite_store.py#L963) | partial |
+| `indexing.query-sync` | [MemorySearchOrchestration.searchCandidates](https://github.com/openclaw/openclaw/blob/bcfc88812a35243893585dbeca87ca41b48272ca/extensions/memory-core/src/memory/manager-search-orchestration.ts#L109) | [ManagedSQLiteMemoryStore.search](../memory_core/host/managed_index.py#L527) | partial |
 | `retrieval.vector-scoring` | [searchVector](https://github.com/openclaw/openclaw/blob/bcfc88812a35243893585dbeca87ca41b48272ca/extensions/memory-core/src/memory/manager-search-vector.ts#L24) | [SQLiteMemoryStore.search_vector_candidates](../memory_core/index/sqlite_store.py#L1145) | present |
 | `retrieval.hybrid-scoring` | [mergeHybridResults](https://github.com/openclaw/openclaw/blob/bcfc88812a35243893585dbeca87ca41b48272ca/extensions/memory-core/src/memory/hybrid.ts#L58) | [merge_hybrid_results](../memory_core/index/hybrid.py#L228) | present |
 | `retrieval.exact-path-priority` | [prepareExactPathMatcher](https://github.com/openclaw/openclaw/blob/bcfc88812a35243893585dbeca87ca41b48272ca/extensions/memory-core/src/memory/manager-search.ts#L135) | [SQLiteMemoryStore.search_path_candidates](../memory_core/index/sqlite_store.py#L1623) | present |

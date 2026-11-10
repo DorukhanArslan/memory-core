@@ -140,6 +140,67 @@ def test_adapter_identity_includes_minimal_provider_bytes_and_metadata(tmp_path,
     assert harness._adapter_identity() == before
 
 
+def test_real_legacy_context_gets_only_flat_authority_while_provider_hashes_remain_global(tmp_path, monkeypatch):
+    """Enter the actual context, then stop before launching any native process."""
+    from equivalence import runtime_oracle
+    from equivalence.host_turn_barrier_native import LOCAL
+
+    runtime = tmp_path / "labelled-runtime"
+    runtime.mkdir()
+    module = runtime / "labelled.mjs"
+    module.write_text("// Context-construction fixture; never executed.\n")
+    config = {"kind": "labelled-constructor-fixture", "runtimeRoot": str(runtime), "packages": [
+        {"location": "node_modules/openclaw", "directory": str(runtime), "files": [
+            {"path": module.name, "sha256": hashlib.sha256(module.read_bytes()).hexdigest()}]}]}
+    all_adapters = harness._adapter_identity()
+    provider_files = {"host-turn-barrier-provider/index.mjs", "host-turn-barrier-provider/openclaw.plugin.json"}
+    assert provider_files <= all_adapters.keys()
+    assert provider_files <= set(LOCAL)
+    original_context = runtime_oracle.ReleaseOracleExecution
+    # Its strict policy remains unchanged, including for non-JavaScript metadata.
+    with pytest.raises(runtime_oracle.RuntimeOracleError, match="plain filenames"):
+        with original_context(config, all_adapters):
+            pytest.fail("The legacy context admitted another profile's nested files")
+
+    observed = []
+
+    class RecordingContext(original_context):
+        def __enter__(self):
+            entered = super().__enter__()
+            observed.append((self, json.loads(self.context_path.read_text())))
+            return entered
+
+    class StopBeforeNative(Exception):
+        pass
+
+    launches = []
+
+    def halt_before_process(*args, **kwargs):
+        launches.append((args, kwargs))
+        raise StopBeforeNative
+
+    monkeypatch.setattr(runtime_oracle, "ReleaseOracleExecution", RecordingContext)
+    monkeypatch.setattr(harness.subprocess, "Popen", halt_before_process)
+    case = {"id": "labelled-legacy-context", "operation": "index-lifecycle-runtime", "input": {}}
+    with pytest.raises(StopBeforeNative):
+        _oracle(tmp_path / "unused-node", ROOT / "equivalence/release-oracle.mjs", tmp_path,
+                [case], 60, release_runtime=config)
+    assert len(launches) == len(observed) == 1
+    execution, context = observed[0]
+    expected_flat = {name: digest for name, digest in all_adapters.items() if Path(name).name == name}
+    assert execution.adapter_hashes == expected_flat
+    assert all(Path(name).name == name for name in execution.adapter_hashes)
+    assert provider_files.isdisjoint(execution.adapter_hashes)
+    authorized = {item["path"] for item in context["allowedLocal"]}
+    assert {str((ROOT / "equivalence" / name).resolve()) for name in
+            ("release-oracle.mjs", "release-preload.mjs", "index-lifecycle.mjs")} <= authorized
+    assert not any("/host-turn-barrier-provider/" in path for path in authorized)
+    assert context["fixtureSourceCaptures"] == context["approvedReferenceSources"] == []
+    assert not any(key.endswith("Profile") for key in context)
+    assert not execution.context_path.exists() and execution._entered is False
+    assert harness._adapter_identity() == all_adapters
+
+
 def _git(directory, *args):
     return subprocess.run(["git", *args], cwd=directory, text=True, capture_output=True, check=True).stdout.strip()
 

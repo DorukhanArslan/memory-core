@@ -518,8 +518,12 @@ def _oracle(node: Path, script: Path, checkout: Path, cases: list[dict], timeout
                     from equivalence.promotion_apply_profile import prepare_promotion_apply_profile
 
                     context_options["promotion_apply_profile"] = prepare_promotion_apply_profile(node)
+                # Global stability also covers the independent nested provider.
+                # The legacy context retains its plain-filename authority.
+                legacy_adapters = {name: digest for name, digest in _adapter_identity().items()
+                                   if Path(name).name == name}
                 execution = resources.enter_context(ReleaseOracleExecution(
-                    release_runtime, _adapter_identity(), **context_options))
+                    release_runtime, legacy_adapters, **context_options))
                 # Only this reviewed preload is supplied. User Node options,
                 # credentials, proxy/auth state and provider keys stay absent.
                 env.update(execution.env)

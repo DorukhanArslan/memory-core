@@ -1,13 +1,13 @@
 # Host turn-barrier boundary acceptance
 
-Prepared 2026-11-10 (Europe/Istanbul). The initial fresh complete catalog verifies
-only the existing `host.turn-barrier.boundaries` condition: **69 → 70/128 (54.7%)**,
-with **58 remaining**. Contract #62 has both original conditions verified under
-this explicit profile. There are 32 complete, six partial and 26 pending contracts.
-A subsequent general regression exposed a genuine concurrent session-publication
-failure. Its sessions-only catalog reservation correction passed independent review;
-fresh final full-catalog, suite and distribution validation are in progress; this document does
-not label either failed general test run as successful.
+Prepared 2026-11-10 (Europe/Istanbul). The fresh complete catalog on clean
+`b27624d` validates the corrected SDK and confirms the package's sole
+original condition increase: **69 → 70/128 (54.7%)**, with **58 remaining**.
+Contract #62 has both original conditions verified under this explicit
+profile. There are 32 complete, six partial and 26 pending contracts.
+The complete catalog retains 14 existing differences; full equivalence
+is not established. General regressions and both installed artifacts pass
+on the corrected SDK. Earlier failures and source identities remain historical.
 
 The fixed 64-contract/128-condition scope SHA-256 remains
 `a8e066e63970dd0be734485d62a5932640894b8c0a42f47ac3eb67f784cbc7b9`.
@@ -129,7 +129,107 @@ No private Native notice-counter receipt was captured; the Native phase relation
 is established from authenticated source and the complete actual public warning.
 These correctness fixes award no separate acceptance conditions.
 
-## Clean preflight and verification
+## Coherent session-source publication
+
+A whole-suite regression exposed a real concurrent session publisher failure:
+an append could change a source after preparation, so strict validation raised
+`MemoryIndexSourceChangedError` and the controller remained failed/pending.
+Sessions-only publication now reserves the real SQLite writer slot of a separate
+durable catalog through source preparation, validation and index publication.
+The reservation reads and rolls back without mutating catalog rows. Waiting
+appends commit afterward and retain their normal future publication notifications.
+
+Memory-only publication takes no unrelated catalog reservation. Mixed selections,
+process-memory catalogs and physically shared catalog/index databases, including
+hard-link aliases, retain strict optimistic source validation. Real changes still
+fail and preserve the old index. The correction adds no retry, timer drain or
+weakened source check. Ten actual SQLite regressions cover writer waiting,
+independent readers, zero mutation, release after a real journal failure, aliases
+and strict fallbacks. This correction awards **zero additional conditions**.
+
+## Final coherent-source validation
+
+The fresh complete catalog executes on clean `b27624db7fb659194b0323682e76bc5b5bee30e6`, with **160 SDK Python
+files**, canonical SHA-256 `eb474baf13bb2f9bb7b330a30fbcc8816b42eb262e98772c6c9f8279b81ee4da`. It records **1,421 cases: 1,407 matched,
+14 existing differences, zero blocked and no runner errors**, in
+1809.568982 seconds. All six exact boundary cases match with
+validated Native/SDK custody. The overall baseline is still **70/128 (54.7%)**,
+with **58 remaining**; the original package's sole increase is **69 → 70**, not
+70 → 71. There are 32 complete, six partial and 26 pending contracts. The gate
+remains `mismatched`, `fullScopePassed=false`: 56 conditions are uncovered and
+two registered conditions remain unresolved.
+
+Complete report: `work/turn-barrier-boundaries/full-002.json`, **572,006,983 bytes**, SHA-256
+`020501557c411e9cf561f8463478701dadc959115d9acb9a224d3c8106bb4fd0`.
+
+Independent retained-only audit: `work/turn-barrier-boundaries/independent-audit-full-002.json`, **21,514 bytes**, SHA-256
+`52d342b48f1b849b0658ca18bddaa01cdd8dfaaad628b35f8ee928c5c4f58426`.
+
+The audit verifies all 1,415 earlier definitions, statuses and annotations,
+12 earlier runtime-evidence flags and the other 127 original acceptance records
+unchanged. It binds six fresh public pairs and raw hashes; initial full001 hashes
+remain separately retained. Native originals remain physical; the full-run SDK
+originals are verified from embedded snapshots and their original serialization
+hashes, without claiming deleted temporary files still exist. Audit adds no
+execution or acceptance credit.
+
+The complete suite at the b276 checkpoint records **8,670 passed, zero failed
+and 1,648 skipped** in **435.28 seconds**. This whole-suite run precedes the later
+guard/tests-only follow-up; its new checks are recorded separately below.
+Skips add no acceptance credit. Log:
+`work/turn-barrier-boundaries/regressions-003.log`, **11,567 bytes**, SHA-256
+`e199def34bc7736a7a040ad81ca03c3a08751e337cf1cbd1206170b2cb57d091`.
+
+Both final installed wheel/sdist consumers and valid public typing pass;
+**27 invalid typed calls** are rejected for each installed artifact. Log:
+`work/turn-barrier-boundaries/distribution-003.log`, **4,783 bytes**, SHA-256
+`dcae9ecfb3675b6c23d769d217096fbccb1c40a921bdec3d9b5769b8021e42ba`.
+
+These results belong to the corrected SDK fingerprint above. The initial clean
+preflight, full001 and distribution002 retain their earlier SDK identity. Neither
+failed general run is discarded or relabeled green.
+
+## Initial hosted failure and validator follow-up
+
+The initial hosted Python 3.11 job retains **7,721 passed, one failed and
+2,596 skipped**. Its actual failure exposed a validator gap for held cross-turn
+delivery acknowledgment before pending-owner next-model admission; the intrinsic
+owner settlement edge was already required. Its failed log remains retained:
+`work/turn-barrier-boundaries/ci-311-initial-failed.log`, **52,055 bytes**, SHA-256
+`066b4351d7c8a0410d39f2486f0fc34bfca60f5e6dddb1a453cf11341bcf7ea1`.
+
+The separate initial Python 3.12 job records **7,722 passed, 2,596 skipped** and
+both installed artifacts passing. These are their actual initial job results,
+not a claim about current GitHub checks. The reviewed correction changes only
+the pending delivery-order guard and four deterministic tamper regressions;
+it changes no SDK, Native actor or frozen case input.
+
+The later validator-only validation is separately pinned to clean `353b097f718fe061c7ee1acc177450d3e0b16d50` and guard SHA-256
+`d62f45061141efe4babb84cf60f7da6e91df70b3b84c7c6c077b021370ccc4ad`. Strict retained replay validates six Native and six SDK captures; a fresh
+six-case preflight matches all six, with final authentication and zero
+mismatched/blocked cases. This stronger read-only replay and standalone
+preflight award **zero** additional conditions. They do not retag full002's
+original adapter identity. Separate retained records:
+
+independentReview: `work/turn-barrier-boundaries/sdk-order-guard-independent-review.json`, **6,070 bytes**, SHA-256
+`8562d17234618bd107a786fd6fa688812171e0ceff2051e2efe8e5a1502bed20`.
+
+strictRetainedReplay: `work/turn-barrier-boundaries/stronger-guard-review/replay-001.json`, **17,960 bytes**, SHA-256
+`59ede855bade43c951d09b86d37bb03b0362b2a36d4c3f8aa6312182148c8ace`.
+
+freshSixCasePreflight: `work/turn-barrier-boundaries/preflight/attempt-002-clean-353b097/report.json`, **26,810,351 bytes**, SHA-256
+`e32aec9996c09d6e3761ccfe0b75186de29df52e885f9c63f14d55e276ec4b8f`.
+
+At the same later checkpoint, **271 evidence tests pass**, with zero failures
+or skips, in **10.65 seconds**. Log: `work/turn-barrier-boundaries/evidence-tests-final-005.log`, **341 bytes**, SHA-256
+`2a7f23ae646e9e4541118aa355b67949ce92477f7c5e0f800fc6704e8129cc23`.
+
+The isolated reviewed correction also passes 77 SDK checks on each of
+Python 3.11 and 3.12, retaining real opposite observer/callback orders.
+Four new attacks fail the old guard. Those version-specific captures and
+the actual first hosted failure remain retained; no retry erases them.
+
+## Initial preflight and retained validation
 
 The clean six-case preflight uses commit
 `82dba0543e6e35c3249e987e0f9497ad6334398e`, with **160 SDK Python files** and
@@ -154,7 +254,7 @@ executable have separately bound source/binary/version/PID/parent receipts.
 Focused checks pass **267 retained-evidence tamper tests**, **58 actual capability
 tests**, **10 actual kernel-lease tests**, and **68 SDK-focused tests**, including
 19 new background-maintenance cases. These batches add no acceptance credit.
-The final installed wheel and sdist consumers pass, valid public typing passes,
+The initial installed wheel and sdist consumers pass on the earlier SDK; valid typing passes,
 and **27 invalid calls** are rejected. Distribution log:
 `work/turn-barrier-boundaries/distribution-002.log`, SHA-256
 `fd530ed2c7ea3090f92ff02440a38e53ea5a47f8c72579860f97128feff53e28`.
@@ -198,9 +298,9 @@ process-memory catalogs and physically shared catalog/index databases keep stric
 source validation. The existing custody guard, source-change checks and timer
 behavior remain unchanged; no automatic retry is added. Ten new deterministic
 regressions and four fresh old-family SDK comparisons passed independent review.
-**PENDING:** final suite, installed consumers and fresh complete catalog on the
-changed SDK identity. Earlier full001 and distribution002 remain historical. Neither failed run is relabelled
-green or discarded.
+The final corrected-source checks are recorded separately above. Earlier full001
+and distribution002 remain historical; neither failed run is relabeled green
+or discarded.
 
 ## Retained development failures and limits
 

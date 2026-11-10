@@ -1,14 +1,12 @@
 # Promotion and heartbeat maintenance integration
 
 The latest [full-channel boundary closeout](host_turn_barrier_boundaries_closeout.md)
-verifies **70/128 conditions**, with **58 remaining**, on a fresh complete catalog.
-It adds the original maintenance/failure boundary to the earlier
-[natural next-turn outcomes](host_turn_barrier_closeout.md), which recorded 69/128.
-The preceding [host update/isolation closeout](host_update_isolation_closeout.md)
-recorded 68/128, following [shared managed-host restart](host_restart_session_closeout.md)
-at 66/128. This historical maintenance package still awards zero; its original captures
-remain unchanged. General regression validation and the subsequent source-publication
-correction are recorded in the latest closeout separately from acceptance evidence.
+confirms **70/128 conditions**, with **58 remaining**, in the final clean `b27624d`
+complete catalog. General regressions and both installed artifacts validate the
+corrected sessions-only source publication. This repeats the same 70, not a
+second increase. The earlier outcomes, update/isolation and restart packages
+retain their own historical identities. This maintenance package still awards
+zero; none of its original captures is relabeled.
 
 This is the historical zero-credit maintenance closeout. Subsequent work is
 recorded separately in the [promotion apply/reconciliation closeout](promotion_apply_reconcile_closeout.md):

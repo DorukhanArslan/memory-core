@@ -52,27 +52,28 @@ Comparisons must not normalize away behavior. A platform-specific path, generate
 Entries remain pending until their complete acceptance conditions are verified against `v2026.9.9`. Their detailed acceptance points and stable identifiers are in [scope.json](../equivalence/scope.json). A helper that already exists in Python still needs the new differential evidence. A known difference must stay visible until its implementation and tests agree. Bounded passing subsets are recorded below without closing the containing contract.
 
 <!-- CURRENT-VERIFICATION-START -->
-The latest verified bounded baseline has **70/128 acceptance conditions (54.7%)**, with
-**58 conditions** remaining. This percentage counts unweighted verified conditions, not
-engineering effort or a time estimate. The fixed scope remains 64 contracts and 128 conditions.
-The full-host maintenance boundary batch verifies **+1**, from **69 to 70/128**.
-Contract #62 now has **both original conditions verified, 2/2**, under its explicit profiles.
+The latest verified bounded baseline has **70/128 acceptance conditions (54.7%)**,
+with **58 conditions** remaining. This counts unweighted verified conditions, not
+engineering effort or a time estimate. The fixed scope stays 64 contracts and 128 conditions.
+The full-channel boundary package verifies **+1**, from **69 to 70/128**;
+fresh validation of the corrected SDK confirms the same 70, not a second increase.
+Contract #62 has **both original conditions verified, 2/2**, under its explicit profiles.
 
-The fresh complete differential report on clean `82dba05` executes **1,421 cases:
-1,407 matches, 14 existing differences and zero blocked cases**, with no runner errors.
-All six independently frozen boundary cases match with validated actual delivery,
-maintenance, source, tool, physical target-preparation and next-admission custody.
-All 1,415 earlier case definitions, statuses, annotations and 12 evidence flags, and the
-other 127 acceptance records, remain unchanged. The earlier four outcome cases remain
-separate and unchanged; immediately fresh warm recall is not promised.
+The fresh complete differential report on clean `b27624d` executes **1,421 cases:
+1,407 matches, 14 existing differences and zero blocked**, with no runner errors.
+All six exact boundary cases match with actual delivery, maintenance, tools,
+source bytes, pre-model target-open settlement and physical next-admission custody.
+All 1,415 prior definitions/statuses/annotations, 12 earlier evidence flags and the
+other 127 acceptance records remain unchanged. The earlier four outcomes are
+separate; immediate fresh warm recall is not promised.
 
-Both offline installed artifacts and **27 invalid typed-call checks** pass. The
-**267 genuine retained-evidence tamper tests**, **58 actual capability tests** and
-**10 real kernel-lease tests** add no acceptance credit themselves. General regression
-runs exposed three obsolete catalog assertions, corrected in a separate tests-only
-commit, and a genuine concurrent session-publication conflict. The latter correction
-passed independent review; fresh final validation remains in progress; neither failed run is labelled green.
-The full gate remains `mismatched`: **56 uncovered conditions plus two registered
+The corrected SDK passes **8,670 general tests**, with zero failures and **1,648
+uncredited skips**, and both installed artifacts, including **27 invalid typed-call
+checks** each. The earlier failed general runs remain retained. The sessions-only
+separate-catalog reservation fixes a real source-preparation race without retry,
+weakened validation or timer draining. The initial hosted 3.11 validator failure
+and later guard validation have separate identities in the boundary closeout.
+The full gate stays `mismatched`: **56 uncovered conditions plus two registered
 unresolved conditions** remain. Complete OpenClaw equivalence is not established.
 
 See the [boundary closeout](host_turn_barrier_boundaries_closeout.md) for exact identities,
@@ -2148,16 +2149,18 @@ catalog or resolve its 14 differences. The next acceptance target remains
 
 ## Full-channel maintenance boundary acceptance (2026-11-10)
 
-The [boundary closeout](host_turn_barrier_boundaries_closeout.md) verifies the existing
-`host.turn-barrier.boundaries` point: **69 → 70/128 (54.7%)**, with **58 remaining**.
-The initial clean `82dba05` complete catalog has **1,421 cases: 1,407 matched,
-14 existing differences, zero blocked and no runner errors**. Only the six new boundary
-cases supply the one condition; all 1,415 prior definitions/statuses and all other 127
-point records remain unchanged. The gate is still `mismatched`, not full equivalence.
+The [boundary closeout](host_turn_barrier_boundaries_closeout.md) verifies the
+existing `host.turn-barrier.boundaries` point: **69 → 70/128 (54.7%)**, with
+**58 remaining**. The final clean `b27624d` complete catalog validates the
+coherent-source SDK: **1,421 cases, 1,407 matches, 14 existing differences,
+zero blocked and no runner errors**. It confirms the same 70, not 71.
+All 1,415 earlier definitions/statuses, 12 earlier evidence flags and the other
+127 original point records remain unchanged. The gate remains `mismatched`.
 
-Actual full channel delivery uses pristine Native dispatch and its own reply operation.
-The SDK selects background maintenance and on-search publication. Real failed writes,
-a failed cold publisher, pending optional preemption and an actual blocked target-open
-are measured. A physical append already in flight and unowned provider cleanup are
-explicitly not claimed. General test failures and the pending session-source correction
-are recorded separately; acceptance evidence is not relabelled as a green regression run.
+Actual pristine full-channel dispatch uses its own original reply operation.
+Pending optional preemption, running maintenance, real failures and an actual
+pre-model target-open lease are measured. In-flight append cancellation and
+unowned provider cleanup are not claimed. The corrected SDK passes **8,670 general
+tests** with **1,648 uncredited skips**, both installed artifacts and **27 invalid
+typed calls** each. Historical failures, initial SDK identity and the separate
+validator-only hosted follow-up retain their actual records and grant no extra point.

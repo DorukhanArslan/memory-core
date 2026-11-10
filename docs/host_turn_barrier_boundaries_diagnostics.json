@@ -160,6 +160,9 @@
           "interveningIndexOperations": []
         }
       },
+      "status": "matched",
+      "referenceMode": "authenticated-official-release",
+      "runtimeEvidenceValidated": true,
       "nativeResult": {
         "provider": "none",
         "scenario": "pending-optional-preemption",
@@ -306,10 +309,26 @@
           "get": null
         }
       },
-      "nativeOriginalRawSha256": "3e6f7dc33866816d5e7b178681b3849409f3cd773d2e7f9bd288fff2a16dc951",
-      "sdkOriginalRawSha256": "54ee2473b09f2be2256a2f5e48a721c0f82661c2c6b25102a4d5262c6a5303ad",
-      "status": "matched",
-      "custodyValidated": true
+      "nativeOriginalRawSha256": "fcae0cae4b21603880e3b64a04f930f8d50f895a708da907e2e8d21a0a8b9233",
+      "sdkOriginalRawSha256": "0ffdc07f8a18f88c470bb8f7afc696fddd2b918955ed19525ac535ae236b7c0c",
+      "nativeCustody": true,
+      "sdkCustody": true,
+      "custodyValidated": true,
+      "differences": [],
+      "rawDiagnostics": {
+        "native": {
+          "path": ".equivalence-results/host-turn-barrier-boundaries/attempt-dsq9n73i/case/evidence/native-raw.json",
+          "bytes": 1051169,
+          "sha256": "fcae0cae4b21603880e3b64a04f930f8d50f895a708da907e2e8d21a0a8b9233",
+          "physicallyRetained": true
+        },
+        "sdk": {
+          "sha256": "0ffdc07f8a18f88c470bb8f7afc696fddd2b918955ed19525ac535ae236b7c0c",
+          "embeddedIn": "work/turn-barrier-boundaries/full-002.json",
+          "physicallyRetained": false,
+          "originalWriterSerializationVerified": true
+        }
+      }
     },
     {
       "id": "host-turn-barrier-boundaries-target-open-unicode",
@@ -442,6 +461,9 @@
           "interveningIndexOperations": []
         }
       },
+      "status": "matched",
+      "referenceMode": "authenticated-official-release",
+      "runtimeEvidenceValidated": true,
       "nativeResult": {
         "provider": "none",
         "scenario": "target-open-preparation",
@@ -592,10 +614,26 @@
           "get": null
         }
       },
-      "nativeOriginalRawSha256": "c823c33897b84e5dd238d76f58af4c3b77aeed736fc87de70530f54d1eaeb64c",
-      "sdkOriginalRawSha256": "44d4482d0349c45f0c0ff7fbc1722ed7f293628693e92bf579c0e7e851ffb6f2",
-      "status": "matched",
-      "custodyValidated": true
+      "nativeOriginalRawSha256": "10590e9b5195e0b37abeb7c6c1a4a44d7afa169497945f0cfab1a85d251c70e1",
+      "sdkOriginalRawSha256": "8025dfdb3706edcbf1640e33f76019934fb7dae923ab5800318b7878aa5fbc2d",
+      "nativeCustody": true,
+      "sdkCustody": true,
+      "custodyValidated": true,
+      "differences": [],
+      "rawDiagnostics": {
+        "native": {
+          "path": ".equivalence-results/host-turn-barrier-boundaries/attempt-hjak2uen/case/evidence/native-raw.json",
+          "bytes": 1066716,
+          "sha256": "10590e9b5195e0b37abeb7c6c1a4a44d7afa169497945f0cfab1a85d251c70e1",
+          "physicallyRetained": true
+        },
+        "sdk": {
+          "sha256": "8025dfdb3706edcbf1640e33f76019934fb7dae923ab5800318b7878aa5fbc2d",
+          "embeddedIn": "work/turn-barrier-boundaries/full-002.json",
+          "physicallyRetained": false,
+          "originalWriterSerializationVerified": true
+        }
+      }
     },
     {
       "id": "host-turn-barrier-boundaries-committed-ascii",
@@ -710,6 +748,9 @@
           "interveningIndexOperations": []
         }
       },
+      "status": "matched",
+      "referenceMode": "authenticated-official-release",
+      "runtimeEvidenceValidated": true,
       "nativeResult": {
         "provider": "none",
         "scenario": "committed-maintenance",
@@ -904,10 +945,26 @@
           }
         }
       },
-      "nativeOriginalRawSha256": "678adefcfb96da544b893bee449634b09d964eccf240d47a9c86d4f348ee6cee",
-      "sdkOriginalRawSha256": "6345f01ffe8e6f48b483937d5071d856d69dfa4ec7cda632810e794fe46a202b",
-      "status": "matched",
-      "custodyValidated": true
+      "nativeOriginalRawSha256": "291fe19ce8e06c4431ee161723091cc0df4de26e429bfc9e651a2f74d2c7258f",
+      "sdkOriginalRawSha256": "4f6e2036d1809eae3705851f8b2de1b0a00d810adf564087aeaf90ad1d71f968",
+      "nativeCustody": true,
+      "sdkCustody": true,
+      "custodyValidated": true,
+      "differences": [],
+      "rawDiagnostics": {
+        "native": {
+          "path": ".equivalence-results/host-turn-barrier-boundaries/attempt-zkl0exyz/case/evidence/native-raw.json",
+          "bytes": 1275194,
+          "sha256": "291fe19ce8e06c4431ee161723091cc0df4de26e429bfc9e651a2f74d2c7258f",
+          "physicallyRetained": true
+        },
+        "sdk": {
+          "sha256": "4f6e2036d1809eae3705851f8b2de1b0a00d810adf564087aeaf90ad1d71f968",
+          "embeddedIn": "work/turn-barrier-boundaries/full-002.json",
+          "physicallyRetained": false,
+          "originalWriterSerializationVerified": true
+        }
+      }
     },
     {
       "id": "host-turn-barrier-boundaries-maintenance-refusal-unicode",
@@ -1037,6 +1094,9 @@
           "remove": "after-actual-maintenance-failed-write-result-consumed"
         }
       },
+      "status": "matched",
+      "referenceMode": "authenticated-official-release",
+      "runtimeEvidenceValidated": true,
       "nativeResult": {
         "provider": "none",
         "scenario": "refused-maintenance",
@@ -1187,10 +1247,26 @@
           "get": null
         }
       },
-      "nativeOriginalRawSha256": "8fa353e9c8dcd48c043440505c55fb5cabc1ae869b37128d4f4759be6748e487",
-      "sdkOriginalRawSha256": "c4d60f34166d4b1e25637bc9e4d818f2965bb39bdaa9604dea6cbc078cbc5019",
-      "status": "matched",
-      "custodyValidated": true
+      "nativeOriginalRawSha256": "63316fb3180d8cbda83ac046c064eeb0f97ee728980fb4e0e9b3eb1b19014f36",
+      "sdkOriginalRawSha256": "57a6c0b29dd6a06fabf3560be70eb18faebccf3d6777535da1ef97bfbf67baf6",
+      "nativeCustody": true,
+      "sdkCustody": true,
+      "custodyValidated": true,
+      "differences": [],
+      "rawDiagnostics": {
+        "native": {
+          "path": ".equivalence-results/host-turn-barrier-boundaries/attempt-y64ip4u3/case/evidence/native-raw.json",
+          "bytes": 1131192,
+          "sha256": "63316fb3180d8cbda83ac046c064eeb0f97ee728980fb4e0e9b3eb1b19014f36",
+          "physicallyRetained": true
+        },
+        "sdk": {
+          "sha256": "57a6c0b29dd6a06fabf3560be70eb18faebccf3d6777535da1ef97bfbf67baf6",
+          "embeddedIn": "work/turn-barrier-boundaries/full-002.json",
+          "physicallyRetained": false,
+          "originalWriterSerializationVerified": true
+        }
+      }
     },
     {
       "id": "host-turn-barrier-boundaries-foreground-refusal-ascii",
@@ -1312,6 +1388,9 @@
           "remove": "after-actual-foreground-failed-write-result-consumed"
         }
       },
+      "status": "matched",
+      "referenceMode": "authenticated-official-release",
+      "runtimeEvidenceValidated": true,
       "nativeResult": {
         "provider": "none",
         "scenario": "refused-foreground",
@@ -1534,10 +1613,26 @@
           }
         }
       },
-      "nativeOriginalRawSha256": "d3b6f72ca9fb3c1927392864f3d927b095e45227ec3bbe9ad8c51f60c6bec700",
-      "sdkOriginalRawSha256": "e9ca610c140d692c5919e5e488a40d33c294674346976e3326b5d37861fd7a44",
-      "status": "matched",
-      "custodyValidated": true
+      "nativeOriginalRawSha256": "346538251efef7ecdfb928710a78cf14ac31328f3cf97273ad3c614b6feb2f3a",
+      "sdkOriginalRawSha256": "e20bf37c44d550c3c440d246374e612b92aef14b0a4f50d2462eed5227e53b26",
+      "nativeCustody": true,
+      "sdkCustody": true,
+      "custodyValidated": true,
+      "differences": [],
+      "rawDiagnostics": {
+        "native": {
+          "path": ".equivalence-results/host-turn-barrier-boundaries/attempt-w2i9xkn6/case/evidence/native-raw.json",
+          "bytes": 1752125,
+          "sha256": "346538251efef7ecdfb928710a78cf14ac31328f3cf97273ad3c614b6feb2f3a",
+          "physicallyRetained": true
+        },
+        "sdk": {
+          "sha256": "e20bf37c44d550c3c440d246374e612b92aef14b0a4f50d2462eed5227e53b26",
+          "embeddedIn": "work/turn-barrier-boundaries/full-002.json",
+          "physicallyRetained": false,
+          "originalWriterSerializationVerified": true
+        }
+      }
     },
     {
       "id": "host-turn-barrier-boundaries-publication-failure-unicode",
@@ -1652,6 +1747,9 @@
           "remove": "never-during-compared-sequence"
         }
       },
+      "status": "matched",
+      "referenceMode": "authenticated-official-release",
+      "runtimeEvidenceValidated": true,
       "nativeResult": {
         "provider": "none",
         "scenario": "cold-publication-failure",
@@ -1804,13 +1902,29 @@
           "get": null
         }
       },
-      "nativeOriginalRawSha256": "006bb91013dfbce0e2691eb6911b365215db1ace3bc2ed201dc2c65594815411",
-      "sdkOriginalRawSha256": "2db0d64bf345587ed39928981386a374a7d34b4d5a265ca7cdafc6f8f4152823",
-      "status": "matched",
-      "custodyValidated": true
+      "nativeOriginalRawSha256": "131ac2816772ea8344cc3145fa5a201699f0d59c1bb1bee8a20395096ec6e5c4",
+      "sdkOriginalRawSha256": "586f8ef0f08b36562b6fc1eb58a7f32c09ce73ba92226f4118bd9eb4decaa8d6",
+      "nativeCustody": true,
+      "sdkCustody": true,
+      "custodyValidated": true,
+      "differences": [],
+      "rawDiagnostics": {
+        "native": {
+          "path": ".equivalence-results/host-turn-barrier-boundaries/attempt-807s367o/case/evidence/native-raw.json",
+          "bytes": 1300526,
+          "sha256": "131ac2816772ea8344cc3145fa5a201699f0d59c1bb1bee8a20395096ec6e5c4",
+          "physicallyRetained": true
+        },
+        "sdk": {
+          "sha256": "586f8ef0f08b36562b6fc1eb58a7f32c09ce73ba92226f4118bd9eb4decaa8d6",
+          "embeddedIn": "work/turn-barrier-boundaries/full-002.json",
+          "physicallyRetained": false,
+          "originalWriterSerializationVerified": true
+        }
+      }
     }
   ],
-  "currentGeneralValidation": "Sessions-only source reservation correction independently reviewed; fresh final full catalog, general suite and distribution pending. Earlier failed runs and full001 remain retained at their actual source identities.",
+  "currentGeneralValidation": "Complete suite at clean b276 / SDK160/eb474: 8670 passed, zero failed, 1648 skipped in 435.28s; both installed artifacts and 27 invalid typed calls each pass. This precedes later guard/tests-only follow-up; those checks are recorded separately. Earlier failures retain their actual outcomes.",
   "limits": [
     "The six-case profile is bounded and does not prove all scheduling interleavings.",
     "The kernel lease gates pre-model target preparation, not an in-flight append.",
@@ -1819,5 +1933,230 @@
     "Native raw full-run captures are physical; SDK full-run originals are verified from embedded snapshots and original serialization hashes.",
     "Private maintenance failures are not automatically delivered user warnings.",
     "No independently reproduced upstream source build is claimed."
-  ]
+  ],
+  "initialFullCatalogCaseHashes": {
+    "host-turn-barrier-boundaries-pending-ascii": {
+      "nativeOriginalRawSha256": "3e6f7dc33866816d5e7b178681b3849409f3cd773d2e7f9bd288fff2a16dc951",
+      "sdkOriginalRawSha256": "54ee2473b09f2be2256a2f5e48a721c0f82661c2c6b25102a4d5262c6a5303ad",
+      "status": "matched",
+      "custodyValidated": true
+    },
+    "host-turn-barrier-boundaries-target-open-unicode": {
+      "nativeOriginalRawSha256": "c823c33897b84e5dd238d76f58af4c3b77aeed736fc87de70530f54d1eaeb64c",
+      "sdkOriginalRawSha256": "44d4482d0349c45f0c0ff7fbc1722ed7f293628693e92bf579c0e7e851ffb6f2",
+      "status": "matched",
+      "custodyValidated": true
+    },
+    "host-turn-barrier-boundaries-committed-ascii": {
+      "nativeOriginalRawSha256": "678adefcfb96da544b893bee449634b09d964eccf240d47a9c86d4f348ee6cee",
+      "sdkOriginalRawSha256": "6345f01ffe8e6f48b483937d5071d856d69dfa4ec7cda632810e794fe46a202b",
+      "status": "matched",
+      "custodyValidated": true
+    },
+    "host-turn-barrier-boundaries-maintenance-refusal-unicode": {
+      "nativeOriginalRawSha256": "8fa353e9c8dcd48c043440505c55fb5cabc1ae869b37128d4f4759be6748e487",
+      "sdkOriginalRawSha256": "c4d60f34166d4b1e25637bc9e4d818f2965bb39bdaa9604dea6cbc078cbc5019",
+      "status": "matched",
+      "custodyValidated": true
+    },
+    "host-turn-barrier-boundaries-foreground-refusal-ascii": {
+      "nativeOriginalRawSha256": "d3b6f72ca9fb3c1927392864f3d927b095e45227ec3bbe9ad8c51f60c6bec700",
+      "sdkOriginalRawSha256": "e9ca610c140d692c5919e5e488a40d33c294674346976e3326b5d37861fd7a44",
+      "status": "matched",
+      "custodyValidated": true
+    },
+    "host-turn-barrier-boundaries-publication-failure-unicode": {
+      "nativeOriginalRawSha256": "006bb91013dfbce0e2691eb6911b365215db1ace3bc2ed201dc2c65594815411",
+      "sdkOriginalRawSha256": "2db0d64bf345587ed39928981386a374a7d34b4d5a265ca7cdafc6f8f4152823",
+      "status": "matched",
+      "custodyValidated": true
+    }
+  },
+  "finalFullCatalog": {
+    "report": {
+      "path": "work/turn-barrier-boundaries/full-002.json",
+      "bytes": 572006983,
+      "sha256": "020501557c411e9cf561f8463478701dadc959115d9acb9a224d3c8106bb4fd0"
+    },
+    "implementation": {
+      "gitCommit": "b27624db7fb659194b0323682e76bc5b5bee30e6",
+      "trackedWorkingTreeDirty": false,
+      "sourceSha256": "eb474baf13bb2f9bb7b330a30fbcc8816b42eb262e98772c6c9f8279b81ee4da",
+      "sourceFiles": 160
+    },
+    "mode": "full",
+    "gateStatus": "mismatched",
+    "caseCount": 1421,
+    "caseStatusCounts": {
+      "matched": 1407,
+      "mismatched": 14,
+      "blocked": 0
+    },
+    "errors": [],
+    "verifiedBefore": 69,
+    "verifiedAfter": 70,
+    "totalConditions": 128,
+    "remaining": 58,
+    "uncoveredConditions": 56,
+    "registeredUnresolvedConditions": 2,
+    "contractStates": {
+      "complete": 32,
+      "partial": 6,
+      "pending": 26
+    },
+    "durationSeconds": 1809.568982,
+    "overallCreditIs69To70Not70To71": true,
+    "executionEvidenceGuard": {
+      "path": "equivalence/host_turn_barrier_boundaries_evidence.py",
+      "sha256": "e6db562ace28cb0b0e24195e667ae01132c1e091c5ce7cb218eeb71a268eb502"
+    }
+  },
+  "independentFinalFullAudit": {
+    "path": "work/turn-barrier-boundaries/independent-audit-full-002.json",
+    "bytes": 21514,
+    "sha256": "52d342b48f1b849b0658ca18bddaa01cdd8dfaaad628b35f8ee928c5c4f58426",
+    "acceptanceCreditFromAudit": 0
+  },
+  "finalGeneralRegression": {
+    "path": "work/turn-barrier-boundaries/regressions-003.log",
+    "bytes": 11567,
+    "sha256": "e199def34bc7736a7a040ad81ca03c3a08751e337cf1cbd1206170b2cb57d091",
+    "passed": 8670,
+    "failed": 0,
+    "skipped": 1648,
+    "durationSeconds": 435.28,
+    "exitCode": 0,
+    "implementation": {
+      "gitCommit": "b27624db7fb659194b0323682e76bc5b5bee30e6",
+      "trackedWorkingTreeDirty": false,
+      "sourceSha256": "eb474baf13bb2f9bb7b330a30fbcc8816b42eb262e98772c6c9f8279b81ee4da",
+      "sourceFiles": 160
+    }
+  },
+  "finalDistribution": {
+    "path": "work/turn-barrier-boundaries/distribution-003.log",
+    "bytes": 4783,
+    "sha256": "dcae9ecfb3675b6c23d769d217096fbccb1c40a921bdec3d9b5769b8021e42ba",
+    "installedWheel": "passed",
+    "installedSdist": "passed",
+    "invalidTypedCalls": 27,
+    "exitCode": 0,
+    "implementation": {
+      "gitCommit": "b27624db7fb659194b0323682e76bc5b5bee30e6",
+      "trackedWorkingTreeDirty": false,
+      "sourceSha256": "eb474baf13bb2f9bb7b330a30fbcc8816b42eb262e98772c6c9f8279b81ee4da",
+      "sourceFiles": 160
+    }
+  },
+  "historicalFailedGeneralRuns": [
+    {
+      "record": {
+        "path": "work/turn-barrier-boundaries/regressions-001.log",
+        "bytes": 15496,
+        "sha256": "aad754c1ca13369f0a06c7009e04c4f1003f814b47b210bc5936a86570b34b1c"
+      },
+      "passed": 8657,
+      "failed": 3,
+      "skipped": 1648,
+      "durationSeconds": 429.86,
+      "cause": "obsolete catalog metadata assertions; corrected separately in isolated tests-only a283885"
+    },
+    {
+      "record": {
+        "path": "work/turn-barrier-boundaries/regressions-002-isolated-tests.log",
+        "bytes": 13413,
+        "sha256": "66f825ef6d473332b1a268782d439886e0084405ffa8455c8e4aba65df0974b3"
+      },
+      "passed": 8659,
+      "failed": 1,
+      "skipped": 1648,
+      "durationSeconds": 427.2,
+      "cause": "actual concurrent session-source MemoryIndexSourceChangedError; failed controller retained"
+    }
+  ],
+  "sourceCoherenceFix": {
+    "isolatedCommit": "d2edb11f2cb95a330670387f0659344733f02c1d",
+    "appliedCommit": "07eae3768e4d45d5a97aa190788815abac8a3518",
+    "credits": 0,
+    "newRegressionTests": 10,
+    "independentReview": "GREEN"
+  },
+  "hostedInitialValidation": {
+    "python311": {
+      "path": "work/turn-barrier-boundaries/ci-311-initial-failed.log",
+      "bytes": 52055,
+      "sha256": "066b4351d7c8a0410d39f2486f0fc34bfca60f5e6dddb1a453cf11341bcf7ea1",
+      "status": "failed",
+      "passed": 7721,
+      "failed": 1,
+      "skipped": 2596,
+      "durationSeconds": 585.02,
+      "cause": "pending cross-turn delivery acknowledgment was not required before next-model admission in a forged evidence ordering; intrinsic settled edge remained checked"
+    },
+    "python312": {
+      "path": "work/turn-barrier-boundaries/ci-312-initial-passed.log",
+      "bytes": 56512,
+      "sha256": "33171751eb4424fe13ec72debb826a2d1e83b17b2bacdaf73ceed1ec7b2d69ff",
+      "status": "passed",
+      "passed": 7722,
+      "failed": 0,
+      "skipped": 2596,
+      "durationSeconds": 585.34,
+      "distribution": "both-passed"
+    }
+  },
+  "postCatalogGuardValidation": {
+    "status": "passed",
+    "scope": "validator-only",
+    "acceptanceIncrease": 0,
+    "implementation": {
+      "gitCommit": "353b097f718fe061c7ee1acc177450d3e0b16d50",
+      "trackedWorkingTreeDirty": false,
+      "sourceSha256": "eb474baf13bb2f9bb7b330a30fbcc8816b42eb262e98772c6c9f8279b81ee4da",
+      "sourceFiles": 160
+    },
+    "guard": {
+      "path": "equivalence/host_turn_barrier_boundaries_evidence.py",
+      "sha256": "d62f45061141efe4babb84cf60f7da6e91df70b3b84c7c6c077b021370ccc4ad"
+    },
+    "artifacts": {
+      "independentReview": {
+        "path": "work/turn-barrier-boundaries/sdk-order-guard-independent-review.json",
+        "bytes": 6070,
+        "sha256": "8562d17234618bd107a786fd6fa688812171e0ceff2051e2efe8e5a1502bed20"
+      },
+      "strictRetainedReplay": {
+        "path": "work/turn-barrier-boundaries/stronger-guard-review/replay-001.json",
+        "bytes": 17960,
+        "sha256": "59ede855bade43c951d09b86d37bb03b0362b2a36d4c3f8aa6312182148c8ace"
+      },
+      "freshSixCasePreflight": {
+        "path": "work/turn-barrier-boundaries/preflight/attempt-002-clean-353b097/report.json",
+        "bytes": 26810351,
+        "sha256": "e32aec9996c09d6e3761ccfe0b75186de29df52e885f9c63f14d55e276ec4b8f"
+      }
+    },
+    "summary": {
+      "retainedNativeCaptures": 6,
+      "retainedSdkCaptures": 6,
+      "freshMatchedCases": 6,
+      "freshBlockedCases": 0,
+      "freshMismatchedCases": 0,
+      "finalAuthenticationPassed": true
+    },
+    "targetedEvidenceTests": {
+      "path": "work/turn-barrier-boundaries/evidence-tests-final-005.log",
+      "bytes": 341,
+      "sha256": "2a7f23ae646e9e4541118aa355b67949ce92477f7c5e0f800fc6704e8129cc23",
+      "passed": 271,
+      "failed": 0,
+      "skipped": 0,
+      "durationSeconds": 10.65
+    },
+    "statusRecord": {
+      "path": "work/turn-barrier-boundaries/post-validation-status.json",
+      "bytes": 1694,
+      "sha256": "1888388dd765d863b5eda198aa29a1652db9ffb4a2a7b41a4d8ef7874a41b0d8"
+    }
+  }
 }

@@ -175,6 +175,8 @@ verified both original restart conditions at **66/128**. The later
 #62 outcome in a fresh complete catalog: **69/128**, with **59 remaining**.
 The later [full-channel boundary package](host_turn_barrier_boundaries_closeout.md)
 verifies the second original #62 condition, reaching **70/128**, with **58 remaining**.
+Its final complete catalog on clean `b27624d` validates the sessions-only
+source-coherence correction and confirms the same 70, with no additional point.
 Source inventory itself still awards no behavioral credit.
 
 The current inventory maps **206 upstream modules**, with 18 present and 46 partial

@@ -92,6 +92,7 @@ jobs:
             .equivalence-results/host-turn-barrier-boundaries/*/case/stderr.log
             .equivalence-results/host-turn-barrier-boundaries/*/case/context.json
             .equivalence-results/host-turn-barrier-boundaries/*/case/evidence/native-raw.json
+            .equivalence-results/host-turn-barrier-boundaries/*/case/evidence/fixture-source-captures/*.mjs
             .equivalence-results/host-turn-barrier-boundaries/*/case/traces/*.jsonl
           # The reports live in a dot-directory, which this action skips unless told otherwise.
           include-hidden-files: true

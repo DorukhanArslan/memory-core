@@ -10,6 +10,14 @@ the host kit. 0.1.0 is `main` at `b829bad` (2026-09-27), which had no build syst
 
 ### Added
 
+- Optional managed maintenance after reply delivery (2026-11-10):
+  `ManagedHostSession.open(maintenance="background")` gives new foreground work
+  priority over pending optional jobs and joins actual admitted work before the
+  next user/model admission. An optional async `deliver` callback retains real
+  delivery acknowledgment, and `maintenance_status()` exposes job outcomes.
+  Shared runners, cancellation, stale plans and asynchronous close keep actual
+  write custody. The default remains inline maintenance. On-search results also
+  retain failure status for their pinned read generation during real recovery.
 - Opt-in managed on-search publication (2026-11-10):
   `ManagedHostSession.open(memory_publication="on-search")` commits memory writes
   without an ordinary publication barrier. Cold searches bootstrap naturally;

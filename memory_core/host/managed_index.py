@@ -37,6 +37,14 @@ if TYPE_CHECKING:
     from memory_core.host.session_publication import SessionPublicationController
 
 
+class _ManagedSearchResults(list[HybridResult]):
+    """Keep this reader's status with its results, independently of later publishers."""
+
+    def __init__(self, results: list[HybridResult], status: dict[str, Any]) -> None:
+        super().__init__(results)
+        self._memory_search_status = status
+
+
 class ManagedSQLiteMemoryStore(SQLiteMemoryStore):
     """A bound FTS-only store whose first search can bootstrap its real index.
 
@@ -150,18 +158,28 @@ class ManagedSQLiteMemoryStore(SQLiteMemoryStore):
         with self._condition:
             record.update(values)
 
-    def _read_state(self) -> dict[str, Any]:
-        with closing(self.connect()) as db:
-            db.execute("BEGIN")
-            identity = self.index_identity(db=db)
-            fts_available = db.execute("SELECT 1 FROM sqlite_master WHERE type='table' AND name='chunks_fts'").fetchone() is not None
-            chunks = db.execute("SELECT COUNT(*) FROM chunks").fetchone()[0]
-            fts_content = fts_available and db.execute("SELECT 1 FROM chunks_fts LIMIT 1").fetchone() is not None
-            counts = {source: count for source, count in db.execute("SELECT source,COUNT(*) FROM chunks GROUP BY source")}
-            sources = self._workspace.index_sources or ("memory", "sessions")
-            return {"identity": identity, "hasContent": bool(chunks or fts_content), "chunks": chunks,
-                    "ftsAvailable": fts_available,
-                    "sourceCounts": [{"source": source, "chunks": counts.get(source, 0)} for source in sources]}
+    def _read_state(self, *, db: sqlite3.Connection | None = None) -> dict[str, Any]:
+        if db is None:
+            with closing(self.connect()) as connection:
+                connection.execute("BEGIN")
+                return self._read_state(db=connection)
+        identity = self.index_identity(db=db)
+        fts_available = db.execute("SELECT 1 FROM sqlite_master WHERE type='table' AND name='chunks_fts'").fetchone() is not None
+        chunks = db.execute("SELECT COUNT(*) FROM chunks").fetchone()[0]
+        fts_content = fts_available and db.execute("SELECT 1 FROM chunks_fts LIMIT 1").fetchone() is not None
+        counts = {source: count for source, count in db.execute("SELECT source,COUNT(*) FROM chunks GROUP BY source")}
+        sources = self._workspace.index_sources or ("memory", "sessions")
+        return {"identity": identity, "hasContent": bool(chunks or fts_content), "chunks": chunks,
+                "ftsAvailable": fts_available,
+                "sourceCounts": [{"source": source, "chunks": counts.get(source, 0)} for source in sources]}
+
+    def _retained_sync_error(self) -> str | None:
+        with self._condition:
+            if self._last_sync_error is not None:
+                return self._last_sync_error
+            if self._memory_scope_failure is not None:
+                return self._memory_scope_failure[0]
+            return self._memory_job_error if self._memory_publication == "on-search" else None
 
     def _refresh_memory_dirty(self) -> None:
         """Compare actual memory sources with SQL; caller holds the workspace guard."""
@@ -265,13 +283,9 @@ class ManagedSQLiteMemoryStore(SQLiteMemoryStore):
                 "fts": {"enabled": self.flags.text_search, "available": state["ftsAvailable"]},
                 "custom": {"indexIdentity": state["identity"],
                            "automaticRebuildNotice": self._automatic_rebuild_notice}}
-            sync_error, scoped = self._last_sync_error, self._memory_scope_failure
-            if sync_error is None and scoped is not None:
-                sync_error = scoped[0]
+            sync_error = self._retained_sync_error()
             if sync_error is not None:
                 result["lastSyncError"] = sync_error
-            elif self._memory_publication == "on-search" and self._memory_job_error is not None:
-                result["lastSyncError"] = self._memory_job_error
             if self._session_publication is not None:
                 result["custom"]["sessionPublication"] = self._session_publication.status()
             return result
@@ -307,7 +321,23 @@ class ManagedSQLiteMemoryStore(SQLiteMemoryStore):
         # The caller has already read index identity in this transaction: BEGIN
         # alone would not pin SQLite's deferred read snapshot.
         revision = self.index_revision(db=db)
+        frames = getattr(self._local, "search_status_frames", ())
+        frame = frames[-1] if frames else None
+        state = self._read_state(db=db) if frame is not None else None
         with self._condition:
+            if frame is not None:
+                status = deepcopy(frame["beforeStatus"])
+                status.update(chunks=state["chunks"], sourceCounts=state["sourceCounts"])
+                status["fts"]["available"] = state["ftsAvailable"]
+                status["custom"]["indexIdentity"] = state["identity"]
+                error = self._retained_sync_error()
+                if error is None and revision == frame["beforeRevision"]:
+                    error = frame["beforeStatus"].get("lastSyncError")
+                if error is None:
+                    status.pop("lastSyncError", None)
+                else:
+                    status["lastSyncError"] = error
+                frame["status"] = status
             self._read_admission_count += 1
             operations = getattr(self._local, "operations", ())
             self._read_admissions.append({"id": self._read_admission_count,
@@ -418,6 +448,25 @@ class ManagedSQLiteMemoryStore(SQLiteMemoryStore):
         self._automatic_rebuild_notice.update(sequence=self._automatic_rebuild_notice["sequence"] + 1,
             warning=f"Automatic memory index repair was requested. To rebuild manually, run: {guidance}")
 
+    def _on_index_publication_write(
+        self, db: sqlite3.Connection, *, changes: int, error: BaseException | None,
+    ) -> None:
+        super()._on_index_publication_write(db, changes=changes, error=error)
+        notice = getattr(self._local, "automatic_repair_notice", None)
+        if notice is None:
+            return
+        # Cold bootstrap first acquires its storage owner. A failed first
+        # dirty-page write has not opened the rollback journal; announcing a
+        # rebuild there would precede Native's failed publisher-lease acquisition.
+        # A populated identity repair announces earlier, before acquisition.
+        code = getattr(error, "sqlite_errorcode", None)
+        notice["unopened"] = (isinstance(error, sqlite3.Error)
+                              and isinstance(code, int) and code & 0xFF == sqlite3.SQLITE_CANTOPEN
+                              and changes == 0)
+        if not notice["unopened"] and not notice["recorded"]:
+            self._record_rebuild_request()
+            notice["recorded"] = True
+
     def search(
         self,
         query: str,
@@ -458,22 +507,49 @@ class ManagedSQLiteMemoryStore(SQLiteMemoryStore):
                         self._repair_count += 1
                         request["id"] = self._repair_count
                         self._repairs.append(request)
-                    if repair:
+                    cold_notice = ({"recorded": False, "unopened": False}
+                                   if repair and not state["hasContent"] else None)
+                    if repair and cold_notice is None:
                         self._record_rebuild_request()
-                    self._update(request, noticeSequenceAfter=self._automatic_rebuild_notice["sequence"])
+                    previous_notice = getattr(self._local, "automatic_repair_notice", None)
+                    self._local.automatic_repair_notice = cold_notice
                     try:
                         returned = self.reindex(self._workspace, force=repair)
                     except Exception as error:
+                        # Source preparation and admitted publication failures
+                        # still report a rebuild request. Only an observed
+                        # prewrite storage-open failure suppresses it.
+                        if cold_notice is not None and not cold_notice["unopened"] and not cold_notice["recorded"]:
+                            self._record_rebuild_request()
+                            cold_notice["recorded"] = True
                         self._update(request, state="failed", error=self._error(error), after=self._read_state())
                         # The actual failed repair is retained by reindex/status.
                         # The ordinary tool presents the genuine remaining index
                         # identity and sync failure rather than a fabricated hit.
                         pass
                     else:
+                        if cold_notice is not None and not cold_notice["recorded"]:
+                            self._record_rebuild_request()
                         self._update(request, state="completed", returned=returned, after=self._read_state())
+                    finally:
+                        self._local.automatic_repair_notice = previous_notice
+                        self._update(request, noticeSequenceAfter=self._automatic_rebuild_notice["sequence"])
+                # A search can keep this failed generation while a publisher
+                # recovers a newer one. Capture only after synchronous repair;
+                # the actual SQL pin below decides which generation was read.
+                frame = ({"beforeRevision": self.index_revision(),
+                          "beforeStatus": deepcopy(self.status()), "status": None}
+                         if self._memory_publication == "on-search" else None)
             if signal is not None:
                 signal.throw_if_aborted()
-            return super().search(query, **options)
+            frames = getattr(self._local, "search_status_frames", ())
+            self._local.search_status_frames = (*frames, frame) if frame is not None else frames
+            try:
+                results = super().search(query, **options)
+                return (_ManagedSearchResults(results, frame["status"])
+                        if frame is not None and frame["status"] is not None else results)
+            finally:
+                self._local.search_status_frames = frames
 
     def lifecycle_snapshot(self) -> dict[str, Any]:
         """Copy actual admitted operations/repair receipts, including after close."""

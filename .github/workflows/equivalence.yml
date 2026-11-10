@@ -46,7 +46,7 @@ jobs:
       - name: Install frozen development stack
         run: uv sync --frozen
       - name: Test the new acceptance harness
-        run: uv run --frozen pytest -q tests/equivalence
+        run: MEMORY_EQ_NODE="$(command -v node)" uv run --frozen pytest -q tests/equivalence
       - name: Verify the fixed source inventory
         run: uv run --frozen python -m equivalence.source_map --reference .reference/openclaw
       - name: Prepare authenticated native source dependencies
@@ -74,6 +74,9 @@ jobs:
         # The earlier test step runs before any original capture exists, so it skips these.
         if: always()
         run: uv run --frozen pytest -q tests/equivalence/test_host_update_isolation_evidence.py
+      - name: Replay the retained original turn-barrier boundary captures
+        if: always()
+        run: MEMORY_EQ_NODE="$(command -v node)" uv run --frozen pytest -q tests/equivalence/test_host_turn_barrier_boundaries_evidence.py
       - name: Retain results, including failed acceptance runs
         if: always()
         uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
@@ -85,6 +88,11 @@ jobs:
             .equivalence-results/host-update-isolation/*/case/stdout.json
             .equivalence-results/host-update-isolation/*/case/stderr.log
             .equivalence-results/host-update-isolation/*/case/evidence/native-raw.json
+            .equivalence-results/host-turn-barrier-boundaries/*/case/stdout.json
+            .equivalence-results/host-turn-barrier-boundaries/*/case/stderr.log
+            .equivalence-results/host-turn-barrier-boundaries/*/case/context.json
+            .equivalence-results/host-turn-barrier-boundaries/*/case/evidence/native-raw.json
+            .equivalence-results/host-turn-barrier-boundaries/*/case/traces/*.jsonl
           # The reports live in a dot-directory, which this action skips unless told otherwise.
           include-hidden-files: true
           if-no-files-found: ignore

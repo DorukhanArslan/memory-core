@@ -1,7 +1,7 @@
 # Host update and isolation acceptance
 
 This records the original **66 → 68/128** package. The latest overall baseline is
-**69/128**, with **59 remaining**, in the [active checklist](full-equivalence-checklist.md).
+**70/128**, with **58 remaining**, in the [active checklist](full-equivalence-checklist.md).
 The later capture/CI corrections below award no additional acceptance credit.
 
 Prepared 2026-11-10 (Europe/Istanbul). This package verifies **two original

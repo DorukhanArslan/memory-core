@@ -2178,25 +2178,25 @@
           "path": "memory_core/session_catalog.py",
           "symbol": "MemorySessionCatalog.upsert_session",
           "anchor": "    def upsert_session(",
-          "line": 715
+          "line": 754
         },
         {
           "path": "memory_core/session_catalog.py",
           "symbol": "MemorySessionCatalog.snapshot",
           "anchor": "    def snapshot(",
-          "line": 1230
+          "line": 1269
         },
         {
           "path": "memory_core/session_catalog.py",
           "symbol": "MemorySessionCatalog.read_transcript",
           "anchor": "    def read_transcript(",
-          "line": 1317
+          "line": 1356
         },
         {
           "path": "memory_core/session_catalog.py",
           "symbol": "MemorySessionCatalog.record_archive",
           "anchor": "    def record_archive(",
-          "line": 1204
+          "line": 1243
         },
         {
           "path": "memory_core/session_visibility.py",
@@ -2220,19 +2220,19 @@
           "path": "memory_core/session_catalog.py",
           "symbol": "MemorySessionCatalog.record_participant",
           "anchor": "    def record_participant(",
-          "line": 1109
+          "line": 1148
         },
         {
           "path": "memory_core/session_catalog.py",
           "symbol": "MemorySessionCatalog.list_participants",
           "anchor": "    def list_participants(",
-          "line": 1176
+          "line": 1215
         },
         {
           "path": "memory_core/session_catalog.py",
           "symbol": "MemorySessionCatalog.load_session_metadata",
           "anchor": "    def load_session_metadata(",
-          "line": 1407
+          "line": 1446
         },
         {
           "path": "memory_core/session_visibility.py",
@@ -2244,7 +2244,7 @@
           "path": "memory_core/session_catalog.py",
           "symbol": "MemorySessionCatalog.get_session_entry",
           "anchor": "    def get_session_entry(",
-          "line": 631
+          "line": 670
         }
       ],
       "implementation": "partial",
@@ -2436,7 +2436,7 @@
           "path": "memory_core/session_catalog.py",
           "symbol": "MemorySessionCatalog.read_transcript",
           "anchor": "    def read_transcript(",
-          "line": 1317
+          "line": 1356
         },
         {
           "path": "memory_core/session_corpus.py",
@@ -2616,25 +2616,25 @@
           "path": "memory_core/session_catalog.py",
           "symbol": "MemorySessionCatalog.read_transcript",
           "anchor": "    def read_transcript(",
-          "line": 1317
+          "line": 1356
         },
         {
           "path": "memory_core/session_catalog.py",
           "symbol": "MemorySessionCatalog.read_reset_cutoff",
           "anchor": "    def read_reset_cutoff(",
-          "line": 1345
+          "line": 1384
         },
         {
           "path": "memory_core/session_catalog.py",
           "symbol": "MemorySessionCatalog.snapshot",
           "anchor": "    def snapshot(",
-          "line": 1230
+          "line": 1269
         },
         {
           "path": "memory_core/session_catalog.py",
           "symbol": "MemorySessionCatalog.tombstone_session",
           "anchor": "    def tombstone_session(",
-          "line": 1219
+          "line": 1258
         },
         {
           "path": "memory_core/tools/memory_search.py",
@@ -2900,25 +2900,25 @@
           "path": "memory_core/session_catalog.py",
           "symbol": "MemorySessionCatalog.append_message",
           "anchor": "    def append_message(",
-          "line": 947
+          "line": 986
         },
         {
           "path": "memory_core/session_catalog.py",
           "symbol": "MemorySessionCatalog.read_continuation",
           "anchor": "    def read_continuation(",
-          "line": 1351
+          "line": 1390
         },
         {
           "path": "memory_core/session_catalog.py",
           "symbol": "MemorySessionCatalog.read_anchor",
           "anchor": "    def read_anchor(",
-          "line": 1069
+          "line": 1108
         },
         {
           "path": "memory_core/session_catalog.py",
           "symbol": "MemorySessionCatalog.list_transcript_instances",
           "anchor": "    def list_transcript_instances(",
-          "line": 1251
+          "line": 1290
         },
         {
           "path": "memory_core/session_context.py",
@@ -5179,7 +5179,7 @@
           "path": "memory_core/host/managed_index.py",
           "symbol": "ManagedSQLiteMemoryStore.search",
           "anchor": "    def search(",
-          "line": 470
+          "line": 515
         },
         {
           "path": "memory_core/host/managed_maintenance.py",
@@ -5206,13 +5206,13 @@
           "line": 536
         }
       ],
-      "implementation": "partial",
+      "implementation": "present",
       "notes": [
         "The low-level immutable HostKit still returns maintenance requests. HostSessionRunner adds an explicit process-local per-session admission lane, durable catalog/context recording, actual registered dispatch, due flush settlement, real writer/index completion and fail-closed repair before the next model callback.",
-        "Real SDK cancellation, rejected executor submission, session rotation, inherited callback context and committed-write/index-failure regressions are exercised. The default runner is a stronger synchronous publication policy than the observed native background refresh, not proof of the complete original Gateway host path. The closed natural full-caller family now verifies the original outcomes condition; the maintenance/failure boundary remains unverified.",
+        "Real SDK cancellation, rejected executor submission, session rotation, inherited callback context and committed-write/index-failure regressions are exercised. The default runner is a stronger synchronous publication policy than the observed native background refresh, not proof of the complete original Gateway host path. The earlier closed natural full-caller family verified only the outcomes condition at its historical 69/128 baseline.",
         "HostKit returns maintenance requests and keeps no per-session queue; the Lab lock serializes its turn and maintenance, but the production host must own durable finalization and admission barriers.",
-        "An opt-in ManagedHostSession on-search memory policy now commits writes, preserves the real warm SQLite read generation and admits an actual background publisher. Its cold/warm ASCII/Unicode whole-caller family uses original runReplyAgent admission and no forced publication between turns. The fresh complete catalog on clean d306944 verifies only host.turn-barrier.outcomes, reaching 69/128 overall. Optional maintenance preemption and visible failure admission remain separate and unverified.",
-        "The opt-in managed background-maintenance coordinator now reserves foreground priority before the actual session lane, withdraws pending/model authority once, retains real accepted-write and delivery settlement, and reloads durable session state. The separate six-case boundary candidate uses original full channel dispatch, actual delivery acknowledgments, a real Linux target-open lease and genuine write/publication refusals. Its frozen inputs preserve all 128 original conditions; inventory alone awards zero acceptance credit."
+        "An opt-in ManagedHostSession on-search memory policy now commits writes, preserves the real warm SQLite read generation and admits an actual background publisher. Its cold/warm ASCII/Unicode whole-caller family uses original runReplyAgent admission and no forced publication between turns. The fresh complete catalog on clean d306944 verifies only host.turn-barrier.outcomes, reaching 69/128 overall. Those maintenance/failure boundaries were still unverified in that historical outcome batch.",
+        "The closed six-case full-channel boundary family on clean 82dba05 verifies the existing host.turn-barrier.boundaries point, reaching 70/128 overall. It binds original channel delivery, actual maintenance owners, pre-model kernel target-open settlement, source bytes, real failures and physical next-user admission. It does not claim in-flight append cancellation, unowned provider cleanup or raw SDK/Native return API identity. Inventory itself awards no behavioral credit."
       ],
       "acceptancePoints": [
         "host.turn-barrier.outcomes",
@@ -5282,7 +5282,7 @@
           "path": "memory_core/session_catalog.py",
           "symbol": "MemorySessionCatalog.subscribe_transcript_changes",
           "anchor": "    def subscribe_transcript_changes(",
-          "line": 399
+          "line": 400
         },
         {
           "path": "memory_core/host/managed_session.py",
@@ -5294,7 +5294,13 @@
           "path": "memory_core/session_catalog.py",
           "symbol": "MemorySessionCatalog.compare_and_patch_host_lifecycle",
           "anchor": "    def compare_and_patch_host_lifecycle(",
-          "line": 660
+          "line": 699
+        },
+        {
+          "path": "memory_core/session_catalog.py",
+          "symbol": "MemorySessionCatalog._reserve_index_sources",
+          "anchor": "    def _reserve_index_sources(",
+          "line": 559
         }
       ],
       "implementation": "partial",
@@ -5304,7 +5310,8 @@
         "Saved memory and host-supplied transcript corpora can reopen, but the Lab stores live sessions in RAM; durable transcript/SessionState storage and a fresh-process continuation path must be supplied and tested by the host.",
         "An optional provider-none managed SQLite owner performs genuine cold-search bootstrap, live repair notices and physical operation close custody; the default eager host lifecycle is unchanged. Separate strict transcript-publication and managed process fixtures retain the remaining session-publication cadence difference and do not close this contract.",
         "An explicit session publication controller consumes post-commit catalog hints, reconciles actual admitted source fingerprints, and publishes selected sources through the atomic publisher. Managed binding starts startup work only after a genuine SQLite read snapshot is pinned and joins admitted work on close. Default eager HostSessionRunner publication remains unchanged; this implementation and regression coverage do not establish the Native/SDK process or default scheduling contract.",
-        "An explicit shared ManagedHostSession now integrates scoped memory publication, queued sessions, truthful pending outcomes, and atomic revision-checked catalog acknowledgments. Per-chat runners share one real process owner; ordinary turns do not drain session timers. A separately frozen four-case process family is registered atomically against both original conditions; acceptance depends on complete authenticated matches in the full gate, not these source locations."
+        "An explicit shared ManagedHostSession now integrates scoped memory publication, queued sessions, truthful pending outcomes, and atomic revision-checked catalog acknowledgments. Per-chat runners share one real process owner; ordinary turns do not drain session timers. A separately frozen four-case process family is registered atomically against both original conditions; acceptance depends on complete authenticated matches in the full gate, not these source locations.",
+        "A sessions-only managed publication reserves a separate durable catalog writer slot without mutating rows, keeping source discovery, preparation and validation coherent while real transcript appends wait. Mixed selections, process-memory catalogs and physically shared index/catalog databases preserve strict optimistic validation. This correction adds no acceptance condition and requires fresh complete validation for its changed SDK identity."
       ],
       "acceptancePoints": [
         "host.restart-recall.outcomes",

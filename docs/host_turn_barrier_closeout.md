@@ -1,5 +1,10 @@
 # Natural next-turn outcomes acceptance
 
+This is the original **68 → 69/128** outcome package. The later
+[boundary closeout](host_turn_barrier_boundaries_closeout.md) records **70/128**,
+with **58 remaining** and both original #62 conditions verified under their profiles.
+The original captures and counts below remain historical evidence.
+
 Prepared 2026-11-10 (Europe/Istanbul). The fresh complete catalog verifies the
 original `host.turn-barrier.outcomes` condition: **68 → 69/128 (53.9%)**, with
 **59 remaining**. `host.turn-barrier` is **partial, 1/2**; its original

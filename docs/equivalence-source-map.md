@@ -173,10 +173,11 @@ verified both original restart conditions at **66/128**. The later
 #64 conditions at **68/128**. The later
 [natural next-turn package](host_turn_barrier_closeout.md) verifies the original
 #62 outcome in a fresh complete catalog: **69/128**, with **59 remaining**.
-The separate maintenance/failure boundary remains open.
+The later [full-channel boundary package](host_turn_barrier_boundaries_closeout.md)
+verifies the second original #62 condition, reaching **70/128**, with **58 remaining**.
 Source inventory itself still awards no behavioral credit.
 
-The current inventory maps **206 upstream modules**, with 17 present and 47 partial
+The current inventory maps **206 upstream modules**, with 18 present and 46 partial
 Python counterparts. Durable catalog and session-runner owners now provide partial SDK
 counterparts for the three previously host-owned rows; this source classification adds no
 behavioral credit. Original Gateway host acceptance remains incomplete. The shared-deadline package maps the actual control,

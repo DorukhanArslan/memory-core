@@ -18,6 +18,12 @@ the host kit. 0.1.0 is `main` at `b829bad` (2026-09-27), which had no build syst
   Shared runners, cancellation, stale plans and asynchronous close keep actual
   write custody. The default remains inline maintenance. On-search results also
   retain failure status for their pinned read generation during real recovery.
+- Stable managed session publication (2026-11-10): sessions-only refreshes
+  over a separate durable catalog reserve a coherent source generation while
+  publishing. A concurrent transcript append waits and retains its own pending
+  publication, avoiding an incomplete startup refresh without hidden retries.
+  Mixed selections, volatile catalogs and physically shared databases keep strict
+  source validation.
 - Opt-in managed on-search publication (2026-11-10):
   `ManagedHostSession.open(memory_publication="on-search")` commits memory writes
   without an ordinary publication barrier. Cold searches bootstrap naturally;

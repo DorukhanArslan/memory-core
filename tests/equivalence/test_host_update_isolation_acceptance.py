@@ -10,6 +10,9 @@ from equivalence.harness import HarnessError, _host_update_isolation_family_comp
 from equivalence.host_update_isolation import (
     CASE_HASHES, FAULTS, MANIFEST, OPERATION, POINTS, REQUIREMENT, build_cases, validate_case, validate_registration,
 )
+from equivalence.host_turn_barrier_boundaries import (
+    OPERATION as BOUNDARY_OPERATION, build_cases as build_boundary_cases,
+)
 
 
 ROOT = Path(__file__).resolve().parents[2]
@@ -22,7 +25,11 @@ def test_catalog_registers_all_four_exact_hosts_for_both_existing_conditions():
     assert len(claims) == 4
     assert all(case["operation"] == OPERATION and case["requirement"] == REQUIREMENT
                and case["covers"] == list(POINTS) for case in claims)
-    assert catalog[-4:] == build_cases()
+    prior = [case for case in catalog if case["operation"] != BOUNDARY_OPERATION]
+    assert len(prior) == 1415
+    assert prior[-4:] == build_cases()
+    assert catalog[:len(prior)] == prior
+    assert catalog[len(prior):] == build_boundary_cases()
     validate_registration(catalog)
 
 

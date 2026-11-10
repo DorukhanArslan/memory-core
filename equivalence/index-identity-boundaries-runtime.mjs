@@ -32,7 +32,7 @@ export async function runIndexIdentityBoundariesRuntime(input,config){
     originalGetCalls:[],originalSearchCalls:[],diagnosticStatusCalls:{inspection:[],searchOwner:[]}};
   let sequence=0,phase='setup',requestLabel=null,activeTool=null,dbPath;
   let producer,inspection,searchOwner,OriginalManager,originalGet,closeAll;
-  const refs=new WeakMap();let nextRef=0;
+  const refs=new WeakMap(),returnedManagers=new Map();let nextRef=0;
   const ref=owner=>{if(!owner)return null;if(!refs.has(owner))refs.set(owner,`owner-${++nextRef}`);return refs.get(owner);};
   const event=(name,fields={})=>{
     const row={event:name,sequence:++sequence,atNs:process.hrtime.bigint().toString(),phase,...fields};
@@ -160,6 +160,7 @@ export async function runIndexIdentityBoundariesRuntime(input,config){
       try{
         const owner=await originalGet.apply(this,args);
         call.ownerId=ref(owner);call.actualPurpose=owner?.purpose??null;
+        if(owner)returnedManagers.set(call.ownerId,owner);
         call.returnedIsExactSampledOwner=observed?owner===observed:null;
         return owner;
       }catch(error){call.error={name:error.name,message:error.message};throw error;}
@@ -243,7 +244,18 @@ export async function runIndexIdentityBoundariesRuntime(input,config){
   }catch(error){raw.error={name:error.name,message:error.message,stack:error.stack};throw error;}
   finally{
     phase='teardown';
-    try{await closeAll?.();raw.allManagersClosed=true;}catch(error){raw.teardownError={name:error.name,message:error.message};}
+    event('runtime-close-all-enter',{returnedManagerIds:[...returnedManagers.keys()]});
+    raw.runtimeCloseAllInvoked=typeof closeAll==='function';
+    try{
+      if(raw.runtimeCloseAllInvoked){await closeAll();raw.runtimeCloseAllReturned=true;}
+      else raw.runtimeCloseAllReturned=false;
+    }catch(error){raw.runtimeCloseAllReturned=false;raw.teardownError={name:error.name,message:error.message};}
+    raw.finalManagerStates=[...returnedManagers].map(([ownerId,owner])=>({ownerId,
+      purpose:owner.purpose,closed:owner.closed,closing:owner.closing}));
+    raw.allManagersClosed=raw.finalManagerStates.length>0&&
+      raw.finalManagerStates.every(owner=>owner.closed===true&&owner.closing===true);
+    event('runtime-close-all-return',{returnedNormally:raw.runtimeCloseAllReturned,
+      finalManagerStates:plain(raw.finalManagerStates),allManagersClosed:raw.allManagersClosed});
     if(OriginalManager&&originalGet)OriginalManager.get=originalGet;
     persist();
   }

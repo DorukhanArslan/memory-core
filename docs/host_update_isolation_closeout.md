@@ -183,3 +183,85 @@ earlier complete catalog. The overall verified baseline stays **69/128**, with
 **59 remaining** and the earlier **14 differences** still recorded. Next remains
 the separate `host.turn-barrier.boundaries` condition: pending optional maintenance
 and an already running writer need their own measured schedules.
+
+## Second-environment record (2026-11-10)
+
+These runs were made in a separate environment from the credited run and from
+the follow-up above. They award no condition and are not relabeled.
+
+**Hosted incident.** The hosted differential job had ended `blocked` (exit 2)
+with `host-update-evidence-invalid`, instead of its known `mismatched` state,
+for the first pull request of this package and for its merge (runs 42779752218
+and 42781400036). Its reports were not retained. Running the write-refusal case
+with the fixture below the process's home reproduced the block; it matched
+after the first correction. With the checkout itself below the process's home,
+all four cases then passed through the real gate path.
+
+**Complete runs.** Each ran on a clean commit as an unprivileged account
+without capabilities and with an empty home directory, which stayed empty.
+
+- the first merge `5da6169`: 1,411 cases, 1,397 matched, 14 mismatched, zero blocked, in
+  1,900.486715 seconds; report 502,347,294 bytes, SHA-256
+  `8b1a3ff1948293c712e3cfe1fb720e7bf3b378fb16c35e8894079898c6af46a0`.
+- the first two corrections, `7c2a43d`: 1,411 cases, 1,397 matched, 14 mismatched, zero blocked, in
+  1,943.781972 seconds; report 502,274,707 bytes, SHA-256
+  `364a421a89912d0d91704f7387670a478d5d69c7dee2ce6c8058c8c73f3398fa`.
+- all four corrections, `fbe94b9`: 1,411 cases, 1,397 matched, 14 mismatched, zero blocked, in
+  1,910.907751 seconds; report 502,280,550 bytes, SHA-256
+  `2c0f08d5aa4d8bdf07f8d673d8eb433baca9514a12c22a0bb33cb5e3cb2cb121`.
+- the integrated tree `3dafdb5`: 1,415 cases, 1,397 matched, 18 mismatched, zero blocked, in
+  2,100.527191 seconds; report 529,512,935 bytes, SHA-256
+  `b81c7674da864c57088d23cc44a5f6057d21f4772180291a03ec08c1a7b689f1`.
+
+The first three have the credited SDK source identity, the same 14
+differences and 68 verified conditions. The last has the integrated source
+(`03bf15292a2a795c7e0a5897eb3cc742d2ba61ec11be516c9cbf16d5230c9aa2`).
+Its 18 differences are those 14 and the four natural-turn cases of the later
+package: there the original's first cold search carried no automatic-repair
+notice, while the SDK's did. That report therefore also counts 68 verified
+conditions. The hosted `main` job (run 42809917492) logged the same counts,
+while the hosted pull-request job on the same tree (run 42808405837) logged
+1,401 matched and 14 mismatched. The hosted reports could not be read from
+this environment, so their case rows were not inspected. That question
+belongs to the natural-turn package and is not settled here.
+
+All four update cases matched with validated evidence in each of these four
+runs. After the corrections neither hosted job was blocked, and the
+capture-replay step passed on the hosted captures in both. Full regressions
+on `fbe94b9` pass **7,804 tests** with **1,674 uncredited skips** there. The
+reports were retained in that environment's working storage and are not
+preserved with the code.
+
+**Earlier attempts.** They are retained and earn nothing.
+
+- The first complete attempt, on clean `a090388`, ended blocked after
+  724.668175 seconds at the existing case
+  `flush-execution-conditional-separators`, before any case of this family ran
+  (report SHA-256
+  `f8d47b2a4a2ede1dd6b07627ca6585e6caed18614532c3ef2c6d85f3555dce2b`). The cause
+  was the run environment: the unprivileged namespace mapped the process to an
+  account whose home directory it could not search, and the original's legacy
+  workspace-state check treats an unreadable path as possibly present. Alone,
+  that case blocks under the same mapping and matches under an account with an
+  accessible empty home.
+- A complete run on clean `330b0ac` matched all four cases of the earlier
+  literals (1,411 cases, 1,397 matched, 14 mismatched, zero blocked; report
+  SHA-256 `fd931d4a8eb501b2cceff56771f54a88f1baafe6fb9e4db3bab72c391c6d7394`).
+  Independent review then found that the capture guard checked little of what
+  executed, that the crediting lines had no test, and that the superseded
+  query had no positive control. The literals were re-frozen and the guard and
+  tests strengthened before the credited run, so that run supplies no credit.
+
+**Limits not listed above.**
+
+- The original resolves each agent's workspace from its configuration. On the
+  SDK the host adapter opens one owner per agent on separate workspace and
+  index paths.
+- On the SDK the update tool's own refresh has already failed with the same
+  error when the stale read runs. The compared payload cannot show which
+  record produced the report; custody receipts bind the forced publication.
+- The source timestamp is the same before and after the update, so a
+  provenance timestamp change cannot be seen.
+- The original prints the refusal through a helper that needs a resolvable
+  home directory. A runner whose user has neither an account entry nor `HOME`
+  was not tried.

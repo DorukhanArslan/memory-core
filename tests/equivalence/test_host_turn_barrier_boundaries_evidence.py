@@ -360,6 +360,32 @@ def test_sdk_next_model_waits_for_actual_owned_settlement(actual_sdk_cases, scen
     _reject(capture, native=False, message="(?i)SDK .*(maintenance|admission|owner)")
 
 
+@pytest.mark.parametrize("attack", ["missing-release", "release-after-next-model",
+                                  "acknowledged-before-release", "next-model-before-acknowledgment"])
+def test_sdk_pending_admission_retains_the_actual_held_delivery_boundary(actual_sdk_cases, attack):
+    capture = deepcopy(_sdk_case(actual_sdk_cases, "pending-optional-preemption"))
+    rows = _sdk_raw(capture)["events"]
+    release = next(row for row in rows if row["event"] == "delivery-ack-release" and row["label"] == "save")
+    acknowledged = next(row for row in rows if row["event"] == "delivery-ack" and row["label"] == "save")
+    closed = next(row for row in rows if row["event"] == "close-call")
+    if attack == "missing-release":
+        rows.remove(release)
+    elif attack == "release-after-next-model":
+        _swap_events(rows, release, closed)
+    elif attack == "acknowledged-before-release":
+        _swap_events(rows, release, acknowledged)
+    else:
+        # The owner can genuinely settle before a caller observes its abort.
+        # Keep those intrinsic phases and the next model's instant untouched;
+        # delay only the first turn's channel acknowledgment/return observations.
+        delivering = next(row for row in rows if row["event"] == "delivery-call" and row["label"] == "followup")
+        returned = next(row for row in rows if row["event"] == "host-return" and row["label"] == "save")
+        _swap_events(rows, acknowledged, delivering)
+        _swap_events(rows, returned, closed)
+    _seal_sdk(capture)
+    _reject(capture, native=False, message="(?i)(boundary lifecycle|SDK admission)")
+
+
 @pytest.mark.parametrize("attack", ["started", "no-preemption", "different-actor"])
 def test_sdk_pending_work_is_not_a_substituted_running_or_noop_owner(actual_sdk_cases, attack):
     capture = deepcopy(_sdk_case(actual_sdk_cases, "pending-optional-preemption"))

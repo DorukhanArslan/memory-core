@@ -683,6 +683,16 @@ def _sdk_owner(value, raw):
         require(not raw["maintenance"] and abort["running"] is False
                 and not any(row["phase"] == "started" for row in phases),
                 "SDK maintenance pending preemption used a running or no-op fixture owner")
+        delivered = _event(raw, "channel-final-delivered", "save")
+        submitted = _event(raw, "host-call", "followup")
+        observed = _event(raw, "optional-abort-observed")
+        released = _event(raw, "delivery-ack-release", "save")
+        acknowledged = _event(raw, "delivery-ack", "save")
+        # The actual owner may settle before the caller observes cancellation.
+        # The foreground lane still waits for the held channel acknowledgment.
+        require(delivered["sequence"] < submitted["sequence"] < observed["sequence"]
+                < released["sequence"] < acknowledged["sequence"] < next_model["sequence"],
+                "SDK admission bypassed its actual held foreground delivery acknowledgment")
     elif scenario == "target-open-preparation":
         require(not raw["maintenance"] and abort["running"] is True, "SDK target-open boundary did not hold actual running preparation")
     else:

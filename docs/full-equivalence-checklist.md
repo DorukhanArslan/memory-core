@@ -26,7 +26,7 @@ The reference repository is `https://github.com/openclaw/openclaw.git`. Python-o
 
 The [source map](equivalence-source-map.md) links all 64 contracts and 128 acceptance points
 to the pinned upstream code and the current Python implementation. The inventory records
-196 upstream source modules, their tracked hashes, literal dependencies and exported
+199 upstream source modules, their tracked hashes, literal dependencies and exported
 declarations. Source presence and inventory validation do not establish behavior or add
 any differential-test coverage.
 
@@ -2123,3 +2123,18 @@ unresolved boundaries** remain. Next is the original `host.turn-barrier.boundari
 condition: measure pending optional preemption, actual running-producer settlement
 and honest failure visibility before the next admission. The current SDK owner still
 runs optional maintenance inline; that boundary is not closed by this packet.
+
+## Update capture and CI follow-up (2026-11-10)
+
+The [update closeout](host_update_isolation_closeout.md#capture-and-ci-follow-up-2026-11-10)
+records four later infrastructure corrections: the original home-relative refusal
+spelling, explicit ranking/prompt limits, a disappearing diagnostic lease journal,
+and hosted capture retention/replay. Clean integrated `c45cb03` matches all four
+actual Native/SDK cases, with zero blocked cases or runner errors. Independent
+custody/trace replay and 163 artifact hashes pass; all eight public results match
+the prior update-family baseline. SDK, frozen literals and fixed scope are unchanged.
+
+This reruns an already verified family and grants **+0**: the overall baseline stays
+**69/128 (53.9%)**, with **59 remaining**. It does not replace the previous complete
+catalog or resolve its 14 differences. The next acceptance target remains
+`host.turn-barrier.boundaries`, covering maintenance/failure before the next admission.

@@ -1,5 +1,9 @@
 # Host update and isolation acceptance
 
+This records the original **66 → 68/128** package. The latest overall baseline is
+**69/128**, with **59 remaining**, in the [active checklist](full-equivalence-checklist.md).
+The later capture/CI corrections below award no additional acceptance credit.
+
 Prepared 2026-11-10 (Europe/Istanbul). This package verifies **two original
 conditions**, moving **66 → 68/128 (53.1%)**, with **60 remaining**. There are
 31 complete, six partial and 27 pending contracts. The fixed 64-contract scope
@@ -136,3 +140,46 @@ after “Remember that I take tea without sugar,” immediately ask “How do I 
 tea?” and observe both the real answer and whether the next turn starts before
 the required save work has settled. A pending optional job and an already
 running writer are different boundaries.
+
+## Capture and CI follow-up (2026-11-10)
+
+The four follow-up commits ending at `fbe94b9` were integrated with the natural-turn
+work on clean code commit `c45cb03fb02a5e029c903cc80356c9795789b5a2`. They correct the
+comparison infrastructure without changing the SDK, frozen literals or scope:
+
+- Accept the original hard-link refusal when its own path helper spells the same
+  fixture paths relative to the process home as `~`. The guard still requires the
+  exact refusal cause, this run's fixture directory, its workspace and `MEMORY.md`;
+  mixed homes, other files, generic `~/workspace` and extra text are rejected.
+- Remove an ignored ranking setting and require the actual original query defaults.
+  Prompt assembly and ranking remain declared limits: the SDK includes its own
+  `MEMORY.md` in project context while this original actor uses an empty system
+  prompt. Answers are scripted from tool results; compared searches have at most
+  one hit, and the original does not apply temporal decay to `MEMORY.md`.
+- Record an entry as `vanished` if it disappears during the diagnostic filesystem
+  listing. Custody does not use that listing; source, index, dispatch and transcript
+  checks remain separate. Missing roots and errors other than `ENOENT` still fail.
+- Retain reports from the hidden results directory and update-family host streams
+  and raw captures in GitHub Actions. Replay the capture guard tests after the
+  comparison, including a failed comparison. Missing captures can still cause
+  replay skips; a green replay step alone does not establish Native execution.
+
+Four fresh actual Native/SDK comparisons all match, with **zero mismatches,
+zero blocked cases, no runner errors and successful final authentication**.
+Both custody snapshots validate for every case. The standalone report is
+`work/host-update-followups/attempt-001/report.json`, **16,477,206 bytes**, SHA-256
+`85463fef47fb43e0587501d26c0e394377991ea1b9759c3c2951f802ef1944c3`.
+It records the unchanged **159 SDK Python files** and canonical source SHA-256
+`03bf15292a2a795c7e0a5897eb3cc742d2ba61ec11be516c9cbf16d5230c9aa2`.
+
+An independent audit replays all four custody and protected Native trace checks,
+rehashes **163 retained artifacts**, and confirms all eight complete public results
+equal the committed update-family baseline. It records all eight actual raw files
+in `work/host-update-followups-audit.json`, **6,562 bytes**, SHA-256
+`b5ce9fa2b66731b141d88421aefbcaa3aa203d0079de8c0060e72017783cb2df`.
+
+This focused rerun awards **zero new conditions** and does not rerun or relabel the
+earlier complete catalog. The overall verified baseline stays **69/128**, with
+**59 remaining** and the earlier **14 differences** still recorded. Next remains
+the separate `host.turn-barrier.boundaries` condition: pending optional maintenance
+and an already running writer need their own measured schedules.

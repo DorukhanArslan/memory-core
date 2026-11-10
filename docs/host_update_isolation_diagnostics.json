@@ -1,0 +1,3830 @@
+{
+  "kind": "host-update-isolation-acceptance-closeout",
+  "preparedDate": "2026-11-10",
+  "timezone": "Europe/Istanbul",
+  "acceptanceIncrease": 2,
+  "verifiedBefore": 66,
+  "verifiedAfter": 68,
+  "remaining": 60,
+  "fixedScopeSha256": "a8e066e63970dd0be734485d62a5932640894b8c0a42f47ac3eb67f784cbc7b9",
+  "fullCatalog": {
+    "report": "work/host-update-isolation-full-001.json",
+    "reportSha256": "6e402cbc21cd7fa2ac5b66b12f5313cbab56a8aaafa4b1ad03ee5c2fc003b6f7",
+    "bytes": 501986442,
+    "mode": "full",
+    "status": "mismatched",
+    "fullScopePassed": false,
+    "summary": {
+      "matched": 1397,
+      "mismatched": 14,
+      "blocked": 0,
+      "uncoveredAcceptance": 58
+    },
+    "cases": 1411,
+    "errors": [],
+    "verified": 68,
+    "total": 128,
+    "remaining": 60,
+    "contractStates": {
+      "complete": 31,
+      "partial": 6,
+      "pending": 27
+    },
+    "durationSeconds": 1605.968497,
+    "implementation": {
+      "gitCommit": "57270dae8728f04a7f1293c59a5a1cd2abf7f777",
+      "trackedWorkingTreeDirty": false,
+      "sourceSha256": "dad4499f58eb316a23bc674c7adbde87f231e9c5d054f2d18a25b729aadc1cb9",
+      "sourceFiles": 159
+    },
+    "updateFamilyComplete": true
+  },
+  "node": {
+    "execPath": "/workspace/memory-core/work/node-v24.16.0-linux-x64/bin/node",
+    "nodeVersion": "v24.16.0",
+    "icuVersion": "78.3",
+    "unicodeVersion": "17.0",
+    "sha256": "b2959781cc5a74c357ffa02367efa8a0330cbb1c9cb347732fdfaaaca381cbcd"
+  },
+  "cases": [
+    {
+      "id": "host-update-isolation-ascii",
+      "requirement": "host.update-isolation",
+      "covers": [
+        "host.update-isolation.outcomes",
+        "host.update-isolation.boundaries"
+      ],
+      "operation": "host-update-isolation-runtime",
+      "input": {
+        "kind": "host-update-isolation",
+        "nowMs": 1794182400000,
+        "identity": {
+          "agentId": "main",
+          "isolatedAgentId": "other",
+          "writer": {
+            "sessionKey": "agent:main:update-1-writer",
+            "sessionId": "host-update-1-writer"
+          },
+          "before": {
+            "sessionKey": "agent:main:update-1-before",
+            "sessionId": "host-update-1-before"
+          },
+          "supersededBefore": {
+            "sessionKey": "agent:main:update-1-superseded-before",
+            "sessionId": "host-update-1-superseded-before"
+          },
+          "updater": {
+            "sessionKey": "agent:main:update-1-updater",
+            "sessionId": "host-update-1-updater"
+          },
+          "current": {
+            "sessionKey": "agent:main:update-1-current",
+            "sessionId": "host-update-1-current"
+          },
+          "superseded": {
+            "sessionKey": "agent:main:update-1-superseded",
+            "sessionId": "host-update-1-superseded"
+          },
+          "unrelated": {
+            "sessionKey": "agent:main:update-1-unrelated",
+            "sessionId": "host-update-1-unrelated"
+          },
+          "isolatedWriter": {
+            "sessionKey": "agent:other:update-1-isolated-writer",
+            "sessionId": "host-update-1-isolated-writer"
+          },
+          "isolatedBefore": {
+            "sessionKey": "agent:other:update-1-isolated-before",
+            "sessionId": "host-update-1-isolated-before"
+          },
+          "isolated": {
+            "sessionKey": "agent:other:update-1-isolated",
+            "sessionId": "host-update-1-isolated"
+          }
+        },
+        "source": "MEMORY.md",
+        "phases": [
+          {
+            "label": "produce",
+            "save": {
+              "prompt": "Please remember that my drink preference is aurorakumquat-739 tea, and that my bicycle lock code is marblefern-551.",
+              "entries": [
+                {
+                  "section": "Preferences",
+                  "text": "My drink preference is aurorakumquat-739 tea."
+                },
+                {
+                  "section": "Facts",
+                  "text": "My bicycle lock code is marblefern-551."
+                }
+              ],
+              "content": "## Preferences\n\n- My drink preference is aurorakumquat-739 tea.\n\n## Facts\n\n- My bicycle lock code is marblefern-551.\n",
+              "ack": "Saved."
+            },
+            "isolatedSave": {
+              "prompt": "Please remember that my drink preference is copperplum-880 juice.",
+              "entries": [
+                {
+                  "section": "Preferences",
+                  "text": "My drink preference is copperplum-880 juice."
+                }
+              ],
+              "content": "## Preferences\n\n- My drink preference is copperplum-880 juice.\n",
+              "ack": "Saved."
+            },
+            "recall": {
+              "prompt": "What drink preference did I ask you to remember?",
+              "query": "drink preference"
+            },
+            "supersededRecall": {
+              "prompt": "Is aurorakumquat-739 tea still my drink preference?",
+              "query": "aurorakumquat-739 tea"
+            }
+          },
+          {
+            "label": "update",
+            "update": {
+              "prompt": "I changed my mind. My drink preference is now velvetquince-204 coffee.",
+              "old": "My drink preference is aurorakumquat-739 tea.",
+              "new": "My drink preference is now velvetquince-204 coffee.",
+              "ack": "Updated.",
+              "failureAck": "I could not update that."
+            },
+            "recalls": {
+              "current": {
+                "prompt": "What drink preference did I ask you to remember?",
+                "query": "drink preference"
+              },
+              "superseded": {
+                "prompt": "Is aurorakumquat-739 tea still my drink preference?",
+                "query": "aurorakumquat-739 tea"
+              },
+              "unrelated": {
+                "prompt": "What is my bicycle lock code?",
+                "query": "bicycle lock code"
+              },
+              "isolated": {
+                "prompt": "What drink preference did I ask you to remember?",
+                "query": "drink preference"
+              }
+            }
+          }
+        ],
+        "policy": {
+          "configuredSources": [
+            "memory"
+          ],
+          "rememberAcrossConversations": false,
+          "configuredSessionMemory": false,
+          "sourceMtimeMs": 1794182400000,
+          "producerPublication": {
+            "operation": "force-rebuild-after-source-metadata"
+          },
+          "indexLifecycle": "session-managed",
+          "runtimeIdentity": "openclaw-compatible"
+        }
+      },
+      "referenceMode": "authenticated-official-release",
+      "runtimeEvidenceValidated": true,
+      "status": "matched",
+      "nativeResult": {
+        "provider": "none",
+        "phases": [
+          {
+            "label": "produce",
+            "publications": [
+              {
+                "agentId": "main",
+                "stage": "produce",
+                "failed": false,
+                "error": null
+              },
+              {
+                "agentId": "other",
+                "stage": "produce",
+                "failed": false,
+                "error": null
+              }
+            ],
+            "reads": [
+              {
+                "session": "before",
+                "query": "drink preference",
+                "search": {
+                  "results": [
+                    {
+                      "path": "MEMORY.md",
+                      "startLine": 3,
+                      "endLine": 4,
+                      "score": 1,
+                      "textScore": 0.5645991441935528,
+                      "snippet": "- My drink preference is aurorakumquat-739 tea.\n",
+                      "source": "memory",
+                      "provenance": {
+                        "originClass": "agent",
+                        "sessionKind": "unknown",
+                        "observedAt": 1794182400000
+                      },
+                      "corpus": "memory"
+                    }
+                  ],
+                  "provider": "none",
+                  "citations": "off",
+                  "debug": {
+                    "backend": "builtin",
+                    "effectiveMode": "n/a",
+                    "managerMs": 0,
+                    "searchMs": 0,
+                    "hits": 1,
+                    "candidateHits": 1,
+                    "withheldHits": 0,
+                    "searchWindow": 5,
+                    "toolMs": 0,
+                    "outsideSearchMs": 0
+                  }
+                },
+                "get": {
+                  "status": "ok",
+                  "text": "- My drink preference is aurorakumquat-739 tea.\n\n\n[More content available. Use from=5 to continue.]",
+                  "path": "MEMORY.md",
+                  "from": 3,
+                  "lines": 2,
+                  "truncated": true,
+                  "nextFrom": 5
+                },
+                "answer": "- My drink preference is aurorakumquat-739 tea.\n\n\n[More content available. Use from=5 to continue.]"
+              },
+              {
+                "session": "supersededBefore",
+                "query": "aurorakumquat-739 tea",
+                "search": {
+                  "results": [
+                    {
+                      "path": "MEMORY.md",
+                      "startLine": 3,
+                      "endLine": 4,
+                      "score": 1,
+                      "textScore": 0.660453091242561,
+                      "snippet": "- My drink preference is aurorakumquat-739 tea.\n",
+                      "source": "memory",
+                      "provenance": {
+                        "originClass": "agent",
+                        "sessionKind": "unknown",
+                        "observedAt": 1794182400000
+                      },
+                      "corpus": "memory"
+                    }
+                  ],
+                  "provider": "none",
+                  "citations": "off",
+                  "debug": {
+                    "backend": "builtin",
+                    "effectiveMode": "n/a",
+                    "managerMs": 0,
+                    "searchMs": 0,
+                    "hits": 1,
+                    "candidateHits": 1,
+                    "withheldHits": 0,
+                    "searchWindow": 5,
+                    "toolMs": 0,
+                    "outsideSearchMs": 0
+                  }
+                },
+                "get": {
+                  "status": "ok",
+                  "text": "- My drink preference is aurorakumquat-739 tea.\n\n\n[More content available. Use from=5 to continue.]",
+                  "path": "MEMORY.md",
+                  "from": 3,
+                  "lines": 2,
+                  "truncated": true,
+                  "nextFrom": 5
+                },
+                "answer": "- My drink preference is aurorakumquat-739 tea.\n\n\n[More content available. Use from=5 to continue.]"
+              },
+              {
+                "session": "isolatedBefore",
+                "query": "drink preference",
+                "search": {
+                  "results": [
+                    {
+                      "path": "MEMORY.md",
+                      "startLine": 3,
+                      "endLine": 4,
+                      "score": 0.6871443875752974,
+                      "textScore": 1.5304324403816562e-06,
+                      "snippet": "- My drink preference is copperplum-880 juice.\n",
+                      "source": "memory",
+                      "provenance": {
+                        "originClass": "agent",
+                        "sessionKind": "unknown",
+                        "observedAt": 1794182400000
+                      },
+                      "corpus": "memory"
+                    }
+                  ],
+                  "provider": "none",
+                  "citations": "off",
+                  "debug": {
+                    "backend": "builtin",
+                    "effectiveMode": "n/a",
+                    "managerMs": 0,
+                    "searchMs": 0,
+                    "hits": 1,
+                    "candidateHits": 1,
+                    "withheldHits": 0,
+                    "searchWindow": 5,
+                    "toolMs": 0,
+                    "outsideSearchMs": 0
+                  }
+                },
+                "get": {
+                  "status": "ok",
+                  "text": "- My drink preference is copperplum-880 juice.",
+                  "path": "MEMORY.md",
+                  "from": 3,
+                  "lines": 1
+                },
+                "answer": "- My drink preference is copperplum-880 juice."
+              }
+            ],
+            "source": {
+              "path": "MEMORY.md",
+              "kind": "file",
+              "text": "## Preferences\n\n- My drink preference is aurorakumquat-739 tea.\n\n## Facts\n\n- My bicycle lock code is marblefern-551.\n",
+              "hex": "232320507265666572656e6365730a0a2d204d79206472696e6b20707265666572656e6365206973206175726f72616b756d717561742d373339207465612e0a0a23232046616374730a0a2d204d792062696379636c65206c6f636b20636f6465206973206d6172626c656665726e2d3535312e0a"
+            },
+            "isolatedSource": {
+              "path": "MEMORY.md",
+              "kind": "file",
+              "text": "## Preferences\n\n- My drink preference is copperplum-880 juice.\n",
+              "hex": "232320507265666572656e6365730a0a2d204d79206472696e6b20707265666572656e636520697320636f70706572706c756d2d383830206a756963652e0a"
+            }
+          },
+          {
+            "label": "update",
+            "update": {
+              "committed": true,
+              "answer": "Updated."
+            },
+            "publications": [
+              {
+                "agentId": "main",
+                "stage": "final",
+                "failed": false,
+                "error": null
+              }
+            ],
+            "reads": [
+              {
+                "session": "current",
+                "query": "drink preference",
+                "search": {
+                  "results": [
+                    {
+                      "path": "MEMORY.md",
+                      "startLine": 3,
+                      "endLine": 4,
+                      "score": 1,
+                      "textScore": 0.5545944672830037,
+                      "snippet": "- My drink preference is now velvetquince-204 coffee.\n",
+                      "source": "memory",
+                      "provenance": {
+                        "originClass": "agent",
+                        "sessionKind": "unknown",
+                        "observedAt": 1794182400000
+                      },
+                      "corpus": "memory"
+                    }
+                  ],
+                  "provider": "none",
+                  "citations": "off",
+                  "debug": {
+                    "backend": "builtin",
+                    "effectiveMode": "n/a",
+                    "managerMs": 0,
+                    "searchMs": 0,
+                    "hits": 1,
+                    "candidateHits": 1,
+                    "withheldHits": 0,
+                    "searchWindow": 5,
+                    "toolMs": 0,
+                    "outsideSearchMs": 0
+                  }
+                },
+                "get": {
+                  "status": "ok",
+                  "text": "- My drink preference is now velvetquince-204 coffee.\n\n\n[More content available. Use from=5 to continue.]",
+                  "path": "MEMORY.md",
+                  "from": 3,
+                  "lines": 2,
+                  "truncated": true,
+                  "nextFrom": 5
+                },
+                "answer": "- My drink preference is now velvetquince-204 coffee.\n\n\n[More content available. Use from=5 to continue.]"
+              },
+              {
+                "session": "superseded",
+                "query": "aurorakumquat-739 tea",
+                "search": {
+                  "results": [],
+                  "provider": "none",
+                  "citations": "off",
+                  "debug": {
+                    "backend": "builtin",
+                    "effectiveMode": "n/a",
+                    "managerMs": 0,
+                    "searchMs": 0,
+                    "hits": 0,
+                    "candidateHits": 0,
+                    "withheldHits": 0,
+                    "searchWindow": 5,
+                    "toolMs": 0,
+                    "outsideSearchMs": 0
+                  }
+                },
+                "get": null,
+                "answer": "No source-backed memory found."
+              },
+              {
+                "session": "unrelated",
+                "query": "bicycle lock code",
+                "search": {
+                  "results": [
+                    {
+                      "path": "MEMORY.md",
+                      "startLine": 7,
+                      "endLine": 8,
+                      "score": 1,
+                      "textScore": 0.6677596646364088,
+                      "snippet": "- My bicycle lock code is marblefern-551.\n",
+                      "source": "memory",
+                      "provenance": {
+                        "originClass": "agent",
+                        "sessionKind": "unknown",
+                        "observedAt": 1794182400000
+                      },
+                      "corpus": "memory"
+                    }
+                  ],
+                  "provider": "none",
+                  "citations": "off",
+                  "debug": {
+                    "backend": "builtin",
+                    "effectiveMode": "n/a",
+                    "managerMs": 0,
+                    "searchMs": 0,
+                    "hits": 1,
+                    "candidateHits": 1,
+                    "withheldHits": 0,
+                    "searchWindow": 5,
+                    "toolMs": 0,
+                    "outsideSearchMs": 0
+                  }
+                },
+                "get": {
+                  "status": "ok",
+                  "text": "- My bicycle lock code is marblefern-551.",
+                  "path": "MEMORY.md",
+                  "from": 7,
+                  "lines": 1
+                },
+                "answer": "- My bicycle lock code is marblefern-551."
+              },
+              {
+                "session": "isolated",
+                "query": "drink preference",
+                "search": {
+                  "results": [
+                    {
+                      "path": "MEMORY.md",
+                      "startLine": 3,
+                      "endLine": 4,
+                      "score": 0.6871443875752974,
+                      "textScore": 1.5304324403816562e-06,
+                      "snippet": "- My drink preference is copperplum-880 juice.\n",
+                      "source": "memory",
+                      "provenance": {
+                        "originClass": "agent",
+                        "sessionKind": "unknown",
+                        "observedAt": 1794182400000
+                      },
+                      "corpus": "memory"
+                    }
+                  ],
+                  "provider": "none",
+                  "citations": "off",
+                  "debug": {
+                    "backend": "builtin",
+                    "effectiveMode": "n/a",
+                    "managerMs": 0,
+                    "searchMs": 0,
+                    "hits": 1,
+                    "candidateHits": 1,
+                    "withheldHits": 0,
+                    "searchWindow": 5,
+                    "toolMs": 0,
+                    "outsideSearchMs": 0
+                  }
+                },
+                "get": {
+                  "status": "ok",
+                  "text": "- My drink preference is copperplum-880 juice.",
+                  "path": "MEMORY.md",
+                  "from": 3,
+                  "lines": 1
+                },
+                "answer": "- My drink preference is copperplum-880 juice."
+              }
+            ],
+            "source": {
+              "path": "MEMORY.md",
+              "kind": "file",
+              "text": "## Preferences\n\n- My drink preference is now velvetquince-204 coffee.\n\n## Facts\n\n- My bicycle lock code is marblefern-551.\n",
+              "hex": "232320507265666572656e6365730a0a2d204d79206472696e6b20707265666572656e6365206973206e6f772076656c7665747175696e63652d32303420636f666665652e0a0a23232046616374730a0a2d204d792062696379636c65206c6f636b20636f6465206973206d6172626c656665726e2d3535312e0a"
+            },
+            "isolatedSource": {
+              "path": "MEMORY.md",
+              "kind": "file",
+              "text": "## Preferences\n\n- My drink preference is copperplum-880 juice.\n",
+              "hex": "232320507265666572656e6365730a0a2d204d79206472696e6b20707265666572656e636520697320636f70706572706c756d2d383830206a756963652e0a"
+            }
+          }
+        ]
+      },
+      "sdkResult": {
+        "provider": "none",
+        "phases": [
+          {
+            "label": "produce",
+            "publications": [
+              {
+                "agentId": "main",
+                "stage": "produce",
+                "failed": false,
+                "error": null
+              },
+              {
+                "agentId": "other",
+                "stage": "produce",
+                "failed": false,
+                "error": null
+              }
+            ],
+            "reads": [
+              {
+                "session": "before",
+                "query": "drink preference",
+                "search": {
+                  "results": [
+                    {
+                      "path": "MEMORY.md",
+                      "startLine": 3,
+                      "endLine": 4,
+                      "score": 1.0,
+                      "snippet": "- My drink preference is aurorakumquat-739 tea.\n",
+                      "source": "memory",
+                      "textScore": 0.5645991441935528,
+                      "provenance": {
+                        "originClass": "agent",
+                        "sessionKind": "unknown",
+                        "observedAt": 1794182400000
+                      },
+                      "corpus": "memory"
+                    }
+                  ],
+                  "provider": "none",
+                  "citations": "off",
+                  "debug": {
+                    "effectiveMode": "n/a",
+                    "searchMs": 0,
+                    "hits": 1,
+                    "candidateHits": 1,
+                    "withheldHits": 0,
+                    "searchWindow": 5,
+                    "backend": "builtin",
+                    "managerMs": 0,
+                    "toolMs": 0,
+                    "outsideSearchMs": 0
+                  }
+                },
+                "get": {
+                  "status": "ok",
+                  "text": "- My drink preference is aurorakumquat-739 tea.\n\n\n[More content available. Use from=5 to continue.]",
+                  "path": "MEMORY.md",
+                  "from": 3,
+                  "lines": 2,
+                  "truncated": true,
+                  "nextFrom": 5
+                },
+                "answer": "- My drink preference is aurorakumquat-739 tea.\n\n\n[More content available. Use from=5 to continue.]"
+              },
+              {
+                "session": "supersededBefore",
+                "query": "aurorakumquat-739 tea",
+                "search": {
+                  "results": [
+                    {
+                      "path": "MEMORY.md",
+                      "startLine": 3,
+                      "endLine": 4,
+                      "score": 1.0,
+                      "snippet": "- My drink preference is aurorakumquat-739 tea.\n",
+                      "source": "memory",
+                      "textScore": 0.660453091242561,
+                      "provenance": {
+                        "originClass": "agent",
+                        "sessionKind": "unknown",
+                        "observedAt": 1794182400000
+                      },
+                      "corpus": "memory"
+                    }
+                  ],
+                  "provider": "none",
+                  "citations": "off",
+                  "debug": {
+                    "effectiveMode": "n/a",
+                    "searchMs": 0,
+                    "hits": 1,
+                    "candidateHits": 1,
+                    "withheldHits": 0,
+                    "searchWindow": 5,
+                    "backend": "builtin",
+                    "managerMs": 0,
+                    "toolMs": 0,
+                    "outsideSearchMs": 0
+                  }
+                },
+                "get": {
+                  "status": "ok",
+                  "text": "- My drink preference is aurorakumquat-739 tea.\n\n\n[More content available. Use from=5 to continue.]",
+                  "path": "MEMORY.md",
+                  "from": 3,
+                  "lines": 2,
+                  "truncated": true,
+                  "nextFrom": 5
+                },
+                "answer": "- My drink preference is aurorakumquat-739 tea.\n\n\n[More content available. Use from=5 to continue.]"
+              },
+              {
+                "session": "isolatedBefore",
+                "query": "drink preference",
+                "search": {
+                  "results": [
+                    {
+                      "path": "MEMORY.md",
+                      "startLine": 3,
+                      "endLine": 4,
+                      "score": 0.6871443875752974,
+                      "snippet": "- My drink preference is copperplum-880 juice.\n",
+                      "source": "memory",
+                      "textScore": 1.5304324403816562e-06,
+                      "provenance": {
+                        "originClass": "agent",
+                        "sessionKind": "unknown",
+                        "observedAt": 1794182400000
+                      },
+                      "corpus": "memory"
+                    }
+                  ],
+                  "provider": "none",
+                  "citations": "off",
+                  "debug": {
+                    "effectiveMode": "n/a",
+                    "searchMs": 0,
+                    "hits": 1,
+                    "candidateHits": 1,
+                    "withheldHits": 0,
+                    "searchWindow": 5,
+                    "backend": "builtin",
+                    "managerMs": 0,
+                    "toolMs": 0,
+                    "outsideSearchMs": 0
+                  }
+                },
+                "get": {
+                  "status": "ok",
+                  "text": "- My drink preference is copperplum-880 juice.",
+                  "path": "MEMORY.md",
+                  "from": 3,
+                  "lines": 1
+                },
+                "answer": "- My drink preference is copperplum-880 juice."
+              }
+            ],
+            "source": {
+              "path": "MEMORY.md",
+              "kind": "file",
+              "text": "## Preferences\n\n- My drink preference is aurorakumquat-739 tea.\n\n## Facts\n\n- My bicycle lock code is marblefern-551.\n",
+              "hex": "232320507265666572656e6365730a0a2d204d79206472696e6b20707265666572656e6365206973206175726f72616b756d717561742d373339207465612e0a0a23232046616374730a0a2d204d792062696379636c65206c6f636b20636f6465206973206d6172626c656665726e2d3535312e0a"
+            },
+            "isolatedSource": {
+              "path": "MEMORY.md",
+              "kind": "file",
+              "text": "## Preferences\n\n- My drink preference is copperplum-880 juice.\n",
+              "hex": "232320507265666572656e6365730a0a2d204d79206472696e6b20707265666572656e636520697320636f70706572706c756d2d383830206a756963652e0a"
+            }
+          },
+          {
+            "label": "update",
+            "update": {
+              "committed": true,
+              "answer": "Updated."
+            },
+            "publications": [
+              {
+                "agentId": "main",
+                "stage": "final",
+                "failed": false,
+                "error": null
+              }
+            ],
+            "reads": [
+              {
+                "session": "current",
+                "query": "drink preference",
+                "search": {
+                  "results": [
+                    {
+                      "path": "MEMORY.md",
+                      "startLine": 3,
+                      "endLine": 4,
+                      "score": 1.0,
+                      "snippet": "- My drink preference is now velvetquince-204 coffee.\n",
+                      "source": "memory",
+                      "textScore": 0.5545944672830037,
+                      "provenance": {
+                        "originClass": "agent",
+                        "sessionKind": "unknown",
+                        "observedAt": 1794182400000
+                      },
+                      "corpus": "memory"
+                    }
+                  ],
+                  "provider": "none",
+                  "citations": "off",
+                  "debug": {
+                    "effectiveMode": "n/a",
+                    "searchMs": 0,
+                    "hits": 1,
+                    "candidateHits": 1,
+                    "withheldHits": 0,
+                    "searchWindow": 5,
+                    "backend": "builtin",
+                    "managerMs": 0,
+                    "toolMs": 0,
+                    "outsideSearchMs": 0
+                  }
+                },
+                "get": {
+                  "status": "ok",
+                  "text": "- My drink preference is now velvetquince-204 coffee.\n\n\n[More content available. Use from=5 to continue.]",
+                  "path": "MEMORY.md",
+                  "from": 3,
+                  "lines": 2,
+                  "truncated": true,
+                  "nextFrom": 5
+                },
+                "answer": "- My drink preference is now velvetquince-204 coffee.\n\n\n[More content available. Use from=5 to continue.]"
+              },
+              {
+                "session": "superseded",
+                "query": "aurorakumquat-739 tea",
+                "search": {
+                  "results": [],
+                  "provider": "none",
+                  "citations": "off",
+                  "debug": {
+                    "effectiveMode": "n/a",
+                    "searchMs": 0,
+                    "hits": 0,
+                    "candidateHits": 0,
+                    "withheldHits": 0,
+                    "searchWindow": 5,
+                    "backend": "builtin",
+                    "managerMs": 0,
+                    "toolMs": 0,
+                    "outsideSearchMs": 0
+                  }
+                },
+                "get": null,
+                "answer": "No source-backed memory found."
+              },
+              {
+                "session": "unrelated",
+                "query": "bicycle lock code",
+                "search": {
+                  "results": [
+                    {
+                      "path": "MEMORY.md",
+                      "startLine": 7,
+                      "endLine": 8,
+                      "score": 1.0,
+                      "snippet": "- My bicycle lock code is marblefern-551.\n",
+                      "source": "memory",
+                      "textScore": 0.6677596646364088,
+                      "provenance": {
+                        "originClass": "agent",
+                        "sessionKind": "unknown",
+                        "observedAt": 1794182400000
+                      },
+                      "corpus": "memory"
+                    }
+                  ],
+                  "provider": "none",
+                  "citations": "off",
+                  "debug": {
+                    "effectiveMode": "n/a",
+                    "searchMs": 0,
+                    "hits": 1,
+                    "candidateHits": 1,
+                    "withheldHits": 0,
+                    "searchWindow": 5,
+                    "backend": "builtin",
+                    "managerMs": 0,
+                    "toolMs": 0,
+                    "outsideSearchMs": 0
+                  }
+                },
+                "get": {
+                  "status": "ok",
+                  "text": "- My bicycle lock code is marblefern-551.",
+                  "path": "MEMORY.md",
+                  "from": 7,
+                  "lines": 1
+                },
+                "answer": "- My bicycle lock code is marblefern-551."
+              },
+              {
+                "session": "isolated",
+                "query": "drink preference",
+                "search": {
+                  "results": [
+                    {
+                      "path": "MEMORY.md",
+                      "startLine": 3,
+                      "endLine": 4,
+                      "score": 0.6871443875752974,
+                      "snippet": "- My drink preference is copperplum-880 juice.\n",
+                      "source": "memory",
+                      "textScore": 1.5304324403816562e-06,
+                      "provenance": {
+                        "originClass": "agent",
+                        "sessionKind": "unknown",
+                        "observedAt": 1794182400000
+                      },
+                      "corpus": "memory"
+                    }
+                  ],
+                  "provider": "none",
+                  "citations": "off",
+                  "debug": {
+                    "effectiveMode": "n/a",
+                    "searchMs": 0,
+                    "hits": 1,
+                    "candidateHits": 1,
+                    "withheldHits": 0,
+                    "searchWindow": 5,
+                    "backend": "builtin",
+                    "managerMs": 0,
+                    "toolMs": 0,
+                    "outsideSearchMs": 0
+                  }
+                },
+                "get": {
+                  "status": "ok",
+                  "text": "- My drink preference is copperplum-880 juice.",
+                  "path": "MEMORY.md",
+                  "from": 3,
+                  "lines": 1
+                },
+                "answer": "- My drink preference is copperplum-880 juice."
+              }
+            ],
+            "source": {
+              "path": "MEMORY.md",
+              "kind": "file",
+              "text": "## Preferences\n\n- My drink preference is now velvetquince-204 coffee.\n\n## Facts\n\n- My bicycle lock code is marblefern-551.\n",
+              "hex": "232320507265666572656e6365730a0a2d204d79206472696e6b20707265666572656e6365206973206e6f772076656c7665747175696e63652d32303420636f666665652e0a0a23232046616374730a0a2d204d792062696379636c65206c6f636b20636f6465206973206d6172626c656665726e2d3535312e0a"
+            },
+            "isolatedSource": {
+              "path": "MEMORY.md",
+              "kind": "file",
+              "text": "## Preferences\n\n- My drink preference is copperplum-880 juice.\n",
+              "hex": "232320507265666572656e6365730a0a2d204d79206472696e6b20707265666572656e636520697320636f70706572706c756d2d383830206a756963652e0a"
+            }
+          }
+        ]
+      },
+      "rawDiagnostics": {
+        "native": {
+          "sha256": "c3ae361e182f5e700777c40d8fecdf0c6b3254b7b002859c1ce3061f4642c0f3",
+          "validationStatus": "verified"
+        },
+        "python": {
+          "sha256": "b3ac2beb84a8024ab97eafcc0dc3fe3214dc5922123f165863afc25b734b8db8",
+          "validationStatus": "verified"
+        }
+      },
+      "custodyValidated": true,
+      "differences": []
+    },
+    {
+      "id": "host-update-isolation-unicode",
+      "requirement": "host.update-isolation",
+      "covers": [
+        "host.update-isolation.outcomes",
+        "host.update-isolation.boundaries"
+      ],
+      "operation": "host-update-isolation-runtime",
+      "input": {
+        "kind": "host-update-isolation",
+        "nowMs": 1794182400000,
+        "identity": {
+          "agentId": "main",
+          "isolatedAgentId": "other",
+          "writer": {
+            "sessionKey": "agent:main:update-2-writer",
+            "sessionId": "host-update-2-writer"
+          },
+          "before": {
+            "sessionKey": "agent:main:update-2-before",
+            "sessionId": "host-update-2-before"
+          },
+          "supersededBefore": {
+            "sessionKey": "agent:main:update-2-superseded-before",
+            "sessionId": "host-update-2-superseded-before"
+          },
+          "updater": {
+            "sessionKey": "agent:main:update-2-updater",
+            "sessionId": "host-update-2-updater"
+          },
+          "current": {
+            "sessionKey": "agent:main:update-2-current",
+            "sessionId": "host-update-2-current"
+          },
+          "superseded": {
+            "sessionKey": "agent:main:update-2-superseded",
+            "sessionId": "host-update-2-superseded"
+          },
+          "unrelated": {
+            "sessionKey": "agent:main:update-2-unrelated",
+            "sessionId": "host-update-2-unrelated"
+          },
+          "isolatedWriter": {
+            "sessionKey": "agent:other:update-2-isolated-writer",
+            "sessionId": "host-update-2-isolated-writer"
+          },
+          "isolatedBefore": {
+            "sessionKey": "agent:other:update-2-isolated-before",
+            "sessionId": "host-update-2-isolated-before"
+          },
+          "isolated": {
+            "sessionKey": "agent:other:update-2-isolated",
+            "sessionId": "host-update-2-isolated"
+          }
+        },
+        "source": "MEMORY.md",
+        "phases": [
+          {
+            "label": "produce",
+            "save": {
+              "prompt": "Please remember that my drink preference is Ihlamur-ğüşİ-482 ☕, and that my bicycle lock code is Çiğdem-ığü-663 ✿.",
+              "entries": [
+                {
+                  "section": "Preferences",
+                  "text": "My drink preference is Ihlamur-ğüşİ-482 ☕."
+                },
+                {
+                  "section": "Facts",
+                  "text": "My bicycle lock code is Çiğdem-ığü-663 ✿."
+                }
+              ],
+              "content": "## Preferences\n\n- My drink preference is Ihlamur-ğüşİ-482 ☕.\n\n## Facts\n\n- My bicycle lock code is Çiğdem-ığü-663 ✿.\n",
+              "ack": "Saved."
+            },
+            "isolatedSave": {
+              "prompt": "Please remember that my drink preference is Şalgam-ÜİĞ-208 🥤.",
+              "entries": [
+                {
+                  "section": "Preferences",
+                  "text": "My drink preference is Şalgam-ÜİĞ-208 🥤."
+                }
+              ],
+              "content": "## Preferences\n\n- My drink preference is Şalgam-ÜİĞ-208 🥤.\n",
+              "ack": "Saved."
+            },
+            "recall": {
+              "prompt": "What drink preference did I ask you to remember?",
+              "query": "drink preference"
+            },
+            "supersededRecall": {
+              "prompt": "Is Ihlamur-ğüşİ-482 ☕ still my drink preference?",
+              "query": "Ihlamur-ğüşİ-482"
+            }
+          },
+          {
+            "label": "update",
+            "update": {
+              "prompt": "I changed my mind. My drink preference is now Kızılcık-çöÖ-917 🍵.",
+              "old": "My drink preference is Ihlamur-ğüşİ-482 ☕.",
+              "new": "My drink preference is now Kızılcık-çöÖ-917 🍵.",
+              "ack": "Updated.",
+              "failureAck": "I could not update that."
+            },
+            "recalls": {
+              "current": {
+                "prompt": "What drink preference did I ask you to remember?",
+                "query": "drink preference"
+              },
+              "superseded": {
+                "prompt": "Is Ihlamur-ğüşİ-482 ☕ still my drink preference?",
+                "query": "Ihlamur-ğüşİ-482"
+              },
+              "unrelated": {
+                "prompt": "What is my bicycle lock code?",
+                "query": "bicycle lock code"
+              },
+              "isolated": {
+                "prompt": "What drink preference did I ask you to remember?",
+                "query": "drink preference"
+              }
+            }
+          }
+        ],
+        "policy": {
+          "configuredSources": [
+            "memory"
+          ],
+          "rememberAcrossConversations": false,
+          "configuredSessionMemory": false,
+          "sourceMtimeMs": 1794182400000,
+          "producerPublication": {
+            "operation": "force-rebuild-after-source-metadata"
+          },
+          "indexLifecycle": "session-managed",
+          "runtimeIdentity": "openclaw-compatible"
+        }
+      },
+      "referenceMode": "authenticated-official-release",
+      "runtimeEvidenceValidated": true,
+      "status": "matched",
+      "nativeResult": {
+        "provider": "none",
+        "phases": [
+          {
+            "label": "produce",
+            "publications": [
+              {
+                "agentId": "main",
+                "stage": "produce",
+                "failed": false,
+                "error": null
+              },
+              {
+                "agentId": "other",
+                "stage": "produce",
+                "failed": false,
+                "error": null
+              }
+            ],
+            "reads": [
+              {
+                "session": "before",
+                "query": "drink preference",
+                "search": {
+                  "results": [
+                    {
+                      "path": "MEMORY.md",
+                      "startLine": 3,
+                      "endLine": 4,
+                      "score": 1,
+                      "textScore": 0.572633664302274,
+                      "snippet": "- My drink preference is Ihlamur-ğüşİ-482 ☕.\n",
+                      "source": "memory",
+                      "provenance": {
+                        "originClass": "agent",
+                        "sessionKind": "unknown",
+                        "observedAt": 1794182400000
+                      },
+                      "corpus": "memory"
+                    }
+                  ],
+                  "provider": "none",
+                  "citations": "off",
+                  "debug": {
+                    "backend": "builtin",
+                    "effectiveMode": "n/a",
+                    "managerMs": 0,
+                    "searchMs": 0,
+                    "hits": 1,
+                    "candidateHits": 1,
+                    "withheldHits": 0,
+                    "searchWindow": 5,
+                    "toolMs": 0,
+                    "outsideSearchMs": 0
+                  }
+                },
+                "get": {
+                  "status": "ok",
+                  "text": "- My drink preference is Ihlamur-ğüşİ-482 ☕.\n\n\n[More content available. Use from=5 to continue.]",
+                  "path": "MEMORY.md",
+                  "from": 3,
+                  "lines": 2,
+                  "truncated": true,
+                  "nextFrom": 5
+                },
+                "answer": "- My drink preference is Ihlamur-ğüşİ-482 ☕.\n\n\n[More content available. Use from=5 to continue.]"
+              },
+              {
+                "session": "supersededBefore",
+                "query": "Ihlamur-ğüşİ-482",
+                "search": {
+                  "results": [
+                    {
+                      "path": "MEMORY.md",
+                      "startLine": 3,
+                      "endLine": 4,
+                      "score": 1,
+                      "textScore": 0.6677596646364088,
+                      "snippet": "- My drink preference is Ihlamur-ğüşİ-482 ☕.\n",
+                      "source": "memory",
+                      "provenance": {
+                        "originClass": "agent",
+                        "sessionKind": "unknown",
+                        "observedAt": 1794182400000
+                      },
+                      "corpus": "memory"
+                    }
+                  ],
+                  "provider": "none",
+                  "citations": "off",
+                  "debug": {
+                    "backend": "builtin",
+                    "effectiveMode": "n/a",
+                    "managerMs": 0,
+                    "searchMs": 0,
+                    "hits": 1,
+                    "candidateHits": 1,
+                    "withheldHits": 0,
+                    "searchWindow": 5,
+                    "toolMs": 0,
+                    "outsideSearchMs": 0
+                  }
+                },
+                "get": {
+                  "status": "ok",
+                  "text": "- My drink preference is Ihlamur-ğüşİ-482 ☕.\n\n\n[More content available. Use from=5 to continue.]",
+                  "path": "MEMORY.md",
+                  "from": 3,
+                  "lines": 2,
+                  "truncated": true,
+                  "nextFrom": 5
+                },
+                "answer": "- My drink preference is Ihlamur-ğüşİ-482 ☕.\n\n\n[More content available. Use from=5 to continue.]"
+              },
+              {
+                "session": "isolatedBefore",
+                "query": "drink preference",
+                "search": {
+                  "results": [
+                    {
+                      "path": "MEMORY.md",
+                      "startLine": 3,
+                      "endLine": 4,
+                      "score": 0.6871443743819343,
+                      "textScore": 1.5172390772924348e-06,
+                      "snippet": "- My drink preference is Şalgam-ÜİĞ-208 🥤.\n",
+                      "source": "memory",
+                      "provenance": {
+                        "originClass": "agent",
+                        "sessionKind": "unknown",
+                        "observedAt": 1794182400000
+                      },
+                      "corpus": "memory"
+                    }
+                  ],
+                  "provider": "none",
+                  "citations": "off",
+                  "debug": {
+                    "backend": "builtin",
+                    "effectiveMode": "n/a",
+                    "managerMs": 0,
+                    "searchMs": 0,
+                    "hits": 1,
+                    "candidateHits": 1,
+                    "withheldHits": 0,
+                    "searchWindow": 5,
+                    "toolMs": 0,
+                    "outsideSearchMs": 0
+                  }
+                },
+                "get": {
+                  "status": "ok",
+                  "text": "- My drink preference is Şalgam-ÜİĞ-208 🥤.",
+                  "path": "MEMORY.md",
+                  "from": 3,
+                  "lines": 1
+                },
+                "answer": "- My drink preference is Şalgam-ÜİĞ-208 🥤."
+              }
+            ],
+            "source": {
+              "path": "MEMORY.md",
+              "kind": "file",
+              "text": "## Preferences\n\n- My drink preference is Ihlamur-ğüşİ-482 ☕.\n\n## Facts\n\n- My bicycle lock code is Çiğdem-ığü-663 ✿.\n",
+              "hex": "232320507265666572656e6365730a0a2d204d79206472696e6b20707265666572656e63652069732049686c616d75722dc49fc3bcc59fc4b02d34383220e298952e0a0a23232046616374730a0a2d204d792062696379636c65206c6f636b20636f646520697320c38769c49f64656d2dc4b1c49fc3bc2d36363320e29cbf2e0a"
+            },
+            "isolatedSource": {
+              "path": "MEMORY.md",
+              "kind": "file",
+              "text": "## Preferences\n\n- My drink preference is Şalgam-ÜİĞ-208 🥤.\n",
+              "hex": "232320507265666572656e6365730a0a2d204d79206472696e6b20707265666572656e636520697320c59e616c67616d2dc39cc4b0c49e2d32303820f09fa5a42e0a"
+            }
+          },
+          {
+            "label": "update",
+            "update": {
+              "committed": true,
+              "answer": "Updated."
+            },
+            "publications": [
+              {
+                "agentId": "main",
+                "stage": "final",
+                "failed": false,
+                "error": null
+              }
+            ],
+            "reads": [
+              {
+                "session": "current",
+                "query": "drink preference",
+                "search": {
+                  "results": [
+                    {
+                      "path": "MEMORY.md",
+                      "startLine": 3,
+                      "endLine": 4,
+                      "score": 1,
+                      "textScore": 0.5624695812627105,
+                      "snippet": "- My drink preference is now Kızılcık-çöÖ-917 🍵.\n",
+                      "source": "memory",
+                      "provenance": {
+                        "originClass": "agent",
+                        "sessionKind": "unknown",
+                        "observedAt": 1794182400000
+                      },
+                      "corpus": "memory"
+                    }
+                  ],
+                  "provider": "none",
+                  "citations": "off",
+                  "debug": {
+                    "backend": "builtin",
+                    "effectiveMode": "n/a",
+                    "managerMs": 0,
+                    "searchMs": 0,
+                    "hits": 1,
+                    "candidateHits": 1,
+                    "withheldHits": 0,
+                    "searchWindow": 5,
+                    "toolMs": 0,
+                    "outsideSearchMs": 0
+                  }
+                },
+                "get": {
+                  "status": "ok",
+                  "text": "- My drink preference is now Kızılcık-çöÖ-917 🍵.\n\n\n[More content available. Use from=5 to continue.]",
+                  "path": "MEMORY.md",
+                  "from": 3,
+                  "lines": 2,
+                  "truncated": true,
+                  "nextFrom": 5
+                },
+                "answer": "- My drink preference is now Kızılcık-çöÖ-917 🍵.\n\n\n[More content available. Use from=5 to continue.]"
+              },
+              {
+                "session": "superseded",
+                "query": "Ihlamur-ğüşİ-482",
+                "search": {
+                  "results": [],
+                  "provider": "none",
+                  "citations": "off",
+                  "debug": {
+                    "backend": "builtin",
+                    "effectiveMode": "n/a",
+                    "managerMs": 0,
+                    "searchMs": 0,
+                    "hits": 0,
+                    "candidateHits": 0,
+                    "withheldHits": 0,
+                    "searchWindow": 5,
+                    "toolMs": 0,
+                    "outsideSearchMs": 0
+                  }
+                },
+                "get": null,
+                "answer": "No source-backed memory found."
+              },
+              {
+                "session": "unrelated",
+                "query": "bicycle lock code",
+                "search": {
+                  "results": [
+                    {
+                      "path": "MEMORY.md",
+                      "startLine": 7,
+                      "endLine": 8,
+                      "score": 1,
+                      "textScore": 0.6585087901635208,
+                      "snippet": "- My bicycle lock code is Çiğdem-ığü-663 ✿.\n",
+                      "source": "memory",
+                      "provenance": {
+                        "originClass": "agent",
+                        "sessionKind": "unknown",
+                        "observedAt": 1794182400000
+                      },
+                      "corpus": "memory"
+                    }
+                  ],
+                  "provider": "none",
+                  "citations": "off",
+                  "debug": {
+                    "backend": "builtin",
+                    "effectiveMode": "n/a",
+                    "managerMs": 0,
+                    "searchMs": 0,
+                    "hits": 1,
+                    "candidateHits": 1,
+                    "withheldHits": 0,
+                    "searchWindow": 5,
+                    "toolMs": 0,
+                    "outsideSearchMs": 0
+                  }
+                },
+                "get": {
+                  "status": "ok",
+                  "text": "- My bicycle lock code is Çiğdem-ığü-663 ✿.",
+                  "path": "MEMORY.md",
+                  "from": 7,
+                  "lines": 1
+                },
+                "answer": "- My bicycle lock code is Çiğdem-ığü-663 ✿."
+              },
+              {
+                "session": "isolated",
+                "query": "drink preference",
+                "search": {
+                  "results": [
+                    {
+                      "path": "MEMORY.md",
+                      "startLine": 3,
+                      "endLine": 4,
+                      "score": 0.6871443743819343,
+                      "textScore": 1.5172390772924348e-06,
+                      "snippet": "- My drink preference is Şalgam-ÜİĞ-208 🥤.\n",
+                      "source": "memory",
+                      "provenance": {
+                        "originClass": "agent",
+                        "sessionKind": "unknown",
+                        "observedAt": 1794182400000
+                      },
+                      "corpus": "memory"
+                    }
+                  ],
+                  "provider": "none",
+                  "citations": "off",
+                  "debug": {
+                    "backend": "builtin",
+                    "effectiveMode": "n/a",
+                    "managerMs": 0,
+                    "searchMs": 0,
+                    "hits": 1,
+                    "candidateHits": 1,
+                    "withheldHits": 0,
+                    "searchWindow": 5,
+                    "toolMs": 0,
+                    "outsideSearchMs": 0
+                  }
+                },
+                "get": {
+                  "status": "ok",
+                  "text": "- My drink preference is Şalgam-ÜİĞ-208 🥤.",
+                  "path": "MEMORY.md",
+                  "from": 3,
+                  "lines": 1
+                },
+                "answer": "- My drink preference is Şalgam-ÜİĞ-208 🥤."
+              }
+            ],
+            "source": {
+              "path": "MEMORY.md",
+              "kind": "file",
+              "text": "## Preferences\n\n- My drink preference is now Kızılcık-çöÖ-917 🍵.\n\n## Facts\n\n- My bicycle lock code is Çiğdem-ığü-663 ✿.\n",
+              "hex": "232320507265666572656e6365730a0a2d204d79206472696e6b20707265666572656e6365206973206e6f77204bc4b17ac4b16c63c4b16b2dc3a7c3b6c3962d39313720f09f8db52e0a0a23232046616374730a0a2d204d792062696379636c65206c6f636b20636f646520697320c38769c49f64656d2dc4b1c49fc3bc2d36363320e29cbf2e0a"
+            },
+            "isolatedSource": {
+              "path": "MEMORY.md",
+              "kind": "file",
+              "text": "## Preferences\n\n- My drink preference is Şalgam-ÜİĞ-208 🥤.\n",
+              "hex": "232320507265666572656e6365730a0a2d204d79206472696e6b20707265666572656e636520697320c59e616c67616d2dc39cc4b0c49e2d32303820f09fa5a42e0a"
+            }
+          }
+        ]
+      },
+      "sdkResult": {
+        "provider": "none",
+        "phases": [
+          {
+            "label": "produce",
+            "publications": [
+              {
+                "agentId": "main",
+                "stage": "produce",
+                "failed": false,
+                "error": null
+              },
+              {
+                "agentId": "other",
+                "stage": "produce",
+                "failed": false,
+                "error": null
+              }
+            ],
+            "reads": [
+              {
+                "session": "before",
+                "query": "drink preference",
+                "search": {
+                  "results": [
+                    {
+                      "path": "MEMORY.md",
+                      "startLine": 3,
+                      "endLine": 4,
+                      "score": 1.0,
+                      "snippet": "- My drink preference is Ihlamur-ğüşİ-482 ☕.\n",
+                      "source": "memory",
+                      "textScore": 0.572633664302274,
+                      "provenance": {
+                        "originClass": "agent",
+                        "sessionKind": "unknown",
+                        "observedAt": 1794182400000
+                      },
+                      "corpus": "memory"
+                    }
+                  ],
+                  "provider": "none",
+                  "citations": "off",
+                  "debug": {
+                    "effectiveMode": "n/a",
+                    "searchMs": 0,
+                    "hits": 1,
+                    "candidateHits": 1,
+                    "withheldHits": 0,
+                    "searchWindow": 5,
+                    "backend": "builtin",
+                    "managerMs": 0,
+                    "toolMs": 0,
+                    "outsideSearchMs": 0
+                  }
+                },
+                "get": {
+                  "status": "ok",
+                  "text": "- My drink preference is Ihlamur-ğüşİ-482 ☕.\n\n\n[More content available. Use from=5 to continue.]",
+                  "path": "MEMORY.md",
+                  "from": 3,
+                  "lines": 2,
+                  "truncated": true,
+                  "nextFrom": 5
+                },
+                "answer": "- My drink preference is Ihlamur-ğüşİ-482 ☕.\n\n\n[More content available. Use from=5 to continue.]"
+              },
+              {
+                "session": "supersededBefore",
+                "query": "Ihlamur-ğüşİ-482",
+                "search": {
+                  "results": [
+                    {
+                      "path": "MEMORY.md",
+                      "startLine": 3,
+                      "endLine": 4,
+                      "score": 1.0,
+                      "snippet": "- My drink preference is Ihlamur-ğüşİ-482 ☕.\n",
+                      "source": "memory",
+                      "textScore": 0.6677596646364088,
+                      "provenance": {
+                        "originClass": "agent",
+                        "sessionKind": "unknown",
+                        "observedAt": 1794182400000
+                      },
+                      "corpus": "memory"
+                    }
+                  ],
+                  "provider": "none",
+                  "citations": "off",
+                  "debug": {
+                    "effectiveMode": "n/a",
+                    "searchMs": 0,
+                    "hits": 1,
+                    "candidateHits": 1,
+                    "withheldHits": 0,
+                    "searchWindow": 5,
+                    "backend": "builtin",
+                    "managerMs": 0,
+                    "toolMs": 0,
+                    "outsideSearchMs": 0
+                  }
+                },
+                "get": {
+                  "status": "ok",
+                  "text": "- My drink preference is Ihlamur-ğüşİ-482 ☕.\n\n\n[More content available. Use from=5 to continue.]",
+                  "path": "MEMORY.md",
+                  "from": 3,
+                  "lines": 2,
+                  "truncated": true,
+                  "nextFrom": 5
+                },
+                "answer": "- My drink preference is Ihlamur-ğüşİ-482 ☕.\n\n\n[More content available. Use from=5 to continue.]"
+              },
+              {
+                "session": "isolatedBefore",
+                "query": "drink preference",
+                "search": {
+                  "results": [
+                    {
+                      "path": "MEMORY.md",
+                      "startLine": 3,
+                      "endLine": 4,
+                      "score": 0.6871443743819343,
+                      "snippet": "- My drink preference is Şalgam-ÜİĞ-208 🥤.\n",
+                      "source": "memory",
+                      "textScore": 1.5172390772924348e-06,
+                      "provenance": {
+                        "originClass": "agent",
+                        "sessionKind": "unknown",
+                        "observedAt": 1794182400000
+                      },
+                      "corpus": "memory"
+                    }
+                  ],
+                  "provider": "none",
+                  "citations": "off",
+                  "debug": {
+                    "effectiveMode": "n/a",
+                    "searchMs": 0,
+                    "hits": 1,
+                    "candidateHits": 1,
+                    "withheldHits": 0,
+                    "searchWindow": 5,
+                    "backend": "builtin",
+                    "managerMs": 0,
+                    "toolMs": 0,
+                    "outsideSearchMs": 0
+                  }
+                },
+                "get": {
+                  "status": "ok",
+                  "text": "- My drink preference is Şalgam-ÜİĞ-208 🥤.",
+                  "path": "MEMORY.md",
+                  "from": 3,
+                  "lines": 1
+                },
+                "answer": "- My drink preference is Şalgam-ÜİĞ-208 🥤."
+              }
+            ],
+            "source": {
+              "path": "MEMORY.md",
+              "kind": "file",
+              "text": "## Preferences\n\n- My drink preference is Ihlamur-ğüşİ-482 ☕.\n\n## Facts\n\n- My bicycle lock code is Çiğdem-ığü-663 ✿.\n",
+              "hex": "232320507265666572656e6365730a0a2d204d79206472696e6b20707265666572656e63652069732049686c616d75722dc49fc3bcc59fc4b02d34383220e298952e0a0a23232046616374730a0a2d204d792062696379636c65206c6f636b20636f646520697320c38769c49f64656d2dc4b1c49fc3bc2d36363320e29cbf2e0a"
+            },
+            "isolatedSource": {
+              "path": "MEMORY.md",
+              "kind": "file",
+              "text": "## Preferences\n\n- My drink preference is Şalgam-ÜİĞ-208 🥤.\n",
+              "hex": "232320507265666572656e6365730a0a2d204d79206472696e6b20707265666572656e636520697320c59e616c67616d2dc39cc4b0c49e2d32303820f09fa5a42e0a"
+            }
+          },
+          {
+            "label": "update",
+            "update": {
+              "committed": true,
+              "answer": "Updated."
+            },
+            "publications": [
+              {
+                "agentId": "main",
+                "stage": "final",
+                "failed": false,
+                "error": null
+              }
+            ],
+            "reads": [
+              {
+                "session": "current",
+                "query": "drink preference",
+                "search": {
+                  "results": [
+                    {
+                      "path": "MEMORY.md",
+                      "startLine": 3,
+                      "endLine": 4,
+                      "score": 1.0,
+                      "snippet": "- My drink preference is now Kızılcık-çöÖ-917 🍵.\n",
+                      "source": "memory",
+                      "textScore": 0.5624695812627105,
+                      "provenance": {
+                        "originClass": "agent",
+                        "sessionKind": "unknown",
+                        "observedAt": 1794182400000
+                      },
+                      "corpus": "memory"
+                    }
+                  ],
+                  "provider": "none",
+                  "citations": "off",
+                  "debug": {
+                    "effectiveMode": "n/a",
+                    "searchMs": 0,
+                    "hits": 1,
+                    "candidateHits": 1,
+                    "withheldHits": 0,
+                    "searchWindow": 5,
+                    "backend": "builtin",
+                    "managerMs": 0,
+                    "toolMs": 0,
+                    "outsideSearchMs": 0
+                  }
+                },
+                "get": {
+                  "status": "ok",
+                  "text": "- My drink preference is now Kızılcık-çöÖ-917 🍵.\n\n\n[More content available. Use from=5 to continue.]",
+                  "path": "MEMORY.md",
+                  "from": 3,
+                  "lines": 2,
+                  "truncated": true,
+                  "nextFrom": 5
+                },
+                "answer": "- My drink preference is now Kızılcık-çöÖ-917 🍵.\n\n\n[More content available. Use from=5 to continue.]"
+              },
+              {
+                "session": "superseded",
+                "query": "Ihlamur-ğüşİ-482",
+                "search": {
+                  "results": [],
+                  "provider": "none",
+                  "citations": "off",
+                  "debug": {
+                    "effectiveMode": "n/a",
+                    "searchMs": 0,
+                    "hits": 0,
+                    "candidateHits": 0,
+                    "withheldHits": 0,
+                    "searchWindow": 5,
+                    "backend": "builtin",
+                    "managerMs": 0,
+                    "toolMs": 0,
+                    "outsideSearchMs": 0
+                  }
+                },
+                "get": null,
+                "answer": "No source-backed memory found."
+              },
+              {
+                "session": "unrelated",
+                "query": "bicycle lock code",
+                "search": {
+                  "results": [
+                    {
+                      "path": "MEMORY.md",
+                      "startLine": 7,
+                      "endLine": 8,
+                      "score": 1.0,
+                      "snippet": "- My bicycle lock code is Çiğdem-ığü-663 ✿.\n",
+                      "source": "memory",
+                      "textScore": 0.6585087901635208,
+                      "provenance": {
+                        "originClass": "agent",
+                        "sessionKind": "unknown",
+                        "observedAt": 1794182400000
+                      },
+                      "corpus": "memory"
+                    }
+                  ],
+                  "provider": "none",
+                  "citations": "off",
+                  "debug": {
+                    "effectiveMode": "n/a",
+                    "searchMs": 0,
+                    "hits": 1,
+                    "candidateHits": 1,
+                    "withheldHits": 0,
+                    "searchWindow": 5,
+                    "backend": "builtin",
+                    "managerMs": 0,
+                    "toolMs": 0,
+                    "outsideSearchMs": 0
+                  }
+                },
+                "get": {
+                  "status": "ok",
+                  "text": "- My bicycle lock code is Çiğdem-ığü-663 ✿.",
+                  "path": "MEMORY.md",
+                  "from": 7,
+                  "lines": 1
+                },
+                "answer": "- My bicycle lock code is Çiğdem-ığü-663 ✿."
+              },
+              {
+                "session": "isolated",
+                "query": "drink preference",
+                "search": {
+                  "results": [
+                    {
+                      "path": "MEMORY.md",
+                      "startLine": 3,
+                      "endLine": 4,
+                      "score": 0.6871443743819343,
+                      "snippet": "- My drink preference is Şalgam-ÜİĞ-208 🥤.\n",
+                      "source": "memory",
+                      "textScore": 1.5172390772924348e-06,
+                      "provenance": {
+                        "originClass": "agent",
+                        "sessionKind": "unknown",
+                        "observedAt": 1794182400000
+                      },
+                      "corpus": "memory"
+                    }
+                  ],
+                  "provider": "none",
+                  "citations": "off",
+                  "debug": {
+                    "effectiveMode": "n/a",
+                    "searchMs": 0,
+                    "hits": 1,
+                    "candidateHits": 1,
+                    "withheldHits": 0,
+                    "searchWindow": 5,
+                    "backend": "builtin",
+                    "managerMs": 0,
+                    "toolMs": 0,
+                    "outsideSearchMs": 0
+                  }
+                },
+                "get": {
+                  "status": "ok",
+                  "text": "- My drink preference is Şalgam-ÜİĞ-208 🥤.",
+                  "path": "MEMORY.md",
+                  "from": 3,
+                  "lines": 1
+                },
+                "answer": "- My drink preference is Şalgam-ÜİĞ-208 🥤."
+              }
+            ],
+            "source": {
+              "path": "MEMORY.md",
+              "kind": "file",
+              "text": "## Preferences\n\n- My drink preference is now Kızılcık-çöÖ-917 🍵.\n\n## Facts\n\n- My bicycle lock code is Çiğdem-ığü-663 ✿.\n",
+              "hex": "232320507265666572656e6365730a0a2d204d79206472696e6b20707265666572656e6365206973206e6f77204bc4b17ac4b16c63c4b16b2dc3a7c3b6c3962d39313720f09f8db52e0a0a23232046616374730a0a2d204d792062696379636c65206c6f636b20636f646520697320c38769c49f64656d2dc4b1c49fc3bc2d36363320e29cbf2e0a"
+            },
+            "isolatedSource": {
+              "path": "MEMORY.md",
+              "kind": "file",
+              "text": "## Preferences\n\n- My drink preference is Şalgam-ÜİĞ-208 🥤.\n",
+              "hex": "232320507265666572656e6365730a0a2d204d79206472696e6b20707265666572656e636520697320c59e616c67616d2dc39cc4b0c49e2d32303820f09fa5a42e0a"
+            }
+          }
+        ]
+      },
+      "rawDiagnostics": {
+        "native": {
+          "sha256": "029789e28ed519dfd9388aa3d1dea37b713fa008dea51ab430b3bb57a56247bb",
+          "validationStatus": "verified"
+        },
+        "python": {
+          "sha256": "02af3943668a1711ad8b51d6dcf13c2e6d7e26664a4edfd36b216c5fd194cc11",
+          "validationStatus": "verified"
+        }
+      },
+      "custodyValidated": true,
+      "differences": []
+    },
+    {
+      "id": "host-update-isolation-write-refusal",
+      "requirement": "host.update-isolation",
+      "covers": [
+        "host.update-isolation.outcomes",
+        "host.update-isolation.boundaries"
+      ],
+      "operation": "host-update-isolation-runtime",
+      "input": {
+        "kind": "host-update-isolation",
+        "nowMs": 1794182400000,
+        "identity": {
+          "agentId": "main",
+          "isolatedAgentId": "other",
+          "writer": {
+            "sessionKey": "agent:main:update-3-writer",
+            "sessionId": "host-update-3-writer"
+          },
+          "before": {
+            "sessionKey": "agent:main:update-3-before",
+            "sessionId": "host-update-3-before"
+          },
+          "supersededBefore": {
+            "sessionKey": "agent:main:update-3-superseded-before",
+            "sessionId": "host-update-3-superseded-before"
+          },
+          "updater": {
+            "sessionKey": "agent:main:update-3-updater",
+            "sessionId": "host-update-3-updater"
+          },
+          "current": {
+            "sessionKey": "agent:main:update-3-current",
+            "sessionId": "host-update-3-current"
+          },
+          "superseded": {
+            "sessionKey": "agent:main:update-3-superseded",
+            "sessionId": "host-update-3-superseded"
+          },
+          "unrelated": {
+            "sessionKey": "agent:main:update-3-unrelated",
+            "sessionId": "host-update-3-unrelated"
+          },
+          "isolatedWriter": {
+            "sessionKey": "agent:other:update-3-isolated-writer",
+            "sessionId": "host-update-3-isolated-writer"
+          },
+          "isolatedBefore": {
+            "sessionKey": "agent:other:update-3-isolated-before",
+            "sessionId": "host-update-3-isolated-before"
+          },
+          "isolated": {
+            "sessionKey": "agent:other:update-3-isolated",
+            "sessionId": "host-update-3-isolated"
+          }
+        },
+        "source": "MEMORY.md",
+        "phases": [
+          {
+            "label": "produce",
+            "save": {
+              "prompt": "Please remember that my drink preference is cedarquince-913 tea, and that my bicycle lock code is slatefern-146.",
+              "entries": [
+                {
+                  "section": "Preferences",
+                  "text": "My drink preference is cedarquince-913 tea."
+                },
+                {
+                  "section": "Facts",
+                  "text": "My bicycle lock code is slatefern-146."
+                }
+              ],
+              "content": "## Preferences\n\n- My drink preference is cedarquince-913 tea.\n\n## Facts\n\n- My bicycle lock code is slatefern-146.\n",
+              "ack": "Saved."
+            },
+            "isolatedSave": {
+              "prompt": "Please remember that my drink preference is willowpear-528 juice.",
+              "entries": [
+                {
+                  "section": "Preferences",
+                  "text": "My drink preference is willowpear-528 juice."
+                }
+              ],
+              "content": "## Preferences\n\n- My drink preference is willowpear-528 juice.\n",
+              "ack": "Saved."
+            },
+            "recall": {
+              "prompt": "What drink preference did I ask you to remember?",
+              "query": "drink preference"
+            },
+            "supersededRecall": {
+              "prompt": "Is cedarquince-913 tea still my drink preference?",
+              "query": "cedarquince-913 tea"
+            }
+          },
+          {
+            "label": "update",
+            "update": {
+              "prompt": "I changed my mind. My drink preference is now emberlime-377 coffee.",
+              "old": "My drink preference is cedarquince-913 tea.",
+              "new": "My drink preference is now emberlime-377 coffee.",
+              "ack": "Updated.",
+              "failureAck": "I could not update that."
+            },
+            "recalls": {
+              "current": {
+                "prompt": "What drink preference did I ask you to remember?",
+                "query": "drink preference"
+              },
+              "superseded": {
+                "prompt": "Is cedarquince-913 tea still my drink preference?",
+                "query": "cedarquince-913 tea"
+              },
+              "unrelated": {
+                "prompt": "What is my bicycle lock code?",
+                "query": "bicycle lock code"
+              },
+              "isolated": {
+                "prompt": "What drink preference did I ask you to remember?",
+                "query": "drink preference"
+              }
+            },
+            "fault": {
+              "operation": "source-hard-link-during-update"
+            }
+          }
+        ],
+        "policy": {
+          "configuredSources": [
+            "memory"
+          ],
+          "rememberAcrossConversations": false,
+          "configuredSessionMemory": false,
+          "sourceMtimeMs": 1794182400000,
+          "producerPublication": {
+            "operation": "force-rebuild-after-source-metadata"
+          },
+          "indexLifecycle": "session-managed",
+          "runtimeIdentity": "openclaw-compatible"
+        }
+      },
+      "referenceMode": "authenticated-official-release",
+      "runtimeEvidenceValidated": true,
+      "status": "matched",
+      "nativeResult": {
+        "provider": "none",
+        "phases": [
+          {
+            "label": "produce",
+            "publications": [
+              {
+                "agentId": "main",
+                "stage": "produce",
+                "failed": false,
+                "error": null
+              },
+              {
+                "agentId": "other",
+                "stage": "produce",
+                "failed": false,
+                "error": null
+              }
+            ],
+            "reads": [
+              {
+                "session": "before",
+                "query": "drink preference",
+                "search": {
+                  "results": [
+                    {
+                      "path": "MEMORY.md",
+                      "startLine": 3,
+                      "endLine": 4,
+                      "score": 1,
+                      "textScore": 0.5645991441935528,
+                      "snippet": "- My drink preference is cedarquince-913 tea.\n",
+                      "source": "memory",
+                      "provenance": {
+                        "originClass": "agent",
+                        "sessionKind": "unknown",
+                        "observedAt": 1794182400000
+                      },
+                      "corpus": "memory"
+                    }
+                  ],
+                  "provider": "none",
+                  "citations": "off",
+                  "debug": {
+                    "backend": "builtin",
+                    "effectiveMode": "n/a",
+                    "managerMs": 0,
+                    "searchMs": 0,
+                    "hits": 1,
+                    "candidateHits": 1,
+                    "withheldHits": 0,
+                    "searchWindow": 5,
+                    "toolMs": 0,
+                    "outsideSearchMs": 0
+                  }
+                },
+                "get": {
+                  "status": "ok",
+                  "text": "- My drink preference is cedarquince-913 tea.\n\n\n[More content available. Use from=5 to continue.]",
+                  "path": "MEMORY.md",
+                  "from": 3,
+                  "lines": 2,
+                  "truncated": true,
+                  "nextFrom": 5
+                },
+                "answer": "- My drink preference is cedarquince-913 tea.\n\n\n[More content available. Use from=5 to continue.]"
+              },
+              {
+                "session": "supersededBefore",
+                "query": "cedarquince-913 tea",
+                "search": {
+                  "results": [
+                    {
+                      "path": "MEMORY.md",
+                      "startLine": 3,
+                      "endLine": 4,
+                      "score": 1,
+                      "textScore": 0.660453091242561,
+                      "snippet": "- My drink preference is cedarquince-913 tea.\n",
+                      "source": "memory",
+                      "provenance": {
+                        "originClass": "agent",
+                        "sessionKind": "unknown",
+                        "observedAt": 1794182400000
+                      },
+                      "corpus": "memory"
+                    }
+                  ],
+                  "provider": "none",
+                  "citations": "off",
+                  "debug": {
+                    "backend": "builtin",
+                    "effectiveMode": "n/a",
+                    "managerMs": 0,
+                    "searchMs": 0,
+                    "hits": 1,
+                    "candidateHits": 1,
+                    "withheldHits": 0,
+                    "searchWindow": 5,
+                    "toolMs": 0,
+                    "outsideSearchMs": 0
+                  }
+                },
+                "get": {
+                  "status": "ok",
+                  "text": "- My drink preference is cedarquince-913 tea.\n\n\n[More content available. Use from=5 to continue.]",
+                  "path": "MEMORY.md",
+                  "from": 3,
+                  "lines": 2,
+                  "truncated": true,
+                  "nextFrom": 5
+                },
+                "answer": "- My drink preference is cedarquince-913 tea.\n\n\n[More content available. Use from=5 to continue.]"
+              },
+              {
+                "session": "isolatedBefore",
+                "query": "drink preference",
+                "search": {
+                  "results": [
+                    {
+                      "path": "MEMORY.md",
+                      "startLine": 3,
+                      "endLine": 4,
+                      "score": 0.6871443875752974,
+                      "textScore": 1.5304324403816562e-06,
+                      "snippet": "- My drink preference is willowpear-528 juice.\n",
+                      "source": "memory",
+                      "provenance": {
+                        "originClass": "agent",
+                        "sessionKind": "unknown",
+                        "observedAt": 1794182400000
+                      },
+                      "corpus": "memory"
+                    }
+                  ],
+                  "provider": "none",
+                  "citations": "off",
+                  "debug": {
+                    "backend": "builtin",
+                    "effectiveMode": "n/a",
+                    "managerMs": 0,
+                    "searchMs": 0,
+                    "hits": 1,
+                    "candidateHits": 1,
+                    "withheldHits": 0,
+                    "searchWindow": 5,
+                    "toolMs": 0,
+                    "outsideSearchMs": 0
+                  }
+                },
+                "get": {
+                  "status": "ok",
+                  "text": "- My drink preference is willowpear-528 juice.",
+                  "path": "MEMORY.md",
+                  "from": 3,
+                  "lines": 1
+                },
+                "answer": "- My drink preference is willowpear-528 juice."
+              }
+            ],
+            "source": {
+              "path": "MEMORY.md",
+              "kind": "file",
+              "text": "## Preferences\n\n- My drink preference is cedarquince-913 tea.\n\n## Facts\n\n- My bicycle lock code is slatefern-146.\n",
+              "hex": "232320507265666572656e6365730a0a2d204d79206472696e6b20707265666572656e63652069732063656461727175696e63652d393133207465612e0a0a23232046616374730a0a2d204d792062696379636c65206c6f636b20636f646520697320736c6174656665726e2d3134362e0a"
+            },
+            "isolatedSource": {
+              "path": "MEMORY.md",
+              "kind": "file",
+              "text": "## Preferences\n\n- My drink preference is willowpear-528 juice.\n",
+              "hex": "232320507265666572656e6365730a0a2d204d79206472696e6b20707265666572656e63652069732077696c6c6f77706561722d353238206a756963652e0a"
+            }
+          },
+          {
+            "label": "update",
+            "update": {
+              "committed": false,
+              "answer": "I could not update that."
+            },
+            "publications": [
+              {
+                "agentId": "main",
+                "stage": "final",
+                "failed": false,
+                "error": null
+              }
+            ],
+            "reads": [
+              {
+                "session": "current",
+                "query": "drink preference",
+                "search": {
+                  "results": [
+                    {
+                      "path": "MEMORY.md",
+                      "startLine": 3,
+                      "endLine": 4,
+                      "score": 1,
+                      "textScore": 0.5645991441935528,
+                      "snippet": "- My drink preference is cedarquince-913 tea.\n",
+                      "source": "memory",
+                      "provenance": {
+                        "originClass": "agent",
+                        "sessionKind": "unknown",
+                        "observedAt": 1794182400000
+                      },
+                      "corpus": "memory"
+                    }
+                  ],
+                  "provider": "none",
+                  "citations": "off",
+                  "debug": {
+                    "backend": "builtin",
+                    "effectiveMode": "n/a",
+                    "managerMs": 0,
+                    "searchMs": 0,
+                    "hits": 1,
+                    "candidateHits": 1,
+                    "withheldHits": 0,
+                    "searchWindow": 5,
+                    "toolMs": 0,
+                    "outsideSearchMs": 0
+                  }
+                },
+                "get": {
+                  "status": "ok",
+                  "text": "- My drink preference is cedarquince-913 tea.\n\n\n[More content available. Use from=5 to continue.]",
+                  "path": "MEMORY.md",
+                  "from": 3,
+                  "lines": 2,
+                  "truncated": true,
+                  "nextFrom": 5
+                },
+                "answer": "- My drink preference is cedarquince-913 tea.\n\n\n[More content available. Use from=5 to continue.]"
+              },
+              {
+                "session": "superseded",
+                "query": "cedarquince-913 tea",
+                "search": {
+                  "results": [
+                    {
+                      "path": "MEMORY.md",
+                      "startLine": 3,
+                      "endLine": 4,
+                      "score": 1,
+                      "textScore": 0.660453091242561,
+                      "snippet": "- My drink preference is cedarquince-913 tea.\n",
+                      "source": "memory",
+                      "provenance": {
+                        "originClass": "agent",
+                        "sessionKind": "unknown",
+                        "observedAt": 1794182400000
+                      },
+                      "corpus": "memory"
+                    }
+                  ],
+                  "provider": "none",
+                  "citations": "off",
+                  "debug": {
+                    "backend": "builtin",
+                    "effectiveMode": "n/a",
+                    "managerMs": 0,
+                    "searchMs": 0,
+                    "hits": 1,
+                    "candidateHits": 1,
+                    "withheldHits": 0,
+                    "searchWindow": 5,
+                    "toolMs": 0,
+                    "outsideSearchMs": 0
+                  }
+                },
+                "get": {
+                  "status": "ok",
+                  "text": "- My drink preference is cedarquince-913 tea.\n\n\n[More content available. Use from=5 to continue.]",
+                  "path": "MEMORY.md",
+                  "from": 3,
+                  "lines": 2,
+                  "truncated": true,
+                  "nextFrom": 5
+                },
+                "answer": "- My drink preference is cedarquince-913 tea.\n\n\n[More content available. Use from=5 to continue.]"
+              },
+              {
+                "session": "unrelated",
+                "query": "bicycle lock code",
+                "search": {
+                  "results": [
+                    {
+                      "path": "MEMORY.md",
+                      "startLine": 7,
+                      "endLine": 8,
+                      "score": 1,
+                      "textScore": 0.660453091242561,
+                      "snippet": "- My bicycle lock code is slatefern-146.\n",
+                      "source": "memory",
+                      "provenance": {
+                        "originClass": "agent",
+                        "sessionKind": "unknown",
+                        "observedAt": 1794182400000
+                      },
+                      "corpus": "memory"
+                    }
+                  ],
+                  "provider": "none",
+                  "citations": "off",
+                  "debug": {
+                    "backend": "builtin",
+                    "effectiveMode": "n/a",
+                    "managerMs": 0,
+                    "searchMs": 0,
+                    "hits": 1,
+                    "candidateHits": 1,
+                    "withheldHits": 0,
+                    "searchWindow": 5,
+                    "toolMs": 0,
+                    "outsideSearchMs": 0
+                  }
+                },
+                "get": {
+                  "status": "ok",
+                  "text": "- My bicycle lock code is slatefern-146.",
+                  "path": "MEMORY.md",
+                  "from": 7,
+                  "lines": 1
+                },
+                "answer": "- My bicycle lock code is slatefern-146."
+              },
+              {
+                "session": "isolated",
+                "query": "drink preference",
+                "search": {
+                  "results": [
+                    {
+                      "path": "MEMORY.md",
+                      "startLine": 3,
+                      "endLine": 4,
+                      "score": 0.6871443875752974,
+                      "textScore": 1.5304324403816562e-06,
+                      "snippet": "- My drink preference is willowpear-528 juice.\n",
+                      "source": "memory",
+                      "provenance": {
+                        "originClass": "agent",
+                        "sessionKind": "unknown",
+                        "observedAt": 1794182400000
+                      },
+                      "corpus": "memory"
+                    }
+                  ],
+                  "provider": "none",
+                  "citations": "off",
+                  "debug": {
+                    "backend": "builtin",
+                    "effectiveMode": "n/a",
+                    "managerMs": 0,
+                    "searchMs": 0,
+                    "hits": 1,
+                    "candidateHits": 1,
+                    "withheldHits": 0,
+                    "searchWindow": 5,
+                    "toolMs": 0,
+                    "outsideSearchMs": 0
+                  }
+                },
+                "get": {
+                  "status": "ok",
+                  "text": "- My drink preference is willowpear-528 juice.",
+                  "path": "MEMORY.md",
+                  "from": 3,
+                  "lines": 1
+                },
+                "answer": "- My drink preference is willowpear-528 juice."
+              }
+            ],
+            "source": {
+              "path": "MEMORY.md",
+              "kind": "file",
+              "text": "## Preferences\n\n- My drink preference is cedarquince-913 tea.\n\n## Facts\n\n- My bicycle lock code is slatefern-146.\n",
+              "hex": "232320507265666572656e6365730a0a2d204d79206472696e6b20707265666572656e63652069732063656461727175696e63652d393133207465612e0a0a23232046616374730a0a2d204d792062696379636c65206c6f636b20636f646520697320736c6174656665726e2d3134362e0a"
+            },
+            "isolatedSource": {
+              "path": "MEMORY.md",
+              "kind": "file",
+              "text": "## Preferences\n\n- My drink preference is willowpear-528 juice.\n",
+              "hex": "232320507265666572656e6365730a0a2d204d79206472696e6b20707265666572656e63652069732077696c6c6f77706561722d353238206a756963652e0a"
+            }
+          }
+        ]
+      },
+      "sdkResult": {
+        "provider": "none",
+        "phases": [
+          {
+            "label": "produce",
+            "publications": [
+              {
+                "agentId": "main",
+                "stage": "produce",
+                "failed": false,
+                "error": null
+              },
+              {
+                "agentId": "other",
+                "stage": "produce",
+                "failed": false,
+                "error": null
+              }
+            ],
+            "reads": [
+              {
+                "session": "before",
+                "query": "drink preference",
+                "search": {
+                  "results": [
+                    {
+                      "path": "MEMORY.md",
+                      "startLine": 3,
+                      "endLine": 4,
+                      "score": 1.0,
+                      "snippet": "- My drink preference is cedarquince-913 tea.\n",
+                      "source": "memory",
+                      "textScore": 0.5645991441935528,
+                      "provenance": {
+                        "originClass": "agent",
+                        "sessionKind": "unknown",
+                        "observedAt": 1794182400000
+                      },
+                      "corpus": "memory"
+                    }
+                  ],
+                  "provider": "none",
+                  "citations": "off",
+                  "debug": {
+                    "effectiveMode": "n/a",
+                    "searchMs": 0,
+                    "hits": 1,
+                    "candidateHits": 1,
+                    "withheldHits": 0,
+                    "searchWindow": 5,
+                    "backend": "builtin",
+                    "managerMs": 0,
+                    "toolMs": 0,
+                    "outsideSearchMs": 0
+                  }
+                },
+                "get": {
+                  "status": "ok",
+                  "text": "- My drink preference is cedarquince-913 tea.\n\n\n[More content available. Use from=5 to continue.]",
+                  "path": "MEMORY.md",
+                  "from": 3,
+                  "lines": 2,
+                  "truncated": true,
+                  "nextFrom": 5
+                },
+                "answer": "- My drink preference is cedarquince-913 tea.\n\n\n[More content available. Use from=5 to continue.]"
+              },
+              {
+                "session": "supersededBefore",
+                "query": "cedarquince-913 tea",
+                "search": {
+                  "results": [
+                    {
+                      "path": "MEMORY.md",
+                      "startLine": 3,
+                      "endLine": 4,
+                      "score": 1.0,
+                      "snippet": "- My drink preference is cedarquince-913 tea.\n",
+                      "source": "memory",
+                      "textScore": 0.660453091242561,
+                      "provenance": {
+                        "originClass": "agent",
+                        "sessionKind": "unknown",
+                        "observedAt": 1794182400000
+                      },
+                      "corpus": "memory"
+                    }
+                  ],
+                  "provider": "none",
+                  "citations": "off",
+                  "debug": {
+                    "effectiveMode": "n/a",
+                    "searchMs": 0,
+                    "hits": 1,
+                    "candidateHits": 1,
+                    "withheldHits": 0,
+                    "searchWindow": 5,
+                    "backend": "builtin",
+                    "managerMs": 0,
+                    "toolMs": 0,
+                    "outsideSearchMs": 0
+                  }
+                },
+                "get": {
+                  "status": "ok",
+                  "text": "- My drink preference is cedarquince-913 tea.\n\n\n[More content available. Use from=5 to continue.]",
+                  "path": "MEMORY.md",
+                  "from": 3,
+                  "lines": 2,
+                  "truncated": true,
+                  "nextFrom": 5
+                },
+                "answer": "- My drink preference is cedarquince-913 tea.\n\n\n[More content available. Use from=5 to continue.]"
+              },
+              {
+                "session": "isolatedBefore",
+                "query": "drink preference",
+                "search": {
+                  "results": [
+                    {
+                      "path": "MEMORY.md",
+                      "startLine": 3,
+                      "endLine": 4,
+                      "score": 0.6871443875752974,
+                      "snippet": "- My drink preference is willowpear-528 juice.\n",
+                      "source": "memory",
+                      "textScore": 1.5304324403816562e-06,
+                      "provenance": {
+                        "originClass": "agent",
+                        "sessionKind": "unknown",
+                        "observedAt": 1794182400000
+                      },
+                      "corpus": "memory"
+                    }
+                  ],
+                  "provider": "none",
+                  "citations": "off",
+                  "debug": {
+                    "effectiveMode": "n/a",
+                    "searchMs": 0,
+                    "hits": 1,
+                    "candidateHits": 1,
+                    "withheldHits": 0,
+                    "searchWindow": 5,
+                    "backend": "builtin",
+                    "managerMs": 0,
+                    "toolMs": 0,
+                    "outsideSearchMs": 0
+                  }
+                },
+                "get": {
+                  "status": "ok",
+                  "text": "- My drink preference is willowpear-528 juice.",
+                  "path": "MEMORY.md",
+                  "from": 3,
+                  "lines": 1
+                },
+                "answer": "- My drink preference is willowpear-528 juice."
+              }
+            ],
+            "source": {
+              "path": "MEMORY.md",
+              "kind": "file",
+              "text": "## Preferences\n\n- My drink preference is cedarquince-913 tea.\n\n## Facts\n\n- My bicycle lock code is slatefern-146.\n",
+              "hex": "232320507265666572656e6365730a0a2d204d79206472696e6b20707265666572656e63652069732063656461727175696e63652d393133207465612e0a0a23232046616374730a0a2d204d792062696379636c65206c6f636b20636f646520697320736c6174656665726e2d3134362e0a"
+            },
+            "isolatedSource": {
+              "path": "MEMORY.md",
+              "kind": "file",
+              "text": "## Preferences\n\n- My drink preference is willowpear-528 juice.\n",
+              "hex": "232320507265666572656e6365730a0a2d204d79206472696e6b20707265666572656e63652069732077696c6c6f77706561722d353238206a756963652e0a"
+            }
+          },
+          {
+            "label": "update",
+            "update": {
+              "committed": false,
+              "answer": "I could not update that."
+            },
+            "publications": [
+              {
+                "agentId": "main",
+                "stage": "final",
+                "failed": false,
+                "error": null
+              }
+            ],
+            "reads": [
+              {
+                "session": "current",
+                "query": "drink preference",
+                "search": {
+                  "results": [
+                    {
+                      "path": "MEMORY.md",
+                      "startLine": 3,
+                      "endLine": 4,
+                      "score": 1.0,
+                      "snippet": "- My drink preference is cedarquince-913 tea.\n",
+                      "source": "memory",
+                      "textScore": 0.5645991441935528,
+                      "provenance": {
+                        "originClass": "agent",
+                        "sessionKind": "unknown",
+                        "observedAt": 1794182400000
+                      },
+                      "corpus": "memory"
+                    }
+                  ],
+                  "provider": "none",
+                  "citations": "off",
+                  "debug": {
+                    "effectiveMode": "n/a",
+                    "searchMs": 0,
+                    "hits": 1,
+                    "candidateHits": 1,
+                    "withheldHits": 0,
+                    "searchWindow": 5,
+                    "backend": "builtin",
+                    "managerMs": 0,
+                    "toolMs": 0,
+                    "outsideSearchMs": 0
+                  }
+                },
+                "get": {
+                  "status": "ok",
+                  "text": "- My drink preference is cedarquince-913 tea.\n\n\n[More content available. Use from=5 to continue.]",
+                  "path": "MEMORY.md",
+                  "from": 3,
+                  "lines": 2,
+                  "truncated": true,
+                  "nextFrom": 5
+                },
+                "answer": "- My drink preference is cedarquince-913 tea.\n\n\n[More content available. Use from=5 to continue.]"
+              },
+              {
+                "session": "superseded",
+                "query": "cedarquince-913 tea",
+                "search": {
+                  "results": [
+                    {
+                      "path": "MEMORY.md",
+                      "startLine": 3,
+                      "endLine": 4,
+                      "score": 1.0,
+                      "snippet": "- My drink preference is cedarquince-913 tea.\n",
+                      "source": "memory",
+                      "textScore": 0.660453091242561,
+                      "provenance": {
+                        "originClass": "agent",
+                        "sessionKind": "unknown",
+                        "observedAt": 1794182400000
+                      },
+                      "corpus": "memory"
+                    }
+                  ],
+                  "provider": "none",
+                  "citations": "off",
+                  "debug": {
+                    "effectiveMode": "n/a",
+                    "searchMs": 0,
+                    "hits": 1,
+                    "candidateHits": 1,
+                    "withheldHits": 0,
+                    "searchWindow": 5,
+                    "backend": "builtin",
+                    "managerMs": 0,
+                    "toolMs": 0,
+                    "outsideSearchMs": 0
+                  }
+                },
+                "get": {
+                  "status": "ok",
+                  "text": "- My drink preference is cedarquince-913 tea.\n\n\n[More content available. Use from=5 to continue.]",
+                  "path": "MEMORY.md",
+                  "from": 3,
+                  "lines": 2,
+                  "truncated": true,
+                  "nextFrom": 5
+                },
+                "answer": "- My drink preference is cedarquince-913 tea.\n\n\n[More content available. Use from=5 to continue.]"
+              },
+              {
+                "session": "unrelated",
+                "query": "bicycle lock code",
+                "search": {
+                  "results": [
+                    {
+                      "path": "MEMORY.md",
+                      "startLine": 7,
+                      "endLine": 8,
+                      "score": 1.0,
+                      "snippet": "- My bicycle lock code is slatefern-146.\n",
+                      "source": "memory",
+                      "textScore": 0.660453091242561,
+                      "provenance": {
+                        "originClass": "agent",
+                        "sessionKind": "unknown",
+                        "observedAt": 1794182400000
+                      },
+                      "corpus": "memory"
+                    }
+                  ],
+                  "provider": "none",
+                  "citations": "off",
+                  "debug": {
+                    "effectiveMode": "n/a",
+                    "searchMs": 0,
+                    "hits": 1,
+                    "candidateHits": 1,
+                    "withheldHits": 0,
+                    "searchWindow": 5,
+                    "backend": "builtin",
+                    "managerMs": 0,
+                    "toolMs": 0,
+                    "outsideSearchMs": 0
+                  }
+                },
+                "get": {
+                  "status": "ok",
+                  "text": "- My bicycle lock code is slatefern-146.",
+                  "path": "MEMORY.md",
+                  "from": 7,
+                  "lines": 1
+                },
+                "answer": "- My bicycle lock code is slatefern-146."
+              },
+              {
+                "session": "isolated",
+                "query": "drink preference",
+                "search": {
+                  "results": [
+                    {
+                      "path": "MEMORY.md",
+                      "startLine": 3,
+                      "endLine": 4,
+                      "score": 0.6871443875752974,
+                      "snippet": "- My drink preference is willowpear-528 juice.\n",
+                      "source": "memory",
+                      "textScore": 1.5304324403816562e-06,
+                      "provenance": {
+                        "originClass": "agent",
+                        "sessionKind": "unknown",
+                        "observedAt": 1794182400000
+                      },
+                      "corpus": "memory"
+                    }
+                  ],
+                  "provider": "none",
+                  "citations": "off",
+                  "debug": {
+                    "effectiveMode": "n/a",
+                    "searchMs": 0,
+                    "hits": 1,
+                    "candidateHits": 1,
+                    "withheldHits": 0,
+                    "searchWindow": 5,
+                    "backend": "builtin",
+                    "managerMs": 0,
+                    "toolMs": 0,
+                    "outsideSearchMs": 0
+                  }
+                },
+                "get": {
+                  "status": "ok",
+                  "text": "- My drink preference is willowpear-528 juice.",
+                  "path": "MEMORY.md",
+                  "from": 3,
+                  "lines": 1
+                },
+                "answer": "- My drink preference is willowpear-528 juice."
+              }
+            ],
+            "source": {
+              "path": "MEMORY.md",
+              "kind": "file",
+              "text": "## Preferences\n\n- My drink preference is cedarquince-913 tea.\n\n## Facts\n\n- My bicycle lock code is slatefern-146.\n",
+              "hex": "232320507265666572656e6365730a0a2d204d79206472696e6b20707265666572656e63652069732063656461727175696e63652d393133207465612e0a0a23232046616374730a0a2d204d792062696379636c65206c6f636b20636f646520697320736c6174656665726e2d3134362e0a"
+            },
+            "isolatedSource": {
+              "path": "MEMORY.md",
+              "kind": "file",
+              "text": "## Preferences\n\n- My drink preference is willowpear-528 juice.\n",
+              "hex": "232320507265666572656e6365730a0a2d204d79206472696e6b20707265666572656e63652069732077696c6c6f77706561722d353238206a756963652e0a"
+            }
+          }
+        ]
+      },
+      "rawDiagnostics": {
+        "native": {
+          "sha256": "5e5e2fa52d4fd98c4170bc223330c1629b4d2cd02213cc6bd332e7a64c107401",
+          "validationStatus": "verified"
+        },
+        "python": {
+          "sha256": "121d29a674e5ad14797497dd535eb060dcf87ecc7b32d8e2ed00fc669b848ef9",
+          "validationStatus": "verified"
+        }
+      },
+      "custodyValidated": true,
+      "differences": []
+    },
+    {
+      "id": "host-update-isolation-publication-failure",
+      "requirement": "host.update-isolation",
+      "covers": [
+        "host.update-isolation.outcomes",
+        "host.update-isolation.boundaries"
+      ],
+      "operation": "host-update-isolation-runtime",
+      "input": {
+        "kind": "host-update-isolation",
+        "nowMs": 1794182400000,
+        "identity": {
+          "agentId": "main",
+          "isolatedAgentId": "other",
+          "writer": {
+            "sessionKey": "agent:main:update-4-writer",
+            "sessionId": "host-update-4-writer"
+          },
+          "before": {
+            "sessionKey": "agent:main:update-4-before",
+            "sessionId": "host-update-4-before"
+          },
+          "supersededBefore": {
+            "sessionKey": "agent:main:update-4-superseded-before",
+            "sessionId": "host-update-4-superseded-before"
+          },
+          "updater": {
+            "sessionKey": "agent:main:update-4-updater",
+            "sessionId": "host-update-4-updater"
+          },
+          "stale": {
+            "sessionKey": "agent:main:update-4-stale",
+            "sessionId": "host-update-4-stale"
+          },
+          "current": {
+            "sessionKey": "agent:main:update-4-current",
+            "sessionId": "host-update-4-current"
+          },
+          "superseded": {
+            "sessionKey": "agent:main:update-4-superseded",
+            "sessionId": "host-update-4-superseded"
+          },
+          "unrelated": {
+            "sessionKey": "agent:main:update-4-unrelated",
+            "sessionId": "host-update-4-unrelated"
+          },
+          "isolatedWriter": {
+            "sessionKey": "agent:other:update-4-isolated-writer",
+            "sessionId": "host-update-4-isolated-writer"
+          },
+          "isolatedBefore": {
+            "sessionKey": "agent:other:update-4-isolated-before",
+            "sessionId": "host-update-4-isolated-before"
+          },
+          "isolated": {
+            "sessionKey": "agent:other:update-4-isolated",
+            "sessionId": "host-update-4-isolated"
+          }
+        },
+        "source": "MEMORY.md",
+        "phases": [
+          {
+            "label": "produce",
+            "save": {
+              "prompt": "Please remember that my drink preference is junipermelon-605 tea, and that my bicycle lock code is quartzfern-834.",
+              "entries": [
+                {
+                  "section": "Preferences",
+                  "text": "My drink preference is junipermelon-605 tea."
+                },
+                {
+                  "section": "Facts",
+                  "text": "My bicycle lock code is quartzfern-834."
+                }
+              ],
+              "content": "## Preferences\n\n- My drink preference is junipermelon-605 tea.\n\n## Facts\n\n- My bicycle lock code is quartzfern-834.\n",
+              "ack": "Saved."
+            },
+            "isolatedSave": {
+              "prompt": "Please remember that my drink preference is hazelberry-092 juice.",
+              "entries": [
+                {
+                  "section": "Preferences",
+                  "text": "My drink preference is hazelberry-092 juice."
+                }
+              ],
+              "content": "## Preferences\n\n- My drink preference is hazelberry-092 juice.\n",
+              "ack": "Saved."
+            },
+            "recall": {
+              "prompt": "What drink preference did I ask you to remember?",
+              "query": "drink preference"
+            },
+            "supersededRecall": {
+              "prompt": "Is junipermelon-605 tea still my drink preference?",
+              "query": "junipermelon-605 tea"
+            }
+          },
+          {
+            "label": "update",
+            "update": {
+              "prompt": "I changed my mind. My drink preference is now saffronplum-271 coffee.",
+              "old": "My drink preference is junipermelon-605 tea.",
+              "new": "My drink preference is now saffronplum-271 coffee.",
+              "ack": "Updated.",
+              "failureAck": "I could not update that."
+            },
+            "recalls": {
+              "current": {
+                "prompt": "What drink preference did I ask you to remember?",
+                "query": "drink preference"
+              },
+              "superseded": {
+                "prompt": "Is junipermelon-605 tea still my drink preference?",
+                "query": "junipermelon-605 tea"
+              },
+              "unrelated": {
+                "prompt": "What is my bicycle lock code?",
+                "query": "bicycle lock code"
+              },
+              "isolated": {
+                "prompt": "What drink preference did I ask you to remember?",
+                "query": "drink preference"
+              }
+            },
+            "fault": {
+              "operation": "index-publication-sidecar-symlink"
+            }
+          }
+        ],
+        "policy": {
+          "configuredSources": [
+            "memory"
+          ],
+          "rememberAcrossConversations": false,
+          "configuredSessionMemory": false,
+          "sourceMtimeMs": 1794182400000,
+          "producerPublication": {
+            "operation": "force-rebuild-after-source-metadata"
+          },
+          "indexLifecycle": "session-managed",
+          "runtimeIdentity": "openclaw-compatible"
+        }
+      },
+      "referenceMode": "authenticated-official-release",
+      "runtimeEvidenceValidated": true,
+      "status": "matched",
+      "nativeResult": {
+        "provider": "none",
+        "phases": [
+          {
+            "label": "produce",
+            "publications": [
+              {
+                "agentId": "main",
+                "stage": "produce",
+                "failed": false,
+                "error": null
+              },
+              {
+                "agentId": "other",
+                "stage": "produce",
+                "failed": false,
+                "error": null
+              }
+            ],
+            "reads": [
+              {
+                "session": "before",
+                "query": "drink preference",
+                "search": {
+                  "results": [
+                    {
+                      "path": "MEMORY.md",
+                      "startLine": 3,
+                      "endLine": 4,
+                      "score": 1,
+                      "textScore": 0.5645991441935528,
+                      "snippet": "- My drink preference is junipermelon-605 tea.\n",
+                      "source": "memory",
+                      "provenance": {
+                        "originClass": "agent",
+                        "sessionKind": "unknown",
+                        "observedAt": 1794182400000
+                      },
+                      "corpus": "memory"
+                    }
+                  ],
+                  "provider": "none",
+                  "citations": "off",
+                  "debug": {
+                    "backend": "builtin",
+                    "effectiveMode": "n/a",
+                    "managerMs": 0,
+                    "searchMs": 0,
+                    "hits": 1,
+                    "candidateHits": 1,
+                    "withheldHits": 0,
+                    "searchWindow": 5,
+                    "toolMs": 0,
+                    "outsideSearchMs": 0
+                  }
+                },
+                "get": {
+                  "status": "ok",
+                  "text": "- My drink preference is junipermelon-605 tea.\n\n\n[More content available. Use from=5 to continue.]",
+                  "path": "MEMORY.md",
+                  "from": 3,
+                  "lines": 2,
+                  "truncated": true,
+                  "nextFrom": 5
+                },
+                "answer": "- My drink preference is junipermelon-605 tea.\n\n\n[More content available. Use from=5 to continue.]"
+              },
+              {
+                "session": "supersededBefore",
+                "query": "junipermelon-605 tea",
+                "search": {
+                  "results": [
+                    {
+                      "path": "MEMORY.md",
+                      "startLine": 3,
+                      "endLine": 4,
+                      "score": 1,
+                      "textScore": 0.660453091242561,
+                      "snippet": "- My drink preference is junipermelon-605 tea.\n",
+                      "source": "memory",
+                      "provenance": {
+                        "originClass": "agent",
+                        "sessionKind": "unknown",
+                        "observedAt": 1794182400000
+                      },
+                      "corpus": "memory"
+                    }
+                  ],
+                  "provider": "none",
+                  "citations": "off",
+                  "debug": {
+                    "backend": "builtin",
+                    "effectiveMode": "n/a",
+                    "managerMs": 0,
+                    "searchMs": 0,
+                    "hits": 1,
+                    "candidateHits": 1,
+                    "withheldHits": 0,
+                    "searchWindow": 5,
+                    "toolMs": 0,
+                    "outsideSearchMs": 0
+                  }
+                },
+                "get": {
+                  "status": "ok",
+                  "text": "- My drink preference is junipermelon-605 tea.\n\n\n[More content available. Use from=5 to continue.]",
+                  "path": "MEMORY.md",
+                  "from": 3,
+                  "lines": 2,
+                  "truncated": true,
+                  "nextFrom": 5
+                },
+                "answer": "- My drink preference is junipermelon-605 tea.\n\n\n[More content available. Use from=5 to continue.]"
+              },
+              {
+                "session": "isolatedBefore",
+                "query": "drink preference",
+                "search": {
+                  "results": [
+                    {
+                      "path": "MEMORY.md",
+                      "startLine": 3,
+                      "endLine": 4,
+                      "score": 0.6871443875752974,
+                      "textScore": 1.5304324403816562e-06,
+                      "snippet": "- My drink preference is hazelberry-092 juice.\n",
+                      "source": "memory",
+                      "provenance": {
+                        "originClass": "agent",
+                        "sessionKind": "unknown",
+                        "observedAt": 1794182400000
+                      },
+                      "corpus": "memory"
+                    }
+                  ],
+                  "provider": "none",
+                  "citations": "off",
+                  "debug": {
+                    "backend": "builtin",
+                    "effectiveMode": "n/a",
+                    "managerMs": 0,
+                    "searchMs": 0,
+                    "hits": 1,
+                    "candidateHits": 1,
+                    "withheldHits": 0,
+                    "searchWindow": 5,
+                    "toolMs": 0,
+                    "outsideSearchMs": 0
+                  }
+                },
+                "get": {
+                  "status": "ok",
+                  "text": "- My drink preference is hazelberry-092 juice.",
+                  "path": "MEMORY.md",
+                  "from": 3,
+                  "lines": 1
+                },
+                "answer": "- My drink preference is hazelberry-092 juice."
+              }
+            ],
+            "source": {
+              "path": "MEMORY.md",
+              "kind": "file",
+              "text": "## Preferences\n\n- My drink preference is junipermelon-605 tea.\n\n## Facts\n\n- My bicycle lock code is quartzfern-834.\n",
+              "hex": "232320507265666572656e6365730a0a2d204d79206472696e6b20707265666572656e6365206973206a756e697065726d656c6f6e2d363035207465612e0a0a23232046616374730a0a2d204d792062696379636c65206c6f636b20636f64652069732071756172747a6665726e2d3833342e0a"
+            },
+            "isolatedSource": {
+              "path": "MEMORY.md",
+              "kind": "file",
+              "text": "## Preferences\n\n- My drink preference is hazelberry-092 juice.\n",
+              "hex": "232320507265666572656e6365730a0a2d204d79206472696e6b20707265666572656e63652069732068617a656c62657272792d303932206a756963652e0a"
+            }
+          },
+          {
+            "label": "update",
+            "update": {
+              "committed": true,
+              "answer": "Updated."
+            },
+            "publications": [
+              {
+                "agentId": "main",
+                "stage": "faulted",
+                "failed": true,
+                "error": "unable to open database file"
+              },
+              {
+                "agentId": "main",
+                "stage": "final",
+                "failed": false,
+                "error": null
+              }
+            ],
+            "reads": [
+              {
+                "session": "stale",
+                "query": "drink preference",
+                "search": {
+                  "results": [
+                    {
+                      "path": "MEMORY.md",
+                      "startLine": 3,
+                      "endLine": 4,
+                      "score": 1,
+                      "textScore": 0.5645991441935528,
+                      "snippet": "- My drink preference is junipermelon-605 tea.\n",
+                      "source": "memory",
+                      "provenance": {
+                        "originClass": "agent",
+                        "sessionKind": "unknown",
+                        "observedAt": 1794182400000
+                      },
+                      "corpus": "memory"
+                    }
+                  ],
+                  "provider": "none",
+                  "citations": "off",
+                  "stale": true,
+                  "warning": "Memory index is stale: unable to open database file. Search results may be incomplete.",
+                  "action": "Run: openclaw memory status --index --agent main. Rebuilding uses keyword indexing only and does not call an embedding provider.",
+                  "debug": {
+                    "backend": "builtin",
+                    "effectiveMode": "n/a",
+                    "managerMs": 0,
+                    "searchMs": 0,
+                    "hits": 1,
+                    "candidateHits": 1,
+                    "withheldHits": 0,
+                    "searchWindow": 5,
+                    "toolMs": 0,
+                    "outsideSearchMs": 0
+                  }
+                },
+                "get": {
+                  "status": "ok",
+                  "text": "- My drink preference is now saffronplum-271 coffee.\n\n\n[More content available. Use from=5 to continue.]",
+                  "path": "MEMORY.md",
+                  "from": 3,
+                  "lines": 2,
+                  "truncated": true,
+                  "nextFrom": 5
+                },
+                "answer": "- My drink preference is now saffronplum-271 coffee.\n\n\n[More content available. Use from=5 to continue.]"
+              },
+              {
+                "session": "current",
+                "query": "drink preference",
+                "search": {
+                  "results": [
+                    {
+                      "path": "MEMORY.md",
+                      "startLine": 3,
+                      "endLine": 4,
+                      "score": 1,
+                      "textScore": 0.5545944672830037,
+                      "snippet": "- My drink preference is now saffronplum-271 coffee.\n",
+                      "source": "memory",
+                      "provenance": {
+                        "originClass": "agent",
+                        "sessionKind": "unknown",
+                        "observedAt": 1794182400000
+                      },
+                      "corpus": "memory"
+                    }
+                  ],
+                  "provider": "none",
+                  "citations": "off",
+                  "debug": {
+                    "backend": "builtin",
+                    "effectiveMode": "n/a",
+                    "managerMs": 0,
+                    "searchMs": 0,
+                    "hits": 1,
+                    "candidateHits": 1,
+                    "withheldHits": 0,
+                    "searchWindow": 5,
+                    "toolMs": 0,
+                    "outsideSearchMs": 0
+                  }
+                },
+                "get": {
+                  "status": "ok",
+                  "text": "- My drink preference is now saffronplum-271 coffee.\n\n\n[More content available. Use from=5 to continue.]",
+                  "path": "MEMORY.md",
+                  "from": 3,
+                  "lines": 2,
+                  "truncated": true,
+                  "nextFrom": 5
+                },
+                "answer": "- My drink preference is now saffronplum-271 coffee.\n\n\n[More content available. Use from=5 to continue.]"
+              },
+              {
+                "session": "superseded",
+                "query": "junipermelon-605 tea",
+                "search": {
+                  "results": [],
+                  "provider": "none",
+                  "citations": "off",
+                  "debug": {
+                    "backend": "builtin",
+                    "effectiveMode": "n/a",
+                    "managerMs": 0,
+                    "searchMs": 0,
+                    "hits": 0,
+                    "candidateHits": 0,
+                    "withheldHits": 0,
+                    "searchWindow": 5,
+                    "toolMs": 0,
+                    "outsideSearchMs": 0
+                  }
+                },
+                "get": null,
+                "answer": "No source-backed memory found."
+              },
+              {
+                "session": "unrelated",
+                "query": "bicycle lock code",
+                "search": {
+                  "results": [
+                    {
+                      "path": "MEMORY.md",
+                      "startLine": 7,
+                      "endLine": 8,
+                      "score": 1,
+                      "textScore": 0.6677596646364088,
+                      "snippet": "- My bicycle lock code is quartzfern-834.\n",
+                      "source": "memory",
+                      "provenance": {
+                        "originClass": "agent",
+                        "sessionKind": "unknown",
+                        "observedAt": 1794182400000
+                      },
+                      "corpus": "memory"
+                    }
+                  ],
+                  "provider": "none",
+                  "citations": "off",
+                  "debug": {
+                    "backend": "builtin",
+                    "effectiveMode": "n/a",
+                    "managerMs": 0,
+                    "searchMs": 0,
+                    "hits": 1,
+                    "candidateHits": 1,
+                    "withheldHits": 0,
+                    "searchWindow": 5,
+                    "toolMs": 0,
+                    "outsideSearchMs": 0
+                  }
+                },
+                "get": {
+                  "status": "ok",
+                  "text": "- My bicycle lock code is quartzfern-834.",
+                  "path": "MEMORY.md",
+                  "from": 7,
+                  "lines": 1
+                },
+                "answer": "- My bicycle lock code is quartzfern-834."
+              },
+              {
+                "session": "isolated",
+                "query": "drink preference",
+                "search": {
+                  "results": [
+                    {
+                      "path": "MEMORY.md",
+                      "startLine": 3,
+                      "endLine": 4,
+                      "score": 0.6871443875752974,
+                      "textScore": 1.5304324403816562e-06,
+                      "snippet": "- My drink preference is hazelberry-092 juice.\n",
+                      "source": "memory",
+                      "provenance": {
+                        "originClass": "agent",
+                        "sessionKind": "unknown",
+                        "observedAt": 1794182400000
+                      },
+                      "corpus": "memory"
+                    }
+                  ],
+                  "provider": "none",
+                  "citations": "off",
+                  "debug": {
+                    "backend": "builtin",
+                    "effectiveMode": "n/a",
+                    "managerMs": 0,
+                    "searchMs": 0,
+                    "hits": 1,
+                    "candidateHits": 1,
+                    "withheldHits": 0,
+                    "searchWindow": 5,
+                    "toolMs": 0,
+                    "outsideSearchMs": 0
+                  }
+                },
+                "get": {
+                  "status": "ok",
+                  "text": "- My drink preference is hazelberry-092 juice.",
+                  "path": "MEMORY.md",
+                  "from": 3,
+                  "lines": 1
+                },
+                "answer": "- My drink preference is hazelberry-092 juice."
+              }
+            ],
+            "source": {
+              "path": "MEMORY.md",
+              "kind": "file",
+              "text": "## Preferences\n\n- My drink preference is now saffronplum-271 coffee.\n\n## Facts\n\n- My bicycle lock code is quartzfern-834.\n",
+              "hex": "232320507265666572656e6365730a0a2d204d79206472696e6b20707265666572656e6365206973206e6f772073616666726f6e706c756d2d32373120636f666665652e0a0a23232046616374730a0a2d204d792062696379636c65206c6f636b20636f64652069732071756172747a6665726e2d3833342e0a"
+            },
+            "isolatedSource": {
+              "path": "MEMORY.md",
+              "kind": "file",
+              "text": "## Preferences\n\n- My drink preference is hazelberry-092 juice.\n",
+              "hex": "232320507265666572656e6365730a0a2d204d79206472696e6b20707265666572656e63652069732068617a656c62657272792d303932206a756963652e0a"
+            }
+          }
+        ]
+      },
+      "sdkResult": {
+        "provider": "none",
+        "phases": [
+          {
+            "label": "produce",
+            "publications": [
+              {
+                "agentId": "main",
+                "stage": "produce",
+                "failed": false,
+                "error": null
+              },
+              {
+                "agentId": "other",
+                "stage": "produce",
+                "failed": false,
+                "error": null
+              }
+            ],
+            "reads": [
+              {
+                "session": "before",
+                "query": "drink preference",
+                "search": {
+                  "results": [
+                    {
+                      "path": "MEMORY.md",
+                      "startLine": 3,
+                      "endLine": 4,
+                      "score": 1.0,
+                      "snippet": "- My drink preference is junipermelon-605 tea.\n",
+                      "source": "memory",
+                      "textScore": 0.5645991441935528,
+                      "provenance": {
+                        "originClass": "agent",
+                        "sessionKind": "unknown",
+                        "observedAt": 1794182400000
+                      },
+                      "corpus": "memory"
+                    }
+                  ],
+                  "provider": "none",
+                  "citations": "off",
+                  "debug": {
+                    "effectiveMode": "n/a",
+                    "searchMs": 0,
+                    "hits": 1,
+                    "candidateHits": 1,
+                    "withheldHits": 0,
+                    "searchWindow": 5,
+                    "backend": "builtin",
+                    "managerMs": 0,
+                    "toolMs": 0,
+                    "outsideSearchMs": 0
+                  }
+                },
+                "get": {
+                  "status": "ok",
+                  "text": "- My drink preference is junipermelon-605 tea.\n\n\n[More content available. Use from=5 to continue.]",
+                  "path": "MEMORY.md",
+                  "from": 3,
+                  "lines": 2,
+                  "truncated": true,
+                  "nextFrom": 5
+                },
+                "answer": "- My drink preference is junipermelon-605 tea.\n\n\n[More content available. Use from=5 to continue.]"
+              },
+              {
+                "session": "supersededBefore",
+                "query": "junipermelon-605 tea",
+                "search": {
+                  "results": [
+                    {
+                      "path": "MEMORY.md",
+                      "startLine": 3,
+                      "endLine": 4,
+                      "score": 1.0,
+                      "snippet": "- My drink preference is junipermelon-605 tea.\n",
+                      "source": "memory",
+                      "textScore": 0.660453091242561,
+                      "provenance": {
+                        "originClass": "agent",
+                        "sessionKind": "unknown",
+                        "observedAt": 1794182400000
+                      },
+                      "corpus": "memory"
+                    }
+                  ],
+                  "provider": "none",
+                  "citations": "off",
+                  "debug": {
+                    "effectiveMode": "n/a",
+                    "searchMs": 0,
+                    "hits": 1,
+                    "candidateHits": 1,
+                    "withheldHits": 0,
+                    "searchWindow": 5,
+                    "backend": "builtin",
+                    "managerMs": 0,
+                    "toolMs": 0,
+                    "outsideSearchMs": 0
+                  }
+                },
+                "get": {
+                  "status": "ok",
+                  "text": "- My drink preference is junipermelon-605 tea.\n\n\n[More content available. Use from=5 to continue.]",
+                  "path": "MEMORY.md",
+                  "from": 3,
+                  "lines": 2,
+                  "truncated": true,
+                  "nextFrom": 5
+                },
+                "answer": "- My drink preference is junipermelon-605 tea.\n\n\n[More content available. Use from=5 to continue.]"
+              },
+              {
+                "session": "isolatedBefore",
+                "query": "drink preference",
+                "search": {
+                  "results": [
+                    {
+                      "path": "MEMORY.md",
+                      "startLine": 3,
+                      "endLine": 4,
+                      "score": 0.6871443875752974,
+                      "snippet": "- My drink preference is hazelberry-092 juice.\n",
+                      "source": "memory",
+                      "textScore": 1.5304324403816562e-06,
+                      "provenance": {
+                        "originClass": "agent",
+                        "sessionKind": "unknown",
+                        "observedAt": 1794182400000
+                      },
+                      "corpus": "memory"
+                    }
+                  ],
+                  "provider": "none",
+                  "citations": "off",
+                  "debug": {
+                    "effectiveMode": "n/a",
+                    "searchMs": 0,
+                    "hits": 1,
+                    "candidateHits": 1,
+                    "withheldHits": 0,
+                    "searchWindow": 5,
+                    "backend": "builtin",
+                    "managerMs": 0,
+                    "toolMs": 0,
+                    "outsideSearchMs": 0
+                  }
+                },
+                "get": {
+                  "status": "ok",
+                  "text": "- My drink preference is hazelberry-092 juice.",
+                  "path": "MEMORY.md",
+                  "from": 3,
+                  "lines": 1
+                },
+                "answer": "- My drink preference is hazelberry-092 juice."
+              }
+            ],
+            "source": {
+              "path": "MEMORY.md",
+              "kind": "file",
+              "text": "## Preferences\n\n- My drink preference is junipermelon-605 tea.\n\n## Facts\n\n- My bicycle lock code is quartzfern-834.\n",
+              "hex": "232320507265666572656e6365730a0a2d204d79206472696e6b20707265666572656e6365206973206a756e697065726d656c6f6e2d363035207465612e0a0a23232046616374730a0a2d204d792062696379636c65206c6f636b20636f64652069732071756172747a6665726e2d3833342e0a"
+            },
+            "isolatedSource": {
+              "path": "MEMORY.md",
+              "kind": "file",
+              "text": "## Preferences\n\n- My drink preference is hazelberry-092 juice.\n",
+              "hex": "232320507265666572656e6365730a0a2d204d79206472696e6b20707265666572656e63652069732068617a656c62657272792d303932206a756963652e0a"
+            }
+          },
+          {
+            "label": "update",
+            "update": {
+              "committed": true,
+              "answer": "Updated."
+            },
+            "publications": [
+              {
+                "agentId": "main",
+                "stage": "faulted",
+                "failed": true,
+                "error": "unable to open database file"
+              },
+              {
+                "agentId": "main",
+                "stage": "final",
+                "failed": false,
+                "error": null
+              }
+            ],
+            "reads": [
+              {
+                "session": "stale",
+                "query": "drink preference",
+                "search": {
+                  "results": [
+                    {
+                      "path": "MEMORY.md",
+                      "startLine": 3,
+                      "endLine": 4,
+                      "score": 1.0,
+                      "snippet": "- My drink preference is junipermelon-605 tea.\n",
+                      "source": "memory",
+                      "textScore": 0.5645991441935528,
+                      "provenance": {
+                        "originClass": "agent",
+                        "sessionKind": "unknown",
+                        "observedAt": 1794182400000
+                      },
+                      "corpus": "memory"
+                    }
+                  ],
+                  "provider": "none",
+                  "citations": "off",
+                  "stale": true,
+                  "warning": "Memory index is stale: unable to open database file. Search results may be incomplete.",
+                  "action": "Run: openclaw memory status --index --agent main. Rebuilding uses keyword indexing only and does not call an embedding provider.",
+                  "debug": {
+                    "effectiveMode": "n/a",
+                    "searchMs": 0,
+                    "hits": 1,
+                    "candidateHits": 1,
+                    "withheldHits": 0,
+                    "searchWindow": 5,
+                    "backend": "builtin",
+                    "managerMs": 0,
+                    "toolMs": 0,
+                    "outsideSearchMs": 0
+                  }
+                },
+                "get": {
+                  "status": "ok",
+                  "text": "- My drink preference is now saffronplum-271 coffee.\n\n\n[More content available. Use from=5 to continue.]",
+                  "path": "MEMORY.md",
+                  "from": 3,
+                  "lines": 2,
+                  "truncated": true,
+                  "nextFrom": 5
+                },
+                "answer": "- My drink preference is now saffronplum-271 coffee.\n\n\n[More content available. Use from=5 to continue.]"
+              },
+              {
+                "session": "current",
+                "query": "drink preference",
+                "search": {
+                  "results": [
+                    {
+                      "path": "MEMORY.md",
+                      "startLine": 3,
+                      "endLine": 4,
+                      "score": 1.0,
+                      "snippet": "- My drink preference is now saffronplum-271 coffee.\n",
+                      "source": "memory",
+                      "textScore": 0.5545944672830037,
+                      "provenance": {
+                        "originClass": "agent",
+                        "sessionKind": "unknown",
+                        "observedAt": 1794182400000
+                      },
+                      "corpus": "memory"
+                    }
+                  ],
+                  "provider": "none",
+                  "citations": "off",
+                  "debug": {
+                    "effectiveMode": "n/a",
+                    "searchMs": 0,
+                    "hits": 1,
+                    "candidateHits": 1,
+                    "withheldHits": 0,
+                    "searchWindow": 5,
+                    "backend": "builtin",
+                    "managerMs": 0,
+                    "toolMs": 0,
+                    "outsideSearchMs": 0
+                  }
+                },
+                "get": {
+                  "status": "ok",
+                  "text": "- My drink preference is now saffronplum-271 coffee.\n\n\n[More content available. Use from=5 to continue.]",
+                  "path": "MEMORY.md",
+                  "from": 3,
+                  "lines": 2,
+                  "truncated": true,
+                  "nextFrom": 5
+                },
+                "answer": "- My drink preference is now saffronplum-271 coffee.\n\n\n[More content available. Use from=5 to continue.]"
+              },
+              {
+                "session": "superseded",
+                "query": "junipermelon-605 tea",
+                "search": {
+                  "results": [],
+                  "provider": "none",
+                  "citations": "off",
+                  "debug": {
+                    "effectiveMode": "n/a",
+                    "searchMs": 0,
+                    "hits": 0,
+                    "candidateHits": 0,
+                    "withheldHits": 0,
+                    "searchWindow": 5,
+                    "backend": "builtin",
+                    "managerMs": 0,
+                    "toolMs": 0,
+                    "outsideSearchMs": 0
+                  }
+                },
+                "get": null,
+                "answer": "No source-backed memory found."
+              },
+              {
+                "session": "unrelated",
+                "query": "bicycle lock code",
+                "search": {
+                  "results": [
+                    {
+                      "path": "MEMORY.md",
+                      "startLine": 7,
+                      "endLine": 8,
+                      "score": 1.0,
+                      "snippet": "- My bicycle lock code is quartzfern-834.\n",
+                      "source": "memory",
+                      "textScore": 0.6677596646364088,
+                      "provenance": {
+                        "originClass": "agent",
+                        "sessionKind": "unknown",
+                        "observedAt": 1794182400000
+                      },
+                      "corpus": "memory"
+                    }
+                  ],
+                  "provider": "none",
+                  "citations": "off",
+                  "debug": {
+                    "effectiveMode": "n/a",
+                    "searchMs": 0,
+                    "hits": 1,
+                    "candidateHits": 1,
+                    "withheldHits": 0,
+                    "searchWindow": 5,
+                    "backend": "builtin",
+                    "managerMs": 0,
+                    "toolMs": 0,
+                    "outsideSearchMs": 0
+                  }
+                },
+                "get": {
+                  "status": "ok",
+                  "text": "- My bicycle lock code is quartzfern-834.",
+                  "path": "MEMORY.md",
+                  "from": 7,
+                  "lines": 1
+                },
+                "answer": "- My bicycle lock code is quartzfern-834."
+              },
+              {
+                "session": "isolated",
+                "query": "drink preference",
+                "search": {
+                  "results": [
+                    {
+                      "path": "MEMORY.md",
+                      "startLine": 3,
+                      "endLine": 4,
+                      "score": 0.6871443875752974,
+                      "snippet": "- My drink preference is hazelberry-092 juice.\n",
+                      "source": "memory",
+                      "textScore": 1.5304324403816562e-06,
+                      "provenance": {
+                        "originClass": "agent",
+                        "sessionKind": "unknown",
+                        "observedAt": 1794182400000
+                      },
+                      "corpus": "memory"
+                    }
+                  ],
+                  "provider": "none",
+                  "citations": "off",
+                  "debug": {
+                    "effectiveMode": "n/a",
+                    "searchMs": 0,
+                    "hits": 1,
+                    "candidateHits": 1,
+                    "withheldHits": 0,
+                    "searchWindow": 5,
+                    "backend": "builtin",
+                    "managerMs": 0,
+                    "toolMs": 0,
+                    "outsideSearchMs": 0
+                  }
+                },
+                "get": {
+                  "status": "ok",
+                  "text": "- My drink preference is hazelberry-092 juice.",
+                  "path": "MEMORY.md",
+                  "from": 3,
+                  "lines": 1
+                },
+                "answer": "- My drink preference is hazelberry-092 juice."
+              }
+            ],
+            "source": {
+              "path": "MEMORY.md",
+              "kind": "file",
+              "text": "## Preferences\n\n- My drink preference is now saffronplum-271 coffee.\n\n## Facts\n\n- My bicycle lock code is quartzfern-834.\n",
+              "hex": "232320507265666572656e6365730a0a2d204d79206472696e6b20707265666572656e6365206973206e6f772073616666726f6e706c756d2d32373120636f666665652e0a0a23232046616374730a0a2d204d792062696379636c65206c6f636b20636f64652069732071756172747a6665726e2d3833342e0a"
+            },
+            "isolatedSource": {
+              "path": "MEMORY.md",
+              "kind": "file",
+              "text": "## Preferences\n\n- My drink preference is hazelberry-092 juice.\n",
+              "hex": "232320507265666572656e6365730a0a2d204d79206472696e6b20707265666572656e63652069732068617a656c62657272792d303932206a756963652e0a"
+            }
+          }
+        ]
+      },
+      "rawDiagnostics": {
+        "native": {
+          "sha256": "e21bad4e2b5a855fd9a07af77b964334455fbc7b103d6483ca9ce5c85cbb26de",
+          "validationStatus": "verified"
+        },
+        "python": {
+          "sha256": "05a7caaeaf88c91d638d72cba30340a0e83d15dc73f2ad9d7254ae20b77be852",
+          "validationStatus": "verified"
+        }
+      },
+      "custodyValidated": true,
+      "differences": []
+    }
+  ],
+  "regressions": {
+    "sessionId": 71964,
+    "log": "work/host-update-isolation-full-regressions-001.log",
+    "state": "passed",
+    "passed": 7797,
+    "skipped": 1648,
+    "failed": 0,
+    "durationSeconds": 377.61,
+    "sha256": "92164ef3cd531b528830c1d87f1b2b1b0567e0672de47e2efdd3affd61437c39"
+  },
+  "installedConsumers": {
+    "sessionId": 97671,
+    "log": "work/host-update-isolation-distribution-001.log",
+    "wheel": "passed",
+    "sdist": "passed",
+    "invalidTypedCalls": 24
+  },
+  "developmentReports": [
+    {
+      "path": "work/host-update-isolation/attempt-001-db62dee/report.json",
+      "sha256": "0dada6e39db9b433e80a96a7bb571a98a5d68dac6999998c5ba0f02aafe84674",
+      "bytes": 16475661,
+      "summary": {
+        "match": 4,
+        "mismatch": 0,
+        "blocked": 0
+      },
+      "errors": [],
+      "authenticationPassed": true,
+      "identity": {
+        "gitCommit": "db62dee3dd6cc2a116c02bd59ed0bc1dcab3cf93",
+        "trackedWorkingTreeDirty": false,
+        "sourceSha256": "04efa4eaca621d477370f7d61f16a0eb40fce2d79b425e5638d0976fcf830184",
+        "sourceFiles": 159
+      }
+    },
+    {
+      "path": "work/host-update-isolation/attempt-002-57270da/report.json",
+      "sha256": "e8a8fa94c83afdfe98c5dae02a37a7b25ba2d360d9e86774cebe6078e813776d",
+      "bytes": 16475661,
+      "summary": {
+        "match": 4,
+        "mismatch": 0,
+        "blocked": 0
+      },
+      "errors": [],
+      "authenticationPassed": true,
+      "identity": {
+        "gitCommit": "57270dae8728f04a7f1293c59a5a1cd2abf7f777",
+        "trackedWorkingTreeDirty": false,
+        "sourceSha256": "dad4499f58eb316a23bc674c7adbde87f231e9c5d054f2d18a25b729aadc1cb9",
+        "sourceFiles": 159
+      }
+    }
+  ],
+  "readinessFix": {
+    "commit": "57270dae8728f04a7f1293c59a5a1cd2abf7f777",
+    "description": "Conservative pending from actual retained memory/full publication failure for direct curator and closed owner."
+  },
+  "replayCacheAudit": {
+    "path": "work/update-native-capture-audit.json",
+    "sha256": "9c92c4508c5efb7861c7962f35ee03da04bc6e37d0c8ffbdb7eaa5ad20ab68c8",
+    "artifacts": 163,
+    "bytes": 61457793,
+    "copiedReplayOnly": true,
+    "nativeEvidenceTests": 490,
+    "nativeEvidenceSkipped": 0
+  },
+  "limits": [
+    "Explicit-publication provider-none host profile; no paid model calls.",
+    "Coding-vs-curated producer tool API shapes are custody, not cross-API equivalence.",
+    "Automatic refresh timing, consolidateMemory and SubjectMemory routing are unclaimed.",
+    "This family does not claim the restart family per-message commit-to-SQL/readback chain.",
+    "Full gate remains mismatched with 14 visible differences and 58 uncovered conditions."
+  ],
+  "independentRetainedEvidenceAudit": {
+    "path": "work/update-final-audit.json",
+    "bytes": 778898,
+    "sha256": "162d712e48f9a8a4f70dea7a7a2896be367b20b5d26e8ea5aad6d453fffb8032",
+    "priorCasesUnchanged": 1407,
+    "newMatchedValidatedCases": 4,
+    "publicReadsPerEngine": 29,
+    "freshExecution": false,
+    "additionalAcceptanceCredit": 0
+  }
+}

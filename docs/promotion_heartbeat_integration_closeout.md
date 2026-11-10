@@ -1,9 +1,10 @@
 # Promotion and heartbeat maintenance integration
 
-The latest [shared managed-host restart closeout](host_restart_session_closeout.md)
-verifies **66/128 conditions**, with **62 remaining**, on a fresh complete catalog.
-It adds two original restart conditions; this historical maintenance package still
-awards zero and its original captures remain unchanged.
+The latest [host update/isolation closeout](host_update_isolation_closeout.md)
+verifies **68/128 conditions**, with **60 remaining**, on a fresh complete catalog.
+It follows the [shared managed-host restart closeout](host_restart_session_closeout.md),
+which verified 66/128. This historical maintenance package still awards zero;
+its original captures remain unchanged.
 
 This is the historical zero-credit maintenance closeout. Subsequent work is
 recorded separately in the [promotion apply/reconciliation closeout](promotion_apply_reconcile_closeout.md):

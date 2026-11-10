@@ -72,8 +72,10 @@ background progress does not rewrite a completed outcome.
 `indexStatus`, `sessionPending`, the controller state and current owner custody.
 Before startup knowledge, session publication can be unknown. Durable
 `sdkHostLifecycle` metadata keeps `needsMemoryIndex` and `needsSessionIndex`
-separately, with `needsIndex` as their logical OR. A source already published
-can be current even while older queue hints remain pending; readiness stays
+separately, with `needsIndex` as their logical OR. Actual retained memory/full-publication
+failures also keep readiness pending when a direct kit/curator call has no durable
+turn marker. The read-only failure snapshot remains available after close. A source
+already published can be current even while older queue hints remain pending; readiness stays
 conservative until the corresponding work is acknowledged.
 
 ## Explicit publication and close

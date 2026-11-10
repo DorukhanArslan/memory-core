@@ -168,8 +168,10 @@ The [explicit session publication primitives](session_publication.md) add select
 preparation, committed catalog notifications and actual query-generation admission.
 The eager runner remains unchanged. Those primitives alone awarded zero credit.
 The later [shared managed-host restart package](host_restart_session_closeout.md)
-verifies both original restart conditions in a fresh complete catalog: **66/128**,
-with **62 remaining**. Source inventory itself still awards no behavioral credit.
+verified both original restart conditions at **66/128**. The later
+[update/isolation package](host_update_isolation_closeout.md) verifies both original
+#64 conditions in a fresh complete catalog: **68/128**, with **60 remaining**.
+Source inventory itself still awards no behavioral credit.
 
 The current inventory maps **196 upstream modules**, with 17 present and 47 partial
 Python counterparts. Durable catalog and session-runner owners now provide partial SDK

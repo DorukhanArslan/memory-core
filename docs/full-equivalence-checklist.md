@@ -26,7 +26,7 @@ The reference repository is `https://github.com/openclaw/openclaw.git`. Python-o
 
 The [source map](equivalence-source-map.md) links all 64 contracts and 128 acceptance points
 to the pinned upstream code and the current Python implementation. The inventory records
-225 upstream source modules, their tracked hashes, literal dependencies and exported
+237 upstream source modules, their tracked hashes, literal dependencies and exported
 declarations. Source presence and inventory validation do not establish behavior or add
 any differential-test coverage.
 
@@ -52,34 +52,50 @@ Comparisons must not normalize away behavior. A platform-specific path, generate
 Entries remain pending until their complete acceptance conditions are verified against `v2026.9.9`. Their detailed acceptance points and stable identifiers are in [scope.json](../equivalence/scope.json). A helper that already exists in Python still needs the new differential evidence. A known difference must stay visible until its implementation and tests agree. Bounded passing subsets are recorded below without closing the containing contract.
 
 <!-- CURRENT-VERIFICATION-START -->
-The latest verified bounded baseline has **71/128 acceptance conditions (55.5%)**,
-with **57 conditions** remaining. This counts unweighted verified conditions, not
-engineering effort or a time estimate. The fixed scope stays 64 contracts and 128 conditions.
-The index-identity boundary package verifies **+1**, from **70 to 71/128**;
-contract #11 now has **both original conditions verified, 2/2**, under its explicit profiles.
+The latest locally verified bounded baseline has **72/128 acceptance conditions
+(56.25%)**, with **56 conditions** remaining. This counts unweighted verified
+conditions, not engineering effort or a time estimate. The fixed scope stays
+64 contracts and 128 conditions. The query-sync outcome package verifies **+1**,
+from **71 to 72/128**; contract #15 has **one original condition verified, 1/2**.
 
-The fresh complete report on clean `5856b4e` executes **1,437 cases: 1,423 matches,
-14 existing mismatch cases and zero blocked**, with no runner errors. All 16 new
-manager/status/first-query pairs match with authenticated actual tools, owners,
-physical SQL and complete public results. All 1,421 earlier definitions/statuses/
-annotations, 18 prior evidence flags and the other 127 original point records remain
-unchanged. One already-declared zero-credit Native warm-index diagnostic sees a
-different published generation; its two actual result arrays remain retained and
-mismatched. Complete historical mismatch-payload equality is not claimed.
+The fresh complete report on clean `aa99a933` executes **1,444 cases: 1,430 matches,
+14 existing mismatch cases and zero blocked**, with no runner errors. All seven
+new cold/bootstrap and warm unchanged/edit/delete/rename/mtime-only schedules
+match complete public first/reopened search results with authenticated actual
+tools, owners, read generations, source files and physical SQL. All 1,437 earlier
+definitions/statuses/annotations, 34 prior evidence flags and the other 127
+original point records remain unchanged. One already-declared zero-credit Native
+warm-index diagnostic returns the old generation in its two first-result arrays;
+the complete raw results remain retained and mismatched. The other 13 historical
+Native and all 14 historical SDK mismatch payloads are unchanged. Complete
+historical mismatch-payload equality is not claimed.
 
-The SDK passes **9,757 general tests**, zero failures and **1,648 uncredited skips**;
-fresh full-run custody replay passes **981 tests with zero skips**. Both installed
-artifacts and **27 invalid typed-call checks each** pass. Code-head GitHub package
-checks pass on Python 3.11 and 3.12. The previous hosted 18-versus-local-14 discrepancy
-is separate and remains unresolved; it is not relabeled as the local known fourteen.
-The full gate remains `mismatched`: **55 uncovered conditions plus two registered
-unresolved conditions** remain. Complete OpenClaw equivalence is not established.
+The independent full audit passes. The unchanged production SDK passes **9,969
+general tests**, zero failures and **1,658 uncredited skips** on clean `69a4e976`;
+the first run's stale exact-requirement-list assertion and its one-entry test-only
+correction remain recorded separately. Fresh full-run custody replay passes
+**137 tests with 10 inapplicable attacks skipped and zero missing-capture skips**.
+GitHub package checks on `69a4e976` pass on Python 3.11 and 3.12, including both
+installed artifacts and **27 invalid typed-call checks each**. The original full
+execution remains attributed to `aa99a933`; the later test/documentation commits
+change no production SDK or protected adapter bytes.
 
-See the [index-identity boundary closeout](index_identity_boundaries_closeout.md)
-for exact identities, full-result evidence, preserved failures, the declared Native
-timing variation and profile limits. The proposed next condition is
-`indexing.query-sync.outcomes`: compare what actual searches see when source files
-are added, edited, deleted or renamed, before and after natural publication settles.
+The previous hosted 18-versus-local-14 discrepancy is separate and remains
+unresolved; its report investigation is paused at the user's request. It is not
+relabeled as the local known fourteen. The local full gate remains `mismatched`:
+**54 uncovered conditions plus two registered unresolved conditions** remain.
+Complete OpenClaw equivalence is not established.
+
+See the [query-sync outcome closeout](query_sync_outcomes_closeout.md) for exact
+execution identities, full-result evidence, preserved failures and profile limits.
+The proposed next condition is `indexing.query-sync.boundaries`: check what a
+search returns when reading or refreshing a file fails, when it retries, and
+whether only the required refresh work is admitted. For example, a temporarily
+unreadable edited file must not produce an invented fresh answer or hide an error.
+Forced synchronization, failure/retry policy, dispatch counts and OS watcher
+timing receive no credit from the outcome package. The preceding
+[index-identity boundary closeout](index_identity_boundaries_closeout.md) verified
+**70 → 71/128** on clean `5856b4e`; its original captures retain that identity.
 
 See the [boundary closeout](host_turn_barrier_boundaries_closeout.md) for exact identities,
 complete public results, retained failures and measured limits. See the original
@@ -128,9 +144,9 @@ reaching 66/128 before the update/isolation and natural next-turn packages.
 | Contract status | Contracts | Verified conditions | Remaining conditions |
 | --- | ---: | ---: | ---: |
 | Complete | 33 | 66 | 0 |
-| Partial | 5 | 5 | 5 |
-| Pending verification | 26 | 0 | 52 |
-| Total | 64 | 71 | 57 |
+| Partial | 6 | 6 | 6 |
+| Pending verification | 25 | 0 | 50 |
+| Total | 64 | 72 | 56 |
 
 Pending verification can include existing implementation. Partial contracts retain one open
 condition. Infrastructure sections 1–3 remain **20/22 tasks completed**; infrastructure and
@@ -155,7 +171,7 @@ Current status of all 64 contracts:
 | 12 | `indexing.incremental-sync` | Complete | 2/2 |
 | 13 | `indexing.transaction-publication` | Complete | 2/2 |
 | 14 | `indexing.embedding-cache` | Pending verification | 0/2 |
-| 15 | `indexing.query-sync` | Pending verification | 0/2 |
+| 15 | `indexing.query-sync` | Partial | 1/2 |
 | 16 | `retrieval.vector-scoring` | Complete | 2/2 |
 | 17 | `retrieval.hybrid-scoring` | Complete | 2/2 |
 | 18 | `retrieval.exact-path-priority` | Complete | 2/2 |

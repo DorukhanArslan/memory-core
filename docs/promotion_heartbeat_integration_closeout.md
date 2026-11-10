@@ -1,10 +1,11 @@
 # Promotion and heartbeat maintenance integration
 
-The latest [index-identity boundary closeout](index_identity_boundaries_closeout.md)
-verifies **71/128 conditions**, with **57 remaining**, in the complete catalog on
-clean `5856b4e`: 1,437 cases, 1,423 matches, 14 mismatch cases and zero blocked/errors.
-Only the original identity boundary adds one condition. Earlier maintenance,
-promotion, restart and full-channel packages retain their own historical identities.
+The latest [query-sync outcome closeout](query_sync_outcomes_closeout.md)
+verifies **72/128 conditions**, with **56 remaining**, in the complete local catalog
+on clean `aa99a933`: 1,444 cases, 1,430 matches, 14 mismatch cases and zero
+blocked/errors. Only the original query-sync outcome adds one condition;
+its failure/retry boundary remains open. Earlier identity, maintenance, promotion,
+restart and full-channel packages retain their own historical identities.
 This maintenance package still awards zero; none of its captures is relabeled.
 
 This is the historical zero-credit maintenance closeout. Subsequent work is

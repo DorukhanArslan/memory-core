@@ -1,0 +1,657 @@
+{
+  "kind": "query-sync-outcomes-acceptance-literals",
+  "acceptancePointsAwarded": 0,
+  "cases": [
+    {
+      "id": "query-sync-outcomes-cold-existing-no-index",
+      "requirement": "indexing.query-sync",
+      "operation": "query-sync-outcomes-runtime",
+      "covers": [
+        "indexing.query-sync.outcomes"
+      ],
+      "input": {
+        "profile": "provider-none-local-memory-on-search-query-sync-outcomes",
+        "nowMs": 1794268800000,
+        "initialSourceMtimeMs": 1794268800000,
+        "identity": {
+          "agentId": "main"
+        },
+        "config": {
+          "memory": {
+            "citations": "off",
+            "search": {
+              "enabled": true,
+              "provider": "none",
+              "fallback": "none",
+              "sources": [
+                "memory"
+              ],
+              "rememberAcrossConversations": false,
+              "experimental": {
+                "sessionMemory": false
+              },
+              "extraPaths": [],
+              "store": {
+                "vector": {
+                  "enabled": false
+                }
+              },
+              "query": {
+                "maxResults": 5,
+                "minScore": 0
+              }
+            }
+          }
+        },
+        "initialFiles": {
+          "memory/topics/cold.md": "# Cold note\n\nThe first-search marker is querysyncfir486.\n"
+        },
+        "toolOptions": {
+          "agentId": "main",
+          "oneShotCliRun": false
+        },
+        "sourceMutation": null,
+        "initialPublication": "none; any seed query is an actual public memory_search over the prepared workspace, with no fixture reindex or separate publication",
+        "mutationNotification": "For create/replace/delete/rename/touch-same-bytes only, Native invokes original exact-owner manager.markMemoryWatchDirty() once after the real filesystem mutation; SDK uses actual source hash/stat detection during its actual search. Native notification supplies a dirty fact without driving a watcher timer or calling sync/reindex; actual watchers stay enabled.",
+        "settlement": "Immediately after actual first public query, call original owner.close() with no intervening same-owner query, private condition wait, event wait, adapter job wait or timer drain. Actual close joins only already-admitted work. Capture complete physical SQL/source state after close return and before acquiring a fresh original owner; then execute actual reopened public query and original fresh-owner close.",
+        "timers": "native debounce=1500ms and all actual monotonic/timer facilities unmodified; no drain, fake timers, reset or pending-timer flush",
+        "sourceDating": "all source paths are original evergreen root/topic memory paths; actual mtime changes remain recorded",
+        "queries": {
+          "seed": null,
+          "first": {
+            "query": "querysyncfir486",
+            "maxResults": 5,
+            "minScore": 0,
+            "corpus": "memory"
+          },
+          "reopened": {
+            "query": "querysyncfir486",
+            "maxResults": 5,
+            "minScore": 0,
+            "corpus": "memory"
+          }
+        },
+        "apiSteps": [
+          "prepare-real-source-files",
+          "acquire-original-default-owner",
+          "execute-actual-public-first-query",
+          "immediately-call-original-owner-close",
+          "capture-physical-sql-and-real-sources-after-close",
+          "acquire-original-fresh-owner",
+          "execute-actual-public-reopened-query",
+          "call-original-fresh-owner-close"
+        ],
+        "closeEvidence": "Record actual native background-publication calls/promises and their full return/error settlements. All already-admitted original background returns must precede original close return; unexpected failed work is a failed case even if Native catches/logs it. SDK original close owns actual operation/worker completion; no private condition/event wait is used. Keep closed physical state separate from reopened-query effects."
+      }
+    },
+    {
+      "id": "query-sync-outcomes-cold-empty-then-add",
+      "requirement": "indexing.query-sync",
+      "operation": "query-sync-outcomes-runtime",
+      "covers": [
+        "indexing.query-sync.outcomes"
+      ],
+      "input": {
+        "profile": "provider-none-local-memory-on-search-query-sync-outcomes",
+        "nowMs": 1794268800000,
+        "initialSourceMtimeMs": 1794268800000,
+        "identity": {
+          "agentId": "main"
+        },
+        "config": {
+          "memory": {
+            "citations": "off",
+            "search": {
+              "enabled": true,
+              "provider": "none",
+              "fallback": "none",
+              "sources": [
+                "memory"
+              ],
+              "rememberAcrossConversations": false,
+              "experimental": {
+                "sessionMemory": false
+              },
+              "extraPaths": [],
+              "store": {
+                "vector": {
+                  "enabled": false
+                }
+              },
+              "query": {
+                "maxResults": 5,
+                "minScore": 0
+              }
+            }
+          }
+        },
+        "initialFiles": {},
+        "toolOptions": {
+          "agentId": "main",
+          "oneShotCliRun": false
+        },
+        "sourceMutation": {
+          "kind": "create",
+          "path": "memory/topics/added.md",
+          "text": "# Added note\n\nThe added-source marker is querysyncash572.\n",
+          "mtimeMs": 1794268801000
+        },
+        "initialPublication": "none; any seed query is an actual public memory_search over the prepared workspace, with no fixture reindex or separate publication",
+        "mutationNotification": "For create/replace/delete/rename/touch-same-bytes only, Native invokes original exact-owner manager.markMemoryWatchDirty() once after the real filesystem mutation; SDK uses actual source hash/stat detection during its actual search. Native notification supplies a dirty fact without driving a watcher timer or calling sync/reindex; actual watchers stay enabled.",
+        "settlement": "Immediately after actual first public query, call original owner.close() with no intervening same-owner query, private condition wait, event wait, adapter job wait or timer drain. Actual close joins only already-admitted work. Capture complete physical SQL/source state after close return and before acquiring a fresh original owner; then execute actual reopened public query and original fresh-owner close.",
+        "timers": "native debounce=1500ms and all actual monotonic/timer facilities unmodified; no drain, fake timers, reset or pending-timer flush",
+        "sourceDating": "all source paths are original evergreen root/topic memory paths; actual mtime changes remain recorded",
+        "queries": {
+          "seed": {
+            "query": "querysyncash572",
+            "maxResults": 5,
+            "minScore": 0,
+            "corpus": "memory"
+          },
+          "first": {
+            "query": "querysyncash572",
+            "maxResults": 5,
+            "minScore": 0,
+            "corpus": "memory"
+          },
+          "reopened": {
+            "query": "querysyncash572",
+            "maxResults": 5,
+            "minScore": 0,
+            "corpus": "memory"
+          }
+        },
+        "apiSteps": [
+          "prepare-real-source-files",
+          "acquire-original-default-owner",
+          "execute-actual-public-seed-query",
+          "apply-declared-source-mutation-or-none",
+          "native-original-markMemoryWatchDirty-notification-sdk-actual-source-detection",
+          "execute-actual-public-first-query",
+          "immediately-call-original-owner-close",
+          "capture-physical-sql-and-real-sources-after-close",
+          "acquire-original-fresh-owner",
+          "execute-actual-public-reopened-query",
+          "call-original-fresh-owner-close"
+        ],
+        "closeEvidence": "Record actual native background-publication calls/promises and their full return/error settlements. All already-admitted original background returns must precede original close return; unexpected failed work is a failed case even if Native catches/logs it. SDK original close owns actual operation/worker completion; no private condition/event wait is used. Keep closed physical state separate from reopened-query effects."
+      }
+    },
+    {
+      "id": "query-sync-outcomes-warm-unchanged",
+      "requirement": "indexing.query-sync",
+      "operation": "query-sync-outcomes-runtime",
+      "covers": [
+        "indexing.query-sync.outcomes"
+      ],
+      "input": {
+        "profile": "provider-none-local-memory-on-search-query-sync-outcomes",
+        "nowMs": 1794268800000,
+        "initialSourceMtimeMs": 1794268800000,
+        "identity": {
+          "agentId": "main"
+        },
+        "config": {
+          "memory": {
+            "citations": "off",
+            "search": {
+              "enabled": true,
+              "provider": "none",
+              "fallback": "none",
+              "sources": [
+                "memory"
+              ],
+              "rememberAcrossConversations": false,
+              "experimental": {
+                "sessionMemory": false
+              },
+              "extraPaths": [],
+              "store": {
+                "vector": {
+                  "enabled": false
+                }
+              },
+              "query": {
+                "maxResults": 5,
+                "minScore": 0
+              }
+            }
+          }
+        },
+        "initialFiles": {
+          "memory/topics/steady.md": "# Stable note\n\nThe stable source marker is querysyncelm614.\n",
+          "USER.md": "# Retained preference\n\nUse short replies for querysyncsentinel319.\n"
+        },
+        "toolOptions": {
+          "agentId": "main",
+          "oneShotCliRun": false
+        },
+        "sourceMutation": {
+          "kind": "none"
+        },
+        "initialPublication": "none; any seed query is an actual public memory_search over the prepared workspace, with no fixture reindex or separate publication",
+        "mutationNotification": "For create/replace/delete/rename/touch-same-bytes only, Native invokes original exact-owner manager.markMemoryWatchDirty() once after the real filesystem mutation; SDK uses actual source hash/stat detection during its actual search. Native notification supplies a dirty fact without driving a watcher timer or calling sync/reindex; actual watchers stay enabled.",
+        "settlement": "Immediately after actual first public query, call original owner.close() with no intervening same-owner query, private condition wait, event wait, adapter job wait or timer drain. Actual close joins only already-admitted work. Capture complete physical SQL/source state after close return and before acquiring a fresh original owner; then execute actual reopened public query and original fresh-owner close.",
+        "timers": "native debounce=1500ms and all actual monotonic/timer facilities unmodified; no drain, fake timers, reset or pending-timer flush",
+        "sourceDating": "all source paths are original evergreen root/topic memory paths; actual mtime changes remain recorded",
+        "queries": {
+          "seed": {
+            "query": "querysyncelm614",
+            "maxResults": 5,
+            "minScore": 0,
+            "corpus": "memory"
+          },
+          "first": {
+            "query": "querysyncelm614",
+            "maxResults": 5,
+            "minScore": 0,
+            "corpus": "memory"
+          },
+          "reopened": {
+            "query": "querysyncelm614",
+            "maxResults": 5,
+            "minScore": 0,
+            "corpus": "memory"
+          }
+        },
+        "apiSteps": [
+          "prepare-real-source-files",
+          "acquire-original-default-owner",
+          "execute-actual-public-seed-query",
+          "apply-declared-source-mutation-or-none",
+          "execute-actual-public-first-query",
+          "immediately-call-original-owner-close",
+          "capture-physical-sql-and-real-sources-after-close",
+          "acquire-original-fresh-owner",
+          "execute-actual-public-reopened-query",
+          "call-original-fresh-owner-close"
+        ],
+        "closeEvidence": "Record actual native background-publication calls/promises and their full return/error settlements. All already-admitted original background returns must precede original close return; unexpected failed work is a failed case even if Native catches/logs it. SDK original close owns actual operation/worker completion; no private condition/event wait is used. Keep closed physical state separate from reopened-query effects."
+      }
+    },
+    {
+      "id": "query-sync-outcomes-warm-edit",
+      "requirement": "indexing.query-sync",
+      "operation": "query-sync-outcomes-runtime",
+      "covers": [
+        "indexing.query-sync.outcomes"
+      ],
+      "input": {
+        "profile": "provider-none-local-memory-on-search-query-sync-outcomes",
+        "nowMs": 1794268800000,
+        "initialSourceMtimeMs": 1794268800000,
+        "identity": {
+          "agentId": "main"
+        },
+        "config": {
+          "memory": {
+            "citations": "off",
+            "search": {
+              "enabled": true,
+              "provider": "none",
+              "fallback": "none",
+              "sources": [
+                "memory"
+              ],
+              "rememberAcrossConversations": false,
+              "experimental": {
+                "sessionMemory": false
+              },
+              "extraPaths": [],
+              "store": {
+                "vector": {
+                  "enabled": false
+                }
+              },
+              "query": {
+                "maxResults": 5,
+                "minScore": 0
+              }
+            }
+          }
+        },
+        "initialFiles": {
+          "memory/topics/edit.md": "# Editable note\n\nThe marker querysynccedar728 has the old amber preference.\n",
+          "USER.md": "# Retained preference\n\nUse short replies for querysyncsentinel319.\n"
+        },
+        "toolOptions": {
+          "agentId": "main",
+          "oneShotCliRun": false
+        },
+        "sourceMutation": {
+          "kind": "replace",
+          "path": "memory/topics/edit.md",
+          "text": "# Editable note\n\nThe marker querysynccedar728 has the new violet preference.\n",
+          "mtimeMs": 1794268801000
+        },
+        "initialPublication": "none; any seed query is an actual public memory_search over the prepared workspace, with no fixture reindex or separate publication",
+        "mutationNotification": "For create/replace/delete/rename/touch-same-bytes only, Native invokes original exact-owner manager.markMemoryWatchDirty() once after the real filesystem mutation; SDK uses actual source hash/stat detection during its actual search. Native notification supplies a dirty fact without driving a watcher timer or calling sync/reindex; actual watchers stay enabled.",
+        "settlement": "Immediately after actual first public query, call original owner.close() with no intervening same-owner query, private condition wait, event wait, adapter job wait or timer drain. Actual close joins only already-admitted work. Capture complete physical SQL/source state after close return and before acquiring a fresh original owner; then execute actual reopened public query and original fresh-owner close.",
+        "timers": "native debounce=1500ms and all actual monotonic/timer facilities unmodified; no drain, fake timers, reset or pending-timer flush",
+        "sourceDating": "all source paths are original evergreen root/topic memory paths; actual mtime changes remain recorded",
+        "queries": {
+          "seed": {
+            "query": "querysynccedar728",
+            "maxResults": 5,
+            "minScore": 0,
+            "corpus": "memory"
+          },
+          "first": {
+            "query": "querysynccedar728",
+            "maxResults": 5,
+            "minScore": 0,
+            "corpus": "memory"
+          },
+          "reopened": {
+            "query": "querysynccedar728",
+            "maxResults": 5,
+            "minScore": 0,
+            "corpus": "memory"
+          }
+        },
+        "apiSteps": [
+          "prepare-real-source-files",
+          "acquire-original-default-owner",
+          "execute-actual-public-seed-query",
+          "apply-declared-source-mutation-or-none",
+          "native-original-markMemoryWatchDirty-notification-sdk-actual-source-detection",
+          "execute-actual-public-first-query",
+          "immediately-call-original-owner-close",
+          "capture-physical-sql-and-real-sources-after-close",
+          "acquire-original-fresh-owner",
+          "execute-actual-public-reopened-query",
+          "call-original-fresh-owner-close"
+        ],
+        "closeEvidence": "Record actual native background-publication calls/promises and their full return/error settlements. All already-admitted original background returns must precede original close return; unexpected failed work is a failed case even if Native catches/logs it. SDK original close owns actual operation/worker completion; no private condition/event wait is used. Keep closed physical state separate from reopened-query effects."
+      }
+    },
+    {
+      "id": "query-sync-outcomes-warm-delete",
+      "requirement": "indexing.query-sync",
+      "operation": "query-sync-outcomes-runtime",
+      "covers": [
+        "indexing.query-sync.outcomes"
+      ],
+      "input": {
+        "profile": "provider-none-local-memory-on-search-query-sync-outcomes",
+        "nowMs": 1794268800000,
+        "initialSourceMtimeMs": 1794268800000,
+        "identity": {
+          "agentId": "main"
+        },
+        "config": {
+          "memory": {
+            "citations": "off",
+            "search": {
+              "enabled": true,
+              "provider": "none",
+              "fallback": "none",
+              "sources": [
+                "memory"
+              ],
+              "rememberAcrossConversations": false,
+              "experimental": {
+                "sessionMemory": false
+              },
+              "extraPaths": [],
+              "store": {
+                "vector": {
+                  "enabled": false
+                }
+              },
+              "query": {
+                "maxResults": 5,
+                "minScore": 0
+              }
+            }
+          }
+        },
+        "initialFiles": {
+          "memory/topics/deleted.md": "# Removed note\n\nThe deletion marker is querysyncpine835.\n",
+          "USER.md": "# Retained preference\n\nUse short replies for querysyncsentinel319.\n"
+        },
+        "toolOptions": {
+          "agentId": "main",
+          "oneShotCliRun": false
+        },
+        "sourceMutation": {
+          "kind": "delete",
+          "path": "memory/topics/deleted.md"
+        },
+        "initialPublication": "none; any seed query is an actual public memory_search over the prepared workspace, with no fixture reindex or separate publication",
+        "mutationNotification": "For create/replace/delete/rename/touch-same-bytes only, Native invokes original exact-owner manager.markMemoryWatchDirty() once after the real filesystem mutation; SDK uses actual source hash/stat detection during its actual search. Native notification supplies a dirty fact without driving a watcher timer or calling sync/reindex; actual watchers stay enabled.",
+        "settlement": "Immediately after actual first public query, call original owner.close() with no intervening same-owner query, private condition wait, event wait, adapter job wait or timer drain. Actual close joins only already-admitted work. Capture complete physical SQL/source state after close return and before acquiring a fresh original owner; then execute actual reopened public query and original fresh-owner close.",
+        "timers": "native debounce=1500ms and all actual monotonic/timer facilities unmodified; no drain, fake timers, reset or pending-timer flush",
+        "sourceDating": "all source paths are original evergreen root/topic memory paths; actual mtime changes remain recorded",
+        "queries": {
+          "seed": {
+            "query": "querysyncpine835",
+            "maxResults": 5,
+            "minScore": 0,
+            "corpus": "memory"
+          },
+          "first": {
+            "query": "querysyncpine835",
+            "maxResults": 5,
+            "minScore": 0,
+            "corpus": "memory"
+          },
+          "reopened": {
+            "query": "querysyncpine835",
+            "maxResults": 5,
+            "minScore": 0,
+            "corpus": "memory"
+          }
+        },
+        "apiSteps": [
+          "prepare-real-source-files",
+          "acquire-original-default-owner",
+          "execute-actual-public-seed-query",
+          "apply-declared-source-mutation-or-none",
+          "native-original-markMemoryWatchDirty-notification-sdk-actual-source-detection",
+          "execute-actual-public-first-query",
+          "immediately-call-original-owner-close",
+          "capture-physical-sql-and-real-sources-after-close",
+          "acquire-original-fresh-owner",
+          "execute-actual-public-reopened-query",
+          "call-original-fresh-owner-close"
+        ],
+        "closeEvidence": "Record actual native background-publication calls/promises and their full return/error settlements. All already-admitted original background returns must precede original close return; unexpected failed work is a failed case even if Native catches/logs it. SDK original close owns actual operation/worker completion; no private condition/event wait is used. Keep closed physical state separate from reopened-query effects."
+      }
+    },
+    {
+      "id": "query-sync-outcomes-warm-rename",
+      "requirement": "indexing.query-sync",
+      "operation": "query-sync-outcomes-runtime",
+      "covers": [
+        "indexing.query-sync.outcomes"
+      ],
+      "input": {
+        "profile": "provider-none-local-memory-on-search-query-sync-outcomes",
+        "nowMs": 1794268800000,
+        "initialSourceMtimeMs": 1794268800000,
+        "identity": {
+          "agentId": "main"
+        },
+        "config": {
+          "memory": {
+            "citations": "off",
+            "search": {
+              "enabled": true,
+              "provider": "none",
+              "fallback": "none",
+              "sources": [
+                "memory"
+              ],
+              "rememberAcrossConversations": false,
+              "experimental": {
+                "sessionMemory": false
+              },
+              "extraPaths": [],
+              "store": {
+                "vector": {
+                  "enabled": false
+                }
+              },
+              "query": {
+                "maxResults": 5,
+                "minScore": 0
+              }
+            }
+          }
+        },
+        "initialFiles": {
+          "memory/topics/before.md": "# Renamed note\n\nThe path marker is querysynclarch946.\n",
+          "USER.md": "# Retained preference\n\nUse short replies for querysyncsentinel319.\n"
+        },
+        "toolOptions": {
+          "agentId": "main",
+          "oneShotCliRun": false
+        },
+        "sourceMutation": {
+          "kind": "rename",
+          "from": "memory/topics/before.md",
+          "to": "memory/topics/after.md",
+          "preserveBytes": true,
+          "preserveMtime": true
+        },
+        "initialPublication": "none; any seed query is an actual public memory_search over the prepared workspace, with no fixture reindex or separate publication",
+        "mutationNotification": "For create/replace/delete/rename/touch-same-bytes only, Native invokes original exact-owner manager.markMemoryWatchDirty() once after the real filesystem mutation; SDK uses actual source hash/stat detection during its actual search. Native notification supplies a dirty fact without driving a watcher timer or calling sync/reindex; actual watchers stay enabled.",
+        "settlement": "Immediately after actual first public query, call original owner.close() with no intervening same-owner query, private condition wait, event wait, adapter job wait or timer drain. Actual close joins only already-admitted work. Capture complete physical SQL/source state after close return and before acquiring a fresh original owner; then execute actual reopened public query and original fresh-owner close.",
+        "timers": "native debounce=1500ms and all actual monotonic/timer facilities unmodified; no drain, fake timers, reset or pending-timer flush",
+        "sourceDating": "all source paths are original evergreen root/topic memory paths; actual mtime changes remain recorded",
+        "queries": {
+          "seed": {
+            "query": "querysynclarch946",
+            "maxResults": 5,
+            "minScore": 0,
+            "corpus": "memory"
+          },
+          "first": {
+            "query": "querysynclarch946",
+            "maxResults": 5,
+            "minScore": 0,
+            "corpus": "memory"
+          },
+          "reopened": {
+            "query": "querysynclarch946",
+            "maxResults": 5,
+            "minScore": 0,
+            "corpus": "memory"
+          }
+        },
+        "apiSteps": [
+          "prepare-real-source-files",
+          "acquire-original-default-owner",
+          "execute-actual-public-seed-query",
+          "apply-declared-source-mutation-or-none",
+          "native-original-markMemoryWatchDirty-notification-sdk-actual-source-detection",
+          "execute-actual-public-first-query",
+          "immediately-call-original-owner-close",
+          "capture-physical-sql-and-real-sources-after-close",
+          "acquire-original-fresh-owner",
+          "execute-actual-public-reopened-query",
+          "call-original-fresh-owner-close"
+        ],
+        "closeEvidence": "Record actual native background-publication calls/promises and their full return/error settlements. All already-admitted original background returns must precede original close return; unexpected failed work is a failed case even if Native catches/logs it. SDK original close owns actual operation/worker completion; no private condition/event wait is used. Keep closed physical state separate from reopened-query effects."
+      }
+    },
+    {
+      "id": "query-sync-outcomes-warm-touch-same-bytes",
+      "requirement": "indexing.query-sync",
+      "operation": "query-sync-outcomes-runtime",
+      "covers": [
+        "indexing.query-sync.outcomes"
+      ],
+      "input": {
+        "profile": "provider-none-local-memory-on-search-query-sync-outcomes",
+        "nowMs": 1794268800000,
+        "initialSourceMtimeMs": 1794268800000,
+        "identity": {
+          "agentId": "main"
+        },
+        "config": {
+          "memory": {
+            "citations": "off",
+            "search": {
+              "enabled": true,
+              "provider": "none",
+              "fallback": "none",
+              "sources": [
+                "memory"
+              ],
+              "rememberAcrossConversations": false,
+              "experimental": {
+                "sessionMemory": false
+              },
+              "extraPaths": [],
+              "store": {
+                "vector": {
+                  "enabled": false
+                }
+              },
+              "query": {
+                "maxResults": 5,
+                "minScore": 0
+              }
+            }
+          }
+        },
+        "initialFiles": {
+          "memory/topics/touched.md": "# Touched note\n\nThe unchanged-byte marker is querysyncwillow157.\n",
+          "USER.md": "# Retained preference\n\nUse short replies for querysyncsentinel319.\n"
+        },
+        "toolOptions": {
+          "agentId": "main",
+          "oneShotCliRun": false
+        },
+        "sourceMutation": {
+          "kind": "touch-same-bytes",
+          "path": "memory/topics/touched.md",
+          "mtimeMs": 1794268802000,
+          "preserveBytes": true
+        },
+        "initialPublication": "none; any seed query is an actual public memory_search over the prepared workspace, with no fixture reindex or separate publication",
+        "mutationNotification": "For create/replace/delete/rename/touch-same-bytes only, Native invokes original exact-owner manager.markMemoryWatchDirty() once after the real filesystem mutation; SDK uses actual source hash/stat detection during its actual search. Native notification supplies a dirty fact without driving a watcher timer or calling sync/reindex; actual watchers stay enabled.",
+        "settlement": "Immediately after actual first public query, call original owner.close() with no intervening same-owner query, private condition wait, event wait, adapter job wait or timer drain. Actual close joins only already-admitted work. Capture complete physical SQL/source state after close return and before acquiring a fresh original owner; then execute actual reopened public query and original fresh-owner close.",
+        "timers": "native debounce=1500ms and all actual monotonic/timer facilities unmodified; no drain, fake timers, reset or pending-timer flush",
+        "sourceDating": "all source paths are original evergreen root/topic memory paths; actual mtime changes remain recorded",
+        "sourceEvidence": "Capture actual complete source bytes/hex, SHA256, stat size and mtime before and after mutation, actual first query, original close return and fresh acquisition/reopened query. Same-byte input changes only filesystem mtime; no expected final indexed mtime or dispatch count is declared.",
+        "queries": {
+          "seed": {
+            "query": "querysyncwillow157",
+            "maxResults": 5,
+            "minScore": 0,
+            "corpus": "memory"
+          },
+          "first": {
+            "query": "querysyncwillow157",
+            "maxResults": 5,
+            "minScore": 0,
+            "corpus": "memory"
+          },
+          "reopened": {
+            "query": "querysyncwillow157",
+            "maxResults": 5,
+            "minScore": 0,
+            "corpus": "memory"
+          }
+        },
+        "apiSteps": [
+          "prepare-real-source-files",
+          "acquire-original-default-owner",
+          "execute-actual-public-seed-query",
+          "apply-declared-source-mutation-or-none",
+          "native-original-markMemoryWatchDirty-notification-sdk-actual-source-detection",
+          "execute-actual-public-first-query",
+          "immediately-call-original-owner-close",
+          "capture-physical-sql-and-real-sources-after-close",
+          "acquire-original-fresh-owner",
+          "execute-actual-public-reopened-query",
+          "call-original-fresh-owner-close"
+        ],
+        "closeEvidence": "Record actual native background-publication calls/promises and their full return/error settlements. All already-admitted original background returns must precede original close return; unexpected failed work is a failed case even if Native catches/logs it. SDK original close owns actual operation/worker completion; no private condition/event wait is used. Keep closed physical state separate from reopened-query effects."
+      }
+    }
+  ]
+}

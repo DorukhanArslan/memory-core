@@ -37,9 +37,13 @@ def required_host_artifacts():
     )
     from equivalence.host_restart_policy_bindings import ADDITIONAL_REQUIRED_HOST_ARTIFACTS as policy
     from equivalence.host_restart_publication_bindings import ADDITIONAL_REQUIRED_HOST_ARTIFACTS as publication
+    from equivalence.host_update_isolation_bindings import ADDITIONAL_REQUIRED_HOST_ARTIFACTS as update
 
+    # The report publishes ``update`` as requiredLoadedArtifacts; it is enforced
+    # here by name rather than through its overlap with the restart owner sets.
     return tuple(dict.fromkeys((*REQUIRED_HOST_ARTIFACTS, *READ_ARTIFACTS, *PUBLICATION_PARENT_ARTIFACTS,
-                                *PLUGIN_STATE_PARENT_ARTIFACTS, *WRITE_ARTIFACTS, *policy, *publication)))
+                                *PLUGIN_STATE_PARENT_ARTIFACTS, *WRITE_ARTIFACTS, *policy, *publication,
+                                *update)))
 
 
 def validate_traces(directory, context, runtime, authority, *, process_pid, coordinator_pid, raw):

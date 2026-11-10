@@ -557,6 +557,13 @@ class SQLiteMemoryStore:
         Ordinary publisher cleanup of orphan rows is unchanged; the selection
         preserves unrelated published sources rather than certifying orphans.
         """
+        selection = self._validated_source_selection(workspace, sources, paths, force_sources)
+        with workspace_index_lock(workspace.root):
+            return self._reindex_locked(workspace, force=False, selection=selection, force_sources=force_sources)
+
+    def _validated_source_selection(self, workspace: MemoryWorkspace, sources: Collection[str],
+                                    paths: Collection[str] | None, force_sources: bool) -> _IndexSourceSelection:
+        """Check a selected publication request; nothing is read or published."""
         if isinstance(sources, (str, bytes)):
             raise ValueError("Selected sources must be a collection of memory/sessions names")
         selected_sources = frozenset(sources)
@@ -576,9 +583,7 @@ class SQLiteMemoryStore:
         if (Path(self.config.workspace_dir).resolve() != workspace.root.resolve()
                 or normalize_session_agent_id(self.config.agent_id) != normalize_session_agent_id(workspace.agent_id)):
             raise ValueError("The selected refresh configuration and workspace must have the same owner")
-        selection = _IndexSourceSelection(selected_sources, selected_paths)
-        with workspace_index_lock(workspace.root):
-            return self._reindex_locked(workspace, force=False, selection=selection, force_sources=force_sources)
+        return _IndexSourceSelection(selected_sources, selected_paths)
 
     def _reindex_locked(self, workspace: MemoryWorkspace, *, force: bool,
                         selection: _IndexSourceSelection | None = None, force_sources: bool = False) -> int:

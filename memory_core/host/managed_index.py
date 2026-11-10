@@ -21,7 +21,7 @@ from memory_core.cancellation import CancellationSignal
 from memory_core.config import MemoryConfig
 from memory_core.consolidation.artifact_provenance import MemoryArtifactProvenanceStore
 from memory_core.consolidation.origins import IndexRevisionFence
-from memory_core.index.sqlite_store import SQLiteMemoryStore
+from memory_core.index.sqlite_store import MemoryIndexRequiresFullReindexError, SQLiteMemoryStore
 from memory_core.index.hybrid import HybridResult
 from memory_core.runtime_identity import MEMORY_CORE_RUNTIME_IDENTITY, RuntimeIdentity
 from memory_core.session_catalog import normalize_session_agent_id
@@ -41,8 +41,12 @@ class ManagedSQLiteMemoryStore(SQLiteMemoryStore):
     ``close`` refuses new managed search/reindex/status operations and joins
     those already admitted, including a publication whose caller stopped waiting.
     Inherited raw SQL inspection APIs remain outside this managed admission lane.
-    A failed publication requires an explicit successful ``reindex`` before
+    A failed whole publication requires an explicit successful ``reindex`` before
     automatic preparation resumes; search does not retry a failed producer.
+    A failed memory-scope ``reindex_sources`` publication is retained separately:
+    ``status`` reports it (when no whole publication failure is retained) until
+    the failed selection publishes or a whole ``reindex`` succeeds. It does not
+    gate automatic preparation.
     """
 
     def __init__(self, config: MemoryConfig, workspace: MemoryWorkspace, *,
@@ -70,7 +74,8 @@ class ManagedSQLiteMemoryStore(SQLiteMemoryStore):
         self._closing = False
         self._closed = False
         self._last_sync_error: str | None = None
-        self._memory_scope_sync_error: str | None = None
+        # (error message, failed memory paths); ``None`` paths mean the whole memory corpus.
+        self._memory_scope_failure: tuple[str, frozenset[str] | None] | None = None
         self._automatic_rebuild_notice: dict[str, Any] = {"sequence": 0, "warning": ""}
         self._operations: deque[dict[str, Any]] = deque(maxlen=512)
         self._repairs: deque[dict[str, Any]] = deque(maxlen=256)
@@ -152,8 +157,9 @@ class ManagedSQLiteMemoryStore(SQLiteMemoryStore):
                 "fts": {"enabled": self.flags.text_search, "available": state["ftsAvailable"]},
                 "custom": {"indexIdentity": state["identity"],
                            "automaticRebuildNotice": self._automatic_rebuild_notice}}
-            sync_error = (self._last_sync_error if self._last_sync_error is not None
-                          else self._memory_scope_sync_error)
+            sync_error, scoped = self._last_sync_error, self._memory_scope_failure
+            if sync_error is None and scoped is not None:
+                sync_error = scoped[0]
             if sync_error is not None:
                 result["lastSyncError"] = sync_error
             if self._session_publication is not None:
@@ -209,40 +215,71 @@ class ManagedSQLiteMemoryStore(SQLiteMemoryStore):
             self._assert_workspace(workspace)
             self._update(operation, request={"force": force}, before=self._read_state(),
                          revisionBefore=self.read_published_index()["revision"])
-            try:
-                result = super().reindex(workspace, force=force)
-            except BaseException as error:
-                self._last_sync_error = format_error_message(error)
-                raise
-            self._last_sync_error = None
-            self._memory_scope_sync_error = None
+            # The outcome is recorded before another cooperating publication can
+            # interleave: the reentrant workspace guard is the publisher's own.
+            with workspace_index_lock(workspace.root):
+                try:
+                    result = super().reindex(workspace, force=force)
+                except BaseException as error:
+                    self._last_sync_error = format_error_message(error)
+                    raise
+                self._last_sync_error = None
+                self._memory_scope_failure = None
             self._update(operation, returned=result, after=self._read_state(),
                          revisionAfter=self.read_published_index()["revision"])
             return result
 
     def reindex_sources(self, workspace: MemoryWorkspace, *, sources: Collection[str],
                         paths: Collection[str] | None = None, force_sources: bool = False) -> int:
-        """Refresh an explicit source scope under the managed admission lane."""
+        """Refresh an explicit source scope under the managed admission lane.
+
+        A failed publication that selected the memory corpus leaves the published
+        index behind its committed source, so it is retained for ``status`` (and
+        the search tool's stale report) until that selection publishes: a later
+        memory publication with ``paths=None``, later path-limited memory
+        publications that together cover the failed paths, or a whole
+        ``reindex``. Refused requests (argument errors, an index that needs a
+        full reindex) attempted no publication and are not retained. Sessions-only
+        publications neither set nor settle it; they keep their controller receipt.
+        """
         with self._operation("reindex-sources") as operation:
             self._assert_workspace(workspace)
             self._update(operation, request={"sources": list(sources),
                 "paths": None if paths is None else list(paths), "forceSources": force_sources},
                 revisionBefore=self.index_revision())
-            try:
-                result = super().reindex_sources(workspace, sources=sources, paths=paths,
-                                                 force_sources=force_sources)
-            except BaseException as error:
-                # A committed memory write whose scoped publication failed leaves the
-                # published index stale. Later searches must report that as plainly as
-                # after a failed whole reindex; session-scope failures keep their own
-                # controller receipt.
-                if "memory" in sources:
-                    self._memory_scope_sync_error = format_error_message(error)
-                raise
-            if "memory" in sources and paths is None:
-                self._memory_scope_sync_error = None
+            selection = self._validated_source_selection(workspace, sources, paths, force_sources)
+            # As in ``reindex``, the outcome is recorded under the publisher's guard.
+            with workspace_index_lock(workspace.root):
+                try:
+                    result = super().reindex_sources(workspace, sources=selection.sources,
+                                                     paths=selection.paths, force_sources=force_sources)
+                except MemoryIndexRequiresFullReindexError:
+                    raise
+                except Exception as error:
+                    self._settle_memory_scope(selection.sources, selection.paths, error)
+                    raise
+                self._settle_memory_scope(selection.sources, selection.paths, None)
             self._update(operation, returned=result, revisionAfter=self.index_revision())
             return result
+
+    def _settle_memory_scope(self, sources: frozenset[str], paths: frozenset[str] | None,
+                             error: Exception | None) -> None:
+        """Retain or settle a failed memory selection; the caller holds the index guard."""
+        if "memory" not in sources:
+            return
+        retained = self._memory_scope_failure
+        if error is not None:
+            if paths is not None and not paths:
+                return  # An empty selection had nothing to publish.
+            whole = paths is None or retained is not None and retained[1] is None
+            failed = None if whole else paths | (retained[1] if retained is not None else frozenset())
+            self._memory_scope_failure = (format_error_message(error), failed)
+        elif retained is not None:
+            if paths is None:
+                self._memory_scope_failure = None
+            elif retained[1] is not None:
+                remaining = retained[1] - paths
+                self._memory_scope_failure = (retained[0], remaining) if remaining else None
 
     @staticmethod
     def _automatic_repair_allowed(identity: dict[str, Any]) -> bool:
@@ -317,6 +354,7 @@ class ManagedSQLiteMemoryStore(SQLiteMemoryStore):
         """Copy actual admitted operations/repair receipts, including after close."""
         with self._condition:
             controller = self._session_publication
+            scoped = self._memory_scope_failure
             snapshot = deepcopy({"workspace": str(self._bound_workspace), "indexPath": str(self._bound_index),
                 "agentId": self._bound_agent, "activeOperations": self._active_operations,
                 "closing": self._closing, "closed": self._closed,
@@ -329,6 +367,11 @@ class ManagedSQLiteMemoryStore(SQLiteMemoryStore):
                 "sessionReadAdmissionCount": self._read_admission_count,
                 "sessionReadJournalTruncated": self._read_admission_count > len(self._read_admissions),
                 "sessionReadAdmissions": list(self._read_admissions)})
+        if scoped is not None:
+            # Present only while a failed memory-scope publication is retained, so
+            # receipts of runs without one are unchanged.
+            snapshot["memoryScopeSyncFailure"] = {
+                "error": scoped[0], "paths": None if scoped[1] is None else sorted(scoped[1])}
         if controller is not None:
             snapshot["sessionPublication"] = controller.status()
         return snapshot

@@ -78,7 +78,9 @@ def prepare_host_update_isolation_bindings(checkout: Path, runtime_root: Path) -
                 "update tool runs; both engines' real write guards observe the same filesystem state.",
             "index-publication-sidecar-symlink": "Before the update, the path the engine's index publication must "
                 "open is a dangling symbolic link (original: <agent db>.reindex-lock.sqlite; SDK: <index>-journal). "
-                "It is removed after the first read that follows the failed publication.",
+                "The compared failure is the explicit forced publication after the committed update; the link is "
+                "removed after the first read that follows it. A refresh that the update tool itself triggers is "
+                "engine-specific and is not compared.",
         },
         "consolidateMemoryExecuted": False,
     }

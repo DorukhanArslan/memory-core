@@ -16,6 +16,10 @@ from equivalence.host_turn_barrier_boundaries import (
 from equivalence.index_identity_boundaries import (
     OPERATION as IDENTITY_OPERATION, validate_registration as validate_identity_registration,
 )
+from equivalence.query_sync_outcomes import (
+    OPERATION as QUERY_SYNC_OPERATION, build_cases as query_sync_cases,
+    validate_registration as validate_query_sync_registration,
+)
 
 
 ROOT = Path(__file__).resolve().parents[2]
@@ -23,8 +27,10 @@ ROOT = Path(__file__).resolve().parents[2]
 
 def test_catalog_registers_all_four_exact_hosts_for_both_existing_conditions():
     registered = build_catalog()
+    validate_query_sync_registration(registered)
+    assert registered[-len(query_sync_cases()):] == query_sync_cases()
     validate_identity_registration(registered)
-    catalog = [case for case in registered if case["operation"] != IDENTITY_OPERATION]
+    catalog = [case for case in registered if case["operation"] not in {IDENTITY_OPERATION, QUERY_SYNC_OPERATION}]
     assert registered[:len(catalog)] == catalog
     claims = [case for case in catalog if set(POINTS).intersection(case["covers"])]
     assert {case["id"] for case in claims} == set(CASE_HASHES)

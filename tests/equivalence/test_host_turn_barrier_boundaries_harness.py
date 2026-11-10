@@ -21,6 +21,10 @@ from equivalence.host_turn_barrier_native import NATIVE_KIND as OUTCOME_NATIVE_K
 from equivalence.index_identity_boundaries import (
     OPERATION as IDENTITY_OPERATION, validate_registration as validate_identity_registration,
 )
+from equivalence.query_sync_outcomes import (
+    OPERATION as QUERY_SYNC_OPERATION, build_cases as query_sync_cases,
+    validate_registration as validate_query_sync_registration,
+)
 
 
 ROOT = Path(__file__).resolve().parents[2]
@@ -29,8 +33,10 @@ RUNNER = "equivalence.host_turn_barrier_boundaries_native.run_native_case"
 
 def test_closed_six_cases_append_to_the_prior_catalog_and_keep_outcome_literals():
     registered = catalog()
+    validate_query_sync_registration(registered)
+    assert registered[-len(query_sync_cases()):] == query_sync_cases()
     validate_identity_registration(registered)
-    cases = [case for case in registered if case["operation"] != IDENTITY_OPERATION]
+    cases = [case for case in registered if case["operation"] not in {IDENTITY_OPERATION, QUERY_SYNC_OPERATION}]
     assert registered[:len(cases)] == cases
     assert len(cases) == 1421 and cases[-6:] == build_cases()
     assert [case for case in cases if case["operation"] == "host-turn-barrier-runtime"] == outcome_cases()

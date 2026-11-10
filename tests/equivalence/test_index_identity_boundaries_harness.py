@@ -10,6 +10,10 @@ import pytest
 from equivalence.cases import build_cases, run_python
 from equivalence.harness import HarnessError, ROOT, _index_identity_boundaries_family_complete, _oracle, _validate_scope
 from equivalence.index_identity_boundaries import CASE_HASHES, OPERATION, build_cases as family_cases, validate_case, validate_registration
+from equivalence.query_sync_outcomes import (
+    OPERATION as QUERY_SYNC_OPERATION, build_cases as query_sync_cases,
+    validate_registration as validate_query_sync_registration,
+)
 
 
 def _rows():
@@ -17,9 +21,16 @@ def _rows():
 
 
 def test_registration_appends_independent_family_without_changing_any_prior_definition():
-    cases = build_cases()
+    registered = build_cases()
+    validate_query_sync_registration(registered)
+    assert registered[1437:] == query_sync_cases()
+    cases = [case for case in registered if case["operation"] != QUERY_SYNC_OPERATION]
+    assert registered[:len(cases)] == cases
     assert len(cases) == 1437
     assert cases[1421:] == family_cases()
+    complete_wire = json.dumps(cases, sort_keys=True, ensure_ascii=True,
+                               separators=(",", ":"), allow_nan=False).encode()
+    assert hashlib.sha256(complete_wire).hexdigest() == "c8b6abb93334bc9ec30fc32d266c9738b1ee723e8c7b0bb52a197bfd525795db"
     wire = json.dumps(cases[:1421], sort_keys=True, ensure_ascii=True,
                       separators=(",", ":"), allow_nan=False).encode()
     assert hashlib.sha256(wire).hexdigest() == "a57e238c1d6cc127744fe82408678faf4471d20c7e8cfd87dcdb06200e8f7444"

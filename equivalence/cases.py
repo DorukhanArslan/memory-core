@@ -295,6 +295,9 @@ def build_cases(*, include_prospective: bool = False) -> list[dict[str, Any]]:
     from equivalence.index_identity_boundaries import build_cases as build_identity_boundary_cases
 
     cases.extend(build_identity_boundary_cases())
+    from equivalence.query_sync_outcomes import build_cases as build_query_sync_cases
+
+    cases.extend(build_query_sync_cases())
     if include_prospective:
         from equivalence.flush_contract import build_prospective_flush_contract_cases
         from equivalence.session_projection import build_prospective_session_projection_cases
@@ -359,6 +362,14 @@ def run_python(case: dict[str, Any]) -> Any:
         from equivalence.index_identity_boundaries_sdk import run_index_identity_boundaries_case
 
         return run_index_identity_boundaries_case(arguments, evidence_directory=case.get("_diagnosticDirectory"))
+    if operation == "query-sync-outcomes-runtime":
+        from equivalence.query_sync_outcomes import validate_case as validate_query_sync_case
+
+        validate_query_sync_case(
+            {key: case[key] for key in ("id", "operation", "requirement", "covers", "input")})
+        from equivalence.query_sync_outcomes_sdk import run_query_sync_outcomes_case
+
+        return run_query_sync_outcomes_case(arguments, evidence_directory=case.get("_diagnosticDirectory"))
     if operation == "promotion-ranking-runtime":
         from equivalence.promotion_ranking_runtime import run_promotion_ranking
 

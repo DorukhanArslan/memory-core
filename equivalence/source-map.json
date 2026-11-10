@@ -5247,11 +5247,31 @@
           "symbol": "SubjectMemory",
           "anchor": "class SubjectMemory:",
           "line": 390
+        },
+        {
+          "path": "memory_core/host/managed_session.py",
+          "symbol": "ManagedHostSession",
+          "anchor": "class ManagedHostSession:",
+          "line": 44
+        },
+        {
+          "path": "memory_core/host/managed_index.py",
+          "symbol": "ManagedSQLiteMemoryStore.reindex_sources",
+          "anchor": "    def reindex_sources(",
+          "line": 223
+        },
+        {
+          "path": "memory_core/tools/memory_search.py",
+          "symbol": "stale index report",
+          "anchor": "\"warning\": f\"Memory index is stale: {sync_error}. Search results may be incomplete.\",",
+          "line": 790
         }
       ],
       "implementation": "partial",
       "notes": [
-        "Curated replacement and subject routing exist; curation is a Python extension, not a native identical API. A host-level updated-fact/isolation run must compare authoritative source results and distinguish committed writes from failed index refresh."
+        "Curated replacement and subject routing exist; curation is a Python extension, not a native identical API.",
+        "The closed four-literal host update family runs the host-level comparison across two host processes and two agents. The original coding write/edit tools and the SDK curated-memory tools are declared producers; the resulting source bytes, explicit publication outcomes and every later memory_search/memory_get result are compared, including a real hard-link write refusal and a real unusable publication sidecar. A committed write is distinguished from its failed index refresh by the stale search report and the current source read.",
+        "SubjectMemory routing and consolidateMemory are not executed by that family; consolidateMemory needs a model completion and is authenticated only."
       ],
       "acceptancePoints": [
         "host.update-isolation.outcomes",

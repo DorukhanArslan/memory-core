@@ -97,6 +97,13 @@ the host kit. 0.1.0 is `main` at `b829bad` (2026-09-27), which had no build syst
 
 ### Changed
 
+- Managed index staleness (2026-11-10): `ManagedSQLiteMemoryStore.reindex_sources`
+  records a failed memory-scope publication. After a committed curated write whose
+  index refresh fails, later `memory_search` results carry `stale`, the real error
+  in `warning`, and `action`, until that scope or a whole reindex publishes.
+  Previously only a failed whole reindex was reported. Session-scope failures keep
+  their controller receipt, and `lifecycle_snapshot()["lastSyncError"]` still records
+  whole reindexes only.
 - Host search dispatch (2026-11-09): `HostKit` uses the registered search factory
   with its existing host clock, source policy and session visibility. Acquisition
   timing and store ownership checks now run at the real tool boundary; disabled

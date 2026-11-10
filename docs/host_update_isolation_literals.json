@@ -1,0 +1,536 @@
+{
+  "kind": "host-update-isolation-acceptance-literals",
+  "acceptancePointsAwarded": 0,
+  "cases": [
+    {
+      "id": "host-update-isolation-ascii",
+      "operation": "host-update-isolation-runtime",
+      "requirement": "host.update-isolation",
+      "covers": [
+        "host.update-isolation.outcomes",
+        "host.update-isolation.boundaries"
+      ],
+      "input": {
+        "kind": "host-update-isolation",
+        "nowMs": 1794182400000,
+        "identity": {
+          "agentId": "main",
+          "isolatedAgentId": "other",
+          "writer": {
+            "sessionKey": "agent:main:update-1-writer",
+            "sessionId": "host-update-1-writer"
+          },
+          "before": {
+            "sessionKey": "agent:main:update-1-before",
+            "sessionId": "host-update-1-before"
+          },
+          "updater": {
+            "sessionKey": "agent:main:update-1-updater",
+            "sessionId": "host-update-1-updater"
+          },
+          "current": {
+            "sessionKey": "agent:main:update-1-current",
+            "sessionId": "host-update-1-current"
+          },
+          "superseded": {
+            "sessionKey": "agent:main:update-1-superseded",
+            "sessionId": "host-update-1-superseded"
+          },
+          "unrelated": {
+            "sessionKey": "agent:main:update-1-unrelated",
+            "sessionId": "host-update-1-unrelated"
+          },
+          "isolatedWriter": {
+            "sessionKey": "agent:other:update-1-isolated-writer",
+            "sessionId": "host-update-1-isolated-writer"
+          },
+          "isolatedBefore": {
+            "sessionKey": "agent:other:update-1-isolated-before",
+            "sessionId": "host-update-1-isolated-before"
+          },
+          "isolated": {
+            "sessionKey": "agent:other:update-1-isolated",
+            "sessionId": "host-update-1-isolated"
+          }
+        },
+        "source": "MEMORY.md",
+        "phases": [
+          {
+            "label": "produce",
+            "save": {
+              "prompt": "Please remember that my drink preference is aurorakumquat-739 tea, and that my bicycle lock code is marblefern-551.",
+              "entries": [
+                {
+                  "section": "Preferences",
+                  "text": "My drink preference is aurorakumquat-739 tea."
+                },
+                {
+                  "section": "Facts",
+                  "text": "My bicycle lock code is marblefern-551."
+                }
+              ],
+              "content": "## Preferences\n\n- My drink preference is aurorakumquat-739 tea.\n\n## Facts\n\n- My bicycle lock code is marblefern-551.\n",
+              "ack": "Saved."
+            },
+            "isolatedSave": {
+              "prompt": "Please remember that my drink preference is copperplum-880 juice.",
+              "entries": [
+                {
+                  "section": "Preferences",
+                  "text": "My drink preference is copperplum-880 juice."
+                }
+              ],
+              "content": "## Preferences\n\n- My drink preference is copperplum-880 juice.\n",
+              "ack": "Saved."
+            },
+            "recall": {
+              "prompt": "What drink preference did I ask you to remember?",
+              "query": "drink preference"
+            }
+          },
+          {
+            "label": "update",
+            "update": {
+              "prompt": "I changed my mind. My drink preference is now velvetquince-204 coffee.",
+              "old": "My drink preference is aurorakumquat-739 tea.",
+              "new": "My drink preference is now velvetquince-204 coffee.",
+              "ack": "Updated.",
+              "failureAck": "I could not update that."
+            },
+            "recalls": {
+              "current": {
+                "prompt": "What drink preference did I ask you to remember?",
+                "query": "drink preference"
+              },
+              "superseded": {
+                "prompt": "Is aurorakumquat-739 tea still my drink preference?",
+                "query": "aurorakumquat-739 tea"
+              },
+              "unrelated": {
+                "prompt": "What is my bicycle lock code?",
+                "query": "bicycle lock code"
+              },
+              "isolated": {
+                "prompt": "What drink preference did I ask you to remember?",
+                "query": "drink preference"
+              }
+            }
+          }
+        ],
+        "policy": {
+          "configuredSources": [
+            "memory"
+          ],
+          "rememberAcrossConversations": false,
+          "configuredSessionMemory": false,
+          "sourceMtimeMs": 1794182400000,
+          "producerPublication": {
+            "operation": "force-rebuild-after-source-metadata"
+          },
+          "indexLifecycle": "session-managed",
+          "runtimeIdentity": "openclaw-compatible"
+        }
+      }
+    },
+    {
+      "id": "host-update-isolation-unicode",
+      "operation": "host-update-isolation-runtime",
+      "requirement": "host.update-isolation",
+      "covers": [
+        "host.update-isolation.outcomes",
+        "host.update-isolation.boundaries"
+      ],
+      "input": {
+        "kind": "host-update-isolation",
+        "nowMs": 1794182400000,
+        "identity": {
+          "agentId": "main",
+          "isolatedAgentId": "other",
+          "writer": {
+            "sessionKey": "agent:main:update-2-writer",
+            "sessionId": "host-update-2-writer"
+          },
+          "before": {
+            "sessionKey": "agent:main:update-2-before",
+            "sessionId": "host-update-2-before"
+          },
+          "updater": {
+            "sessionKey": "agent:main:update-2-updater",
+            "sessionId": "host-update-2-updater"
+          },
+          "current": {
+            "sessionKey": "agent:main:update-2-current",
+            "sessionId": "host-update-2-current"
+          },
+          "superseded": {
+            "sessionKey": "agent:main:update-2-superseded",
+            "sessionId": "host-update-2-superseded"
+          },
+          "unrelated": {
+            "sessionKey": "agent:main:update-2-unrelated",
+            "sessionId": "host-update-2-unrelated"
+          },
+          "isolatedWriter": {
+            "sessionKey": "agent:other:update-2-isolated-writer",
+            "sessionId": "host-update-2-isolated-writer"
+          },
+          "isolatedBefore": {
+            "sessionKey": "agent:other:update-2-isolated-before",
+            "sessionId": "host-update-2-isolated-before"
+          },
+          "isolated": {
+            "sessionKey": "agent:other:update-2-isolated",
+            "sessionId": "host-update-2-isolated"
+          }
+        },
+        "source": "MEMORY.md",
+        "phases": [
+          {
+            "label": "produce",
+            "save": {
+              "prompt": "Please remember that my drink preference is Ihlamur-ğüşİ-482 ☕, and that my bicycle lock code is Çiğdem-ığü-663 ✿.",
+              "entries": [
+                {
+                  "section": "Preferences",
+                  "text": "My drink preference is Ihlamur-ğüşİ-482 ☕."
+                },
+                {
+                  "section": "Facts",
+                  "text": "My bicycle lock code is Çiğdem-ığü-663 ✿."
+                }
+              ],
+              "content": "## Preferences\n\n- My drink preference is Ihlamur-ğüşİ-482 ☕.\n\n## Facts\n\n- My bicycle lock code is Çiğdem-ığü-663 ✿.\n",
+              "ack": "Saved."
+            },
+            "isolatedSave": {
+              "prompt": "Please remember that my drink preference is Şalgam-ÜİĞ-208 🥤.",
+              "entries": [
+                {
+                  "section": "Preferences",
+                  "text": "My drink preference is Şalgam-ÜİĞ-208 🥤."
+                }
+              ],
+              "content": "## Preferences\n\n- My drink preference is Şalgam-ÜİĞ-208 🥤.\n",
+              "ack": "Saved."
+            },
+            "recall": {
+              "prompt": "What drink preference did I ask you to remember?",
+              "query": "drink preference"
+            }
+          },
+          {
+            "label": "update",
+            "update": {
+              "prompt": "I changed my mind. My drink preference is now Kızılcık-çöÖ-917 🍵.",
+              "old": "My drink preference is Ihlamur-ğüşİ-482 ☕.",
+              "new": "My drink preference is now Kızılcık-çöÖ-917 🍵.",
+              "ack": "Updated.",
+              "failureAck": "I could not update that."
+            },
+            "recalls": {
+              "current": {
+                "prompt": "What drink preference did I ask you to remember?",
+                "query": "drink preference"
+              },
+              "superseded": {
+                "prompt": "Is Ihlamur-ğüşİ-482 ☕ still my drink preference?",
+                "query": "Ihlamur-ğüşİ-482"
+              },
+              "unrelated": {
+                "prompt": "What is my bicycle lock code?",
+                "query": "bicycle lock code"
+              },
+              "isolated": {
+                "prompt": "What drink preference did I ask you to remember?",
+                "query": "drink preference"
+              }
+            }
+          }
+        ],
+        "policy": {
+          "configuredSources": [
+            "memory"
+          ],
+          "rememberAcrossConversations": false,
+          "configuredSessionMemory": false,
+          "sourceMtimeMs": 1794182400000,
+          "producerPublication": {
+            "operation": "force-rebuild-after-source-metadata"
+          },
+          "indexLifecycle": "session-managed",
+          "runtimeIdentity": "openclaw-compatible"
+        }
+      }
+    },
+    {
+      "id": "host-update-isolation-write-refusal",
+      "operation": "host-update-isolation-runtime",
+      "requirement": "host.update-isolation",
+      "covers": [
+        "host.update-isolation.outcomes",
+        "host.update-isolation.boundaries"
+      ],
+      "input": {
+        "kind": "host-update-isolation",
+        "nowMs": 1794182400000,
+        "identity": {
+          "agentId": "main",
+          "isolatedAgentId": "other",
+          "writer": {
+            "sessionKey": "agent:main:update-3-writer",
+            "sessionId": "host-update-3-writer"
+          },
+          "before": {
+            "sessionKey": "agent:main:update-3-before",
+            "sessionId": "host-update-3-before"
+          },
+          "updater": {
+            "sessionKey": "agent:main:update-3-updater",
+            "sessionId": "host-update-3-updater"
+          },
+          "current": {
+            "sessionKey": "agent:main:update-3-current",
+            "sessionId": "host-update-3-current"
+          },
+          "superseded": {
+            "sessionKey": "agent:main:update-3-superseded",
+            "sessionId": "host-update-3-superseded"
+          },
+          "unrelated": {
+            "sessionKey": "agent:main:update-3-unrelated",
+            "sessionId": "host-update-3-unrelated"
+          },
+          "isolatedWriter": {
+            "sessionKey": "agent:other:update-3-isolated-writer",
+            "sessionId": "host-update-3-isolated-writer"
+          },
+          "isolatedBefore": {
+            "sessionKey": "agent:other:update-3-isolated-before",
+            "sessionId": "host-update-3-isolated-before"
+          },
+          "isolated": {
+            "sessionKey": "agent:other:update-3-isolated",
+            "sessionId": "host-update-3-isolated"
+          }
+        },
+        "source": "MEMORY.md",
+        "phases": [
+          {
+            "label": "produce",
+            "save": {
+              "prompt": "Please remember that my drink preference is cedarquince-913 tea, and that my bicycle lock code is slatefern-146.",
+              "entries": [
+                {
+                  "section": "Preferences",
+                  "text": "My drink preference is cedarquince-913 tea."
+                },
+                {
+                  "section": "Facts",
+                  "text": "My bicycle lock code is slatefern-146."
+                }
+              ],
+              "content": "## Preferences\n\n- My drink preference is cedarquince-913 tea.\n\n## Facts\n\n- My bicycle lock code is slatefern-146.\n",
+              "ack": "Saved."
+            },
+            "isolatedSave": {
+              "prompt": "Please remember that my drink preference is willowpear-528 juice.",
+              "entries": [
+                {
+                  "section": "Preferences",
+                  "text": "My drink preference is willowpear-528 juice."
+                }
+              ],
+              "content": "## Preferences\n\n- My drink preference is willowpear-528 juice.\n",
+              "ack": "Saved."
+            },
+            "recall": {
+              "prompt": "What drink preference did I ask you to remember?",
+              "query": "drink preference"
+            }
+          },
+          {
+            "label": "update",
+            "update": {
+              "prompt": "I changed my mind. My drink preference is now emberlime-377 coffee.",
+              "old": "My drink preference is cedarquince-913 tea.",
+              "new": "My drink preference is now emberlime-377 coffee.",
+              "ack": "Updated.",
+              "failureAck": "I could not update that."
+            },
+            "recalls": {
+              "current": {
+                "prompt": "What drink preference did I ask you to remember?",
+                "query": "drink preference"
+              },
+              "superseded": {
+                "prompt": "Is cedarquince-913 tea still my drink preference?",
+                "query": "cedarquince-913 tea"
+              },
+              "unrelated": {
+                "prompt": "What is my bicycle lock code?",
+                "query": "bicycle lock code"
+              },
+              "isolated": {
+                "prompt": "What drink preference did I ask you to remember?",
+                "query": "drink preference"
+              }
+            },
+            "fault": {
+              "operation": "source-hard-link-during-update"
+            }
+          }
+        ],
+        "policy": {
+          "configuredSources": [
+            "memory"
+          ],
+          "rememberAcrossConversations": false,
+          "configuredSessionMemory": false,
+          "sourceMtimeMs": 1794182400000,
+          "producerPublication": {
+            "operation": "force-rebuild-after-source-metadata"
+          },
+          "indexLifecycle": "session-managed",
+          "runtimeIdentity": "openclaw-compatible"
+        }
+      }
+    },
+    {
+      "id": "host-update-isolation-publication-failure",
+      "operation": "host-update-isolation-runtime",
+      "requirement": "host.update-isolation",
+      "covers": [
+        "host.update-isolation.outcomes",
+        "host.update-isolation.boundaries"
+      ],
+      "input": {
+        "kind": "host-update-isolation",
+        "nowMs": 1794182400000,
+        "identity": {
+          "agentId": "main",
+          "isolatedAgentId": "other",
+          "writer": {
+            "sessionKey": "agent:main:update-4-writer",
+            "sessionId": "host-update-4-writer"
+          },
+          "before": {
+            "sessionKey": "agent:main:update-4-before",
+            "sessionId": "host-update-4-before"
+          },
+          "updater": {
+            "sessionKey": "agent:main:update-4-updater",
+            "sessionId": "host-update-4-updater"
+          },
+          "stale": {
+            "sessionKey": "agent:main:update-4-stale",
+            "sessionId": "host-update-4-stale"
+          },
+          "current": {
+            "sessionKey": "agent:main:update-4-current",
+            "sessionId": "host-update-4-current"
+          },
+          "superseded": {
+            "sessionKey": "agent:main:update-4-superseded",
+            "sessionId": "host-update-4-superseded"
+          },
+          "unrelated": {
+            "sessionKey": "agent:main:update-4-unrelated",
+            "sessionId": "host-update-4-unrelated"
+          },
+          "isolatedWriter": {
+            "sessionKey": "agent:other:update-4-isolated-writer",
+            "sessionId": "host-update-4-isolated-writer"
+          },
+          "isolatedBefore": {
+            "sessionKey": "agent:other:update-4-isolated-before",
+            "sessionId": "host-update-4-isolated-before"
+          },
+          "isolated": {
+            "sessionKey": "agent:other:update-4-isolated",
+            "sessionId": "host-update-4-isolated"
+          }
+        },
+        "source": "MEMORY.md",
+        "phases": [
+          {
+            "label": "produce",
+            "save": {
+              "prompt": "Please remember that my drink preference is junipermelon-605 tea, and that my bicycle lock code is quartzfern-834.",
+              "entries": [
+                {
+                  "section": "Preferences",
+                  "text": "My drink preference is junipermelon-605 tea."
+                },
+                {
+                  "section": "Facts",
+                  "text": "My bicycle lock code is quartzfern-834."
+                }
+              ],
+              "content": "## Preferences\n\n- My drink preference is junipermelon-605 tea.\n\n## Facts\n\n- My bicycle lock code is quartzfern-834.\n",
+              "ack": "Saved."
+            },
+            "isolatedSave": {
+              "prompt": "Please remember that my drink preference is hazelberry-092 juice.",
+              "entries": [
+                {
+                  "section": "Preferences",
+                  "text": "My drink preference is hazelberry-092 juice."
+                }
+              ],
+              "content": "## Preferences\n\n- My drink preference is hazelberry-092 juice.\n",
+              "ack": "Saved."
+            },
+            "recall": {
+              "prompt": "What drink preference did I ask you to remember?",
+              "query": "drink preference"
+            }
+          },
+          {
+            "label": "update",
+            "update": {
+              "prompt": "I changed my mind. My drink preference is now saffronplum-271 coffee.",
+              "old": "My drink preference is junipermelon-605 tea.",
+              "new": "My drink preference is now saffronplum-271 coffee.",
+              "ack": "Updated.",
+              "failureAck": "I could not update that."
+            },
+            "recalls": {
+              "current": {
+                "prompt": "What drink preference did I ask you to remember?",
+                "query": "drink preference"
+              },
+              "superseded": {
+                "prompt": "Is junipermelon-605 tea still my drink preference?",
+                "query": "junipermelon-605 tea"
+              },
+              "unrelated": {
+                "prompt": "What is my bicycle lock code?",
+                "query": "bicycle lock code"
+              },
+              "isolated": {
+                "prompt": "What drink preference did I ask you to remember?",
+                "query": "drink preference"
+              }
+            },
+            "fault": {
+              "operation": "index-publication-sidecar-symlink"
+            }
+          }
+        ],
+        "policy": {
+          "configuredSources": [
+            "memory"
+          ],
+          "rememberAcrossConversations": false,
+          "configuredSessionMemory": false,
+          "sourceMtimeMs": 1794182400000,
+          "producerPublication": {
+            "operation": "force-rebuild-after-source-metadata"
+          },
+          "indexLifecycle": "session-managed",
+          "runtimeIdentity": "openclaw-compatible"
+        }
+      }
+    }
+  ]
+}

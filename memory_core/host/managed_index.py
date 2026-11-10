@@ -70,6 +70,7 @@ class ManagedSQLiteMemoryStore(SQLiteMemoryStore):
         self._closing = False
         self._closed = False
         self._last_sync_error: str | None = None
+        self._memory_scope_sync_error: str | None = None
         self._automatic_rebuild_notice: dict[str, Any] = {"sequence": 0, "warning": ""}
         self._operations: deque[dict[str, Any]] = deque(maxlen=512)
         self._repairs: deque[dict[str, Any]] = deque(maxlen=256)
@@ -151,8 +152,10 @@ class ManagedSQLiteMemoryStore(SQLiteMemoryStore):
                 "fts": {"enabled": self.flags.text_search, "available": state["ftsAvailable"]},
                 "custom": {"indexIdentity": state["identity"],
                            "automaticRebuildNotice": self._automatic_rebuild_notice}}
-            if self._last_sync_error is not None:
-                result["lastSyncError"] = self._last_sync_error
+            sync_error = (self._last_sync_error if self._last_sync_error is not None
+                          else self._memory_scope_sync_error)
+            if sync_error is not None:
+                result["lastSyncError"] = sync_error
             if self._session_publication is not None:
                 result["custom"]["sessionPublication"] = self._session_publication.status()
             return result
@@ -212,6 +215,7 @@ class ManagedSQLiteMemoryStore(SQLiteMemoryStore):
                 self._last_sync_error = format_error_message(error)
                 raise
             self._last_sync_error = None
+            self._memory_scope_sync_error = None
             self._update(operation, returned=result, after=self._read_state(),
                          revisionAfter=self.read_published_index()["revision"])
             return result
@@ -224,8 +228,19 @@ class ManagedSQLiteMemoryStore(SQLiteMemoryStore):
             self._update(operation, request={"sources": list(sources),
                 "paths": None if paths is None else list(paths), "forceSources": force_sources},
                 revisionBefore=self.index_revision())
-            result = super().reindex_sources(workspace, sources=sources, paths=paths,
-                                             force_sources=force_sources)
+            try:
+                result = super().reindex_sources(workspace, sources=sources, paths=paths,
+                                                 force_sources=force_sources)
+            except BaseException as error:
+                # A committed memory write whose scoped publication failed leaves the
+                # published index stale. Later searches must report that as plainly as
+                # after a failed whole reindex; session-scope failures keep their own
+                # controller receipt.
+                if "memory" in sources:
+                    self._memory_scope_sync_error = format_error_message(error)
+                raise
+            if "memory" in sources and paths is None:
+                self._memory_scope_sync_error = None
             self._update(operation, returned=result, revisionAfter=self.index_revision())
             return result
 

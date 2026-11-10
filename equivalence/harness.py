@@ -317,6 +317,12 @@ def _validate_scope(scope: Any, cases: Any) -> tuple[list[dict], dict[str, set[s
         validate_host_restart_registration(cases)
     except ValueError as error:
         raise HarnessError("cases-invalid", str(error)) from None
+    from equivalence.host_update_isolation import validate_registration as validate_host_update_registration
+
+    try:
+        validate_host_update_registration(cases)
+    except ValueError as error:
+        raise HarnessError("cases-invalid", str(error)) from None
     return requirements, points
 
 
@@ -357,6 +363,39 @@ def _oracle(node: Path, script: Path, checkout: Path, cases: list[dict], timeout
                     "evidenceDirectory": native["evidenceDirectory"]}
         except Exception as error:
             failure = HarnessError("host-restart-evidence-invalid", "Whole host restart execution/authority failed; no retry was made.")
+            failure.rejected_evidence = {"caseIds": [cases[0]["id"]], "coverageCredit": False,
+                                         "retainedDirectory": str(attempt), "reason": str(error)}
+            raise failure from error
+    if len(cases) == 1 and cases[0]["operation"] == "host-update-isolation-runtime":
+        from equivalence.host_update_isolation_native import NATIVE_KIND, run_native_case as run_native_update_case
+
+        if release_runtime is None:
+            raise HarnessError("release-runtime-unavailable", "Whole host update requires its authenticated release runtime.")
+        retained = ROOT / ".equivalence-results" / "host-update-isolation"
+        retained.mkdir(parents=True, exist_ok=True)
+        attempt = Path(tempfile.mkdtemp(prefix="attempt-", dir=retained)) / "case"
+        try:
+            native = run_native_update_case(cases[0], node, release_runtime, attempt, timeout=timeout)
+            if native.get("kind") != NATIVE_KIND:
+                raise ValueError("The host update runner returned another capability kind")
+            evidence = attempt / "evidence/native-raw.json"
+            info = evidence.lstat()
+            if not stat.S_ISREG(info.st_mode) or info.st_nlink != 1 or info.st_size > 16 * 1024 * 1024:
+                raise ValueError("Invalid original host update diagnostic file")
+            raw = evidence.read_bytes()
+            snapshots = _json(raw.decode("utf-8"))
+            if snapshots != native["runtimeDiagnostics"] or not isinstance(snapshots, list) or len(snapshots) != 1:
+                raise ValueError("Original update diagnostics differ from their actual retained file")
+            # Only the transport envelope changes. The authenticated original
+            # result, full raw owner receipts and protected traces stay intact.
+            return {"kind": "official-release-runtime-comparison", "sources": [],
+                    "results": native["results"], "releaseSources": native["releaseSources"],
+                    "releaseTrace": native["releaseTrace"],
+                    "runtimeDiagnostics": [{"id": cases[0]["id"], "sha256": hashlib.sha256(raw).hexdigest(),
+                                            "rawSnapshots": snapshots, "validationStatus": "verified"}],
+                    "evidenceDirectory": native["evidenceDirectory"]}
+        except Exception as error:
+            failure = HarnessError("host-update-evidence-invalid", "Whole host update execution/authority failed; no retry was made.")
             failure.rejected_evidence = {"caseIds": [cases[0]["id"]], "coverageCredit": False,
                                          "retainedDirectory": str(attempt), "reason": str(error)}
             raise failure from error
@@ -603,6 +642,23 @@ def _host_restart_session_family_complete(rows: list[dict]) -> bool:
     return True
 
 
+def _host_update_isolation_family_complete(rows: list[dict]) -> bool:
+    """Neither update point is credited without every exact, validated match."""
+    from equivalence.host_update_isolation import CASE_HASHES, OPERATION, POINTS, validate_registration
+
+    family = [row for row in rows if row.get("operation") == OPERATION
+              or set(row.get("covers", ())) & set(POINTS)]
+    if (len(family) != len(CASE_HASHES) or {row.get("id") for row in family} != set(CASE_HASHES)
+            or any(row.get("status") != "matched" or row.get("runtimeEvidenceValidated") is not True for row in family)):
+        return False
+    try:
+        validate_registration([{key: row[key] for key in ("id", "operation", "requirement", "covers", "input")}
+                               for row in family])
+    except (KeyError, TypeError, ValueError):
+        return False
+    return True
+
+
 def run_suite(*, checkout: Path, node: Path, smoke: bool = False,
               reference_path: Path = ROOT / "equivalence/reference.json",
               scope_path: Path = ROOT / "equivalence/scope.json",
@@ -653,6 +709,7 @@ def run_suite(*, checkout: Path, node: Path, smoke: bool = False,
             "memory-budget-runtime", "memory-budget-apply-runtime",
             "promotion-ranking-runtime", "promotion-apply-reconcile-runtime", "promotion-apply-family-runtime",
             "host-restart-session-runtime",
+            "host-update-isolation-runtime",
         }
         runtime_cases = [case for case in cases if case["operation"] in runtime_operations]
         source_cases = [case for case in cases if case["operation"] not in runtime_operations]
@@ -983,6 +1040,13 @@ def run_suite(*, checkout: Path, node: Path, smoke: bool = False,
                 report["hostRestartSessionBindings"] = prepare_host_restart_publication_bindings(
                     checkout, Path(runtime_config["runtimeRoot"]))
                 report["hostRestartSessionNode"] = prepare_model_node_authority(node)
+            if any(case["operation"] == "host-update-isolation-runtime" for case in runtime_cases):
+                from equivalence.host_update_isolation_bindings import prepare_host_update_isolation_bindings
+                from equivalence.model_runtime_authority import prepare_model_node_authority
+
+                report["hostUpdateIsolationBindings"] = prepare_host_update_isolation_bindings(
+                    checkout, Path(runtime_config["runtimeRoot"]))
+                report["hostUpdateIsolationNode"] = prepare_model_node_authority(node)
             observed_release = {}
             for case in runtime_cases:
                 # The real manager retains global state owners. Each distinct
@@ -1015,6 +1079,11 @@ def run_suite(*, checkout: Path, node: Path, smoke: bool = False,
                         != report["hostRestartSessionBindings"]
                         or prepare_model_node_authority(node) != report["hostRestartSessionNode"]):
                     raise ValueError("Whole host restart source/artifact/executable owners changed.")
+                if "hostUpdateIsolationBindings" in report and (
+                        prepare_host_update_isolation_bindings(checkout, Path(runtime_config["runtimeRoot"]))
+                        != report["hostUpdateIsolationBindings"]
+                        or prepare_model_node_authority(node) != report["hostUpdateIsolationNode"]):
+                    raise ValueError("Whole host update source/artifact/executable owners changed.")
                 for name, prepare in model_binding_preparers.items():
                     if prepare(checkout, Path(runtime_config["runtimeRoot"])) != report[name]:
                         raise ValueError("A model runtime source/export declaration changed.")
@@ -1230,8 +1299,23 @@ def run_suite(*, checkout: Path, node: Path, smoke: bool = False,
                             validate_pair(case, original["rawSnapshots"][0], snapshots[0], native["result"], python)
                             restart_diagnostic["validationStatus"] = "verified"
                             row["runtimeEvidenceValidated"] = True
+                        if case["operation"] == "host-update-isolation-runtime":
+                            from equivalence.host_update_isolation_evidence import validate_pair
+
+                            update_diagnostic = {"id": case["id"], "side": "python", "sha256": hashlib.sha256(raw).hexdigest(),
+                                                 "rawSnapshots": snapshots, "validationStatus": "unverified"}
+                            report["runtimeDiagnostics"].append(update_diagnostic)
+                            original = next(d for d in report["runtimeDiagnostics"]
+                                            if d["side"] == "native" and d["id"] == case["id"])
+                            if (original.get("validationStatus") != "verified"
+                                    or len(original["rawSnapshots"]) != 1 or len(snapshots) != 1):
+                                raise ValueError("Host update requires one authenticated original and SDK capture")
+                            validate_pair(case, original["rawSnapshots"][0], snapshots[0], native["result"], python)
+                            update_diagnostic["validationStatus"] = "verified"
+                            row["runtimeEvidenceValidated"] = True
                         diagnostic_key = "sourceDiagnostics" if case in source_diagnostic_cases else "runtimeDiagnostics"
-                        if case["operation"] not in {"promotion-apply-family-runtime", "host-restart-session-runtime"}:
+                        if case["operation"] not in {"promotion-apply-family-runtime", "host-restart-session-runtime",
+                                                     "host-update-isolation-runtime"}:
                             report[diagnostic_key].append({
                                 "id": case["id"], "side": "python", "sha256": hashlib.sha256(raw).hexdigest(),
                                 "rawSnapshots": snapshots,
@@ -1244,7 +1328,8 @@ def run_suite(*, checkout: Path, node: Path, smoke: bool = False,
                                    python=python, openclaw=native["result"])
                 except Exception as error:
                     row.update(status="blocked", code="python-case-failed")
-                    if case["operation"] in {"promotion-apply-family-runtime", "host-restart-session-runtime"}:
+                    if case["operation"] in {"promotion-apply-family-runtime", "host-restart-session-runtime",
+                                             "host-update-isolation-runtime"}:
                         row["evidenceError"] = {"name": type(error).__name__, "message": str(error)}
             report["cases"].append(row)
         after_implementation = _implementation_identity()
@@ -1256,7 +1341,9 @@ def run_suite(*, checkout: Path, node: Path, smoke: bool = False,
         for row in report["cases"]:
             by_requirement[row["requirement"]].append(row)
         restart_complete = _host_restart_session_family_complete(report["cases"])
+        update_complete = _host_update_isolation_family_complete(report["cases"])
         from equivalence.host_restart_session import POINTS as host_restart_points
+        from equivalence.host_update_isolation import POINTS as host_update_points
 
         for requirement in requirements:
             rows = by_requirement[requirement["id"]]
@@ -1265,7 +1352,8 @@ def run_suite(*, checkout: Path, node: Path, smoke: bool = False,
                 covering = [row for row in rows if point["id"] in row["covers"]]
                 acceptance.append({"id": point["id"], "caseIds": [row["id"] for row in covering],
                                    "matchedCaseIds": [row["id"] for row in covering if row["status"] == "matched"
-                                                      and (point["id"] not in host_restart_points or restart_complete)]})
+                                                      and (point["id"] not in host_restart_points or restart_complete)
+                                                      and (point["id"] not in host_update_points or update_complete)]})
             report["requirements"].append({"id": requirement["id"], "required": requirement["required"],
                                             "acceptance": acceptance, "registeredCases": len(rows)})
         uncovered = [point["id"] for requirement in report["requirements"] if requirement["required"]

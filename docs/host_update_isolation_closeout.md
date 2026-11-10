@@ -1,8 +1,8 @@
 # Host update and isolation acceptance
 
 This records the original **66 → 68/128** package. The latest overall baseline is
-**71/128**, with **57 remaining**, in the [active checklist](full-equivalence-checklist.md)
-and the [index-identity boundary closeout](index_identity_boundaries_closeout.md).
+**72/128**, with **56 remaining**, in the [active checklist](full-equivalence-checklist.md)
+and the [query-sync outcome closeout](query_sync_outcomes_closeout.md).
 The later capture/CI corrections below award no additional acceptance credit;
 original captures retain their own identities.
 

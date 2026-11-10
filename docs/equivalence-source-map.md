@@ -225,7 +225,7 @@ semantic-provider latency, or absence of speculative internal FTS queries is
 inferred. Original source and publisher release evidence stay separate; the
 release build is not independently reproduced.
 
-The developing query-sync outcome map now includes the original default manager, public
+The query-sync outcome map includes the original default manager, public
 tool, source discovery, dirty notifications, actual read-generation leases, scoped
 maintenance/publication workers, watcher resources and original close settlement.
 Its bindings declare **54 tracked source owners and 29 official compiled owners**
@@ -236,10 +236,12 @@ included in that count. The existing SDK provider-none `ManagedSQLiteMemoryStore
 explicitly. SDK production code is unchanged by this authority/fixture package.
 
 The source classification stays `partial`; inventory adds **zero conditions**.
-The verified baseline remains **71/128**, with **57 remaining**. The proposed
-seven-schedule outcome family targets **72/128**, pending its actual fresh full
-**1,444-case comparison and independent proof**. Only the original
-`indexing.query-sync.outcomes` condition is targeted. Forced-sync/retry policy,
+The seven-schedule family and independent proof verify only the original
+`indexing.query-sync.outcomes` condition in the fresh complete local catalog on
+clean `aa99a933`: **1,444 cases, 1,430 matches, 14 mismatches, zero blocked/errors**.
+The [outcome closeout](query_sync_outcomes_closeout.md) records **71 → 72/128**,
+with **56 remaining**; the original scope and all 1,437 earlier definitions remain
+unchanged. Source classification stays `partial`. Forced-sync/retry policy,
 unavailable outcomes and dispatch counts retain their separate uncovered boundary
 condition. A warm first query may retain an old generation; original close joins
 already-admitted work and does not flush future watcher timers. No source map

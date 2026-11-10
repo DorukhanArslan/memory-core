@@ -325,6 +325,26 @@ def test_native_close_all_return_requires_actual_every_returned_owner_closed(att
     _reject(capture, True)
 
 
+@pytest.mark.parametrize("attack", ["maintenance-before-source-acquisition", "close-all-before-final-sql"])
+def test_native_lifecycle_cannot_move_before_its_actual_dependencies_with_resealed_receipts(attack):
+    capture = deepcopy(_load(CASES[0], True))
+    raw = _raw(capture, True)
+    if attack == "maintenance-before-source-acquisition":
+        children = [row for row in raw["originalGetCalls"] if row["requestedPurpose"] == "maintenance"]
+        if not children:
+            pytest.skip("This genuine scheduling outcome has no maintenance getter; no acceptance credit")
+        child = children[0]
+        parent = next(row for row in raw["originalGetCalls"]
+                      if row["ownerId"] == child["maintenanceSourceOwnerId"]
+                      and row["phase"] in {"producer-acquisition", "search-owner-acquisition"})
+        _move_block(raw, child["enterSeq"], child["returnSeq"], parent["enterSeq"])
+    else:
+        entered = next(row for row in raw["events"] if row["event"] == "runtime-close-all-enter")
+        snapshot = next(row for row in raw["snapshots"] if row["label"] == "search-owner-after-close")
+        _move_block(raw, entered["sequence"], entered["sequence"], snapshot["enterSeq"])
+    _reject(capture, True)
+
+
 @pytest.mark.parametrize("attack", ["null-for-missing", "private-in-public", "unknown-private-type", "lost-private-field"])
 def test_sdk_private_missing_enum_cannot_rewrite_null_or_public_results(attack):
     capture = deepcopy(_load(CASES[0], False))

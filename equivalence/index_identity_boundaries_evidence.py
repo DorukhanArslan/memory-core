@@ -469,6 +469,10 @@ def _acquisitions(case, raw, events, owners, snapshots, *, native):
             source_id = row["maintenanceSourceOwnerId"]
             parent = _one(list(owners.values()), lambda item: item["ownerId"] == source_id,
                           "native identity intrinsic maintenance lost its actual foreground source owner")
+            parent_phase = "producer-acquisition" if parent is owners["producer"] else "search-owner-acquisition"
+            parent_acquisition = _one(rows, lambda item: item["ownerId"] == source_id
+                                      and item["activeTool"] is None and item["phase"] == parent_phase,
+                                      "native identity intrinsic maintenance lost its source acquisition")
             require(parent is not owners["inspection"] and row["actualPurpose"] == "maintenance"
                     and row["ownerId"] not in {owner["ownerId"] for owner in owners.values()}
                     and row["receiverIsOriginalClass"] is True
@@ -476,6 +480,7 @@ def _acquisitions(case, raw, events, owners, snapshots, *, native):
                     and "maintenanceSource" in row["parameterKeys"]
                     and events[start]["requestedPurpose"] == "maintenance"
                     and events[end]["ownerId"] == row["ownerId"]
+                    and parent_acquisition["enterSeq"] < start
                     and end < parent["close"]["returnSeq"],
                     "native identity intrinsic maintenance borrowed an unrelated source or bypassed original ownership")
             if row["activeTool"] is not None:
@@ -755,14 +760,15 @@ def _schedule(case, raw, result, events, owners, statuses, snapshots, tools, mut
 
 
 
-def _final_closed(raw, events, owners, *, native):
+def _final_closed(raw, events, owners, snapshots, *, native):
     if not native:
         require(raw["allManagersClosed"] is all(owner["close"]["closed"] is True for owner in owners.values()),
                 "SDK identity all-owner closure scalar contradicts actual owner returns")
         return
     entered = _event(events, "runtime-close-all-enter")
     returned = _event(events, "runtime-close-all-return")
-    require(entered["sequence"] < returned["sequence"] == len(events)
+    require(snapshots["search-owner-after-close"]["returnSeq"]
+            < entered["sequence"] < returned["sequence"] == len(events)
             and raw["runtimeCloseAllInvoked"] is True and raw["runtimeCloseAllReturned"] is True
             and returned["returnedNormally"] is True,
             "native identity original close-all did not actually return normally")
@@ -854,7 +860,7 @@ def _raw(case, raw, result, *, native):
         _native_config(case, raw, owners)
     else:
         _sdk_config(case, raw, owners)
-    _final_closed(raw, events, owners, native=native)
+    _final_closed(raw, events, owners, snapshots, native=native)
     return True
 
 

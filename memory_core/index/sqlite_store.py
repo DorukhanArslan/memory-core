@@ -372,6 +372,11 @@ class SQLiteMemoryStore:
                 db.rollback()
         return read_published_rows(db, self.index_revision(db=db))
 
+    def _on_index_publication_write(
+        self, db: sqlite3.Connection, *, changes: int, error: BaseException | None,
+    ) -> None:
+        """Observe a real prepared-write attempt before its transaction commits or rolls back."""
+
     def publish_prepared_index(
         self,
         prepared: PreparedIndexRevision,
@@ -412,7 +417,18 @@ class SQLiteMemoryStore:
                         f"(expected revision {expected_revision}, found {current_revision}); "
                         "retry the full reindex."
                     )
-                write_prepared_index(db, prepared)
+                changes_before = db.total_changes
+                try:
+                    write_prepared_index(db, prepared)
+                except BaseException as error:
+                    self._on_index_publication_write(
+                        db, changes=db.total_changes - changes_before, error=error,
+                    )
+                    raise
+                else:
+                    self._on_index_publication_write(
+                        db, changes=db.total_changes - changes_before, error=None,
+                    )
                 db.execute(
                     f"UPDATE {INDEX_SYNC_TABLE} SET revision=revision+1, "
                     "workspace=?, needs_rebuild=0 WHERE id=1", (prepared.workspace,),

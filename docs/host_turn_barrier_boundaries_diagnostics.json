@@ -1,0 +1,2162 @@
+{
+  "kind": "host-turn-barrier-boundaries-acceptance-diagnostics",
+  "preparedDate": "2026-11-10",
+  "timezone": "Europe/Istanbul",
+  "acceptanceIncrease": 1,
+  "verifiedBefore": 69,
+  "verifiedAfter": 70,
+  "remaining": 58,
+  "fixedScopeSha256": "a8e066e63970dd0be734485d62a5932640894b8c0a42f47ac3eb67f784cbc7b9",
+  "fullScopePassed": false,
+  "initialFullCatalog": {
+    "report": {
+      "path": "work/turn-barrier-boundaries/full-001.json",
+      "bytes": 571976839,
+      "sha256": "927d693aa41c39645d824630cd52d4e23ad955ce9673ae762433227b73f6e3fb"
+    },
+    "implementation": {
+      "gitCommit": "82dba0543e6e35c3249e987e0f9497ad6334398e",
+      "trackedWorkingTreeDirty": false,
+      "sourceSha256": "560cccffded7eceaaa633631ec5d85b96314085971af4c676dc1599821194e96",
+      "sourceFiles": 160
+    },
+    "mode": "full",
+    "gateStatus": "mismatched",
+    "caseCount": 1421,
+    "caseStatusCounts": {
+      "matched": 1407,
+      "mismatched": 14
+    },
+    "errors": [],
+    "verifiedBefore": 69,
+    "verifiedAfter": 70,
+    "remaining": 58,
+    "uncoveredConditions": 56,
+    "registeredUnresolvedConditions": 2,
+    "contractStates": {
+      "complete": 32,
+      "partial": 6,
+      "pending": 26
+    },
+    "durationSeconds": 1796.449878
+  },
+  "independentInitialFullAudit": {
+    "path": "work/turn-barrier-boundaries/independent-audit-full-001.json",
+    "sha256": "53ed1c2becb331bbd61afdf0dac38efa0aace4f19092f5e3e817057bcb37803f",
+    "acceptanceCreditFromAudit": 0
+  },
+  "cases": [
+    {
+      "id": "host-turn-barrier-boundaries-pending-ascii",
+      "operation": "host-turn-barrier-boundaries-runtime",
+      "requirement": "host.turn-barrier",
+      "covers": [
+        "host.turn-barrier.boundaries"
+      ],
+      "input": {
+        "nowMs": 1794268800000,
+        "source": "MEMORY.md",
+        "policy": {
+          "memoryProvider": "none",
+          "memorySources": [
+            "memory"
+          ],
+          "searchSources": [
+            "memory"
+          ],
+          "sessionMemory": false,
+          "compactionEnabled": true,
+          "memoryFlushEnabled": true,
+          "contextWindowTokens": 32768,
+          "reserveTokens": 8192,
+          "softThresholdTokens": 4000,
+          "nativeMemorySynchronization": "unmodified-default-watch-and-on-search-enabled",
+          "sdkMemoryPublication": "on-search",
+          "optionalMaintenancePreemption": "actual-scheduler-owned-preemptible-work",
+          "sdkOptionalMaintenance": "background",
+          "nativeSkipBootstrap": true,
+          "sdkInitialize": false
+        },
+        "modelTransport": {
+          "kind": "deterministic-offline-provider",
+          "paidCalls": false,
+          "replyFromActualToolResults": true,
+          "fixtureFailureInjection": false
+        },
+        "clockFixture": {
+          "kind": "date-only-wall-clock",
+          "nowMs": 1794268800000,
+          "nativeScope": "all-processes-and-threads-including-workers",
+          "sdkClock": "public-host-clock-argument",
+          "monotonicAndTimers": "unmodified"
+        },
+        "sourceMetadataFixture": {
+          "operation": "os-utime-only",
+          "target": "MEMORY.md",
+          "atimeMs": 1794268800000,
+          "mtimeMs": 1794268800000,
+          "placement": "inside-model-callback-after-real-producing-tool-result-before-terminal-reply",
+          "applyTo": "each-successful-corpus-producing-tool-result",
+          "indexOperations": [],
+          "sourceContentMutation": false,
+          "targets": [
+            "MEMORY.md",
+            "memory/2026-11-10.md"
+          ]
+        },
+        "identity": {
+          "agentId": "main",
+          "sessionKey": "agent:main:host-turn-barrier-boundaries-pending-ascii",
+          "sessionId": "host-turn-barrier-boundaries-pending-ascii-session"
+        },
+        "scenario": "pending-optional-preemption",
+        "initialState": "cold",
+        "firstTurnUsage": {
+          "input": 23000,
+          "output": 32,
+          "total": 23032
+        },
+        "followupUsage": {
+          "input": 128,
+          "output": 32,
+          "total": 160
+        },
+        "save": {
+          "prompt": "Remember: My drink preference is marblekumquat-416 tea without sugar. Also remember for daily memory: My daily note preference is cedarpomelo-527 tea without sugar.",
+          "content": "## Preferences\n\n- My drink preference is marblekumquat-416 tea without sugar.\n",
+          "producer": "native-coding-write-or-sdk-add_memory_entry",
+          "section": "Preferences",
+          "text": "My drink preference is marblekumquat-416 tea without sugar."
+        },
+        "followup": {
+          "prompt": "What is my saved preference? Use memory_search and read the first actual hit before answering. Include any actual warning and action guidance.",
+          "search": {
+            "query": "cedarpomelo-527",
+            "maxResults": 5,
+            "minScore": 0,
+            "corpus": "memory"
+          },
+          "getRange": "first-actual-search-hit",
+          "reply": "actual-memory-get-text-or-actual-search-warning-or-no-source-backed-memory"
+        },
+        "maintenance": {
+          "relativePath": "memory/2026-11-10.md",
+          "body": "- My daily note preference is cedarpomelo-527 tea without sugar.\n",
+          "instructionSource": "actual-persisted-first-user-history",
+          "producer": "native-memory-flush-write-or-sdk-maintenance-append",
+          "promptPolicy": "original-default-pre-compaction-memory-flush-prompt",
+          "providerCleanupJoinClaimed": false,
+          "physicalWriteInFlightClaimed": false
+        },
+        "schedule": {
+          "trigger": "actual-first-external-terminal-delivery-with-scheduler-owner-pending",
+          "nextSubmission": "immediate-full-same-session-dispatch-from-real-delivery-callback",
+          "deliveryControl": "hold-only-first-delivery-acknowledgment",
+          "releaseAcknowledgmentAfter": "actual-maintenance-owner-abort-event",
+          "ownerOrigin": "actual-original-post-turn-scheduler",
+          "pendingPlan": "read-only-resolved-plan-and-real-persisted-usage",
+          "maintenanceStartControl": "none",
+          "firstHostReturnMayFollowNextSubmission": true,
+          "interveningIndexOperations": []
+        }
+      },
+      "status": "matched",
+      "referenceMode": "authenticated-official-release",
+      "runtimeEvidenceValidated": true,
+      "nativeResult": {
+        "provider": "none",
+        "scenario": "pending-optional-preemption",
+        "source": {
+          "path": "MEMORY.md",
+          "kind": "file",
+          "text": "## Preferences\n\n- My drink preference is marblekumquat-416 tea without sugar.\n",
+          "hex": "232320507265666572656e6365730a0a2d204d79206472696e6b20707265666572656e6365206973206d6172626c656b756d717561742d3431362074656120776974686f75742073756761722e0a"
+        },
+        "maintenanceSource": {
+          "path": "memory/2026-11-10.md",
+          "kind": "missing"
+        },
+        "warmup": null,
+        "save": {
+          "deliveries": [
+            {
+              "text": "Saved.",
+              "replyToTag": false,
+              "replyToId": "fixture-save",
+              "audioAsVoice": false
+            }
+          ],
+          "dispatchReturn": {
+            "queuedFinal": true,
+            "counts": {
+              "tool": 0,
+              "block": 0,
+              "final": 1
+            }
+          },
+          "search": null,
+          "get": null
+        },
+        "followup": {
+          "deliveries": [
+            {
+              "text": "Automatic memory index repair was requested. To rebuild manually, run: openclaw memory status --index --agent main. Rebuilding uses keyword indexing only and does not call an embedding provider.",
+              "replyToTag": false,
+              "replyToId": "fixture-followup",
+              "audioAsVoice": false
+            }
+          ],
+          "dispatchReturn": {
+            "queuedFinal": true,
+            "counts": {
+              "tool": 0,
+              "block": 0,
+              "final": 1
+            }
+          },
+          "search": {
+            "results": [],
+            "provider": "none",
+            "citations": "off",
+            "corpora": [],
+            "warning": "Automatic memory index repair was requested. To rebuild manually, run: openclaw memory status --index --agent main. Rebuilding uses keyword indexing only and does not call an embedding provider.",
+            "debug": {
+              "backend": "builtin",
+              "effectiveMode": "n/a",
+              "managerMs": 0,
+              "searchMs": 0,
+              "hits": 0,
+              "candidateHits": 0,
+              "withheldHits": 0,
+              "searchWindow": 5,
+              "toolMs": 0,
+              "outsideSearchMs": 0
+            }
+          },
+          "get": null
+        }
+      },
+      "sdkResult": {
+        "provider": "none",
+        "scenario": "pending-optional-preemption",
+        "source": {
+          "path": "MEMORY.md",
+          "kind": "file",
+          "text": "## Preferences\n\n- My drink preference is marblekumquat-416 tea without sugar.\n",
+          "hex": "232320507265666572656e6365730a0a2d204d79206472696e6b20707265666572656e6365206973206d6172626c656b756d717561742d3431362074656120776974686f75742073756761722e0a"
+        },
+        "maintenanceSource": {
+          "path": "memory/2026-11-10.md",
+          "kind": "missing"
+        },
+        "warmup": null,
+        "save": {
+          "deliveries": [
+            {
+              "text": "Saved.",
+              "replyToTag": false,
+              "replyToId": "fixture-save",
+              "audioAsVoice": false
+            }
+          ],
+          "dispatchReturn": {
+            "queuedFinal": true,
+            "counts": {
+              "tool": 0,
+              "block": 0,
+              "final": 1
+            }
+          },
+          "search": null,
+          "get": null
+        },
+        "followup": {
+          "deliveries": [
+            {
+              "text": "Automatic memory index repair was requested. To rebuild manually, run: openclaw memory status --index --agent main. Rebuilding uses keyword indexing only and does not call an embedding provider.",
+              "replyToTag": false,
+              "replyToId": "fixture-followup",
+              "audioAsVoice": false
+            }
+          ],
+          "dispatchReturn": {
+            "queuedFinal": true,
+            "counts": {
+              "tool": 0,
+              "block": 0,
+              "final": 1
+            }
+          },
+          "search": {
+            "results": [],
+            "provider": "none",
+            "citations": "off",
+            "corpora": [],
+            "warning": "Automatic memory index repair was requested. To rebuild manually, run: openclaw memory status --index --agent main. Rebuilding uses keyword indexing only and does not call an embedding provider.",
+            "debug": {
+              "effectiveMode": "n/a",
+              "searchMs": 0,
+              "hits": 0,
+              "candidateHits": 0,
+              "withheldHits": 0,
+              "searchWindow": 5,
+              "backend": "builtin",
+              "managerMs": 0,
+              "toolMs": 0,
+              "outsideSearchMs": 0
+            }
+          },
+          "get": null
+        }
+      },
+      "nativeOriginalRawSha256": "fcae0cae4b21603880e3b64a04f930f8d50f895a708da907e2e8d21a0a8b9233",
+      "sdkOriginalRawSha256": "0ffdc07f8a18f88c470bb8f7afc696fddd2b918955ed19525ac535ae236b7c0c",
+      "nativeCustody": true,
+      "sdkCustody": true,
+      "custodyValidated": true,
+      "differences": [],
+      "rawDiagnostics": {
+        "native": {
+          "path": ".equivalence-results/host-turn-barrier-boundaries/attempt-dsq9n73i/case/evidence/native-raw.json",
+          "bytes": 1051169,
+          "sha256": "fcae0cae4b21603880e3b64a04f930f8d50f895a708da907e2e8d21a0a8b9233",
+          "physicallyRetained": true
+        },
+        "sdk": {
+          "sha256": "0ffdc07f8a18f88c470bb8f7afc696fddd2b918955ed19525ac535ae236b7c0c",
+          "embeddedIn": "work/turn-barrier-boundaries/full-002.json",
+          "physicallyRetained": false,
+          "originalWriterSerializationVerified": true
+        }
+      }
+    },
+    {
+      "id": "host-turn-barrier-boundaries-target-open-unicode",
+      "operation": "host-turn-barrier-boundaries-runtime",
+      "requirement": "host.turn-barrier",
+      "covers": [
+        "host.turn-barrier.boundaries"
+      ],
+      "input": {
+        "nowMs": 1794268800000,
+        "source": "MEMORY.md",
+        "policy": {
+          "memoryProvider": "none",
+          "memorySources": [
+            "memory"
+          ],
+          "searchSources": [
+            "memory"
+          ],
+          "sessionMemory": false,
+          "compactionEnabled": true,
+          "memoryFlushEnabled": true,
+          "contextWindowTokens": 32768,
+          "reserveTokens": 8192,
+          "softThresholdTokens": 4000,
+          "nativeMemorySynchronization": "unmodified-default-watch-and-on-search-enabled",
+          "sdkMemoryPublication": "on-search",
+          "optionalMaintenancePreemption": "actual-scheduler-owned-preemptible-work",
+          "sdkOptionalMaintenance": "background",
+          "nativeSkipBootstrap": true,
+          "sdkInitialize": false
+        },
+        "modelTransport": {
+          "kind": "deterministic-offline-provider",
+          "paidCalls": false,
+          "replyFromActualToolResults": true,
+          "fixtureFailureInjection": false
+        },
+        "clockFixture": {
+          "kind": "date-only-wall-clock",
+          "nowMs": 1794268800000,
+          "nativeScope": "all-processes-and-threads-including-workers",
+          "sdkClock": "public-host-clock-argument",
+          "monotonicAndTimers": "unmodified"
+        },
+        "sourceMetadataFixture": {
+          "operation": "os-utime-only",
+          "target": "MEMORY.md",
+          "atimeMs": 1794268800000,
+          "mtimeMs": 1794268800000,
+          "placement": "inside-model-callback-after-real-producing-tool-result-before-terminal-reply",
+          "applyTo": "each-successful-corpus-producing-tool-result",
+          "indexOperations": [],
+          "sourceContentMutation": false,
+          "targets": [
+            "MEMORY.md",
+            "memory/2026-11-10.md"
+          ]
+        },
+        "identity": {
+          "agentId": "main",
+          "sessionKey": "agent:main:host-turn-barrier-boundaries-target-open-unicode",
+          "sessionId": "host-turn-barrier-boundaries-target-open-unicode-session"
+        },
+        "scenario": "target-open-preparation",
+        "initialState": "cold",
+        "firstTurnUsage": {
+          "input": 23000,
+          "output": 32,
+          "total": 23032
+        },
+        "followupUsage": {
+          "input": 128,
+          "output": 32,
+          "total": 160
+        },
+        "save": {
+          "prompt": "Remember: Çay tercihim yakutşeftali-638 şekersiz çaydır. Also remember for daily memory: Günlük not tercihim gümüşmenekşe-749 şekersiz çaydır.",
+          "content": "## Preferences\n\n- Çay tercihim yakutşeftali-638 şekersiz çaydır.\n",
+          "producer": "native-coding-write-or-sdk-add_memory_entry",
+          "section": "Preferences",
+          "text": "Çay tercihim yakutşeftali-638 şekersiz çaydır."
+        },
+        "followup": {
+          "prompt": "What is my saved preference? Use memory_search and read the first actual hit before answering. Include any actual warning and action guidance.",
+          "search": {
+            "query": "gümüşmenekşe-749",
+            "maxResults": 5,
+            "minScore": 0,
+            "corpus": "memory"
+          },
+          "getRange": "first-actual-search-hit",
+          "reply": "actual-memory-get-text-or-actual-search-warning-or-no-source-backed-memory"
+        },
+        "maintenance": {
+          "relativePath": "memory/2026-11-10.md",
+          "body": "- Günlük not tercihim gümüşmenekşe-749 şekersiz çaydır.\n",
+          "instructionSource": "actual-persisted-first-user-history",
+          "producer": "native-memory-flush-write-or-sdk-maintenance-append",
+          "promptPolicy": "original-default-pre-compaction-memory-flush-prompt",
+          "providerCleanupJoinClaimed": false,
+          "physicalWriteInFlightClaimed": false
+        },
+        "fixtureFiles": [
+          {
+            "path": "memory/2026-11-10.md",
+            "content": "",
+            "atimeMs": 1794268800000,
+            "mtimeMs": 1794268800000,
+            "kind": "owned-empty-maintenance-target"
+          }
+        ],
+        "schedule": {
+          "trigger": "actual-kernel-write-open-lease-break-notification",
+          "nextSubmission": "full-same-session-foreground-dispatch",
+          "deliveryControl": "acknowledge-actual-first-terminal-delivery",
+          "control": {
+            "kind": "linux-fcntl-read-lease",
+            "target": "memory/2026-11-10.md",
+            "helper": "independent-python-owned-os-lease-holder",
+            "arm": "before-first-foreground-dispatch",
+            "releaseAfter": [
+              "actual-next-foreground-submission-attempt",
+              "actual-maintenance-owner-abort-event",
+              "actual-node-event-loop-live-after-abort"
+            ]
+          },
+          "originalOperation": "ensureMemoryFlushTargetFile-fs.promises.open-append",
+          "physicalAppendInFlightClaimed": false,
+          "interveningIndexOperations": []
+        }
+      },
+      "status": "matched",
+      "referenceMode": "authenticated-official-release",
+      "runtimeEvidenceValidated": true,
+      "nativeResult": {
+        "provider": "none",
+        "scenario": "target-open-preparation",
+        "source": {
+          "path": "MEMORY.md",
+          "kind": "file",
+          "text": "## Preferences\n\n- Çay tercihim yakutşeftali-638 şekersiz çaydır.\n",
+          "hex": "232320507265666572656e6365730a0a2d20c387617920746572636968696d2079616b7574c59f656674616c692d36333820c59f656b657273697a20c3a7617964c4b1722e0a"
+        },
+        "maintenanceSource": {
+          "path": "memory/2026-11-10.md",
+          "kind": "file",
+          "text": "",
+          "hex": ""
+        },
+        "warmup": null,
+        "save": {
+          "deliveries": [
+            {
+              "text": "Saved.",
+              "replyToTag": false,
+              "replyToId": "fixture-save",
+              "audioAsVoice": false
+            }
+          ],
+          "dispatchReturn": {
+            "queuedFinal": true,
+            "counts": {
+              "tool": 0,
+              "block": 0,
+              "final": 1
+            }
+          },
+          "search": null,
+          "get": null
+        },
+        "followup": {
+          "deliveries": [
+            {
+              "text": "Automatic memory index repair was requested. To rebuild manually, run: openclaw memory status --index --agent main. Rebuilding uses keyword indexing only and does not call an embedding provider.",
+              "replyToTag": false,
+              "replyToId": "fixture-followup",
+              "audioAsVoice": false
+            }
+          ],
+          "dispatchReturn": {
+            "queuedFinal": true,
+            "counts": {
+              "tool": 0,
+              "block": 0,
+              "final": 1
+            }
+          },
+          "search": {
+            "results": [],
+            "provider": "none",
+            "citations": "off",
+            "corpora": [],
+            "warning": "Automatic memory index repair was requested. To rebuild manually, run: openclaw memory status --index --agent main. Rebuilding uses keyword indexing only and does not call an embedding provider.",
+            "debug": {
+              "backend": "builtin",
+              "effectiveMode": "n/a",
+              "managerMs": 0,
+              "searchMs": 0,
+              "hits": 0,
+              "candidateHits": 0,
+              "withheldHits": 0,
+              "searchWindow": 5,
+              "toolMs": 0,
+              "outsideSearchMs": 0
+            }
+          },
+          "get": null
+        }
+      },
+      "sdkResult": {
+        "provider": "none",
+        "scenario": "target-open-preparation",
+        "source": {
+          "path": "MEMORY.md",
+          "kind": "file",
+          "text": "## Preferences\n\n- Çay tercihim yakutşeftali-638 şekersiz çaydır.\n",
+          "hex": "232320507265666572656e6365730a0a2d20c387617920746572636968696d2079616b7574c59f656674616c692d36333820c59f656b657273697a20c3a7617964c4b1722e0a"
+        },
+        "maintenanceSource": {
+          "path": "memory/2026-11-10.md",
+          "kind": "file",
+          "text": "",
+          "hex": ""
+        },
+        "warmup": null,
+        "save": {
+          "deliveries": [
+            {
+              "text": "Saved.",
+              "replyToTag": false,
+              "replyToId": "fixture-save",
+              "audioAsVoice": false
+            }
+          ],
+          "dispatchReturn": {
+            "queuedFinal": true,
+            "counts": {
+              "tool": 0,
+              "block": 0,
+              "final": 1
+            }
+          },
+          "search": null,
+          "get": null
+        },
+        "followup": {
+          "deliveries": [
+            {
+              "text": "Automatic memory index repair was requested. To rebuild manually, run: openclaw memory status --index --agent main. Rebuilding uses keyword indexing only and does not call an embedding provider.",
+              "replyToTag": false,
+              "replyToId": "fixture-followup",
+              "audioAsVoice": false
+            }
+          ],
+          "dispatchReturn": {
+            "queuedFinal": true,
+            "counts": {
+              "tool": 0,
+              "block": 0,
+              "final": 1
+            }
+          },
+          "search": {
+            "results": [],
+            "provider": "none",
+            "citations": "off",
+            "corpora": [],
+            "warning": "Automatic memory index repair was requested. To rebuild manually, run: openclaw memory status --index --agent main. Rebuilding uses keyword indexing only and does not call an embedding provider.",
+            "debug": {
+              "effectiveMode": "n/a",
+              "searchMs": 0,
+              "hits": 0,
+              "candidateHits": 0,
+              "withheldHits": 0,
+              "searchWindow": 5,
+              "backend": "builtin",
+              "managerMs": 0,
+              "toolMs": 0,
+              "outsideSearchMs": 0
+            }
+          },
+          "get": null
+        }
+      },
+      "nativeOriginalRawSha256": "10590e9b5195e0b37abeb7c6c1a4a44d7afa169497945f0cfab1a85d251c70e1",
+      "sdkOriginalRawSha256": "8025dfdb3706edcbf1640e33f76019934fb7dae923ab5800318b7878aa5fbc2d",
+      "nativeCustody": true,
+      "sdkCustody": true,
+      "custodyValidated": true,
+      "differences": [],
+      "rawDiagnostics": {
+        "native": {
+          "path": ".equivalence-results/host-turn-barrier-boundaries/attempt-hjak2uen/case/evidence/native-raw.json",
+          "bytes": 1066716,
+          "sha256": "10590e9b5195e0b37abeb7c6c1a4a44d7afa169497945f0cfab1a85d251c70e1",
+          "physicallyRetained": true
+        },
+        "sdk": {
+          "sha256": "8025dfdb3706edcbf1640e33f76019934fb7dae923ab5800318b7878aa5fbc2d",
+          "embeddedIn": "work/turn-barrier-boundaries/full-002.json",
+          "physicallyRetained": false,
+          "originalWriterSerializationVerified": true
+        }
+      }
+    },
+    {
+      "id": "host-turn-barrier-boundaries-committed-ascii",
+      "operation": "host-turn-barrier-boundaries-runtime",
+      "requirement": "host.turn-barrier",
+      "covers": [
+        "host.turn-barrier.boundaries"
+      ],
+      "input": {
+        "nowMs": 1794268800000,
+        "source": "MEMORY.md",
+        "policy": {
+          "memoryProvider": "none",
+          "memorySources": [
+            "memory"
+          ],
+          "searchSources": [
+            "memory"
+          ],
+          "sessionMemory": false,
+          "compactionEnabled": true,
+          "memoryFlushEnabled": true,
+          "contextWindowTokens": 32768,
+          "reserveTokens": 8192,
+          "softThresholdTokens": 4000,
+          "nativeMemorySynchronization": "unmodified-default-watch-and-on-search-enabled",
+          "sdkMemoryPublication": "on-search",
+          "optionalMaintenancePreemption": "actual-scheduler-owned-preemptible-work",
+          "sdkOptionalMaintenance": "background",
+          "nativeSkipBootstrap": true,
+          "sdkInitialize": false
+        },
+        "modelTransport": {
+          "kind": "deterministic-offline-provider",
+          "paidCalls": false,
+          "replyFromActualToolResults": true,
+          "fixtureFailureInjection": false
+        },
+        "clockFixture": {
+          "kind": "date-only-wall-clock",
+          "nowMs": 1794268800000,
+          "nativeScope": "all-processes-and-threads-including-workers",
+          "sdkClock": "public-host-clock-argument",
+          "monotonicAndTimers": "unmodified"
+        },
+        "sourceMetadataFixture": {
+          "operation": "os-utime-only",
+          "target": "MEMORY.md",
+          "atimeMs": 1794268800000,
+          "mtimeMs": 1794268800000,
+          "placement": "inside-model-callback-after-real-producing-tool-result-before-terminal-reply",
+          "applyTo": "each-successful-corpus-producing-tool-result",
+          "indexOperations": [],
+          "sourceContentMutation": false,
+          "targets": [
+            "MEMORY.md",
+            "memory/2026-11-10.md"
+          ]
+        },
+        "identity": {
+          "agentId": "main",
+          "sessionKey": "agent:main:host-turn-barrier-boundaries-committed-ascii",
+          "sessionId": "host-turn-barrier-boundaries-committed-ascii-session"
+        },
+        "scenario": "committed-maintenance",
+        "initialState": "cold",
+        "firstTurnUsage": {
+          "input": 23000,
+          "output": 32,
+          "total": 23032
+        },
+        "followupUsage": {
+          "input": 128,
+          "output": 32,
+          "total": 160
+        },
+        "save": {
+          "prompt": "Remember: My drink preference is copperquince-851 tea without sugar. Also remember for daily memory: My daily note preference is silverlychee-962 tea without sugar.",
+          "content": "## Preferences\n\n- My drink preference is copperquince-851 tea without sugar.\n",
+          "producer": "native-coding-write-or-sdk-add_memory_entry",
+          "section": "Preferences",
+          "text": "My drink preference is copperquince-851 tea without sugar."
+        },
+        "followup": {
+          "prompt": "What is my saved preference? Use memory_search and read the first actual hit before answering. Include any actual warning and action guidance.",
+          "search": {
+            "query": "silverlychee-962",
+            "maxResults": 5,
+            "minScore": 0,
+            "corpus": "memory"
+          },
+          "getRange": "first-actual-search-hit",
+          "reply": "actual-memory-get-text-or-actual-search-warning-or-no-source-backed-memory"
+        },
+        "maintenance": {
+          "relativePath": "memory/2026-11-10.md",
+          "body": "- My daily note preference is silverlychee-962 tea without sugar.\n",
+          "instructionSource": "actual-persisted-first-user-history",
+          "producer": "native-memory-flush-write-or-sdk-maintenance-append",
+          "promptPolicy": "original-default-pre-compaction-memory-flush-prompt",
+          "providerCleanupJoinClaimed": false,
+          "physicalWriteInFlightClaimed": false
+        },
+        "schedule": {
+          "trigger": "actual-maintenance-successful-write-result-consumed",
+          "nextSubmission": "full-same-session-foreground-dispatch-before-provider-terminal-settlement",
+          "deliveryControl": "acknowledge-actual-first-terminal-delivery",
+          "providerTransport": "remain-pending-until-real-abort-then-setImmediate-cleanup",
+          "providerCleanupJoinClaimed": false,
+          "physicalWriteInFlightClaimed": false,
+          "ownerOrigin": "actual-original-post-turn-scheduler",
+          "interveningIndexOperations": []
+        }
+      },
+      "status": "matched",
+      "referenceMode": "authenticated-official-release",
+      "runtimeEvidenceValidated": true,
+      "nativeResult": {
+        "provider": "none",
+        "scenario": "committed-maintenance",
+        "source": {
+          "path": "MEMORY.md",
+          "kind": "file",
+          "text": "## Preferences\n\n- My drink preference is copperquince-851 tea without sugar.\n",
+          "hex": "232320507265666572656e6365730a0a2d204d79206472696e6b20707265666572656e636520697320636f707065727175696e63652d3835312074656120776974686f75742073756761722e0a"
+        },
+        "maintenanceSource": {
+          "path": "memory/2026-11-10.md",
+          "kind": "file",
+          "text": "- My daily note preference is silverlychee-962 tea without sugar.\n",
+          "hex": "2d204d79206461696c79206e6f746520707265666572656e63652069732073696c7665726c79636865652d3936322074656120776974686f75742073756761722e0a"
+        },
+        "warmup": null,
+        "save": {
+          "deliveries": [
+            {
+              "text": "Saved.",
+              "replyToTag": false,
+              "replyToId": "fixture-save",
+              "audioAsVoice": false
+            }
+          ],
+          "dispatchReturn": {
+            "queuedFinal": true,
+            "counts": {
+              "tool": 0,
+              "block": 0,
+              "final": 1
+            }
+          },
+          "search": null,
+          "get": null
+        },
+        "followup": {
+          "deliveries": [
+            {
+              "text": "- My daily note preference is silverlychee-962 tea without sugar.\nAutomatic memory index repair was requested. To rebuild manually, run: openclaw memory status --index --agent main. Rebuilding uses keyword indexing only and does not call an embedding provider.",
+              "replyToTag": false,
+              "replyToId": "fixture-followup",
+              "audioAsVoice": false
+            }
+          ],
+          "dispatchReturn": {
+            "queuedFinal": true,
+            "counts": {
+              "tool": 0,
+              "block": 0,
+              "final": 1
+            }
+          },
+          "search": {
+            "results": [
+              {
+                "path": "memory/2026-11-10.md",
+                "startLine": 1,
+                "endLine": 2,
+                "score": 1,
+                "textScore": 0.4589222715937904,
+                "snippet": "- My daily note preference is silverlychee-962 tea without sugar.\n",
+                "source": "memory",
+                "provenance": {
+                  "originClass": "untrusted",
+                  "sessionKind": "unknown",
+                  "observedAt": 1794268800000
+                },
+                "corpus": "memory"
+              }
+            ],
+            "provider": "none",
+            "citations": "off",
+            "corpora": [],
+            "warning": "Automatic memory index repair was requested. To rebuild manually, run: openclaw memory status --index --agent main. Rebuilding uses keyword indexing only and does not call an embedding provider.",
+            "debug": {
+              "backend": "builtin",
+              "effectiveMode": "n/a",
+              "managerMs": 0,
+              "searchMs": 0,
+              "hits": 1,
+              "candidateHits": 1,
+              "withheldHits": 0,
+              "searchWindow": 5,
+              "toolMs": 0,
+              "outsideSearchMs": 0
+            }
+          },
+          "get": {
+            "status": "ok",
+            "text": "- My daily note preference is silverlychee-962 tea without sugar.",
+            "path": "memory/2026-11-10.md",
+            "from": 1,
+            "lines": 1
+          }
+        }
+      },
+      "sdkResult": {
+        "provider": "none",
+        "scenario": "committed-maintenance",
+        "source": {
+          "path": "MEMORY.md",
+          "kind": "file",
+          "text": "## Preferences\n\n- My drink preference is copperquince-851 tea without sugar.\n",
+          "hex": "232320507265666572656e6365730a0a2d204d79206472696e6b20707265666572656e636520697320636f707065727175696e63652d3835312074656120776974686f75742073756761722e0a"
+        },
+        "maintenanceSource": {
+          "path": "memory/2026-11-10.md",
+          "kind": "file",
+          "text": "- My daily note preference is silverlychee-962 tea without sugar.\n",
+          "hex": "2d204d79206461696c79206e6f746520707265666572656e63652069732073696c7665726c79636865652d3936322074656120776974686f75742073756761722e0a"
+        },
+        "warmup": null,
+        "save": {
+          "deliveries": [
+            {
+              "text": "Saved.",
+              "replyToTag": false,
+              "replyToId": "fixture-save",
+              "audioAsVoice": false
+            }
+          ],
+          "dispatchReturn": {
+            "queuedFinal": true,
+            "counts": {
+              "tool": 0,
+              "block": 0,
+              "final": 1
+            }
+          },
+          "search": null,
+          "get": null
+        },
+        "followup": {
+          "deliveries": [
+            {
+              "text": "- My daily note preference is silverlychee-962 tea without sugar.\nAutomatic memory index repair was requested. To rebuild manually, run: openclaw memory status --index --agent main. Rebuilding uses keyword indexing only and does not call an embedding provider.",
+              "replyToTag": false,
+              "replyToId": "fixture-followup",
+              "audioAsVoice": false
+            }
+          ],
+          "dispatchReturn": {
+            "queuedFinal": true,
+            "counts": {
+              "tool": 0,
+              "block": 0,
+              "final": 1
+            }
+          },
+          "search": {
+            "results": [
+              {
+                "path": "memory/2026-11-10.md",
+                "startLine": 1,
+                "endLine": 2,
+                "score": 1.0,
+                "snippet": "- My daily note preference is silverlychee-962 tea without sugar.\n",
+                "source": "memory",
+                "textScore": 0.4589222715937904,
+                "provenance": {
+                  "originClass": "untrusted",
+                  "sessionKind": "unknown",
+                  "observedAt": 1794268800000
+                },
+                "corpus": "memory"
+              }
+            ],
+            "provider": "none",
+            "citations": "off",
+            "corpora": [],
+            "warning": "Automatic memory index repair was requested. To rebuild manually, run: openclaw memory status --index --agent main. Rebuilding uses keyword indexing only and does not call an embedding provider.",
+            "debug": {
+              "effectiveMode": "n/a",
+              "searchMs": 0,
+              "hits": 1,
+              "candidateHits": 1,
+              "withheldHits": 0,
+              "searchWindow": 5,
+              "backend": "builtin",
+              "managerMs": 0,
+              "toolMs": 0,
+              "outsideSearchMs": 0
+            }
+          },
+          "get": {
+            "status": "ok",
+            "text": "- My daily note preference is silverlychee-962 tea without sugar.",
+            "path": "memory/2026-11-10.md",
+            "from": 1,
+            "lines": 1
+          }
+        }
+      },
+      "nativeOriginalRawSha256": "291fe19ce8e06c4431ee161723091cc0df4de26e429bfc9e651a2f74d2c7258f",
+      "sdkOriginalRawSha256": "4f6e2036d1809eae3705851f8b2de1b0a00d810adf564087aeaf90ad1d71f968",
+      "nativeCustody": true,
+      "sdkCustody": true,
+      "custodyValidated": true,
+      "differences": [],
+      "rawDiagnostics": {
+        "native": {
+          "path": ".equivalence-results/host-turn-barrier-boundaries/attempt-zkl0exyz/case/evidence/native-raw.json",
+          "bytes": 1275194,
+          "sha256": "291fe19ce8e06c4431ee161723091cc0df4de26e429bfc9e651a2f74d2c7258f",
+          "physicallyRetained": true
+        },
+        "sdk": {
+          "sha256": "4f6e2036d1809eae3705851f8b2de1b0a00d810adf564087aeaf90ad1d71f968",
+          "embeddedIn": "work/turn-barrier-boundaries/full-002.json",
+          "physicallyRetained": false,
+          "originalWriterSerializationVerified": true
+        }
+      }
+    },
+    {
+      "id": "host-turn-barrier-boundaries-maintenance-refusal-unicode",
+      "operation": "host-turn-barrier-boundaries-runtime",
+      "requirement": "host.turn-barrier",
+      "covers": [
+        "host.turn-barrier.boundaries"
+      ],
+      "input": {
+        "nowMs": 1794268800000,
+        "source": "MEMORY.md",
+        "policy": {
+          "memoryProvider": "none",
+          "memorySources": [
+            "memory"
+          ],
+          "searchSources": [
+            "memory"
+          ],
+          "sessionMemory": false,
+          "compactionEnabled": true,
+          "memoryFlushEnabled": true,
+          "contextWindowTokens": 32768,
+          "reserveTokens": 8192,
+          "softThresholdTokens": 4000,
+          "nativeMemorySynchronization": "unmodified-default-watch-and-on-search-enabled",
+          "sdkMemoryPublication": "on-search",
+          "optionalMaintenancePreemption": "actual-scheduler-owned-preemptible-work",
+          "sdkOptionalMaintenance": "background",
+          "nativeSkipBootstrap": true,
+          "sdkInitialize": false
+        },
+        "modelTransport": {
+          "kind": "deterministic-offline-provider",
+          "paidCalls": false,
+          "replyFromActualToolResults": true,
+          "fixtureFailureInjection": false
+        },
+        "clockFixture": {
+          "kind": "date-only-wall-clock",
+          "nowMs": 1794268800000,
+          "nativeScope": "all-processes-and-threads-including-workers",
+          "sdkClock": "public-host-clock-argument",
+          "monotonicAndTimers": "unmodified"
+        },
+        "sourceMetadataFixture": {
+          "operation": "os-utime-only",
+          "target": "MEMORY.md",
+          "atimeMs": 1794268800000,
+          "mtimeMs": 1794268800000,
+          "placement": "inside-model-callback-after-real-producing-tool-result-before-terminal-reply",
+          "applyTo": "each-successful-corpus-producing-tool-result",
+          "indexOperations": [],
+          "sourceContentMutation": false,
+          "targets": [
+            "MEMORY.md",
+            "memory/2026-11-10.md"
+          ]
+        },
+        "identity": {
+          "agentId": "main",
+          "sessionKey": "agent:main:host-turn-barrier-boundaries-maintenance-refusal-unicode",
+          "sessionId": "host-turn-barrier-boundaries-maintenance-refusal-unicode-session"
+        },
+        "scenario": "refused-maintenance",
+        "initialState": "cold",
+        "firstTurnUsage": {
+          "input": 23000,
+          "output": 32,
+          "total": 23032
+        },
+        "followupUsage": {
+          "input": 128,
+          "output": 32,
+          "total": 160
+        },
+        "save": {
+          "prompt": "Remember: Çay tercihim ışıkinciri-173 şekersiz çaydır. Also remember for daily memory: Günlük not tercihim mercanerik-284 şekersiz çaydır.",
+          "content": "## Preferences\n\n- Çay tercihim ışıkinciri-173 şekersiz çaydır.\n",
+          "producer": "native-coding-write-or-sdk-add_memory_entry",
+          "section": "Preferences",
+          "text": "Çay tercihim ışıkinciri-173 şekersiz çaydır."
+        },
+        "followup": {
+          "prompt": "What is my saved preference? Use memory_search and read the first actual hit before answering. Include any actual warning and action guidance.",
+          "search": {
+            "query": "mercanerik-284",
+            "maxResults": 5,
+            "minScore": 0,
+            "corpus": "memory"
+          },
+          "getRange": "first-actual-search-hit",
+          "reply": "actual-memory-get-text-or-actual-search-warning-or-no-source-backed-memory"
+        },
+        "maintenance": {
+          "relativePath": "memory/2026-11-10.md",
+          "body": "- Günlük not tercihim mercanerik-284 şekersiz çaydır.\n",
+          "instructionSource": "actual-persisted-first-user-history",
+          "producer": "native-memory-flush-write-or-sdk-maintenance-append",
+          "promptPolicy": "original-default-pre-compaction-memory-flush-prompt",
+          "providerCleanupJoinClaimed": false,
+          "physicalWriteInFlightClaimed": false
+        },
+        "fixtureFiles": [
+          {
+            "path": "memory/2026-11-10.md",
+            "content": "",
+            "atimeMs": 1794268800000,
+            "mtimeMs": 1794268800000,
+            "kind": "owned-empty-maintenance-target"
+          }
+        ],
+        "schedule": {
+          "trigger": "actual-maintenance-failed-write-result-consumed",
+          "nextSubmission": "full-same-session-foreground-dispatch-before-provider-terminal-settlement",
+          "deliveryControl": "acknowledge-actual-first-terminal-delivery",
+          "providerTransport": "remain-pending-until-real-abort-then-setImmediate-cleanup",
+          "providerCleanupJoinClaimed": false,
+          "physicalWriteInFlightClaimed": false,
+          "ownerOrigin": "actual-original-post-turn-scheduler",
+          "interveningIndexOperations": []
+        },
+        "fault": {
+          "recipe": "actual-source-second-hard-link",
+          "target": "memory/2026-11-10.md",
+          "arm": "after-actual-flush-target-preparation-before-maintenance-write-tool-emission",
+          "remove": "after-actual-maintenance-failed-write-result-consumed"
+        }
+      },
+      "status": "matched",
+      "referenceMode": "authenticated-official-release",
+      "runtimeEvidenceValidated": true,
+      "nativeResult": {
+        "provider": "none",
+        "scenario": "refused-maintenance",
+        "source": {
+          "path": "MEMORY.md",
+          "kind": "file",
+          "text": "## Preferences\n\n- Çay tercihim ışıkinciri-173 şekersiz çaydır.\n",
+          "hex": "232320507265666572656e6365730a0a2d20c387617920746572636968696d20c4b1c59fc4b16b696e636972692d31373320c59f656b657273697a20c3a7617964c4b1722e0a"
+        },
+        "maintenanceSource": {
+          "path": "memory/2026-11-10.md",
+          "kind": "file",
+          "text": "",
+          "hex": ""
+        },
+        "warmup": null,
+        "save": {
+          "deliveries": [
+            {
+              "text": "Saved.",
+              "replyToTag": false,
+              "replyToId": "fixture-save",
+              "audioAsVoice": false
+            }
+          ],
+          "dispatchReturn": {
+            "queuedFinal": true,
+            "counts": {
+              "tool": 0,
+              "block": 0,
+              "final": 1
+            }
+          },
+          "search": null,
+          "get": null
+        },
+        "followup": {
+          "deliveries": [
+            {
+              "text": "Automatic memory index repair was requested. To rebuild manually, run: openclaw memory status --index --agent main. Rebuilding uses keyword indexing only and does not call an embedding provider.",
+              "replyToTag": false,
+              "replyToId": "fixture-followup",
+              "audioAsVoice": false
+            }
+          ],
+          "dispatchReturn": {
+            "queuedFinal": true,
+            "counts": {
+              "tool": 0,
+              "block": 0,
+              "final": 1
+            }
+          },
+          "search": {
+            "results": [],
+            "provider": "none",
+            "citations": "off",
+            "corpora": [],
+            "warning": "Automatic memory index repair was requested. To rebuild manually, run: openclaw memory status --index --agent main. Rebuilding uses keyword indexing only and does not call an embedding provider.",
+            "debug": {
+              "backend": "builtin",
+              "effectiveMode": "n/a",
+              "managerMs": 0,
+              "searchMs": 0,
+              "hits": 0,
+              "candidateHits": 0,
+              "withheldHits": 0,
+              "searchWindow": 5,
+              "toolMs": 0,
+              "outsideSearchMs": 0
+            }
+          },
+          "get": null
+        }
+      },
+      "sdkResult": {
+        "provider": "none",
+        "scenario": "refused-maintenance",
+        "source": {
+          "path": "MEMORY.md",
+          "kind": "file",
+          "text": "## Preferences\n\n- Çay tercihim ışıkinciri-173 şekersiz çaydır.\n",
+          "hex": "232320507265666572656e6365730a0a2d20c387617920746572636968696d20c4b1c59fc4b16b696e636972692d31373320c59f656b657273697a20c3a7617964c4b1722e0a"
+        },
+        "maintenanceSource": {
+          "path": "memory/2026-11-10.md",
+          "kind": "file",
+          "text": "",
+          "hex": ""
+        },
+        "warmup": null,
+        "save": {
+          "deliveries": [
+            {
+              "text": "Saved.",
+              "replyToTag": false,
+              "replyToId": "fixture-save",
+              "audioAsVoice": false
+            }
+          ],
+          "dispatchReturn": {
+            "queuedFinal": true,
+            "counts": {
+              "tool": 0,
+              "block": 0,
+              "final": 1
+            }
+          },
+          "search": null,
+          "get": null
+        },
+        "followup": {
+          "deliveries": [
+            {
+              "text": "Automatic memory index repair was requested. To rebuild manually, run: openclaw memory status --index --agent main. Rebuilding uses keyword indexing only and does not call an embedding provider.",
+              "replyToTag": false,
+              "replyToId": "fixture-followup",
+              "audioAsVoice": false
+            }
+          ],
+          "dispatchReturn": {
+            "queuedFinal": true,
+            "counts": {
+              "tool": 0,
+              "block": 0,
+              "final": 1
+            }
+          },
+          "search": {
+            "results": [],
+            "provider": "none",
+            "citations": "off",
+            "corpora": [],
+            "warning": "Automatic memory index repair was requested. To rebuild manually, run: openclaw memory status --index --agent main. Rebuilding uses keyword indexing only and does not call an embedding provider.",
+            "debug": {
+              "effectiveMode": "n/a",
+              "searchMs": 0,
+              "hits": 0,
+              "candidateHits": 0,
+              "withheldHits": 0,
+              "searchWindow": 5,
+              "backend": "builtin",
+              "managerMs": 0,
+              "toolMs": 0,
+              "outsideSearchMs": 0
+            }
+          },
+          "get": null
+        }
+      },
+      "nativeOriginalRawSha256": "63316fb3180d8cbda83ac046c064eeb0f97ee728980fb4e0e9b3eb1b19014f36",
+      "sdkOriginalRawSha256": "57a6c0b29dd6a06fabf3560be70eb18faebccf3d6777535da1ef97bfbf67baf6",
+      "nativeCustody": true,
+      "sdkCustody": true,
+      "custodyValidated": true,
+      "differences": [],
+      "rawDiagnostics": {
+        "native": {
+          "path": ".equivalence-results/host-turn-barrier-boundaries/attempt-y64ip4u3/case/evidence/native-raw.json",
+          "bytes": 1131192,
+          "sha256": "63316fb3180d8cbda83ac046c064eeb0f97ee728980fb4e0e9b3eb1b19014f36",
+          "physicallyRetained": true
+        },
+        "sdk": {
+          "sha256": "57a6c0b29dd6a06fabf3560be70eb18faebccf3d6777535da1ef97bfbf67baf6",
+          "embeddedIn": "work/turn-barrier-boundaries/full-002.json",
+          "physicallyRetained": false,
+          "originalWriterSerializationVerified": true
+        }
+      }
+    },
+    {
+      "id": "host-turn-barrier-boundaries-foreground-refusal-ascii",
+      "operation": "host-turn-barrier-boundaries-runtime",
+      "requirement": "host.turn-barrier",
+      "covers": [
+        "host.turn-barrier.boundaries"
+      ],
+      "input": {
+        "nowMs": 1794268800000,
+        "source": "MEMORY.md",
+        "policy": {
+          "memoryProvider": "none",
+          "memorySources": [
+            "memory"
+          ],
+          "searchSources": [
+            "memory"
+          ],
+          "sessionMemory": false,
+          "compactionEnabled": true,
+          "memoryFlushEnabled": true,
+          "contextWindowTokens": 32768,
+          "reserveTokens": 8192,
+          "softThresholdTokens": 4000,
+          "nativeMemorySynchronization": "unmodified-default-watch-and-on-search-enabled",
+          "sdkMemoryPublication": "on-search",
+          "optionalMaintenancePreemption": "not-exercised-low-usage",
+          "sdkOptionalMaintenance": "background",
+          "nativeSkipBootstrap": true,
+          "sdkInitialize": false
+        },
+        "modelTransport": {
+          "kind": "deterministic-offline-provider",
+          "paidCalls": false,
+          "replyFromActualToolResults": true,
+          "fixtureFailureInjection": false
+        },
+        "clockFixture": {
+          "kind": "date-only-wall-clock",
+          "nowMs": 1794268800000,
+          "nativeScope": "all-processes-and-threads-including-workers",
+          "sdkClock": "public-host-clock-argument",
+          "monotonicAndTimers": "unmodified"
+        },
+        "sourceMetadataFixture": {
+          "operation": "os-utime-only",
+          "target": "MEMORY.md",
+          "atimeMs": 1794268800000,
+          "mtimeMs": 1794268800000,
+          "placement": "inside-model-callback-after-real-producing-tool-result-before-terminal-reply",
+          "applyTo": "each-successful-corpus-producing-tool-result",
+          "indexOperations": [],
+          "sourceContentMutation": false,
+          "targets": [
+            "MEMORY.md"
+          ]
+        },
+        "identity": {
+          "agentId": "main",
+          "sessionKey": "agent:main:host-turn-barrier-boundaries-foreground-refusal-ascii",
+          "sessionId": "host-turn-barrier-boundaries-foreground-refusal-ascii-session"
+        },
+        "scenario": "refused-foreground",
+        "initialState": "warm-source-without-explicit-publication",
+        "firstTurnUsage": {
+          "input": 128,
+          "output": 32,
+          "total": 160
+        },
+        "followupUsage": {
+          "input": 128,
+          "output": 32,
+          "total": 160
+        },
+        "save": {
+          "prompt": "Remember: My drink preference is amberguava-395 tea without sugar.",
+          "content": "## Preferences\n\n- My drink preference is amberguava-395 tea without sugar.\n",
+          "producer": "native-coding-write-or-sdk-add_memory_entry",
+          "section": "Preferences",
+          "text": "My drink preference is amberguava-395 tea without sugar."
+        },
+        "followup": {
+          "prompt": "What is my saved preference? Use memory_search and read the first actual hit before answering. Include any actual warning and action guidance.",
+          "search": {
+            "query": "hazelfern-286",
+            "maxResults": 5,
+            "minScore": 0,
+            "corpus": "memory"
+          },
+          "getRange": "first-actual-search-hit",
+          "reply": "actual-memory-get-text-or-actual-search-warning-or-no-source-backed-memory"
+        },
+        "warmup": {
+          "usage": {
+            "input": 128,
+            "output": 32,
+            "total": 160
+          },
+          "save": {
+            "prompt": "Remember: My drink preference is hazelfern-286 tea without sugar.",
+            "content": "## Preferences\n\n- My drink preference is hazelfern-286 tea without sugar.\n",
+            "section": "Preferences",
+            "text": "My drink preference is hazelfern-286 tea without sugar.",
+            "producer": "native-coding-write-or-sdk-add_memory_entry"
+          },
+          "publication": "only-natural-tool-and-search-behavior"
+        },
+        "schedule": {
+          "trigger": "first-foreground-refusal-terminal-delivery",
+          "nextSubmission": "immediate-full-same-session-dispatch",
+          "deliveryControl": "acknowledge-actual-terminal-delivery",
+          "interveningIndexOperations": []
+        },
+        "fault": {
+          "recipe": "actual-source-second-hard-link",
+          "target": "MEMORY.md",
+          "arm": "after-warmup-save-before-first-target-foreground-write-tool-emission",
+          "remove": "after-actual-foreground-failed-write-result-consumed"
+        }
+      },
+      "status": "matched",
+      "referenceMode": "authenticated-official-release",
+      "runtimeEvidenceValidated": true,
+      "nativeResult": {
+        "provider": "none",
+        "scenario": "refused-foreground",
+        "source": {
+          "path": "MEMORY.md",
+          "kind": "file",
+          "text": "## Preferences\n\n- My drink preference is hazelfern-286 tea without sugar.\n",
+          "hex": "232320507265666572656e6365730a0a2d204d79206472696e6b20707265666572656e63652069732068617a656c6665726e2d3238362074656120776974686f75742073756761722e0a"
+        },
+        "maintenanceSource": null,
+        "warmup": {
+          "deliveries": [
+            {
+              "text": "Saved.",
+              "replyToTag": false,
+              "replyToId": "fixture-warmup-save",
+              "audioAsVoice": false
+            }
+          ],
+          "dispatchReturn": {
+            "queuedFinal": true,
+            "counts": {
+              "tool": 0,
+              "block": 0,
+              "final": 1
+            }
+          },
+          "search": null,
+          "get": null
+        },
+        "save": {
+          "deliveries": [
+            {
+              "text": "The memory write failed.",
+              "replyToTag": false,
+              "replyToId": "fixture-save",
+              "audioAsVoice": false
+            }
+          ],
+          "dispatchReturn": {
+            "queuedFinal": true,
+            "counts": {
+              "tool": 0,
+              "block": 0,
+              "final": 1
+            }
+          },
+          "search": null,
+          "get": null
+        },
+        "followup": {
+          "deliveries": [
+            {
+              "text": "- My drink preference is hazelfern-286 tea without sugar.\nAutomatic memory index repair was requested. To rebuild manually, run: openclaw memory status --index --agent main. Rebuilding uses keyword indexing only and does not call an embedding provider.",
+              "replyToTag": false,
+              "replyToId": "fixture-followup",
+              "audioAsVoice": false
+            }
+          ],
+          "dispatchReturn": {
+            "queuedFinal": true,
+            "counts": {
+              "tool": 0,
+              "block": 0,
+              "final": 1
+            }
+          },
+          "search": {
+            "results": [
+              {
+                "path": "MEMORY.md",
+                "startLine": 3,
+                "endLine": 4,
+                "score": 0.6744459512914889,
+                "textScore": 1.5068470444770565e-06,
+                "snippet": "- My drink preference is hazelfern-286 tea without sugar.\n",
+                "source": "memory",
+                "provenance": {
+                  "originClass": "untrusted",
+                  "sessionKind": "unknown",
+                  "observedAt": 1794268800000
+                },
+                "corpus": "memory"
+              }
+            ],
+            "provider": "none",
+            "citations": "off",
+            "corpora": [],
+            "warning": "Automatic memory index repair was requested. To rebuild manually, run: openclaw memory status --index --agent main. Rebuilding uses keyword indexing only and does not call an embedding provider.",
+            "debug": {
+              "backend": "builtin",
+              "effectiveMode": "n/a",
+              "managerMs": 0,
+              "searchMs": 0,
+              "hits": 1,
+              "candidateHits": 1,
+              "withheldHits": 0,
+              "searchWindow": 5,
+              "toolMs": 0,
+              "outsideSearchMs": 0
+            }
+          },
+          "get": {
+            "status": "ok",
+            "text": "- My drink preference is hazelfern-286 tea without sugar.",
+            "path": "MEMORY.md",
+            "from": 3,
+            "lines": 1
+          }
+        }
+      },
+      "sdkResult": {
+        "provider": "none",
+        "scenario": "refused-foreground",
+        "source": {
+          "path": "MEMORY.md",
+          "kind": "file",
+          "text": "## Preferences\n\n- My drink preference is hazelfern-286 tea without sugar.\n",
+          "hex": "232320507265666572656e6365730a0a2d204d79206472696e6b20707265666572656e63652069732068617a656c6665726e2d3238362074656120776974686f75742073756761722e0a"
+        },
+        "maintenanceSource": null,
+        "warmup": {
+          "deliveries": [
+            {
+              "text": "Saved.",
+              "replyToTag": false,
+              "replyToId": "fixture-warmup-save",
+              "audioAsVoice": false
+            }
+          ],
+          "dispatchReturn": {
+            "queuedFinal": true,
+            "counts": {
+              "tool": 0,
+              "block": 0,
+              "final": 1
+            }
+          },
+          "search": null,
+          "get": null
+        },
+        "save": {
+          "deliveries": [
+            {
+              "text": "The memory write failed.",
+              "replyToTag": false,
+              "replyToId": "fixture-save",
+              "audioAsVoice": false
+            }
+          ],
+          "dispatchReturn": {
+            "queuedFinal": true,
+            "counts": {
+              "tool": 0,
+              "block": 0,
+              "final": 1
+            }
+          },
+          "search": null,
+          "get": null
+        },
+        "followup": {
+          "deliveries": [
+            {
+              "text": "- My drink preference is hazelfern-286 tea without sugar.\nAutomatic memory index repair was requested. To rebuild manually, run: openclaw memory status --index --agent main. Rebuilding uses keyword indexing only and does not call an embedding provider.",
+              "replyToTag": false,
+              "replyToId": "fixture-followup",
+              "audioAsVoice": false
+            }
+          ],
+          "dispatchReturn": {
+            "queuedFinal": true,
+            "counts": {
+              "tool": 0,
+              "block": 0,
+              "final": 1
+            }
+          },
+          "search": {
+            "results": [
+              {
+                "path": "MEMORY.md",
+                "startLine": 3,
+                "endLine": 4,
+                "score": 0.6744459512914889,
+                "snippet": "- My drink preference is hazelfern-286 tea without sugar.\n",
+                "source": "memory",
+                "textScore": 1.5068470444770565e-06,
+                "provenance": {
+                  "originClass": "untrusted",
+                  "sessionKind": "unknown",
+                  "observedAt": 1794268800000
+                },
+                "corpus": "memory"
+              }
+            ],
+            "provider": "none",
+            "citations": "off",
+            "corpora": [],
+            "warning": "Automatic memory index repair was requested. To rebuild manually, run: openclaw memory status --index --agent main. Rebuilding uses keyword indexing only and does not call an embedding provider.",
+            "debug": {
+              "effectiveMode": "n/a",
+              "searchMs": 0,
+              "hits": 1,
+              "candidateHits": 1,
+              "withheldHits": 0,
+              "searchWindow": 5,
+              "backend": "builtin",
+              "managerMs": 0,
+              "toolMs": 0,
+              "outsideSearchMs": 0
+            }
+          },
+          "get": {
+            "status": "ok",
+            "text": "- My drink preference is hazelfern-286 tea without sugar.",
+            "path": "MEMORY.md",
+            "from": 3,
+            "lines": 1
+          }
+        }
+      },
+      "nativeOriginalRawSha256": "346538251efef7ecdfb928710a78cf14ac31328f3cf97273ad3c614b6feb2f3a",
+      "sdkOriginalRawSha256": "e20bf37c44d550c3c440d246374e612b92aef14b0a4f50d2462eed5227e53b26",
+      "nativeCustody": true,
+      "sdkCustody": true,
+      "custodyValidated": true,
+      "differences": [],
+      "rawDiagnostics": {
+        "native": {
+          "path": ".equivalence-results/host-turn-barrier-boundaries/attempt-w2i9xkn6/case/evidence/native-raw.json",
+          "bytes": 1752125,
+          "sha256": "346538251efef7ecdfb928710a78cf14ac31328f3cf97273ad3c614b6feb2f3a",
+          "physicallyRetained": true
+        },
+        "sdk": {
+          "sha256": "e20bf37c44d550c3c440d246374e612b92aef14b0a4f50d2462eed5227e53b26",
+          "embeddedIn": "work/turn-barrier-boundaries/full-002.json",
+          "physicallyRetained": false,
+          "originalWriterSerializationVerified": true
+        }
+      }
+    },
+    {
+      "id": "host-turn-barrier-boundaries-publication-failure-unicode",
+      "operation": "host-turn-barrier-boundaries-runtime",
+      "requirement": "host.turn-barrier",
+      "covers": [
+        "host.turn-barrier.boundaries"
+      ],
+      "input": {
+        "nowMs": 1794268800000,
+        "source": "MEMORY.md",
+        "policy": {
+          "memoryProvider": "none",
+          "memorySources": [
+            "memory"
+          ],
+          "searchSources": [
+            "memory"
+          ],
+          "sessionMemory": false,
+          "compactionEnabled": true,
+          "memoryFlushEnabled": true,
+          "contextWindowTokens": 32768,
+          "reserveTokens": 8192,
+          "softThresholdTokens": 4000,
+          "nativeMemorySynchronization": "unmodified-default-watch-and-on-search-enabled",
+          "sdkMemoryPublication": "on-search",
+          "optionalMaintenancePreemption": "not-exercised-low-usage",
+          "sdkOptionalMaintenance": "background",
+          "nativeSkipBootstrap": true,
+          "sdkInitialize": false
+        },
+        "modelTransport": {
+          "kind": "deterministic-offline-provider",
+          "paidCalls": false,
+          "replyFromActualToolResults": true,
+          "fixtureFailureInjection": false
+        },
+        "clockFixture": {
+          "kind": "date-only-wall-clock",
+          "nowMs": 1794268800000,
+          "nativeScope": "all-processes-and-threads-including-workers",
+          "sdkClock": "public-host-clock-argument",
+          "monotonicAndTimers": "unmodified"
+        },
+        "sourceMetadataFixture": {
+          "operation": "os-utime-only",
+          "target": "MEMORY.md",
+          "atimeMs": 1794268800000,
+          "mtimeMs": 1794268800000,
+          "placement": "inside-model-callback-after-real-producing-tool-result-before-terminal-reply",
+          "applyTo": "each-successful-corpus-producing-tool-result",
+          "indexOperations": [],
+          "sourceContentMutation": false,
+          "targets": [
+            "MEMORY.md"
+          ]
+        },
+        "identity": {
+          "agentId": "main",
+          "sessionKey": "agent:main:host-turn-barrier-boundaries-publication-failure-unicode",
+          "sessionId": "host-turn-barrier-boundaries-publication-failure-unicode-session"
+        },
+        "scenario": "cold-publication-failure",
+        "initialState": "cold",
+        "firstTurnUsage": {
+          "input": 128,
+          "output": 32,
+          "total": 160
+        },
+        "followupUsage": {
+          "input": 128,
+          "output": 32,
+          "total": 160
+        },
+        "save": {
+          "prompt": "Remember: Çay tercihim çınarkestanesi-507 şekersiz çaydır. Then verify the saved fact with memory_search and include any actual warning and action guidance in your reply.",
+          "content": "## Preferences\n\n- Çay tercihim çınarkestanesi-507 şekersiz çaydır.\n",
+          "producer": "native-coding-write-or-sdk-add_memory_entry",
+          "section": "Preferences",
+          "text": "Çay tercihim çınarkestanesi-507 şekersiz çaydır.",
+          "verificationSearch": {
+            "query": "çınarkestanesi-507",
+            "maxResults": 5,
+            "minScore": 0,
+            "corpus": "memory"
+          }
+        },
+        "followup": {
+          "prompt": "What is my saved preference? Use memory_search and read the first actual hit before answering. Include any actual warning and action guidance.",
+          "search": {
+            "query": "çınarkestanesi-507",
+            "maxResults": 5,
+            "minScore": 0,
+            "corpus": "memory"
+          },
+          "getRange": "first-actual-search-hit",
+          "reply": "actual-memory-get-text-or-actual-search-warning-or-no-source-backed-memory"
+        },
+        "schedule": {
+          "trigger": "actual-first-foreground-save-and-verification-terminal-delivery",
+          "nextSubmission": "immediate-full-same-session-dispatch",
+          "deliveryControl": "acknowledge-actual-terminal-delivery",
+          "interveningIndexOperations": []
+        },
+        "fault": {
+          "recipe": "actual-index-publication-sidecar-dangling-symlink",
+          "arm": "after-actual-foreground-save-result-before-first-verification-search",
+          "nativeTarget": "actual-resolved-agent-database.reindex-lock.sqlite",
+          "sdkTarget": "actual-resolved-index-journal",
+          "targetParent": "owned-missing-sidecar-directory",
+          "remove": "never-during-compared-sequence"
+        }
+      },
+      "status": "matched",
+      "referenceMode": "authenticated-official-release",
+      "runtimeEvidenceValidated": true,
+      "nativeResult": {
+        "provider": "none",
+        "scenario": "cold-publication-failure",
+        "source": {
+          "path": "MEMORY.md",
+          "kind": "file",
+          "text": "## Preferences\n\n- Çay tercihim çınarkestanesi-507 şekersiz çaydır.\n",
+          "hex": "232320507265666572656e6365730a0a2d20c387617920746572636968696d20c3a7c4b16e61726b657374616e6573692d35303720c59f656b657273697a20c3a7617964c4b1722e0a"
+        },
+        "maintenanceSource": null,
+        "warmup": null,
+        "save": {
+          "deliveries": [
+            {
+              "text": "Memory index repair failed: unable to open database file. The existing index was left unchanged.\nRun: openclaw memory status --deep --agent main. Resolve the reported sync failure before retrying the search.",
+              "replyToTag": false,
+              "replyToId": "fixture-save",
+              "audioAsVoice": false
+            }
+          ],
+          "dispatchReturn": {
+            "queuedFinal": true,
+            "counts": {
+              "tool": 0,
+              "block": 0,
+              "final": 1
+            }
+          },
+          "search": {
+            "results": [],
+            "disabled": true,
+            "unavailable": true,
+            "error": "unable to open database file",
+            "warning": "Memory index repair failed: unable to open database file. The existing index was left unchanged.",
+            "action": "Run: openclaw memory status --deep --agent main. Resolve the reported sync failure before retrying the search.",
+            "debug": {
+              "warning": "Memory index repair failed: unable to open database file. The existing index was left unchanged.",
+              "action": "Run: openclaw memory status --deep --agent main. Resolve the reported sync failure before retrying the search.",
+              "error": "unable to open database file"
+            }
+          },
+          "get": null
+        },
+        "followup": {
+          "deliveries": [
+            {
+              "text": "Memory index repair failed: unable to open database file. The existing index was left unchanged.\nRun: openclaw memory status --deep --agent main. Resolve the reported sync failure before retrying the search.",
+              "replyToTag": false,
+              "replyToId": "fixture-followup",
+              "audioAsVoice": false
+            }
+          ],
+          "dispatchReturn": {
+            "queuedFinal": true,
+            "counts": {
+              "tool": 0,
+              "block": 0,
+              "final": 1
+            }
+          },
+          "search": {
+            "results": [],
+            "disabled": true,
+            "unavailable": true,
+            "error": "unable to open database file",
+            "warning": "Memory index repair failed: unable to open database file. The existing index was left unchanged.",
+            "action": "Run: openclaw memory status --deep --agent main. Resolve the reported sync failure before retrying the search.",
+            "debug": {
+              "warning": "Memory index repair failed: unable to open database file. The existing index was left unchanged.",
+              "action": "Run: openclaw memory status --deep --agent main. Resolve the reported sync failure before retrying the search.",
+              "error": "unable to open database file"
+            }
+          },
+          "get": null
+        }
+      },
+      "sdkResult": {
+        "provider": "none",
+        "scenario": "cold-publication-failure",
+        "source": {
+          "path": "MEMORY.md",
+          "kind": "file",
+          "text": "## Preferences\n\n- Çay tercihim çınarkestanesi-507 şekersiz çaydır.\n",
+          "hex": "232320507265666572656e6365730a0a2d20c387617920746572636968696d20c3a7c4b16e61726b657374616e6573692d35303720c59f656b657273697a20c3a7617964c4b1722e0a"
+        },
+        "maintenanceSource": null,
+        "warmup": null,
+        "save": {
+          "deliveries": [
+            {
+              "text": "Memory index repair failed: unable to open database file. The existing index was left unchanged.\nRun: openclaw memory status --deep --agent main. Resolve the reported sync failure before retrying the search.",
+              "replyToTag": false,
+              "replyToId": "fixture-save",
+              "audioAsVoice": false
+            }
+          ],
+          "dispatchReturn": {
+            "queuedFinal": true,
+            "counts": {
+              "tool": 0,
+              "block": 0,
+              "final": 1
+            }
+          },
+          "search": {
+            "results": [],
+            "disabled": true,
+            "unavailable": true,
+            "error": "unable to open database file",
+            "warning": "Memory index repair failed: unable to open database file. The existing index was left unchanged.",
+            "action": "Run: openclaw memory status --deep --agent main. Resolve the reported sync failure before retrying the search.",
+            "debug": {
+              "warning": "Memory index repair failed: unable to open database file. The existing index was left unchanged.",
+              "action": "Run: openclaw memory status --deep --agent main. Resolve the reported sync failure before retrying the search.",
+              "error": "unable to open database file"
+            }
+          },
+          "get": null
+        },
+        "followup": {
+          "deliveries": [
+            {
+              "text": "Memory index repair failed: unable to open database file. The existing index was left unchanged.\nRun: openclaw memory status --deep --agent main. Resolve the reported sync failure before retrying the search.",
+              "replyToTag": false,
+              "replyToId": "fixture-followup",
+              "audioAsVoice": false
+            }
+          ],
+          "dispatchReturn": {
+            "queuedFinal": true,
+            "counts": {
+              "tool": 0,
+              "block": 0,
+              "final": 1
+            }
+          },
+          "search": {
+            "results": [],
+            "disabled": true,
+            "unavailable": true,
+            "error": "unable to open database file",
+            "warning": "Memory index repair failed: unable to open database file. The existing index was left unchanged.",
+            "action": "Run: openclaw memory status --deep --agent main. Resolve the reported sync failure before retrying the search.",
+            "debug": {
+              "warning": "Memory index repair failed: unable to open database file. The existing index was left unchanged.",
+              "action": "Run: openclaw memory status --deep --agent main. Resolve the reported sync failure before retrying the search.",
+              "error": "unable to open database file"
+            }
+          },
+          "get": null
+        }
+      },
+      "nativeOriginalRawSha256": "131ac2816772ea8344cc3145fa5a201699f0d59c1bb1bee8a20395096ec6e5c4",
+      "sdkOriginalRawSha256": "586f8ef0f08b36562b6fc1eb58a7f32c09ce73ba92226f4118bd9eb4decaa8d6",
+      "nativeCustody": true,
+      "sdkCustody": true,
+      "custodyValidated": true,
+      "differences": [],
+      "rawDiagnostics": {
+        "native": {
+          "path": ".equivalence-results/host-turn-barrier-boundaries/attempt-807s367o/case/evidence/native-raw.json",
+          "bytes": 1300526,
+          "sha256": "131ac2816772ea8344cc3145fa5a201699f0d59c1bb1bee8a20395096ec6e5c4",
+          "physicallyRetained": true
+        },
+        "sdk": {
+          "sha256": "586f8ef0f08b36562b6fc1eb58a7f32c09ce73ba92226f4118bd9eb4decaa8d6",
+          "embeddedIn": "work/turn-barrier-boundaries/full-002.json",
+          "physicallyRetained": false,
+          "originalWriterSerializationVerified": true
+        }
+      }
+    }
+  ],
+  "currentGeneralValidation": "Complete suite at clean b276 / SDK160/eb474: 8670 passed, zero failed, 1648 skipped in 435.28s; both installed artifacts and 27 invalid typed calls each pass. This precedes later guard/tests-only follow-up; those checks are recorded separately. Earlier failures retain their actual outcomes.",
+  "limits": [
+    "The six-case profile is bounded and does not prove all scheduling interleavings.",
+    "The kernel lease gates pre-model target preparation, not an in-flight append.",
+    "Native owner.done can precede unowned provider stream cleanup.",
+    "The complete SDK HostTurnOutcome is custody; common dispatch accounting comes from its actual channel adapter.",
+    "Native raw full-run captures are physical; SDK full-run originals are verified from embedded snapshots and original serialization hashes.",
+    "Private maintenance failures are not automatically delivered user warnings.",
+    "No independently reproduced upstream source build is claimed."
+  ],
+  "initialFullCatalogCaseHashes": {
+    "host-turn-barrier-boundaries-pending-ascii": {
+      "nativeOriginalRawSha256": "3e6f7dc33866816d5e7b178681b3849409f3cd773d2e7f9bd288fff2a16dc951",
+      "sdkOriginalRawSha256": "54ee2473b09f2be2256a2f5e48a721c0f82661c2c6b25102a4d5262c6a5303ad",
+      "status": "matched",
+      "custodyValidated": true
+    },
+    "host-turn-barrier-boundaries-target-open-unicode": {
+      "nativeOriginalRawSha256": "c823c33897b84e5dd238d76f58af4c3b77aeed736fc87de70530f54d1eaeb64c",
+      "sdkOriginalRawSha256": "44d4482d0349c45f0c0ff7fbc1722ed7f293628693e92bf579c0e7e851ffb6f2",
+      "status": "matched",
+      "custodyValidated": true
+    },
+    "host-turn-barrier-boundaries-committed-ascii": {
+      "nativeOriginalRawSha256": "678adefcfb96da544b893bee449634b09d964eccf240d47a9c86d4f348ee6cee",
+      "sdkOriginalRawSha256": "6345f01ffe8e6f48b483937d5071d856d69dfa4ec7cda632810e794fe46a202b",
+      "status": "matched",
+      "custodyValidated": true
+    },
+    "host-turn-barrier-boundaries-maintenance-refusal-unicode": {
+      "nativeOriginalRawSha256": "8fa353e9c8dcd48c043440505c55fb5cabc1ae869b37128d4f4759be6748e487",
+      "sdkOriginalRawSha256": "c4d60f34166d4b1e25637bc9e4d818f2965bb39bdaa9604dea6cbc078cbc5019",
+      "status": "matched",
+      "custodyValidated": true
+    },
+    "host-turn-barrier-boundaries-foreground-refusal-ascii": {
+      "nativeOriginalRawSha256": "d3b6f72ca9fb3c1927392864f3d927b095e45227ec3bbe9ad8c51f60c6bec700",
+      "sdkOriginalRawSha256": "e9ca610c140d692c5919e5e488a40d33c294674346976e3326b5d37861fd7a44",
+      "status": "matched",
+      "custodyValidated": true
+    },
+    "host-turn-barrier-boundaries-publication-failure-unicode": {
+      "nativeOriginalRawSha256": "006bb91013dfbce0e2691eb6911b365215db1ace3bc2ed201dc2c65594815411",
+      "sdkOriginalRawSha256": "2db0d64bf345587ed39928981386a374a7d34b4d5a265ca7cdafc6f8f4152823",
+      "status": "matched",
+      "custodyValidated": true
+    }
+  },
+  "finalFullCatalog": {
+    "report": {
+      "path": "work/turn-barrier-boundaries/full-002.json",
+      "bytes": 572006983,
+      "sha256": "020501557c411e9cf561f8463478701dadc959115d9acb9a224d3c8106bb4fd0"
+    },
+    "implementation": {
+      "gitCommit": "b27624db7fb659194b0323682e76bc5b5bee30e6",
+      "trackedWorkingTreeDirty": false,
+      "sourceSha256": "eb474baf13bb2f9bb7b330a30fbcc8816b42eb262e98772c6c9f8279b81ee4da",
+      "sourceFiles": 160
+    },
+    "mode": "full",
+    "gateStatus": "mismatched",
+    "caseCount": 1421,
+    "caseStatusCounts": {
+      "matched": 1407,
+      "mismatched": 14,
+      "blocked": 0
+    },
+    "errors": [],
+    "verifiedBefore": 69,
+    "verifiedAfter": 70,
+    "totalConditions": 128,
+    "remaining": 58,
+    "uncoveredConditions": 56,
+    "registeredUnresolvedConditions": 2,
+    "contractStates": {
+      "complete": 32,
+      "partial": 6,
+      "pending": 26
+    },
+    "durationSeconds": 1809.568982,
+    "overallCreditIs69To70Not70To71": true,
+    "executionEvidenceGuard": {
+      "path": "equivalence/host_turn_barrier_boundaries_evidence.py",
+      "sha256": "e6db562ace28cb0b0e24195e667ae01132c1e091c5ce7cb218eeb71a268eb502"
+    }
+  },
+  "independentFinalFullAudit": {
+    "path": "work/turn-barrier-boundaries/independent-audit-full-002.json",
+    "bytes": 21514,
+    "sha256": "52d342b48f1b849b0658ca18bddaa01cdd8dfaaad628b35f8ee928c5c4f58426",
+    "acceptanceCreditFromAudit": 0
+  },
+  "finalGeneralRegression": {
+    "path": "work/turn-barrier-boundaries/regressions-003.log",
+    "bytes": 11567,
+    "sha256": "e199def34bc7736a7a040ad81ca03c3a08751e337cf1cbd1206170b2cb57d091",
+    "passed": 8670,
+    "failed": 0,
+    "skipped": 1648,
+    "durationSeconds": 435.28,
+    "exitCode": 0,
+    "implementation": {
+      "gitCommit": "b27624db7fb659194b0323682e76bc5b5bee30e6",
+      "trackedWorkingTreeDirty": false,
+      "sourceSha256": "eb474baf13bb2f9bb7b330a30fbcc8816b42eb262e98772c6c9f8279b81ee4da",
+      "sourceFiles": 160
+    }
+  },
+  "finalDistribution": {
+    "path": "work/turn-barrier-boundaries/distribution-003.log",
+    "bytes": 4783,
+    "sha256": "dcae9ecfb3675b6c23d769d217096fbccb1c40a921bdec3d9b5769b8021e42ba",
+    "installedWheel": "passed",
+    "installedSdist": "passed",
+    "invalidTypedCalls": 27,
+    "exitCode": 0,
+    "implementation": {
+      "gitCommit": "b27624db7fb659194b0323682e76bc5b5bee30e6",
+      "trackedWorkingTreeDirty": false,
+      "sourceSha256": "eb474baf13bb2f9bb7b330a30fbcc8816b42eb262e98772c6c9f8279b81ee4da",
+      "sourceFiles": 160
+    }
+  },
+  "historicalFailedGeneralRuns": [
+    {
+      "record": {
+        "path": "work/turn-barrier-boundaries/regressions-001.log",
+        "bytes": 15496,
+        "sha256": "aad754c1ca13369f0a06c7009e04c4f1003f814b47b210bc5936a86570b34b1c"
+      },
+      "passed": 8657,
+      "failed": 3,
+      "skipped": 1648,
+      "durationSeconds": 429.86,
+      "cause": "obsolete catalog metadata assertions; corrected separately in isolated tests-only a283885"
+    },
+    {
+      "record": {
+        "path": "work/turn-barrier-boundaries/regressions-002-isolated-tests.log",
+        "bytes": 13413,
+        "sha256": "66f825ef6d473332b1a268782d439886e0084405ffa8455c8e4aba65df0974b3"
+      },
+      "passed": 8659,
+      "failed": 1,
+      "skipped": 1648,
+      "durationSeconds": 427.2,
+      "cause": "actual concurrent session-source MemoryIndexSourceChangedError; failed controller retained"
+    }
+  ],
+  "sourceCoherenceFix": {
+    "isolatedCommit": "d2edb11f2cb95a330670387f0659344733f02c1d",
+    "appliedCommit": "07eae3768e4d45d5a97aa190788815abac8a3518",
+    "credits": 0,
+    "newRegressionTests": 10,
+    "independentReview": "GREEN"
+  },
+  "hostedInitialValidation": {
+    "python311": {
+      "path": "work/turn-barrier-boundaries/ci-311-initial-failed.log",
+      "bytes": 52055,
+      "sha256": "066b4351d7c8a0410d39f2486f0fc34bfca60f5e6dddb1a453cf11341bcf7ea1",
+      "status": "failed",
+      "passed": 7721,
+      "failed": 1,
+      "skipped": 2596,
+      "durationSeconds": 585.02,
+      "cause": "pending cross-turn delivery acknowledgment was not required before next-model admission in a forged evidence ordering; intrinsic settled edge remained checked"
+    },
+    "python312": {
+      "path": "work/turn-barrier-boundaries/ci-312-initial-passed.log",
+      "bytes": 56512,
+      "sha256": "33171751eb4424fe13ec72debb826a2d1e83b17b2bacdaf73ceed1ec7b2d69ff",
+      "status": "passed",
+      "passed": 7722,
+      "failed": 0,
+      "skipped": 2596,
+      "durationSeconds": 585.34,
+      "distribution": "both-passed"
+    }
+  },
+  "postCatalogGuardValidation": {
+    "status": "passed",
+    "scope": "validator-only",
+    "acceptanceIncrease": 0,
+    "implementation": {
+      "gitCommit": "353b097f718fe061c7ee1acc177450d3e0b16d50",
+      "trackedWorkingTreeDirty": false,
+      "sourceSha256": "eb474baf13bb2f9bb7b330a30fbcc8816b42eb262e98772c6c9f8279b81ee4da",
+      "sourceFiles": 160
+    },
+    "guard": {
+      "path": "equivalence/host_turn_barrier_boundaries_evidence.py",
+      "sha256": "d62f45061141efe4babb84cf60f7da6e91df70b3b84c7c6c077b021370ccc4ad"
+    },
+    "artifacts": {
+      "independentReview": {
+        "path": "work/turn-barrier-boundaries/sdk-order-guard-independent-review.json",
+        "bytes": 6070,
+        "sha256": "8562d17234618bd107a786fd6fa688812171e0ceff2051e2efe8e5a1502bed20"
+      },
+      "strictRetainedReplay": {
+        "path": "work/turn-barrier-boundaries/stronger-guard-review/replay-001.json",
+        "bytes": 17960,
+        "sha256": "59ede855bade43c951d09b86d37bb03b0362b2a36d4c3f8aa6312182148c8ace"
+      },
+      "freshSixCasePreflight": {
+        "path": "work/turn-barrier-boundaries/preflight/attempt-002-clean-353b097/report.json",
+        "bytes": 26810351,
+        "sha256": "e32aec9996c09d6e3761ccfe0b75186de29df52e885f9c63f14d55e276ec4b8f"
+      }
+    },
+    "summary": {
+      "retainedNativeCaptures": 6,
+      "retainedSdkCaptures": 6,
+      "freshMatchedCases": 6,
+      "freshBlockedCases": 0,
+      "freshMismatchedCases": 0,
+      "finalAuthenticationPassed": true
+    },
+    "targetedEvidenceTests": {
+      "path": "work/turn-barrier-boundaries/evidence-tests-final-005.log",
+      "bytes": 341,
+      "sha256": "2a7f23ae646e9e4541118aa355b67949ce92477f7c5e0f800fc6704e8129cc23",
+      "passed": 271,
+      "failed": 0,
+      "skipped": 0,
+      "durationSeconds": 10.65
+    },
+    "statusRecord": {
+      "path": "work/turn-barrier-boundaries/post-validation-status.json",
+      "bytes": 1694,
+      "sha256": "1888388dd765d863b5eda198aa29a1652db9ffb4a2a7b41a4d8ef7874a41b0d8"
+    }
+  }
+}

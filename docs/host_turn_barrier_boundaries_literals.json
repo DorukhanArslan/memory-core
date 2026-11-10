@@ -1,0 +1,731 @@
+{
+  "kind": "host-turn-barrier-boundaries-acceptance-literals",
+  "acceptancePointsAwarded": 0,
+  "cases": [
+    {
+      "id": "host-turn-barrier-boundaries-pending-ascii",
+      "operation": "host-turn-barrier-boundaries-runtime",
+      "requirement": "host.turn-barrier",
+      "covers": [
+        "host.turn-barrier.boundaries"
+      ],
+      "input": {
+        "nowMs": 1794268800000,
+        "source": "MEMORY.md",
+        "policy": {
+          "memoryProvider": "none",
+          "memorySources": [
+            "memory"
+          ],
+          "searchSources": [
+            "memory"
+          ],
+          "sessionMemory": false,
+          "compactionEnabled": true,
+          "memoryFlushEnabled": true,
+          "contextWindowTokens": 32768,
+          "reserveTokens": 8192,
+          "softThresholdTokens": 4000,
+          "nativeMemorySynchronization": "unmodified-default-watch-and-on-search-enabled",
+          "sdkMemoryPublication": "on-search",
+          "optionalMaintenancePreemption": "actual-scheduler-owned-preemptible-work",
+          "sdkOptionalMaintenance": "background",
+          "nativeSkipBootstrap": true,
+          "sdkInitialize": false
+        },
+        "modelTransport": {
+          "kind": "deterministic-offline-provider",
+          "paidCalls": false,
+          "replyFromActualToolResults": true,
+          "fixtureFailureInjection": false
+        },
+        "clockFixture": {
+          "kind": "date-only-wall-clock",
+          "nowMs": 1794268800000,
+          "nativeScope": "all-processes-and-threads-including-workers",
+          "sdkClock": "public-host-clock-argument",
+          "monotonicAndTimers": "unmodified"
+        },
+        "sourceMetadataFixture": {
+          "operation": "os-utime-only",
+          "target": "MEMORY.md",
+          "atimeMs": 1794268800000,
+          "mtimeMs": 1794268800000,
+          "placement": "inside-model-callback-after-real-producing-tool-result-before-terminal-reply",
+          "applyTo": "each-successful-corpus-producing-tool-result",
+          "indexOperations": [],
+          "sourceContentMutation": false,
+          "targets": [
+            "MEMORY.md",
+            "memory/2026-11-10.md"
+          ]
+        },
+        "identity": {
+          "agentId": "main",
+          "sessionKey": "agent:main:host-turn-barrier-boundaries-pending-ascii",
+          "sessionId": "host-turn-barrier-boundaries-pending-ascii-session"
+        },
+        "scenario": "pending-optional-preemption",
+        "initialState": "cold",
+        "firstTurnUsage": {
+          "input": 23000,
+          "output": 32,
+          "total": 23032
+        },
+        "followupUsage": {
+          "input": 128,
+          "output": 32,
+          "total": 160
+        },
+        "save": {
+          "prompt": "Remember: My drink preference is marblekumquat-416 tea without sugar. Also remember for daily memory: My daily note preference is cedarpomelo-527 tea without sugar.",
+          "content": "## Preferences\n\n- My drink preference is marblekumquat-416 tea without sugar.\n",
+          "producer": "native-coding-write-or-sdk-add_memory_entry",
+          "section": "Preferences",
+          "text": "My drink preference is marblekumquat-416 tea without sugar."
+        },
+        "followup": {
+          "prompt": "What is my saved preference? Use memory_search and read the first actual hit before answering. Include any actual warning and action guidance.",
+          "search": {
+            "query": "cedarpomelo-527",
+            "maxResults": 5,
+            "minScore": 0,
+            "corpus": "memory"
+          },
+          "getRange": "first-actual-search-hit",
+          "reply": "actual-memory-get-text-or-actual-search-warning-or-no-source-backed-memory"
+        },
+        "maintenance": {
+          "relativePath": "memory/2026-11-10.md",
+          "body": "- My daily note preference is cedarpomelo-527 tea without sugar.\n",
+          "instructionSource": "actual-persisted-first-user-history",
+          "producer": "native-memory-flush-write-or-sdk-maintenance-append",
+          "promptPolicy": "original-default-pre-compaction-memory-flush-prompt",
+          "providerCleanupJoinClaimed": false,
+          "physicalWriteInFlightClaimed": false
+        },
+        "schedule": {
+          "trigger": "actual-first-external-terminal-delivery-with-scheduler-owner-pending",
+          "nextSubmission": "immediate-full-same-session-dispatch-from-real-delivery-callback",
+          "deliveryControl": "hold-only-first-delivery-acknowledgment",
+          "releaseAcknowledgmentAfter": "actual-maintenance-owner-abort-event",
+          "ownerOrigin": "actual-original-post-turn-scheduler",
+          "pendingPlan": "read-only-resolved-plan-and-real-persisted-usage",
+          "maintenanceStartControl": "none",
+          "firstHostReturnMayFollowNextSubmission": true,
+          "interveningIndexOperations": []
+        }
+      }
+    },
+    {
+      "id": "host-turn-barrier-boundaries-target-open-unicode",
+      "operation": "host-turn-barrier-boundaries-runtime",
+      "requirement": "host.turn-barrier",
+      "covers": [
+        "host.turn-barrier.boundaries"
+      ],
+      "input": {
+        "nowMs": 1794268800000,
+        "source": "MEMORY.md",
+        "policy": {
+          "memoryProvider": "none",
+          "memorySources": [
+            "memory"
+          ],
+          "searchSources": [
+            "memory"
+          ],
+          "sessionMemory": false,
+          "compactionEnabled": true,
+          "memoryFlushEnabled": true,
+          "contextWindowTokens": 32768,
+          "reserveTokens": 8192,
+          "softThresholdTokens": 4000,
+          "nativeMemorySynchronization": "unmodified-default-watch-and-on-search-enabled",
+          "sdkMemoryPublication": "on-search",
+          "optionalMaintenancePreemption": "actual-scheduler-owned-preemptible-work",
+          "sdkOptionalMaintenance": "background",
+          "nativeSkipBootstrap": true,
+          "sdkInitialize": false
+        },
+        "modelTransport": {
+          "kind": "deterministic-offline-provider",
+          "paidCalls": false,
+          "replyFromActualToolResults": true,
+          "fixtureFailureInjection": false
+        },
+        "clockFixture": {
+          "kind": "date-only-wall-clock",
+          "nowMs": 1794268800000,
+          "nativeScope": "all-processes-and-threads-including-workers",
+          "sdkClock": "public-host-clock-argument",
+          "monotonicAndTimers": "unmodified"
+        },
+        "sourceMetadataFixture": {
+          "operation": "os-utime-only",
+          "target": "MEMORY.md",
+          "atimeMs": 1794268800000,
+          "mtimeMs": 1794268800000,
+          "placement": "inside-model-callback-after-real-producing-tool-result-before-terminal-reply",
+          "applyTo": "each-successful-corpus-producing-tool-result",
+          "indexOperations": [],
+          "sourceContentMutation": false,
+          "targets": [
+            "MEMORY.md",
+            "memory/2026-11-10.md"
+          ]
+        },
+        "identity": {
+          "agentId": "main",
+          "sessionKey": "agent:main:host-turn-barrier-boundaries-target-open-unicode",
+          "sessionId": "host-turn-barrier-boundaries-target-open-unicode-session"
+        },
+        "scenario": "target-open-preparation",
+        "initialState": "cold",
+        "firstTurnUsage": {
+          "input": 23000,
+          "output": 32,
+          "total": 23032
+        },
+        "followupUsage": {
+          "input": 128,
+          "output": 32,
+          "total": 160
+        },
+        "save": {
+          "prompt": "Remember: Çay tercihim yakutşeftali-638 şekersiz çaydır. Also remember for daily memory: Günlük not tercihim gümüşmenekşe-749 şekersiz çaydır.",
+          "content": "## Preferences\n\n- Çay tercihim yakutşeftali-638 şekersiz çaydır.\n",
+          "producer": "native-coding-write-or-sdk-add_memory_entry",
+          "section": "Preferences",
+          "text": "Çay tercihim yakutşeftali-638 şekersiz çaydır."
+        },
+        "followup": {
+          "prompt": "What is my saved preference? Use memory_search and read the first actual hit before answering. Include any actual warning and action guidance.",
+          "search": {
+            "query": "gümüşmenekşe-749",
+            "maxResults": 5,
+            "minScore": 0,
+            "corpus": "memory"
+          },
+          "getRange": "first-actual-search-hit",
+          "reply": "actual-memory-get-text-or-actual-search-warning-or-no-source-backed-memory"
+        },
+        "maintenance": {
+          "relativePath": "memory/2026-11-10.md",
+          "body": "- Günlük not tercihim gümüşmenekşe-749 şekersiz çaydır.\n",
+          "instructionSource": "actual-persisted-first-user-history",
+          "producer": "native-memory-flush-write-or-sdk-maintenance-append",
+          "promptPolicy": "original-default-pre-compaction-memory-flush-prompt",
+          "providerCleanupJoinClaimed": false,
+          "physicalWriteInFlightClaimed": false
+        },
+        "fixtureFiles": [
+          {
+            "path": "memory/2026-11-10.md",
+            "content": "",
+            "atimeMs": 1794268800000,
+            "mtimeMs": 1794268800000,
+            "kind": "owned-empty-maintenance-target"
+          }
+        ],
+        "schedule": {
+          "trigger": "actual-kernel-write-open-lease-break-notification",
+          "nextSubmission": "full-same-session-foreground-dispatch",
+          "deliveryControl": "acknowledge-actual-first-terminal-delivery",
+          "control": {
+            "kind": "linux-fcntl-read-lease",
+            "target": "memory/2026-11-10.md",
+            "helper": "independent-python-owned-os-lease-holder",
+            "arm": "before-first-foreground-dispatch",
+            "releaseAfter": [
+              "actual-next-foreground-submission-attempt",
+              "actual-maintenance-owner-abort-event",
+              "actual-node-event-loop-live-after-abort"
+            ]
+          },
+          "originalOperation": "ensureMemoryFlushTargetFile-fs.promises.open-append",
+          "physicalAppendInFlightClaimed": false,
+          "interveningIndexOperations": []
+        }
+      }
+    },
+    {
+      "id": "host-turn-barrier-boundaries-committed-ascii",
+      "operation": "host-turn-barrier-boundaries-runtime",
+      "requirement": "host.turn-barrier",
+      "covers": [
+        "host.turn-barrier.boundaries"
+      ],
+      "input": {
+        "nowMs": 1794268800000,
+        "source": "MEMORY.md",
+        "policy": {
+          "memoryProvider": "none",
+          "memorySources": [
+            "memory"
+          ],
+          "searchSources": [
+            "memory"
+          ],
+          "sessionMemory": false,
+          "compactionEnabled": true,
+          "memoryFlushEnabled": true,
+          "contextWindowTokens": 32768,
+          "reserveTokens": 8192,
+          "softThresholdTokens": 4000,
+          "nativeMemorySynchronization": "unmodified-default-watch-and-on-search-enabled",
+          "sdkMemoryPublication": "on-search",
+          "optionalMaintenancePreemption": "actual-scheduler-owned-preemptible-work",
+          "sdkOptionalMaintenance": "background",
+          "nativeSkipBootstrap": true,
+          "sdkInitialize": false
+        },
+        "modelTransport": {
+          "kind": "deterministic-offline-provider",
+          "paidCalls": false,
+          "replyFromActualToolResults": true,
+          "fixtureFailureInjection": false
+        },
+        "clockFixture": {
+          "kind": "date-only-wall-clock",
+          "nowMs": 1794268800000,
+          "nativeScope": "all-processes-and-threads-including-workers",
+          "sdkClock": "public-host-clock-argument",
+          "monotonicAndTimers": "unmodified"
+        },
+        "sourceMetadataFixture": {
+          "operation": "os-utime-only",
+          "target": "MEMORY.md",
+          "atimeMs": 1794268800000,
+          "mtimeMs": 1794268800000,
+          "placement": "inside-model-callback-after-real-producing-tool-result-before-terminal-reply",
+          "applyTo": "each-successful-corpus-producing-tool-result",
+          "indexOperations": [],
+          "sourceContentMutation": false,
+          "targets": [
+            "MEMORY.md",
+            "memory/2026-11-10.md"
+          ]
+        },
+        "identity": {
+          "agentId": "main",
+          "sessionKey": "agent:main:host-turn-barrier-boundaries-committed-ascii",
+          "sessionId": "host-turn-barrier-boundaries-committed-ascii-session"
+        },
+        "scenario": "committed-maintenance",
+        "initialState": "cold",
+        "firstTurnUsage": {
+          "input": 23000,
+          "output": 32,
+          "total": 23032
+        },
+        "followupUsage": {
+          "input": 128,
+          "output": 32,
+          "total": 160
+        },
+        "save": {
+          "prompt": "Remember: My drink preference is copperquince-851 tea without sugar. Also remember for daily memory: My daily note preference is silverlychee-962 tea without sugar.",
+          "content": "## Preferences\n\n- My drink preference is copperquince-851 tea without sugar.\n",
+          "producer": "native-coding-write-or-sdk-add_memory_entry",
+          "section": "Preferences",
+          "text": "My drink preference is copperquince-851 tea without sugar."
+        },
+        "followup": {
+          "prompt": "What is my saved preference? Use memory_search and read the first actual hit before answering. Include any actual warning and action guidance.",
+          "search": {
+            "query": "silverlychee-962",
+            "maxResults": 5,
+            "minScore": 0,
+            "corpus": "memory"
+          },
+          "getRange": "first-actual-search-hit",
+          "reply": "actual-memory-get-text-or-actual-search-warning-or-no-source-backed-memory"
+        },
+        "maintenance": {
+          "relativePath": "memory/2026-11-10.md",
+          "body": "- My daily note preference is silverlychee-962 tea without sugar.\n",
+          "instructionSource": "actual-persisted-first-user-history",
+          "producer": "native-memory-flush-write-or-sdk-maintenance-append",
+          "promptPolicy": "original-default-pre-compaction-memory-flush-prompt",
+          "providerCleanupJoinClaimed": false,
+          "physicalWriteInFlightClaimed": false
+        },
+        "schedule": {
+          "trigger": "actual-maintenance-successful-write-result-consumed",
+          "nextSubmission": "full-same-session-foreground-dispatch-before-provider-terminal-settlement",
+          "deliveryControl": "acknowledge-actual-first-terminal-delivery",
+          "providerTransport": "remain-pending-until-real-abort-then-setImmediate-cleanup",
+          "providerCleanupJoinClaimed": false,
+          "physicalWriteInFlightClaimed": false,
+          "ownerOrigin": "actual-original-post-turn-scheduler",
+          "interveningIndexOperations": []
+        }
+      }
+    },
+    {
+      "id": "host-turn-barrier-boundaries-maintenance-refusal-unicode",
+      "operation": "host-turn-barrier-boundaries-runtime",
+      "requirement": "host.turn-barrier",
+      "covers": [
+        "host.turn-barrier.boundaries"
+      ],
+      "input": {
+        "nowMs": 1794268800000,
+        "source": "MEMORY.md",
+        "policy": {
+          "memoryProvider": "none",
+          "memorySources": [
+            "memory"
+          ],
+          "searchSources": [
+            "memory"
+          ],
+          "sessionMemory": false,
+          "compactionEnabled": true,
+          "memoryFlushEnabled": true,
+          "contextWindowTokens": 32768,
+          "reserveTokens": 8192,
+          "softThresholdTokens": 4000,
+          "nativeMemorySynchronization": "unmodified-default-watch-and-on-search-enabled",
+          "sdkMemoryPublication": "on-search",
+          "optionalMaintenancePreemption": "actual-scheduler-owned-preemptible-work",
+          "sdkOptionalMaintenance": "background",
+          "nativeSkipBootstrap": true,
+          "sdkInitialize": false
+        },
+        "modelTransport": {
+          "kind": "deterministic-offline-provider",
+          "paidCalls": false,
+          "replyFromActualToolResults": true,
+          "fixtureFailureInjection": false
+        },
+        "clockFixture": {
+          "kind": "date-only-wall-clock",
+          "nowMs": 1794268800000,
+          "nativeScope": "all-processes-and-threads-including-workers",
+          "sdkClock": "public-host-clock-argument",
+          "monotonicAndTimers": "unmodified"
+        },
+        "sourceMetadataFixture": {
+          "operation": "os-utime-only",
+          "target": "MEMORY.md",
+          "atimeMs": 1794268800000,
+          "mtimeMs": 1794268800000,
+          "placement": "inside-model-callback-after-real-producing-tool-result-before-terminal-reply",
+          "applyTo": "each-successful-corpus-producing-tool-result",
+          "indexOperations": [],
+          "sourceContentMutation": false,
+          "targets": [
+            "MEMORY.md",
+            "memory/2026-11-10.md"
+          ]
+        },
+        "identity": {
+          "agentId": "main",
+          "sessionKey": "agent:main:host-turn-barrier-boundaries-maintenance-refusal-unicode",
+          "sessionId": "host-turn-barrier-boundaries-maintenance-refusal-unicode-session"
+        },
+        "scenario": "refused-maintenance",
+        "initialState": "cold",
+        "firstTurnUsage": {
+          "input": 23000,
+          "output": 32,
+          "total": 23032
+        },
+        "followupUsage": {
+          "input": 128,
+          "output": 32,
+          "total": 160
+        },
+        "save": {
+          "prompt": "Remember: Çay tercihim ışıkinciri-173 şekersiz çaydır. Also remember for daily memory: Günlük not tercihim mercanerik-284 şekersiz çaydır.",
+          "content": "## Preferences\n\n- Çay tercihim ışıkinciri-173 şekersiz çaydır.\n",
+          "producer": "native-coding-write-or-sdk-add_memory_entry",
+          "section": "Preferences",
+          "text": "Çay tercihim ışıkinciri-173 şekersiz çaydır."
+        },
+        "followup": {
+          "prompt": "What is my saved preference? Use memory_search and read the first actual hit before answering. Include any actual warning and action guidance.",
+          "search": {
+            "query": "mercanerik-284",
+            "maxResults": 5,
+            "minScore": 0,
+            "corpus": "memory"
+          },
+          "getRange": "first-actual-search-hit",
+          "reply": "actual-memory-get-text-or-actual-search-warning-or-no-source-backed-memory"
+        },
+        "maintenance": {
+          "relativePath": "memory/2026-11-10.md",
+          "body": "- Günlük not tercihim mercanerik-284 şekersiz çaydır.\n",
+          "instructionSource": "actual-persisted-first-user-history",
+          "producer": "native-memory-flush-write-or-sdk-maintenance-append",
+          "promptPolicy": "original-default-pre-compaction-memory-flush-prompt",
+          "providerCleanupJoinClaimed": false,
+          "physicalWriteInFlightClaimed": false
+        },
+        "fixtureFiles": [
+          {
+            "path": "memory/2026-11-10.md",
+            "content": "",
+            "atimeMs": 1794268800000,
+            "mtimeMs": 1794268800000,
+            "kind": "owned-empty-maintenance-target"
+          }
+        ],
+        "schedule": {
+          "trigger": "actual-maintenance-failed-write-result-consumed",
+          "nextSubmission": "full-same-session-foreground-dispatch-before-provider-terminal-settlement",
+          "deliveryControl": "acknowledge-actual-first-terminal-delivery",
+          "providerTransport": "remain-pending-until-real-abort-then-setImmediate-cleanup",
+          "providerCleanupJoinClaimed": false,
+          "physicalWriteInFlightClaimed": false,
+          "ownerOrigin": "actual-original-post-turn-scheduler",
+          "interveningIndexOperations": []
+        },
+        "fault": {
+          "recipe": "actual-source-second-hard-link",
+          "target": "memory/2026-11-10.md",
+          "arm": "after-actual-flush-target-preparation-before-maintenance-write-tool-emission",
+          "remove": "after-actual-maintenance-failed-write-result-consumed"
+        }
+      }
+    },
+    {
+      "id": "host-turn-barrier-boundaries-foreground-refusal-ascii",
+      "operation": "host-turn-barrier-boundaries-runtime",
+      "requirement": "host.turn-barrier",
+      "covers": [
+        "host.turn-barrier.boundaries"
+      ],
+      "input": {
+        "nowMs": 1794268800000,
+        "source": "MEMORY.md",
+        "policy": {
+          "memoryProvider": "none",
+          "memorySources": [
+            "memory"
+          ],
+          "searchSources": [
+            "memory"
+          ],
+          "sessionMemory": false,
+          "compactionEnabled": true,
+          "memoryFlushEnabled": true,
+          "contextWindowTokens": 32768,
+          "reserveTokens": 8192,
+          "softThresholdTokens": 4000,
+          "nativeMemorySynchronization": "unmodified-default-watch-and-on-search-enabled",
+          "sdkMemoryPublication": "on-search",
+          "optionalMaintenancePreemption": "not-exercised-low-usage",
+          "sdkOptionalMaintenance": "background",
+          "nativeSkipBootstrap": true,
+          "sdkInitialize": false
+        },
+        "modelTransport": {
+          "kind": "deterministic-offline-provider",
+          "paidCalls": false,
+          "replyFromActualToolResults": true,
+          "fixtureFailureInjection": false
+        },
+        "clockFixture": {
+          "kind": "date-only-wall-clock",
+          "nowMs": 1794268800000,
+          "nativeScope": "all-processes-and-threads-including-workers",
+          "sdkClock": "public-host-clock-argument",
+          "monotonicAndTimers": "unmodified"
+        },
+        "sourceMetadataFixture": {
+          "operation": "os-utime-only",
+          "target": "MEMORY.md",
+          "atimeMs": 1794268800000,
+          "mtimeMs": 1794268800000,
+          "placement": "inside-model-callback-after-real-producing-tool-result-before-terminal-reply",
+          "applyTo": "each-successful-corpus-producing-tool-result",
+          "indexOperations": [],
+          "sourceContentMutation": false,
+          "targets": [
+            "MEMORY.md"
+          ]
+        },
+        "identity": {
+          "agentId": "main",
+          "sessionKey": "agent:main:host-turn-barrier-boundaries-foreground-refusal-ascii",
+          "sessionId": "host-turn-barrier-boundaries-foreground-refusal-ascii-session"
+        },
+        "scenario": "refused-foreground",
+        "initialState": "warm-source-without-explicit-publication",
+        "firstTurnUsage": {
+          "input": 128,
+          "output": 32,
+          "total": 160
+        },
+        "followupUsage": {
+          "input": 128,
+          "output": 32,
+          "total": 160
+        },
+        "save": {
+          "prompt": "Remember: My drink preference is amberguava-395 tea without sugar.",
+          "content": "## Preferences\n\n- My drink preference is amberguava-395 tea without sugar.\n",
+          "producer": "native-coding-write-or-sdk-add_memory_entry",
+          "section": "Preferences",
+          "text": "My drink preference is amberguava-395 tea without sugar."
+        },
+        "followup": {
+          "prompt": "What is my saved preference? Use memory_search and read the first actual hit before answering. Include any actual warning and action guidance.",
+          "search": {
+            "query": "hazelfern-286",
+            "maxResults": 5,
+            "minScore": 0,
+            "corpus": "memory"
+          },
+          "getRange": "first-actual-search-hit",
+          "reply": "actual-memory-get-text-or-actual-search-warning-or-no-source-backed-memory"
+        },
+        "warmup": {
+          "usage": {
+            "input": 128,
+            "output": 32,
+            "total": 160
+          },
+          "save": {
+            "prompt": "Remember: My drink preference is hazelfern-286 tea without sugar.",
+            "content": "## Preferences\n\n- My drink preference is hazelfern-286 tea without sugar.\n",
+            "section": "Preferences",
+            "text": "My drink preference is hazelfern-286 tea without sugar.",
+            "producer": "native-coding-write-or-sdk-add_memory_entry"
+          },
+          "publication": "only-natural-tool-and-search-behavior"
+        },
+        "schedule": {
+          "trigger": "first-foreground-refusal-terminal-delivery",
+          "nextSubmission": "immediate-full-same-session-dispatch",
+          "deliveryControl": "acknowledge-actual-terminal-delivery",
+          "interveningIndexOperations": []
+        },
+        "fault": {
+          "recipe": "actual-source-second-hard-link",
+          "target": "MEMORY.md",
+          "arm": "after-warmup-save-before-first-target-foreground-write-tool-emission",
+          "remove": "after-actual-foreground-failed-write-result-consumed"
+        }
+      }
+    },
+    {
+      "id": "host-turn-barrier-boundaries-publication-failure-unicode",
+      "operation": "host-turn-barrier-boundaries-runtime",
+      "requirement": "host.turn-barrier",
+      "covers": [
+        "host.turn-barrier.boundaries"
+      ],
+      "input": {
+        "nowMs": 1794268800000,
+        "source": "MEMORY.md",
+        "policy": {
+          "memoryProvider": "none",
+          "memorySources": [
+            "memory"
+          ],
+          "searchSources": [
+            "memory"
+          ],
+          "sessionMemory": false,
+          "compactionEnabled": true,
+          "memoryFlushEnabled": true,
+          "contextWindowTokens": 32768,
+          "reserveTokens": 8192,
+          "softThresholdTokens": 4000,
+          "nativeMemorySynchronization": "unmodified-default-watch-and-on-search-enabled",
+          "sdkMemoryPublication": "on-search",
+          "optionalMaintenancePreemption": "not-exercised-low-usage",
+          "sdkOptionalMaintenance": "background",
+          "nativeSkipBootstrap": true,
+          "sdkInitialize": false
+        },
+        "modelTransport": {
+          "kind": "deterministic-offline-provider",
+          "paidCalls": false,
+          "replyFromActualToolResults": true,
+          "fixtureFailureInjection": false
+        },
+        "clockFixture": {
+          "kind": "date-only-wall-clock",
+          "nowMs": 1794268800000,
+          "nativeScope": "all-processes-and-threads-including-workers",
+          "sdkClock": "public-host-clock-argument",
+          "monotonicAndTimers": "unmodified"
+        },
+        "sourceMetadataFixture": {
+          "operation": "os-utime-only",
+          "target": "MEMORY.md",
+          "atimeMs": 1794268800000,
+          "mtimeMs": 1794268800000,
+          "placement": "inside-model-callback-after-real-producing-tool-result-before-terminal-reply",
+          "applyTo": "each-successful-corpus-producing-tool-result",
+          "indexOperations": [],
+          "sourceContentMutation": false,
+          "targets": [
+            "MEMORY.md"
+          ]
+        },
+        "identity": {
+          "agentId": "main",
+          "sessionKey": "agent:main:host-turn-barrier-boundaries-publication-failure-unicode",
+          "sessionId": "host-turn-barrier-boundaries-publication-failure-unicode-session"
+        },
+        "scenario": "cold-publication-failure",
+        "initialState": "cold",
+        "firstTurnUsage": {
+          "input": 128,
+          "output": 32,
+          "total": 160
+        },
+        "followupUsage": {
+          "input": 128,
+          "output": 32,
+          "total": 160
+        },
+        "save": {
+          "prompt": "Remember: Çay tercihim çınarkestanesi-507 şekersiz çaydır. Then verify the saved fact with memory_search and include any actual warning and action guidance in your reply.",
+          "content": "## Preferences\n\n- Çay tercihim çınarkestanesi-507 şekersiz çaydır.\n",
+          "producer": "native-coding-write-or-sdk-add_memory_entry",
+          "section": "Preferences",
+          "text": "Çay tercihim çınarkestanesi-507 şekersiz çaydır.",
+          "verificationSearch": {
+            "query": "çınarkestanesi-507",
+            "maxResults": 5,
+            "minScore": 0,
+            "corpus": "memory"
+          }
+        },
+        "followup": {
+          "prompt": "What is my saved preference? Use memory_search and read the first actual hit before answering. Include any actual warning and action guidance.",
+          "search": {
+            "query": "çınarkestanesi-507",
+            "maxResults": 5,
+            "minScore": 0,
+            "corpus": "memory"
+          },
+          "getRange": "first-actual-search-hit",
+          "reply": "actual-memory-get-text-or-actual-search-warning-or-no-source-backed-memory"
+        },
+        "schedule": {
+          "trigger": "actual-first-foreground-save-and-verification-terminal-delivery",
+          "nextSubmission": "immediate-full-same-session-dispatch",
+          "deliveryControl": "acknowledge-actual-terminal-delivery",
+          "interveningIndexOperations": []
+        },
+        "fault": {
+          "recipe": "actual-index-publication-sidecar-dangling-symlink",
+          "arm": "after-actual-foreground-save-result-before-first-verification-search",
+          "nativeTarget": "actual-resolved-agent-database.reindex-lock.sqlite",
+          "sdkTarget": "actual-resolved-index-journal",
+          "targetParent": "owned-missing-sidecar-directory",
+          "remove": "never-during-compared-sequence"
+        }
+      }
+    }
+  ]
+}

@@ -45,7 +45,11 @@ def build_cases(path=MANIFEST):
 
 
 def validate_registration(cases):
-    family = [case for case in cases if case.get("requirement") == REQUIREMENT or case.get("operation") == OPERATION
+    from equivalence.host_turn_barrier_boundaries import OPERATION as boundary_operation
+
+    family = [case for case in cases if (case.get("requirement") == REQUIREMENT
+                                       and case.get("operation") != boundary_operation)
+              or case.get("operation") == OPERATION
               or set(case.get("covers", ())) & set(POINTS)]
     if not family:
         return

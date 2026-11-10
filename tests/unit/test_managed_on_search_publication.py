@@ -5,8 +5,10 @@ import asyncio
 from concurrent.futures import ThreadPoolExecutor
 from contextlib import contextmanager
 from copy import deepcopy
+import json
 import os
 from pathlib import Path
+import sqlite3
 import threading
 
 import pytest
@@ -16,6 +18,7 @@ from memory_core.flags import FeatureFlags
 from memory_core.host.lifecycle import HostModelResult
 from memory_core.host.managed_session import ManagedHostSession
 from memory_core.host.session import SessionState, TurnUsage
+from memory_core.index.identity import MEMORY_INDEX_META_KEY
 from memory_core.runtime_identity import OPENCLAW_COMPAT_RUNTIME_IDENTITY
 from memory_core.session_catalog import MemorySessionCatalog
 from memory_core.session_visibility import resolve_memory_search_source_policy
@@ -210,6 +213,97 @@ def test_actual_publication_failure_is_stale_and_later_search_recovers_without_m
         owner.close()
 
 
+def test_cold_storage_open_failure_does_not_announce_an_unadmitted_rebuild(tmp_path):
+    owner = _owner(tmp_path)
+    journal = Path(str(owner.store.path) + "-journal")
+    reopened = None
+    try:
+        _append(owner, FRESH)
+        journal.symlink_to(tmp_path / "missing-journal-directory" / "journal")
+        failed = _search(owner, "MAPLE-NEW-942")
+        assert failed["results"] == [] and failed["unavailable"] is True
+        assert failed["warning"] == (
+            "Memory index repair failed: unable to open database file. The existing index was left unchanged."
+        )
+        snapshot = owner.store.lifecycle_snapshot()
+        assert snapshot["automaticRebuildNotice"] == {"sequence": 0, "warning": ""}
+        assert snapshot["repairs"][-1]["state"] == "failed"
+        assert snapshot["repairs"][-1]["noticeSequenceBefore"] == 0
+        assert snapshot["repairs"][-1]["noticeSequenceAfter"] == 0
+        assert owner.store.read_index_meta() is None
+        assert "Automatic" not in _search(owner, "MAPLE-NEW-942")["warning"]
+
+        journal.unlink()
+        owner.close()
+        reopened = ManagedHostSession.open(owner.kit.memory.workspace.root, catalog=owner.catalog,
+            config=owner.kit.memory.config, source_policy=owner.kit.memory.source_policy,
+            memory_publication="on-search", identity=OPENCLAW_COMPAT_RUNTIME_IDENTITY,
+            timezone="UTC", now_ms=lambda: NOW)
+        current = _search(reopened, "MAPLE-NEW-942")
+        assert any(FRESH in hit["snippet"] for hit in current["results"])
+        assert "Automatic memory index repair was requested." in current["warning"]
+        assert reopened.store.lifecycle_snapshot()["automaticRebuildNotice"]["sequence"] == 1
+        assert "warning" not in _search(reopened, "MAPLE-NEW-942")
+    finally:
+        journal.unlink(missing_ok=True)
+        if reopened is not None:
+            reopened.close()
+        owner.close()
+
+
+def test_cold_repair_reports_notice_when_real_writes_precede_a_constraint_failure(tmp_path, monkeypatch):
+    owner = _owner(tmp_path)
+    observed = []
+    try:
+        _append(owner, FRESH)
+        with owner.store.connect() as db:
+            db.execute("CREATE TRIGGER refuse_meta BEFORE INSERT ON memory_index_meta "
+                       "BEGIN SELECT RAISE(ABORT, 'index metadata refused'); END")
+        original = owner.store._on_index_publication_write
+
+        def observe_actual_write(db, *, changes, error):
+            observed.append({"changes": changes, "error": error,
+                             "chunks": db.execute("SELECT COUNT(*) FROM chunks").fetchone()[0]})
+            original(db, changes=changes, error=error)
+
+        monkeypatch.setattr(owner.store, "_on_index_publication_write", observe_actual_write)
+        failed = _search(owner, "MAPLE-NEW-942")
+        assert failed["results"] == [] and failed["unavailable"] is True
+        assert "index metadata refused" in failed["warning"]
+        assert "Automatic memory index repair was requested." in failed["warning"]
+        assert len(observed) == 1 and observed[0]["chunks"] > 0 and observed[0]["changes"] > 0
+        assert isinstance(observed[0]["error"], sqlite3.IntegrityError)
+        assert owner.store.lifecycle_snapshot()["automaticRebuildNotice"]["sequence"] == 1
+        # The real transaction rolls back those earlier successful writes.
+        assert owner.store.read_published_index()["chunks"] == []
+        assert owner.store.read_index_meta() is None
+    finally:
+        owner.close()
+
+
+def test_populated_identity_repair_announces_before_a_real_storage_open_failure(tmp_path):
+    owner = _owner(tmp_path)
+    journal = Path(str(owner.store.path) + "-journal")
+    try:
+        _warm(owner)
+        before = owner.store.lifecycle_snapshot()["automaticRebuildNotice"]["sequence"]
+        metadata = owner.store.read_index_meta()
+        metadata["chunkingVersion"] -= 1
+        with owner.store.connect() as db:
+            db.execute("UPDATE memory_index_meta SET value=? WHERE key=?",
+                       (json.dumps(metadata), MEMORY_INDEX_META_KEY))
+        assert owner.store.index_identity()["versionOrder"] == "older"
+        journal.symlink_to(tmp_path / "missing-journal-directory" / "journal")
+        failed = _search(owner, "CEDAR-OLD-731")
+        assert failed["results"] == [] and failed["stale"] is True
+        assert "unable to open database file" in failed["warning"]
+        assert "Automatic memory index repair was requested." in failed["warning"]
+        assert owner.store.lifecycle_snapshot()["automaticRebuildNotice"]["sequence"] == before + 1
+    finally:
+        journal.unlink(missing_ok=True)
+        owner.close()
+
+
 def test_reader_stays_on_its_sql_generation_after_real_background_commit(tmp_path, monkeypatch):
     owner = _owner(tmp_path)
     try:
@@ -239,6 +333,89 @@ def test_reader_stays_on_its_sql_generation_after_real_background_commit(tmp_pat
         monkeypatch.setattr(owner.store, "_on_search_snapshot", original)
         assert any(FRESH in hit["snippet"] for hit in _search(owner, "MAPLE-NEW-942")["results"])
     finally:
+        owner.close()
+
+
+def test_old_reader_keeps_actual_failure_notice_after_recovery_and_a_new_reader(tmp_path, monkeypatch):
+    owner = _owner(tmp_path)
+    journal = Path(str(owner.store.path) + "-journal")
+    held, release = threading.Event(), threading.Event()
+    try:
+        _warm(owner)
+        _append(owner, FRESH)
+        journal.symlink_to(tmp_path / "missing-journal-directory" / "journal")
+        assert _search(owner, "MAPLE-NEW-942")["results"] == []
+        assert _wait_settled(owner)["jobs"][-1]["state"] == "failed"
+        assert owner.store.status()["lastSyncError"] == "unable to open database file"
+        journal.unlink()
+        with owner.store.connect() as db:
+            assert db.execute("PRAGMA journal_mode=WAL").fetchone()[0] == "wal"
+        before = owner.store.index_revision()
+        original = owner.store._on_search_snapshot
+
+        def keep_old_reader_after_actual_recovery(db):
+            revision = owner.store.index_revision(db=db)
+            original(db)
+            if revision == before:
+                assert _wait_settled(owner)["jobs"][-1]["state"] == "completed"
+                assert owner.store.index_revision(db=db) == before
+                assert owner.store.index_revision() > before
+                assert "lastSyncError" not in owner.store.status()
+                held.set()
+                assert release.wait(5)
+
+        monkeypatch.setattr(owner.store, "_on_search_snapshot", keep_old_reader_after_actual_recovery)
+        with ThreadPoolExecutor(max_workers=1) as executor:
+            old_query = executor.submit(_search, owner, "MAPLE-NEW-942")
+            try:
+                assert held.wait(5)
+                # This separate call has a newer actual SQLite snapshot. Its
+                # clean status must not erase the older reader's own notice.
+                current = _search(owner, "MAPLE-NEW-942")
+                assert any(FRESH in hit["snippet"] for hit in current["results"])
+                assert "stale" not in current
+            finally:
+                release.set()
+            stale = old_query.result(timeout=5)
+        assert stale["results"] == [] and stale["stale"] is True
+        assert "unable to open database file" in stale["warning"] and "action" in stale
+        assert "lastSyncError" not in owner.store.status()
+        assert "stale" not in _search(owner, "MAPLE-NEW-942")
+    finally:
+        release.set()
+        journal.unlink(missing_ok=True)
+        owner.close()
+
+
+def test_recovery_before_actual_sql_pin_does_not_attach_the_previous_failure(tmp_path, monkeypatch):
+    owner = _owner(tmp_path)
+    journal = Path(str(owner.store.path) + "-journal")
+    try:
+        _warm(owner)
+        _append(owner, FRESH)
+        journal.symlink_to(tmp_path / "missing-journal-directory" / "journal")
+        assert _search(owner, "MAPLE-NEW-942")["results"] == []
+        assert _wait_settled(owner)["jobs"][-1]["state"] == "failed"
+        journal.unlink()
+        before = owner.store.index_revision()
+        original = owner.store._search_connection
+
+        @contextmanager
+        def recover_before_pin(signal):
+            assert owner.store.status()["lastSyncError"] == "unable to open database file"
+            owner.store.reindex_sources(owner.kit.memory.workspace, sources={"memory"})
+            assert owner.store.index_revision() > before
+            assert "lastSyncError" not in owner.store.status()
+            with original(signal) as db:
+                yield db
+
+        monkeypatch.setattr(owner.store, "_search_connection", recover_before_pin)
+        current = _search(owner, "MAPLE-NEW-942")
+        assert any(FRESH in hit["snippet"] for hit in current["results"])
+        assert "stale" not in current
+        assert "lastSyncError" not in owner.store.status()
+    finally:
+        journal.unlink(missing_ok=True)
         owner.close()
 
 

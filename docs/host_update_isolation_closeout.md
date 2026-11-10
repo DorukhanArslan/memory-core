@@ -1,8 +1,10 @@
 # Host update and isolation acceptance
 
 This records the original **66 → 68/128** package. The latest overall baseline is
-**69/128**, with **59 remaining**, in the [active checklist](full-equivalence-checklist.md).
-The later capture/CI corrections below award no additional acceptance credit.
+**70/128**, with **58 remaining**, in the [active checklist](full-equivalence-checklist.md).
+The final [boundary catalog](host_turn_barrier_boundaries_closeout.md) on clean `b27624d`
+confirms that same total. The later capture/CI corrections below award no
+additional acceptance credit; original captures retain their own identities.
 
 Prepared 2026-11-10 (Europe/Istanbul). This package verifies **two original
 conditions**, moving **66 → 68/128 (53.1%)**, with **60 remaining**. There are

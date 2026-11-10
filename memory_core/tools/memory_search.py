@@ -991,7 +991,9 @@ def _run_memory_search_tool(
         # tools.ts:563-568: a missing or mismatched index identity pauses search
         # (no cooldown). Upstream's empty-result forced sync retry has no
         # counterpart: memory-core reindexes only when the host asks.
-        status = _read_manager_status(store, context)
+        result_status = getattr(hits, "_memory_search_status", None)
+        status = (result_status if context.status is None and isinstance(result_status, Mapping)
+                  else _read_manager_status(store, context))
         identity = _status_identity(status)
         paused = resolve_paused_memory_index_identity(
             identity if identity is not None else store.index_identity()

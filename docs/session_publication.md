@@ -21,6 +21,14 @@ only the selection. A cold, mismatched or invalidated namespace raises
 `MemoryIndexRequiresFullReindexError`; perform an explicit ordinary `reindex`
 before selecting a scope. There is no implicit full refresh fallback.
 
+For sessions-only refreshes, the managed store reserves a separate durable
+catalog's SQLite writer slot while preparing, validating and committing the
+index. Concurrent transcript appends commit after that reservation is released;
+their post-commit hints remain pending for their own publication. The reservation
+changes no catalog rows and introduces no automatic retry or early timer flush.
+Mixed-source selections, process-memory catalogs and a catalog physically sharing
+the index database retain the existing strict source-validation behavior.
+
 ## Controller admission
 
 ```python

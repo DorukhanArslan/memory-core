@@ -11,6 +11,10 @@ from equivalence.harness import HarnessError, _host_turn_barrier_family_complete
 from equivalence.host_turn_barrier import (
     CASE_HASHES, MANIFEST, OPERATION, POINTS, REQUIREMENT, build_cases, validate_case, validate_registration,
 )
+from equivalence.host_turn_barrier_boundaries import (
+    CASE_HASHES as BOUNDARY_HASHES, OPERATION as BOUNDARY_OPERATION,
+    build_cases as build_boundary_cases, validate_registration as validate_boundary_registration,
+)
 
 
 ROOT = Path(__file__).resolve().parents[2]
@@ -33,12 +37,17 @@ def test_catalog_adds_exactly_the_four_frozen_outcomes_without_changing_prior_14
     family = [case for case in catalog if case["operation"] == OPERATION]
     assert family == build_cases()
     assert len(family) == len(CASE_HASHES) == 4
-    prior = [case for case in catalog if case["operation"] != OPERATION]
+    boundaries = [case for case in catalog if case["operation"] == BOUNDARY_OPERATION]
+    assert boundaries == build_boundary_cases()
+    assert len(boundaries) == len(BOUNDARY_HASHES) == 6
+    assert not set(CASE_HASHES).intersection(BOUNDARY_HASHES)
+    prior = [case for case in catalog if case["operation"] not in {OPERATION, BOUNDARY_OPERATION}]
     wire = json.dumps(prior, ensure_ascii=True, sort_keys=True, allow_nan=False,
                       separators=(",", ":")).encode()
     assert len(prior) == 1411
     assert hashlib.sha256(wire).hexdigest() == PRIOR_CATALOG_SHA256
     validate_registration(catalog)
+    validate_boundary_registration(catalog)
 
 
 def test_only_original_outcome_is_claimed_and_original_boundary_remains_in_scope():
@@ -46,7 +55,12 @@ def test_only_original_outcome_is_claimed_and_original_boundary_remains_in_scope
     assert [point["id"] for point in requirement["acceptance"]] == [*POINTS, BOUNDARY]
     assert POINTS == ("host.turn-barrier.outcomes",)
     assert all(case["covers"] == list(POINTS) for case in build_cases())
-    assert not any(BOUNDARY in case["covers"] for case in build_catalog())
+    assert not any(BOUNDARY in case["covers"] for case in build_cases())
+    claims = [case for case in build_catalog() if BOUNDARY in case["covers"]]
+    assert claims == build_boundary_cases()
+    assert len(claims) == len(BOUNDARY_HASHES) == 6
+    assert all(case["operation"] == BOUNDARY_OPERATION and case["covers"] == [BOUNDARY] for case in claims)
+    validate_boundary_registration(build_catalog())
 
 
 def test_warm_cases_include_a_real_nonempty_seed_and_natural_positive_recall_control():

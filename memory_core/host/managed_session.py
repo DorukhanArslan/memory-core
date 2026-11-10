@@ -11,8 +11,9 @@ from __future__ import annotations
 import asyncio
 from collections.abc import Awaitable, Callable, Mapping, Sequence
 from contextvars import ContextVar, Token
+from collections import deque
 from copy import deepcopy
-from dataclasses import dataclass, fields
+from dataclasses import dataclass, fields, replace
 from pathlib import Path
 import threading
 from typing import Any, Literal
@@ -22,9 +23,13 @@ from memory_core.config import MemoryConfig
 from memory_core.consolidation.artifact_provenance import MemoryArtifactProvenanceStore
 from memory_core.flags import FeatureFlags
 from memory_core.host.kit import HostKit
-from memory_core.host.lifecycle import HostModelResult, HostSessionRunner, HostTurn, HostTurnOutcome
+from memory_core.host.lifecycle import (
+    HostModelResult, HostSessionRunner, HostTurn, HostTurnOutcome, _Admission, _RunCapture,
+    _acquire_lane, _current_lanes, _failure, _memory_publication, _memory_wrote, _stored_pending_publication,
+)
+from memory_core.host.managed_maintenance import OptionalMaintenance, reserve_foreground, schedule_optional
 from memory_core.host.managed_index import ManagedSQLiteMemoryStore
-from memory_core.host.session import SessionState
+from memory_core.host.session import SessionState, apply_turn_usage
 from memory_core.host.session_publication import Scheduler, SessionPublicationController
 from memory_core.index.sqlite_store import read_index_source
 from memory_core.runtime_identity import MEMORY_CORE_RUNTIME_IDENTITY, RuntimeIdentity
@@ -35,6 +40,9 @@ from memory_core.workspace import MemoryWorkspace
 
 
 _active_owners: ContextVar[tuple[object, ...]] = ContextVar("managed_host_owners", default=())
+_optional_stages: ContextVar[list[dict[str, Any]] | None] = ContextVar("managed_optional_stages", default=None)
+_delivery_callback: ContextVar[Callable[[ManagedHostTurnOutcome], Awaitable[None]] | None] = ContextVar(
+    "managed_delivery_callback", default=None)
 
 
 @dataclass(frozen=True)
@@ -46,7 +54,10 @@ class ManagedHostSession:
     """One agent/workspace owner shared by its per-chat managed runners."""
 
     def __init__(self, kit: HostKit, catalog: MemorySessionCatalog,
-                 controller: SessionPublicationController) -> None:
+                 controller: SessionPublicationController, *,
+                 maintenance: Literal["inline", "background"] = "inline") -> None:
+        if not isinstance(maintenance, str) or maintenance not in {"inline", "background"}:
+            raise ValueError("maintenance must be inline or background")
         if not isinstance(kit.memory.store, ManagedSQLiteMemoryStore):
             raise TypeError("A managed host requires ManagedSQLiteMemoryStore")
         if kit._curation_index_sources != ("memory",) or not kit._defer_cold_index:
@@ -61,6 +72,10 @@ class ManagedHostSession:
         self._active_turns = 0
         self._control_active = False
         self._closing = self._closed = False
+        self._close_requested = False
+        self._maintenance_policy = maintenance
+        self._maintenance_jobs: set[OptionalMaintenance] = set()
+        self._maintenance_history: deque[OptionalMaintenance] = deque(maxlen=256)
         sources = kit.memory.workspace.index_sources
         self._sessions_enabled = "sessions" in (sources if sources is not None else ("memory", "sessions"))
 
@@ -71,9 +86,12 @@ class ManagedHostSession:
              scheduler: Scheduler | None = None, identity: RuntimeIdentity = MEMORY_CORE_RUNTIME_IDENTITY,
              initialize: bool = False,
              memory_publication: Literal["on-write", "on-search"] = "on-write",
+             maintenance: Literal["inline", "background"] = "inline",
              **kit_options: Any) -> ManagedHostSession:
         if not isinstance(memory_publication, str) or memory_publication not in {"on-write", "on-search"}:
             raise ValueError("memory_publication must be on-write or on-search")
+        if not isinstance(maintenance, str) or maintenance not in {"inline", "background"}:
+            raise ValueError("maintenance must be inline or background")
         root = Path(workspace_dir).resolve()
         config = config or MemoryConfig(root, agent_id=catalog.agent_id, flags=FeatureFlags(vector_search=False))
         if Path(config.workspace_dir).resolve() != root or normalize_session_agent_id(config.agent_id) != catalog.agent_id:
@@ -94,7 +112,7 @@ class ManagedHostSession:
                       curation_index_sources=("memory",), defer_cold_index=True, **kit_options)
         if initialize:
             kit.ensure()
-        return cls(kit, catalog, controller)
+        return cls(kit, catalog, controller, maintenance=maintenance)
 
     @property
     def kit(self) -> HostKit:
@@ -113,8 +131,29 @@ class ManagedHostSession:
         return self._controller
 
     def _ensure_open(self) -> None:
-        if self._closing or self._closed:
+        if self._close_requested or self._closing or self._closed:
             raise RuntimeError("Managed host owner is closed")
+
+    def maintenance_status(self) -> dict[str, Any]:
+        """Actual optional-job receipts; foreground replies are never rewritten later."""
+        with self._condition:
+            jobs = tuple(self._maintenance_history)
+        return {"policy": self._maintenance_policy, "jobs": [job.snapshot() for job in jobs]}
+
+    def _schedule_maintenance(self, runner: ManagedHostSessionRunner, specification) -> None:
+        with self._condition:
+            if self._close_requested or self._closing or self._closed:
+                return
+
+            def settled(job: OptionalMaintenance) -> None:
+                with self._condition:
+                    self._maintenance_jobs.discard(job)
+                    self._condition.notify_all()
+
+            job = schedule_optional(runner._lane_key,
+                lambda job: runner._run_background_maintenance(job, specification), settled)
+            self._maintenance_jobs.add(job)
+            self._maintenance_history.append(job)
 
     def runner(self, session: SessionState, *, extra_tools: Sequence[TurnTool] = ()) -> ManagedHostSessionRunner:
         with self._condition:
@@ -191,12 +230,12 @@ class ManagedHostSession:
         return {"memoryIndexStatus": memory_status, "sessionIndexStatus": session_status,
             "indexStatus": index_status, "sessionPending": pending, "controller": controller,
             "ready": index_status == "ready", "activeTurns": self._active_turns,
-            "closing": self._closing, "closed": self._closed}
+            "closing": self._close_requested or self._closing, "closed": self._closed}
 
     def _begin_control(self) -> None:
         with self._condition:
             self._ensure_open()
-            if self._active_turns or self._control_active:
+            if self._active_turns or self._control_active or self._maintenance_jobs:
                 raise RuntimeError("Explicit managed publication requires settled host turns")
             self._control_active = True
 
@@ -248,7 +287,7 @@ class ManagedHostSession:
         if self in _active_owners.get():
             raise RuntimeError("A host turn cannot close its own managed owner")
         with self._condition:
-            if self._active_turns or self._control_active:
+            if self._active_turns or self._control_active or self._maintenance_jobs:
                 raise RuntimeError("Managed host work is active; settle it or use await aclose()")
         self._close_joined()
 
@@ -260,12 +299,14 @@ class ManagedHostSession:
                 return
             self._closing = True
             self._condition.notify_all()
-            self._condition.wait_for(lambda: not self._active_turns and not self._control_active)
+            self._condition.wait_for(lambda: not self._active_turns and not self._control_active
+                                     and not self._maintenance_jobs)
         try:
             self.store.close()
         except BaseException:
             with self._condition:
                 self._closing = False
+                self._close_requested = False
                 self._condition.notify_all()
             raise
         with self._condition:
@@ -275,7 +316,18 @@ class ManagedHostSession:
     async def aclose(self) -> None:
         if self in _active_owners.get():
             raise RuntimeError("A host turn cannot close its own managed owner")
-        closing = asyncio.create_task(asyncio.to_thread(self._close_joined))
+        with self._condition:
+            self._close_requested = True
+            jobs = tuple(self._maintenance_jobs)
+        for job in jobs:
+            job.request_cancel()
+
+        async def close_after_jobs() -> None:
+            for job in jobs:
+                await job.join()
+            await asyncio.to_thread(self._close_joined)
+
+        closing = asyncio.create_task(close_after_jobs())
         cancellation = None
         while True:
             try:
@@ -293,7 +345,126 @@ class ManagedHostSessionRunner(HostSessionRunner):
     def __init__(self, owner: ManagedHostSession, *, session: SessionState,
                  extra_tools: Sequence[TurnTool] = ()) -> None:
         self.owner = owner
+        self._background_job: OptionalMaintenance | None = None
         super().__init__(owner.kit, owner.catalog, session=session, extra_tools=extra_tools)
+
+    async def _run_after_turn(self, state, **options):
+        if self.owner._maintenance_policy == "inline":
+            return await super()._run_after_turn(state, **options)
+        state = apply_turn_usage(state, options["result"].usage)
+        options["capture"].state = state
+        stages = _optional_stages.get()
+        if stages is None:
+            raise RuntimeError("A background maintenance plan requires its foreground owner")
+        stages.append({"session": state, "turn_id": options["turn_id"],
+            "execute_flush": options["execute_flush"], "trust": options["trust"],
+            "context_window_tokens": options["context_window_tokens"], "delivery_ok": False})
+        return state
+
+    async def _invoke_flush(self, execute_flush, maintenance: HostTurn):
+        if self._background_job is None:
+            return await super()._invoke_flush(execute_flush, maintenance)
+        callback = asyncio.create_task(execute_flush(maintenance))
+        self._background_job.bind_model_abort(callback.cancel)
+        try:
+            return await callback
+        finally:
+            self._background_job.bind_model_abort(None)
+
+    def _terminal_delivery(self, outcome: HostTurnOutcome):
+        if not outcome.cancelled and outcome.memory_publication != "uncertain":
+            for specification in _optional_stages.get() or ():
+                self.owner._schedule_maintenance(self, specification)
+        self.owner._acknowledge_coverage()
+        status = self.owner.publication_status()
+        values = {item.name: getattr(outcome, item.name) for item in fields(HostTurnOutcome)}
+        if outcome.index_status in {"ready", "pending"}:
+            values["index_status"] = status["indexStatus"]
+        managed = ManagedHostTurnOutcome(**values, publication=status)
+        self.last_outcome = managed
+        callback = _delivery_callback.get()
+        stages = _optional_stages.get() or ()
+        if callback is None:
+            for specification in stages:
+                specification["delivery_ok"] = not managed.cancelled
+            return managed
+
+        async def deliver():
+            try:
+                await callback(managed)
+            except BaseException as error:
+                self.last_outcome = replace(managed,
+                    cancelled=managed.cancelled or isinstance(error, asyncio.CancelledError),
+                    failures=(*managed.failures, _failure("delivery", error,
+                                                        committed=managed.transcript_committed)))
+                raise
+            for specification in stages:
+                specification["delivery_ok"] = not managed.cancelled and not self._cancel_requested.is_set()
+            return managed
+
+        return deliver()
+
+    async def _run_background_maintenance(self, job: OptionalMaintenance, specification):
+        worker = ManagedHostSessionRunner(self.owner, session=specification["session"], extra_tools=self.extra_tools)
+        worker._cancel_requested = job.cancel_requested
+        worker._background_job = job
+        release = await _acquire_lane(worker._lane_key)
+        admission = _Admission(worker._lane_key)
+        ancestors = tuple(item for item in _current_lanes.get() if item.active)
+        lane_token = _current_lanes.set((*ancestors, admission))
+        owner_token = _active_owners.set((*_active_owners.get(), self.owner))
+        state = worker.session
+        capture = _RunCapture(state, [], [], [])
+        failures = []
+        index_status = "not-run"
+        admitted = False
+        turn_id = specification["turn_id"]
+        try:
+            worker._assert_maintenance_current()
+            if not specification["delivery_ok"]:
+                raise asyncio.CancelledError("Optional maintenance lost foreground authority")
+            state, continuation, _ = worker._load()
+            capture.state = state
+            if _stored_pending_publication(continuation["instanceEntry"]) is not None:
+                raise RuntimeError("An unresolved memory publication cannot admit optional maintenance")
+            if state.entry.get("sdkHostLifecycle", {}).get("lastTurnId") != turn_id:
+                raise asyncio.CancelledError("Session changed before optional maintenance admission")
+            admitted = True
+            state = await HostSessionRunner._run_after_turn(worker, state, result=HostModelResult(),
+                messages=continuation["llmMessages"], continuation=continuation,
+                trust=specification["trust"], turn_id=turn_id,
+                execute_flush=specification["execute_flush"],
+                context_window_tokens=specification["context_window_tokens"],
+                capture=capture, receipts=capture.receipts, failures=failures, usage_applied=True)
+        except (asyncio.CancelledError, Exception) as error:
+            failures.append(_failure(capture.maintenance_phase or "flush-prepare", error))
+        finally:
+            if worker._active_turn is not None:
+                await worker._active_turn._close_and_join()
+            await worker._join_blocking()
+            state = capture.state
+            try:
+                if admitted:
+                    index_status = await worker._settle_memory(state, turn_id, capture.receipts, failures,
+                                                               index_scope="memory")
+            finally:
+                worker._active_turn = None
+                admission.active = False
+                _active_owners.reset(owner_token)
+                _current_lanes.reset(lane_token)
+                release()
+        outcome = HostTurnOutcome(turn_id, state, (), (), tuple(capture.receipts), False,
+            _memory_wrote(capture.receipts, capture.flush), index_status, tuple(failures), capture.flush,
+            cancelled=(job.cancel_requested.is_set() or bool(capture.flush and capture.flush.cancelled)
+                       or any(item.error_type == "CancelledError" for item in failures)),
+            memory_publication=_memory_publication(capture.receipts, capture.flush))
+        worker.last_outcome, worker.session = outcome, state
+        return outcome
+
+    def _reserve_foreground(self):
+        if any(item.active and item.key == self._lane_key for item in _current_lanes.get()):
+            raise RuntimeError("A model callback cannot reenter its own session turn")
+        return reserve_foreground(self._lane_key)
 
     @classmethod
     def open(cls, workspace_dir: str | Path, *, catalog: MemorySessionCatalog, session: SessionState,
@@ -350,27 +521,47 @@ class ManagedHostSessionRunner(HostSessionRunner):
 
     async def acknowledge_memory_publication(self, *, expected_turn_id: str) -> None:
         token = self._admit_owner()
+        reservation = None
         try:
+            if not isinstance(expected_turn_id, str) or not expected_turn_id:
+                raise ValueError("expected_turn_id must be a nonempty string")
+            reservation = self._reserve_foreground()
+            await reservation.join_predecessors()
             await super().acknowledge_memory_publication(expected_turn_id=expected_turn_id)
         finally:
+            if reservation is not None:
+                reservation.release()
             self._release_owner(token)
 
     async def run_turn(self, user_message: str | Mapping[str, Any], *,
                        execute: Callable[[HostTurn], Awaitable[HostModelResult | None]],
                        execute_flush: Callable[[HostTurn], Awaitable[HostModelResult | None]] | None = None,
                        request_id: str | None = None, sender_is_owner: bool | None = True,
-                       context_window_tokens: int | None = None) -> ManagedHostTurnOutcome:
+                       context_window_tokens: int | None = None,
+                       deliver: Callable[[ManagedHostTurnOutcome], Awaitable[None]] | None = None) -> ManagedHostTurnOutcome:
         token = self._admit_owner()
+        reservation = None
+        stages: list[dict[str, Any]] = []
+        stage_token = _optional_stages.set(stages)
+        delivery_token = _delivery_callback.set(deliver)
         try:
+            if not callable(execute) or execute_flush is not None and not callable(execute_flush):
+                raise TypeError("Host execution callbacks must be callable")
+            if deliver is not None and not callable(deliver):
+                raise TypeError("Host delivery callback must be callable")
+            if request_id is not None and (not isinstance(request_id, str) or not request_id):
+                raise ValueError("request_id must be a nonempty string")
+            reservation = self._reserve_foreground()
+            await reservation.join_predecessors()
             outcome = await super().run_turn(user_message, execute=execute, execute_flush=execute_flush,
                 request_id=request_id, sender_is_owner=sender_is_owner, context_window_tokens=context_window_tokens)
-            self.owner._acknowledge_coverage()
-            status = self.owner.publication_status()
-            values = {field.name: getattr(outcome, field.name) for field in fields(HostTurnOutcome)}
-            if outcome.index_status in {"ready", "pending"}:
-                values["index_status"] = status["indexStatus"]
-            managed = ManagedHostTurnOutcome(**values, publication=status)
-            self.last_outcome = managed
-            return managed
+            return outcome
         finally:
+            if self._cancel_requested.is_set():
+                for specification in stages:
+                    specification["delivery_ok"] = False
+            _delivery_callback.reset(delivery_token)
+            _optional_stages.reset(stage_token)
+            if reservation is not None:
+                reservation.release()
             self._release_owner(token)

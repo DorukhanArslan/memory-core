@@ -107,6 +107,54 @@ work. Manual `owner.reindex(...)`, `owner.synchronize(...)` and memory-publicati
 acknowledgment retain their actual, stronger publication operations. This option
 does not add optional-maintenance preemption or a memory-file watcher.
 
+## Optional maintenance after delivery
+
+Pass `maintenance="background"` to `ManagedHostSession.open(...)` to run optional
+memory flush work after the foreground reply. The default is `"inline"`, which
+keeps the existing awaited maintenance behavior. Publication and maintenance are
+separate choices; `memory_publication="on-search"` still controls index refresh.
+
+Supply the application's actual maintenance model through `execute_flush` as
+usual. The foreground result does not later acquire a completed flush result.
+Use `owner.maintenance_status()` for serializable receipts of the actual optional
+jobs, including their outcomes, cancellation, committed writes and failures.
+A completed foreground reply is a historical snapshot.
+
+An optional `deliver` callback on a managed runner owns the actual reply delivery:
+
+```python
+async def deliver(outcome):
+    for payload in outcome.payloads:
+        await channel.send(payload)
+
+outcome = await runner.run_turn(
+    message, execute=model, execute_flush=maintenance_model, deliver=deliver,
+)
+```
+
+The foreground admission remains held until the callback settles. Failed or
+cancelled delivery cannot authorize a later optional write. Without a callback,
+returning the foreground result completes this delivery step.
+
+A new foreground request reserves priority before waiting for the session lane.
+It cancels pending optional work or withdraws a running model's authority once,
+then joins actual accepted work before admitting the next user message. An abort
+request does not prove a write has settled. A callback handling cancellation must
+finish its cleanup; accepted physical dispatches also remain owned until done.
+Committed files remain committed even if optional work is subsequently cancelled.
+
+The coordinator shares the actual conversation key across managed runners and
+owners in this process. It rejects active use from another event loop and does
+not provide cross-process preemption. Stale plans reload and check the real catalog
+before preparing a target. Actual target preparation runs off the event loop and
+retains its completion custody.
+
+`await owner.aclose()` refuses new admissions, withdraws optional authority and
+joins running work before closing the store. Synchronous `close()` requires the
+asynchronous work to be settled. Maintenance failures remain in actual job
+outcomes; this option does not automatically deliver a separate warning to the
+user. The application's delivery and error-reporting policy remains explicit.
+
 ## Explicit publication and close
 
 `owner.reindex(force=True)` requests real full publication and joins its actual

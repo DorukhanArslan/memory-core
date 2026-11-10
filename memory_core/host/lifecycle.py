@@ -95,6 +95,7 @@ class _RunCapture:
     flush: FlushOutcome | None = None
     payloads: tuple[Mapping[str, Any], ...] = ()
     memory_publication: Literal["none", "committed", "uncertain"] = "none"
+    maintenance_phase: str | None = None
 
 
 @dataclass
@@ -796,6 +797,33 @@ class HostSessionRunner:
                 outcome = replace(outcome, cancelled=True)
             self.last_outcome = outcome
             self.session = outcome.session
+            delivery = self._terminal_delivery(outcome)
+            if isinstance(delivery, HostTurnOutcome):
+                outcome = delivery
+                self.last_outcome = outcome
+            elif delivery is not None:
+                delivering = asyncio.create_task(delivery)
+                while True:
+                    try:
+                        outcome = await asyncio.shield(delivering)
+                        break
+                    except asyncio.CancelledError as error:
+                        cancellation = error
+                        self._cancel_requested.set()
+                        if delivering.done() and delivering.cancelled():
+                            outcome = self.last_outcome or outcome
+                            break
+                    except Exception as error:
+                        if cancellation is not None:
+                            outcome = replace(self.last_outcome or outcome, cancelled=True)
+                            self.last_outcome = outcome
+                            self.session = outcome.session
+                            raise cancellation from error
+                        raise
+                if cancellation is not None:
+                    outcome = replace(outcome, cancelled=True)
+                self.last_outcome = outcome
+                self.session = outcome.session
             if cancellation is not None:
                 raise cancellation
             return outcome
@@ -804,6 +832,129 @@ class HostSessionRunner:
             admission.active = False
             _current_lanes.reset(token)
             release()
+
+    async def _invoke_flush(self, execute_flush, maintenance: HostTurn):
+        return await execute_flush(maintenance)
+
+    def _terminal_delivery(self, outcome: HostTurnOutcome):
+        """Optional host transport acknowledgment, still inside foreground custody."""
+        return None
+
+    async def _run_after_turn(self, state, *, result, messages, continuation, trust,
+                              turn_id, execute_flush, context_window_tokens, capture,
+                              receipts, failures, usage_applied: bool = False):
+        """Run the real maintenance path; managed background owners reuse this custody."""
+        def assert_flush_current() -> None:
+            self._assert_maintenance_current()
+            self._ensure_memory_intent(state, turn_id=turn_id)
+
+        try:
+            options = dict(transcript=messages, context_window_tokens=context_window_tokens,
+                transcript_events=continuation["visibleEvents"],
+                untrusted_turn=lambda: trust.resolve_origin_class() == "untrusted",
+                assert_current=assert_flush_current)
+            record = (await self._blocking(lambda: self.kit.prepare_flush(state, **options)) if usage_applied else
+                      self.kit.after_turn(state, usage=result.usage, **options))
+        except (asyncio.CancelledError, Exception):
+            # The visible model finished before optional maintenance was
+            # interrupted. Retain its actual usage even though no flush
+            # target or request may be created by this stale owner.
+            state = state if usage_applied else apply_turn_usage(state, result.usage)
+            capture.state = state
+            raise
+        state = record.session
+        capture.state = state
+        if record.flush_failure is not None:
+            failures.append(HostTurnFailure("flush-prepare", "MemoryFlushFailure",
+                                           format_error_message(record.flush_failure.error)))
+        if record.flush is not None:
+            capture.maintenance_phase = "flush"
+            request = record.flush
+            if execute_flush is None:
+                failures.append(HostTurnFailure("flush", "MissingFlushExecutor", "A due memory flush needs execute_flush"))
+                flush_outcome = request.complete(state, cancelled=True)
+                capture.flush = flush_outcome
+            else:
+                maintenance = HostTurn(self, f"{turn_id}:flush", state, None, request.messages, trust,
+                    flush=request, publication_turn_id=turn_id)
+                self._active_turn = maintenance
+                flush_error = None
+                flush_result = HostModelResult()
+                try:
+                    flush_result = _model_result(await self._invoke_flush(execute_flush, maintenance))
+                except asyncio.CancelledError as error:
+                    flush_error = error
+                    failures.append(_failure("flush", error))
+                except Exception as error:
+                    flush_error = error
+                    failures.append(_failure("flush", error))
+                finally:
+                    await maintenance._close_and_join()
+                    receipts.extend(deepcopy(maintenance._receipts))
+                tool_errors = [row["result"] for row in maintenance._receipts
+                    if isinstance(row.get("result"), Mapping) and (row["result"].get("isError") is True
+                        or row["result"].get("status") == "error")]
+                execution_errors = [row[field]["message"] for row in maintenance._receipts
+                    for field in ("error", "schedulingError") if field in row]
+                if flush_error is None and (tool_errors or execution_errors):
+                    # Tool result envelopes are not final reply payloads. A
+                    # failed actual maintenance write is an explicit host
+                    # failure even if the model returns an ordinary reply.
+                    text = [str(item.get("error") or item.get("text") or item) for item in tool_errors]
+                    flush_error = RuntimeError("Memory flush tool failed: " + "; ".join([*text, *execution_errors]))
+                authority_withdrawn = isinstance(flush_error, asyncio.CancelledError)
+                if not authority_withdrawn:
+                    try:
+                        self._assert_maintenance_current()
+                    except (asyncio.CancelledError, Exception) as error:
+                        authority_withdrawn = True
+                        failures.append(_failure("flush-authority", error,
+                                                 committed=_memory_wrote(maintenance._receipts, None)))
+                # Withdrawn authority must not stamp success. The genuine
+                # cancelled completion still reports already appended bodies.
+                flush_outcome = request.complete(state, error=flush_error, cancelled=authority_withdrawn,
+                                                 payloads=(*flush_result.payloads, *tool_errors))
+                state = flush_outcome.session
+                capture.flush = flush_outcome
+                capture.state = state
+                if flush_outcome.failure is not None:
+                    failures.append(HostTurnFailure("flush", "MemoryFlushFailure",
+                                                   format_error_message(flush_outcome.failure.error),
+                                                   flush_outcome.wrote))
+        return state
+
+    async def _settle_memory(self, state, turn_id, receipts, failures, *, index_scope="transcript"):
+        """Persist actual effects and publication without fabricating a user admission."""
+        for receipt in receipts:
+            actual = receipt.get("result")
+            if "schedulingError" in receipt:
+                error = receipt["schedulingError"]
+                failures.append(HostTurnFailure("tool-scheduling", error["type"], format_error_message(error["message"])))
+            if "error" in receipt:
+                error = receipt["error"]
+                failures.append(HostTurnFailure("tool", error["type"], format_error_message(error["message"])))
+            elif isinstance(actual, Mapping) and (actual.get("status") == "error" or actual.get("isError") is True):
+                publication = _receipt_publication(receipt)
+                failures.append(HostTurnFailure("tool", "ToolExecutionFailure",
+                    format_error_message(actual.get("error") or actual.get("text") or actual),
+                    _memory_wrote([receipt], None), publication))
+        index_errors = [error for row in receipts if (error := _after_write_error(row))]
+        for error in index_errors:
+            failures.append(HostTurnFailure("tool-index", "IndexPublicationFailure", format_error_message(error), True))
+        try:
+            self._persist(state, needs_index=True, turn_id=turn_id,
+                pending_memory_publication=_pending_publication(receipts, turn_id, self.kit),
+                index_scope=index_scope)
+            if index_errors:
+                index_status = "failed"
+            else:
+                published = await self._blocking(self._refresh_index, True)
+                self._persist(state, needs_index=not published, turn_id=turn_id)
+                index_status = self._publication_index_status(published)
+        except Exception as error:
+            index_status = "failed"
+            failures.append(_failure("publication", error, committed=True))
+        return index_status
 
     async def _produce(self, user_message, execute, execute_flush, turn_id, sender_is_owner,
                        context_window_tokens, capture: _RunCapture) -> HostTurnOutcome:
@@ -877,81 +1028,16 @@ class HostSessionRunner:
                 phase = "publication-reconciliation"
                 raise RuntimeError("A memory publication is uncertain; acknowledge current files before continuing")
 
-            def assert_flush_current() -> None:
-                self._assert_maintenance_current()
-                self._ensure_memory_intent(state, turn_id=turn_id)
-
             try:
-                record = self.kit.after_turn(state, transcript=messages, usage=result.usage,
-                    context_window_tokens=context_window_tokens, transcript_events=continuation["visibleEvents"],
-                    untrusted_turn=lambda: trust.resolve_origin_class() == "untrusted",
-                    assert_current=assert_flush_current)
-            except (asyncio.CancelledError, Exception):
-                # The visible model finished before optional maintenance was
-                # interrupted. Retain its actual usage even though no flush
-                # target or request may be created by this stale owner.
-                state = apply_turn_usage(state, result.usage)
-                capture.state = state
-                raise
-            state = record.session
-            capture.state = state
-            if record.flush_failure is not None:
-                failures.append(HostTurnFailure("flush-prepare", "MemoryFlushFailure",
-                                               format_error_message(record.flush_failure.error)))
-            if record.flush is not None:
-                phase = "flush"
-                request = record.flush
-                if execute_flush is None:
-                    failures.append(HostTurnFailure("flush", "MissingFlushExecutor", "A due memory flush needs execute_flush"))
-                    flush_outcome = request.complete(state, cancelled=True)
-                    capture.flush = flush_outcome
-                else:
-                    maintenance = HostTurn(self, f"{turn_id}:flush", state, None, request.messages, trust,
-                        flush=request, publication_turn_id=turn_id)
-                    self._active_turn = maintenance
-                    flush_error = None
-                    flush_result = HostModelResult()
-                    try:
-                        flush_result = _model_result(await execute_flush(maintenance))
-                    except asyncio.CancelledError as error:
-                        flush_error = error
-                        failures.append(_failure("flush", error))
-                    except Exception as error:
-                        flush_error = error
-                        failures.append(_failure("flush", error))
-                    finally:
-                        await maintenance._close_and_join()
-                        receipts.extend(deepcopy(maintenance._receipts))
-                    tool_errors = [row["result"] for row in maintenance._receipts
-                        if isinstance(row.get("result"), Mapping) and (row["result"].get("isError") is True
-                            or row["result"].get("status") == "error")]
-                    execution_errors = [row[field]["message"] for row in maintenance._receipts
-                        for field in ("error", "schedulingError") if field in row]
-                    if flush_error is None and (tool_errors or execution_errors):
-                        # Tool result envelopes are not final reply payloads. A
-                        # failed actual maintenance write is an explicit host
-                        # failure even if the model returns an ordinary reply.
-                        text = [str(item.get("error") or item.get("text") or item) for item in tool_errors]
-                        flush_error = RuntimeError("Memory flush tool failed: " + "; ".join([*text, *execution_errors]))
-                    authority_withdrawn = isinstance(flush_error, asyncio.CancelledError)
-                    if not authority_withdrawn:
-                        try:
-                            self._assert_maintenance_current()
-                        except (asyncio.CancelledError, Exception) as error:
-                            authority_withdrawn = True
-                            failures.append(_failure("flush-authority", error,
-                                                     committed=_memory_wrote(maintenance._receipts, None)))
-                    # Withdrawn authority must not stamp success. The genuine
-                    # cancelled completion still reports already appended bodies.
-                    flush_outcome = request.complete(state, error=flush_error, cancelled=authority_withdrawn,
-                                                     payloads=(*flush_result.payloads, *tool_errors))
-                    state = flush_outcome.session
-                    capture.flush = flush_outcome
-                    capture.state = state
-                    if flush_outcome.failure is not None:
-                        failures.append(HostTurnFailure("flush", "MemoryFlushFailure",
-                                                       format_error_message(flush_outcome.failure.error),
-                                                       flush_outcome.wrote))
+                state = await self._run_after_turn(state, result=result, messages=messages,
+                    continuation=continuation, trust=trust, turn_id=turn_id,
+                    execute_flush=execute_flush, context_window_tokens=context_window_tokens,
+                    capture=capture, receipts=receipts, failures=failures)
+                flush_outcome = capture.flush
+            finally:
+                state = capture.state
+                flush_outcome = capture.flush
+                phase = capture.maintenance_phase or phase
             phase = "publication"
         except asyncio.CancelledError as error:
             failures.append(_failure(phase, error, committed=accepted))
@@ -965,35 +1051,7 @@ class HostSessionRunner:
             if turn is not None:
                 await turn._close_and_join()
             if accepted:
-                for receipt in receipts:
-                    actual = receipt.get("result")
-                    if "schedulingError" in receipt:
-                        error = receipt["schedulingError"]
-                        failures.append(HostTurnFailure("tool-scheduling", error["type"], format_error_message(error["message"])))
-                    if "error" in receipt:
-                        error = receipt["error"]
-                        failures.append(HostTurnFailure("tool", error["type"], format_error_message(error["message"])))
-                    elif isinstance(actual, Mapping) and (actual.get("status") == "error" or actual.get("isError") is True):
-                        publication = _receipt_publication(receipt)
-                        failures.append(HostTurnFailure("tool", "ToolExecutionFailure",
-                            format_error_message(actual.get("error") or actual.get("text") or actual),
-                            _memory_wrote([receipt], None), publication))
-                index_errors = [error for row in receipts if (error := _after_write_error(row))]
-                for error in index_errors:
-                    failures.append(HostTurnFailure("tool-index", "IndexPublicationFailure", format_error_message(error), True))
-                try:
-                    self._persist(state, needs_index=True, turn_id=turn_id,
-                        pending_memory_publication=_pending_publication(receipts, turn_id, self.kit),
-                        index_scope="transcript")
-                    if index_errors:
-                        index_status = "failed"
-                    else:
-                        published = await self._blocking(self._refresh_index, True)
-                        self._persist(state, needs_index=not published, turn_id=turn_id)
-                        index_status = self._publication_index_status(published)
-                except Exception as error:
-                    index_status = "failed"
-                    failures.append(_failure("publication", error, committed=True))
+                index_status = await self._settle_memory(state, turn_id, receipts, failures)
             elif any(failure.phase == "index-repair" for failure in failures):
                 index_status = "failed"
         return HostTurnOutcome(turn_id, state, tuple(messages), tuple(deepcopy(appends)), tuple(receipts),

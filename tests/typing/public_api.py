@@ -156,18 +156,23 @@ def managed_contract(workspace: Path) -> None:
 async def managed_host_contract(workspace: Path) -> None:
     catalog = MemorySessionCatalog(workspace / "catalog.sqlite")
     config = MemoryConfig(workspace_dir=workspace, flags=FeatureFlags(vector_search=False))
-    owner = ManagedHostSession.open(workspace, catalog=catalog, config=config, initialize=False)
+    owner = ManagedHostSession.open(workspace, catalog=catalog, config=config, initialize=False,
+                                    maintenance="background")
     runner = owner.runner(SessionState.new(session_key="agent:main:typed", session_id="typed"))
     assert_type(runner, ManagedHostSessionRunner)
     assert_type(owner.kit, HostKit)
     assert_type(owner.store, ManagedSQLiteMemoryStore)
     assert_type(owner.controller, SessionPublicationController)
     assert_type(owner.publication_status(), dict[str, Any])
+    assert_type(owner.maintenance_status(), dict[str, Any])
     assert_type(owner.reindex(force=True), int)
     assert_type(owner.synchronize(timeout=0.5), dict[str, Any])
 
     async def model(turn: HostTurn) -> HostModelResult:
         return HostModelResult()
 
-    assert_type(await runner.run_turn("recall", execute=model), ManagedHostTurnOutcome)
+    async def delivered(outcome: ManagedHostTurnOutcome) -> None:
+        assert_type(outcome.publication, Mapping[str, Any] | None)
+
+    assert_type(await runner.run_turn("recall", execute=model, deliver=delivered), ManagedHostTurnOutcome)
     owner.close()

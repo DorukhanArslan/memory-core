@@ -494,7 +494,7 @@
           "path": "memory_core/index/sqlite_store.py",
           "symbol": "SQLiteMemoryStore._prepare_source_chunks",
           "anchor": "    def _prepare_source_chunks(entry: IndexSourceSnapshot, tokens: int, overlap: int) -> list[MemoryChunk]:",
-          "line": 885
+          "line": 901
         }
       ],
       "implementation": "present",
@@ -586,13 +586,13 @@
           "path": "memory_core/index/sqlite_store.py",
           "symbol": "SQLiteMemoryStore.reindex",
           "anchor": "    def reindex(self, workspace: MemoryWorkspace, *, force: bool = False) -> int:",
-          "line": 523
+          "line": 539
         },
         {
           "path": "memory_core/index/sqlite_store.py",
           "symbol": "SQLiteMemoryStore._prepare_source_chunks",
           "anchor": "    def _prepare_source_chunks(entry: IndexSourceSnapshot, tokens: int, overlap: int) -> list[MemoryChunk]:",
-          "line": 885
+          "line": 901
         },
         {
           "path": "memory_core/index/preparation.py",
@@ -628,7 +628,7 @@
           "path": "memory_core/index/sqlite_store.py",
           "symbol": "SQLiteMemoryStore._reindex_locked",
           "anchor": "    def _reindex_locked(",
-          "line": 588
+          "line": 604
         },
         {
           "path": "memory_core/client.py",
@@ -701,7 +701,7 @@
           "path": "memory_core/index/sqlite_store.py",
           "symbol": "SQLiteMemoryStore.index_identity",
           "anchor": "    def index_identity(self, *, db: sqlite3.Connection | None = None) -> dict[str, Any]:",
-          "line": 475
+          "line": 491
         }
       ],
       "implementation": "partial",
@@ -736,7 +736,7 @@
           "path": "memory_core/index/sqlite_store.py",
           "symbol": "SQLiteMemoryStore.reindex",
           "anchor": "    def reindex(self, workspace: MemoryWorkspace, *, force: bool = False) -> int:",
-          "line": 523
+          "line": 539
         },
         {
           "path": "memory_core/workspace.py",
@@ -801,7 +801,7 @@
           "path": "memory_core/index/sqlite_store.py",
           "symbol": "SQLiteMemoryStore.reindex",
           "anchor": "    def reindex(self, workspace: MemoryWorkspace, *, force: bool = False) -> int:",
-          "line": 523
+          "line": 539
         },
         {
           "path": "memory_core/consolidation/origins.py",
@@ -813,7 +813,7 @@
           "path": "memory_core/index/sqlite_store.py",
           "symbol": "SQLiteMemoryStore.publish_prepared_index",
           "anchor": "    def publish_prepared_index(",
-          "line": 375
+          "line": 380
         },
         {
           "path": "memory_core/index/publication.py",
@@ -896,7 +896,7 @@
           "path": "memory_core/index/sqlite_store.py",
           "symbol": "SQLiteMemoryStore.reindex",
           "anchor": "    def reindex(self, workspace: MemoryWorkspace, *, force: bool = False) -> int:",
-          "line": 523
+          "line": 539
         },
         {
           "path": "memory_core/consolidation/forget.py",
@@ -938,7 +938,7 @@
           "path": "memory_core/index/sqlite_store.py",
           "symbol": "SQLiteMemoryStore.search",
           "anchor": "    def search(",
-          "line": 934
+          "line": 950
         },
         {
           "path": "memory_core/tools/memory_search.py",
@@ -956,7 +956,7 @@
           "path": "memory_core/index/sqlite_store.py",
           "symbol": "SQLiteMemoryStore.index_identity",
           "anchor": "    def index_identity(self, *, db: sqlite3.Connection | None = None) -> dict[str, Any]:",
-          "line": 475
+          "line": 491
         }
       ],
       "implementation": "partial",
@@ -1015,7 +1015,7 @@
           "path": "memory_core/index/sqlite_store.py",
           "symbol": "SQLiteMemoryStore.search_vector_candidates",
           "anchor": "    def search_vector_candidates(",
-          "line": 1116
+          "line": 1132
         },
         {
           "path": "memory_core/index/vector.py",
@@ -1033,7 +1033,7 @@
           "path": "memory_core/index/sqlite_store.py",
           "symbol": "SQLiteMemoryStore._search_candidates",
           "anchor": "    def _search_candidates(",
-          "line": 1246
+          "line": 1262
         }
       ],
       "implementation": "present",
@@ -1153,7 +1153,7 @@
           "path": "memory_core/index/sqlite_store.py",
           "symbol": "SQLiteMemoryStore.search_path_candidates",
           "anchor": "    def search_path_candidates(",
-          "line": 1594
+          "line": 1610
         },
         {
           "path": "memory_core/index/keyword_search.py",
@@ -1360,13 +1360,13 @@
           "path": "memory_core/index/sqlite_store.py",
           "symbol": "SQLiteMemoryStore.attach_recall_metadata",
           "anchor": "    def attach_recall_metadata(",
-          "line": 1062
+          "line": 1078
         },
         {
           "path": "memory_core/index/sqlite_store.py",
           "symbol": "SQLiteMemoryStore.read_recall_metadata",
           "anchor": "    def read_recall_metadata(",
-          "line": 1032
+          "line": 1048
         },
         {
           "path": "memory_core/index/hybrid.py",
@@ -1384,13 +1384,13 @@
           "path": "memory_core/index/sqlite_store.py",
           "symbol": "SQLiteMemoryStore._finalize_keyword_only",
           "anchor": "    def _finalize_keyword_only(",
-          "line": 1431
+          "line": 1447
         },
         {
           "path": "memory_core/index/sqlite_store.py",
           "symbol": "SQLiteMemoryStore.search",
           "anchor": "    def search(",
-          "line": 934
+          "line": 950
         },
         {
           "path": "memory_core/client.py",
@@ -1933,13 +1933,13 @@
           "path": "memory_core/tools/memory_search.py",
           "symbol": "_settle_memory_attempt",
           "anchor": "def _settle_memory_attempt(",
-          "line": 1225
+          "line": 1227
         },
         {
           "path": "memory_core/tools/memory_search.py",
           "symbol": "_merge_corpus_results",
           "anchor": "def _merge_corpus_results(",
-          "line": 1323
+          "line": 1325
         },
         {
           "path": "memory_core/tools/corpus.py",
@@ -1975,7 +1975,7 @@
           "path": "memory_core/index/sqlite_store.py",
           "symbol": "SQLiteMemoryStore._search_candidates",
           "anchor": "    def _search_candidates(",
-          "line": 1246
+          "line": 1262
         },
         {
           "path": "memory_core/tools/memory_get.py",
@@ -2178,25 +2178,25 @@
           "path": "memory_core/session_catalog.py",
           "symbol": "MemorySessionCatalog.upsert_session",
           "anchor": "    def upsert_session(",
-          "line": 715
+          "line": 754
         },
         {
           "path": "memory_core/session_catalog.py",
           "symbol": "MemorySessionCatalog.snapshot",
           "anchor": "    def snapshot(",
-          "line": 1230
+          "line": 1269
         },
         {
           "path": "memory_core/session_catalog.py",
           "symbol": "MemorySessionCatalog.read_transcript",
           "anchor": "    def read_transcript(",
-          "line": 1317
+          "line": 1356
         },
         {
           "path": "memory_core/session_catalog.py",
           "symbol": "MemorySessionCatalog.record_archive",
           "anchor": "    def record_archive(",
-          "line": 1204
+          "line": 1243
         },
         {
           "path": "memory_core/session_visibility.py",
@@ -2220,19 +2220,19 @@
           "path": "memory_core/session_catalog.py",
           "symbol": "MemorySessionCatalog.record_participant",
           "anchor": "    def record_participant(",
-          "line": 1109
+          "line": 1148
         },
         {
           "path": "memory_core/session_catalog.py",
           "symbol": "MemorySessionCatalog.list_participants",
           "anchor": "    def list_participants(",
-          "line": 1176
+          "line": 1215
         },
         {
           "path": "memory_core/session_catalog.py",
           "symbol": "MemorySessionCatalog.load_session_metadata",
           "anchor": "    def load_session_metadata(",
-          "line": 1407
+          "line": 1446
         },
         {
           "path": "memory_core/session_visibility.py",
@@ -2244,7 +2244,7 @@
           "path": "memory_core/session_catalog.py",
           "symbol": "MemorySessionCatalog.get_session_entry",
           "anchor": "    def get_session_entry(",
-          "line": 631
+          "line": 670
         }
       ],
       "implementation": "partial",
@@ -2436,7 +2436,7 @@
           "path": "memory_core/session_catalog.py",
           "symbol": "MemorySessionCatalog.read_transcript",
           "anchor": "    def read_transcript(",
-          "line": 1317
+          "line": 1356
         },
         {
           "path": "memory_core/session_corpus.py",
@@ -2616,25 +2616,25 @@
           "path": "memory_core/session_catalog.py",
           "symbol": "MemorySessionCatalog.read_transcript",
           "anchor": "    def read_transcript(",
-          "line": 1317
+          "line": 1356
         },
         {
           "path": "memory_core/session_catalog.py",
           "symbol": "MemorySessionCatalog.read_reset_cutoff",
           "anchor": "    def read_reset_cutoff(",
-          "line": 1345
+          "line": 1384
         },
         {
           "path": "memory_core/session_catalog.py",
           "symbol": "MemorySessionCatalog.snapshot",
           "anchor": "    def snapshot(",
-          "line": 1230
+          "line": 1269
         },
         {
           "path": "memory_core/session_catalog.py",
           "symbol": "MemorySessionCatalog.tombstone_session",
           "anchor": "    def tombstone_session(",
-          "line": 1219
+          "line": 1258
         },
         {
           "path": "memory_core/tools/memory_search.py",
@@ -2900,25 +2900,25 @@
           "path": "memory_core/session_catalog.py",
           "symbol": "MemorySessionCatalog.append_message",
           "anchor": "    def append_message(",
-          "line": 947
+          "line": 986
         },
         {
           "path": "memory_core/session_catalog.py",
           "symbol": "MemorySessionCatalog.read_continuation",
           "anchor": "    def read_continuation(",
-          "line": 1351
+          "line": 1390
         },
         {
           "path": "memory_core/session_catalog.py",
           "symbol": "MemorySessionCatalog.read_anchor",
           "anchor": "    def read_anchor(",
-          "line": 1069
+          "line": 1108
         },
         {
           "path": "memory_core/session_catalog.py",
           "symbol": "MemorySessionCatalog.list_transcript_instances",
           "anchor": "    def list_transcript_instances(",
-          "line": 1251
+          "line": 1290
         },
         {
           "path": "memory_core/session_context.py",
@@ -4131,7 +4131,7 @@
           "path": "memory_core/index/sqlite_store.py",
           "symbol": "SQLiteMemoryStore.reindex",
           "anchor": "    def reindex(self, workspace: MemoryWorkspace, *, force: bool = False) -> int:",
-          "line": 523
+          "line": 539
         },
         {
           "path": "memory_core/consolidation/forget.py",
@@ -4143,7 +4143,7 @@
           "path": "memory_core/index/sqlite_store.py",
           "symbol": "SQLiteMemoryStore.publish_prepared_index",
           "anchor": "    def publish_prepared_index(",
-          "line": 375
+          "line": 380
         }
       ],
       "implementation": "partial",
@@ -4870,7 +4870,7 @@
           "path": "memory_core/index/sqlite_store.py",
           "symbol": "SQLiteMemoryStore.reindex",
           "anchor": "    def reindex(self, workspace: MemoryWorkspace, *, force: bool = False) -> int:",
-          "line": 523
+          "line": 539
         },
         {
           "path": "memory_core/consolidation/artifacts.py",
@@ -4894,7 +4894,7 @@
           "path": "memory_core/index/sqlite_store.py",
           "symbol": "SQLiteMemoryStore.publish_prepared_index",
           "anchor": "    def publish_prepared_index(",
-          "line": 375
+          "line": 380
         }
       ],
       "implementation": "partial",
@@ -5100,6 +5100,48 @@
           "symbol": "scheduleReplySessionMaintenance",
           "anchor": "export function scheduleReplySessionMaintenance(",
           "line": 11
+        },
+        {
+          "path": "src/auto-reply/reply/dispatch-from-config.ts",
+          "symbol": "dispatchReplyFromConfig",
+          "anchor": "export async function dispatchReplyFromConfig(",
+          "line": 27
+        },
+        {
+          "path": "src/auto-reply/reply/dispatch-from-config.prepare-operation.ts",
+          "symbol": "prepareDispatchOperation",
+          "anchor": "export async function prepareDispatchOperation(",
+          "line": 33
+        },
+        {
+          "path": "src/auto-reply/reply/dispatch-from-config.prepare-delivery.ts",
+          "symbol": "prepareDispatchDelivery",
+          "anchor": "export async function prepareDispatchDelivery(",
+          "line": 29
+        },
+        {
+          "path": "src/auto-reply/reply/dispatch-from-config.execute.ts",
+          "symbol": "executeDispatch",
+          "anchor": "export async function executeDispatch(",
+          "line": 34
+        },
+        {
+          "path": "src/auto-reply/reply/dispatch-from-config.finalize.ts",
+          "symbol": "finalizeDispatchAndAudit",
+          "anchor": "export async function finalizeDispatchAndAudit(",
+          "line": 38
+        },
+        {
+          "path": "src/auto-reply/reply/reply-dispatcher.ts",
+          "symbol": "createReplyDispatcher",
+          "anchor": "export function createReplyDispatcher(",
+          "line": 246
+        },
+        {
+          "path": "src/auto-reply/reply/pending-final-delivery.ts",
+          "symbol": "resolvePendingFinalDeliveryCompletion",
+          "anchor": "export function resolvePendingFinalDeliveryCompletion(",
+          "line": 71
         }
       ],
       "python": [
@@ -5125,27 +5167,53 @@
           "path": "memory_core/host/lifecycle.py",
           "symbol": "HostSessionRunner.run_turn",
           "anchor": "    async def run_turn(",
-          "line": 742
+          "line": 743
         },
         {
           "path": "memory_core/host/managed_session.py",
           "symbol": "ManagedHostSession",
           "anchor": "class ManagedHostSession:",
-          "line": 45
+          "line": 53
         },
         {
           "path": "memory_core/host/managed_index.py",
           "symbol": "ManagedSQLiteMemoryStore.search",
           "anchor": "    def search(",
-          "line": 421
+          "line": 515
+        },
+        {
+          "path": "memory_core/host/managed_maintenance.py",
+          "symbol": "reserve_foreground",
+          "anchor": "def reserve_foreground(",
+          "line": 149
+        },
+        {
+          "path": "memory_core/host/managed_maintenance.py",
+          "symbol": "schedule_optional",
+          "anchor": "def schedule_optional(",
+          "line": 166
+        },
+        {
+          "path": "memory_core/host/managed_session.py",
+          "symbol": "ManagedHostSession.maintenance_status",
+          "anchor": "    def maintenance_status(",
+          "line": 137
+        },
+        {
+          "path": "memory_core/host/managed_session.py",
+          "symbol": "ManagedHostSessionRunner.run_turn",
+          "anchor": "    async def run_turn(",
+          "line": 536
         }
       ],
-      "implementation": "partial",
+      "implementation": "present",
       "notes": [
         "The low-level immutable HostKit still returns maintenance requests. HostSessionRunner adds an explicit process-local per-session admission lane, durable catalog/context recording, actual registered dispatch, due flush settlement, real writer/index completion and fail-closed repair before the next model callback.",
-        "Real SDK cancellation, rejected executor submission, session rotation, inherited callback context and committed-write/index-failure regressions are exercised. The default runner is a stronger synchronous publication policy than the observed native background refresh, not proof of the complete original Gateway host path. The closed natural full-caller family now verifies the original outcomes condition; the maintenance/failure boundary remains unverified.",
+        "Real SDK cancellation, rejected executor submission, session rotation, inherited callback context and committed-write/index-failure regressions are exercised. The default runner is a stronger synchronous publication policy than the observed native background refresh, not proof of the complete original Gateway host path. The earlier closed natural full-caller family verified only the outcomes condition at its historical 69/128 baseline.",
         "HostKit returns maintenance requests and keeps no per-session queue; the Lab lock serializes its turn and maintenance, but the production host must own durable finalization and admission barriers.",
-        "An opt-in ManagedHostSession on-search memory policy now commits writes, preserves the real warm SQLite read generation and admits an actual background publisher. Its cold/warm ASCII/Unicode whole-caller family uses original runReplyAgent admission and no forced publication between turns. The fresh complete catalog on clean d306944 verifies only host.turn-barrier.outcomes, reaching 69/128 overall. Optional maintenance preemption and visible failure admission remain separate and unverified."
+        "An opt-in ManagedHostSession on-search memory policy now commits writes, preserves the real warm SQLite read generation and admits an actual background publisher. Its cold/warm ASCII/Unicode whole-caller family uses original runReplyAgent admission and no forced publication between turns. The fresh complete catalog on clean d306944 verifies only host.turn-barrier.outcomes, reaching 69/128 overall. Those maintenance/failure boundaries were still unverified in that historical outcome batch.",
+        "The closed six-case full-channel boundary family on clean 82dba05 verifies the existing host.turn-barrier.boundaries point, reaching 70/128 overall. It binds original channel delivery, actual maintenance owners, pre-model kernel target-open settlement, source bytes, real failures and physical next-user admission. It does not claim in-flight append cancellation, unowned provider cleanup or raw SDK/Native return API identity. Inventory itself awards no behavioral credit.",
+        "The final complete catalog on clean b27624d and SDK160/eb474baf13bb2f9bb7b330a30fbcc8816b42eb262e98772c6c9f8279b81ee4da validates the coherent session-source correction and the same six exact boundary cases. It confirms 70/128 with 58 remaining; the package's only original-point increase is 69 to 70, not 70 to 71. Initial full001 retains its earlier identity. Inventory and repeated validation add no condition; target-open and provider-cleanup limits remain unchanged."
       ],
       "acceptancePoints": [
         "host.turn-barrier.outcomes",
@@ -5191,13 +5259,13 @@
           "path": "memory_core/host/lifecycle.py",
           "symbol": "HostSessionRunner._load",
           "anchor": "    def _load(",
-          "line": 606
+          "line": 607
         },
         {
           "path": "memory_core/host/managed_index.py",
           "symbol": "ManagedSQLiteMemoryStore",
           "anchor": "class ManagedSQLiteMemoryStore(",
-          "line": 40
+          "line": 48
         },
         {
           "path": "memory_core/host/session_publication.py",
@@ -5209,25 +5277,31 @@
           "path": "memory_core/index/sqlite_store.py",
           "symbol": "SQLiteMemoryStore.reindex_sources",
           "anchor": "    def reindex_sources(",
-          "line": 546
+          "line": 562
         },
         {
           "path": "memory_core/session_catalog.py",
           "symbol": "MemorySessionCatalog.subscribe_transcript_changes",
           "anchor": "    def subscribe_transcript_changes(",
-          "line": 399
+          "line": 400
         },
         {
           "path": "memory_core/host/managed_session.py",
           "symbol": "ManagedHostSession",
           "anchor": "class ManagedHostSession:",
-          "line": 45
+          "line": 53
         },
         {
           "path": "memory_core/session_catalog.py",
           "symbol": "MemorySessionCatalog.compare_and_patch_host_lifecycle",
           "anchor": "    def compare_and_patch_host_lifecycle(",
-          "line": 660
+          "line": 699
+        },
+        {
+          "path": "memory_core/session_catalog.py",
+          "symbol": "MemorySessionCatalog._reserve_index_sources",
+          "anchor": "    def _reserve_index_sources(",
+          "line": 559
         }
       ],
       "implementation": "partial",
@@ -5237,7 +5311,8 @@
         "Saved memory and host-supplied transcript corpora can reopen, but the Lab stores live sessions in RAM; durable transcript/SessionState storage and a fresh-process continuation path must be supplied and tested by the host.",
         "An optional provider-none managed SQLite owner performs genuine cold-search bootstrap, live repair notices and physical operation close custody; the default eager host lifecycle is unchanged. Separate strict transcript-publication and managed process fixtures retain the remaining session-publication cadence difference and do not close this contract.",
         "An explicit session publication controller consumes post-commit catalog hints, reconciles actual admitted source fingerprints, and publishes selected sources through the atomic publisher. Managed binding starts startup work only after a genuine SQLite read snapshot is pinned and joins admitted work on close. Default eager HostSessionRunner publication remains unchanged; this implementation and regression coverage do not establish the Native/SDK process or default scheduling contract.",
-        "An explicit shared ManagedHostSession now integrates scoped memory publication, queued sessions, truthful pending outcomes, and atomic revision-checked catalog acknowledgments. Per-chat runners share one real process owner; ordinary turns do not drain session timers. A separately frozen four-case process family is registered atomically against both original conditions; acceptance depends on complete authenticated matches in the full gate, not these source locations."
+        "An explicit shared ManagedHostSession now integrates scoped memory publication, queued sessions, truthful pending outcomes, and atomic revision-checked catalog acknowledgments. Per-chat runners share one real process owner; ordinary turns do not drain session timers. A separately frozen four-case process family is registered atomically against both original conditions; acceptance depends on complete authenticated matches in the full gate, not these source locations.",
+        "A sessions-only managed publication reserves a separate durable catalog writer slot without mutating rows, keeping source discovery, preparation and validation coherent while real transcript appends wait. Mixed selections, process-memory catalogs and physically shared index/catalog databases preserve strict optimistic validation. The fresh complete catalog on clean b27624d validates this SDK identity, alongside 8670 passing general regressions and both installed artifacts. This correction adds no acceptance condition and confirms the same 70/128 overall, not 71."
       ],
       "acceptancePoints": [
         "host.restart-recall.outcomes",
@@ -5283,13 +5358,13 @@
           "path": "memory_core/host/managed_session.py",
           "symbol": "ManagedHostSession",
           "anchor": "class ManagedHostSession:",
-          "line": 45
+          "line": 53
         },
         {
           "path": "memory_core/host/managed_index.py",
           "symbol": "ManagedSQLiteMemoryStore.reindex",
           "anchor": "    def reindex(",
-          "line": 324
+          "line": 354
         },
         {
           "path": "memory_core/tools/memory_search.py",
@@ -10098,6 +10173,205 @@
       ],
       "exportedDeclarations": [
         "scheduleReplySessionMaintenance"
+      ]
+    },
+    {
+      "path": "src/auto-reply/reply/dispatch-from-config.ts",
+      "sha256": "c86c6066ec6b85d55b642dd389e246119acd59a0fad298d9bc73406fc6d141a3",
+      "sourceImports": [
+        "../../config/sessions/lifecycle.js",
+        "../../plugins/runtime/gateway-request-scope.js",
+        "../../sessions/session-state-events.js",
+        "../group-thread-context.js",
+        "./dispatch-from-config.abort.js",
+        "./dispatch-from-config.audit.js",
+        "./dispatch-from-config.choose-route.js",
+        "./dispatch-from-config.execute.js",
+        "./dispatch-from-config.finalize.js",
+        "./dispatch-from-config.gather.js",
+        "./dispatch-from-config.prepare-context.js",
+        "./dispatch-from-config.prepare-delivery.js",
+        "./dispatch-from-config.prepare-execution.js",
+        "./dispatch-from-config.prepare-operation.js",
+        "./dispatch-from-config.types.js",
+        "./dispatch-session-refresh-error.js",
+        "./reply-admission-ticket.js",
+        "./reply-turn-recovery-notice.js"
+      ],
+      "exportedDeclarations": [
+        "dispatchLowLevelChannelReplyFromConfig",
+        "dispatchReplyFromConfig"
+      ]
+    },
+    {
+      "path": "src/auto-reply/reply/dispatch-from-config.prepare-operation.ts",
+      "sha256": "7e3e052a3b59cd88084a1652ab2865784d43e4e99a2378cd62e8bfb036eeb967",
+      "sourceImports": [
+        "../../agents/identity.js",
+        "../../agents/session-model-ref.js",
+        "../../channels/conversation-binding-route-facts.js",
+        "../../globals.js",
+        "../../infra/outbound/session-binding-service.js",
+        "../../plugins/conversation-binding.js",
+        "../../plugins/hook-claim-admission.js",
+        "../../plugins/hook-runner-global.js",
+        "../command-auth.js",
+        "../reply-payload.js",
+        "./dispatch-from-config.abort.js",
+        "./dispatch-from-config.plugin-binding.js",
+        "./dispatch-from-config.prepare-context.js",
+        "./dispatch-from-config.runtime-loaders.js",
+        "./dispatch-session-refresh-error.js",
+        "./reply-admission-ticket.js",
+        "./response-prefix-template.js",
+        "./session-conversation-binding.js",
+        "@openclaw/normalization-core/string-coerce"
+      ],
+      "exportedDeclarations": [
+        "PrepareDispatchOperationReadyState",
+        "prepareDispatchOperation"
+      ]
+    },
+    {
+      "path": "src/auto-reply/reply/dispatch-from-config.prepare-delivery.ts",
+      "sha256": "8019fc876fd50727105d1f67f9048dd317d9f1f61ef3f2c931e6f53d2734ccf3",
+      "sourceImports": [
+        "../../acp/runtime/session-meta.js",
+        "../../globals.js",
+        "../../utils/message-channel.js",
+        "../command-turn-context.js",
+        "../reply-payload.js",
+        "./dispatch-from-config.context.js",
+        "./dispatch-from-config.events.js",
+        "./dispatch-from-config.gather.js",
+        "./dispatch-from-config.payloads.js",
+        "./dispatch-from-config.runtime-loaders.js",
+        "./reply-dispatcher.types.js",
+        "./reply-media-paths.runtime.js",
+        "./reply-threading.js",
+        "./response-prefix-template.js",
+        "./routing-policy.js",
+        "@openclaw/acp-core/session-interaction-mode",
+        "openclaw/plugin-sdk/reply-payload"
+      ],
+      "exportedDeclarations": [
+        "PrepareDispatchDeliveryReadyState",
+        "prepareDispatchDelivery"
+      ]
+    },
+    {
+      "path": "src/auto-reply/reply/dispatch-from-config.execute.ts",
+      "sha256": "d8f37e4dacb0b08b7402e2701d3585e1c59abf1b103e3d16984b015948a74ee1",
+      "sourceImports": [
+        "../../agents/failover/user-copy.js",
+        "../../agents/tools/ask-user-tool.js",
+        "../../channels/progress-visibility.js",
+        "../../channels/streaming.js",
+        "../../globals.js",
+        "../../infra/errors.js",
+        "../dispatch-dispatcher.js",
+        "../reply-payload.js",
+        "./agent-runner-failure-reply.js",
+        "./command-session-metadata.js",
+        "./dispatch-from-config.abort.js",
+        "./dispatch-from-config.acp-tail.js",
+        "./dispatch-from-config.block-reply.js",
+        "./dispatch-from-config.deferred-final.js",
+        "./dispatch-from-config.payloads.js",
+        "./dispatch-from-config.prepare-execution.js",
+        "./dispatch-from-config.turn-ledger.js",
+        "./get-reply.types.js",
+        "./prepared-reply-dispatch-context.js",
+        "./reply-operation-run-state.js",
+        "openclaw/plugin-sdk/reply-payload"
+      ],
+      "exportedDeclarations": [
+        "executeDispatch"
+      ]
+    },
+    {
+      "path": "src/auto-reply/reply/dispatch-from-config.finalize.ts",
+      "sha256": "d7e9e5eee061385a81a8a662d121a0b6372d0e11670a64d8d2b717c6fe6c3874",
+      "sourceImports": [
+        "../../agents/reply-completion.js",
+        "../../channels/turn/agent-run-terminal-outcome.js",
+        "../../globals.js",
+        "../../infra/errors.js",
+        "../../infra/outbound/delivery-completion.js",
+        "../../tts/captioned-final.js",
+        "../../tts/tts-config.js",
+        "../dispatch-dispatcher.js",
+        "../reply-payload.js",
+        "./dispatch-from-config.abort.js",
+        "./dispatch-from-config.execute.js",
+        "./dispatch-from-config.payloads.js",
+        "./dispatch-from-config.pending-final.js",
+        "openclaw/plugin-sdk/reply-payload"
+      ],
+      "exportedDeclarations": [
+        "finalizeDispatchAndAudit",
+        "needsTtsFallback"
+      ]
+    },
+    {
+      "path": "src/auto-reply/reply/reply-dispatcher.ts",
+      "sha256": "d64b0042495fb3eda7708d8e4eb12934bd767878e7d9df4c70fe784e6e77db2f",
+      "sourceImports": [
+        "../../channels/typing.js",
+        "../../config/types.js",
+        "../../config/types.openclaw.js",
+        "../../infra/delivery-recovery.shared.js",
+        "../../infra/errors.js",
+        "../../infra/outbound/delivery-completion.js",
+        "../../infra/outbound/payloads.js",
+        "../../infra/outbound/reply-payload-parts.js",
+        "../../logging/subsystem.js",
+        "../../shared/deferred.js",
+        "../../shared/global-singleton.js",
+        "../../shared/silent-reply-policy.js",
+        "../../utils.js",
+        "../group-thread-context.js",
+        "../reply-payload.js",
+        "../tokens.js",
+        "../types.js",
+        "./dispatcher-registry.js",
+        "./normalize-reply.js",
+        "./reply-dispatch-before-deliver.js",
+        "./reply-dispatch-delay.js",
+        "./reply-dispatch-outcome.js",
+        "./reply-dispatcher-observers.js",
+        "./reply-dispatcher.types.js",
+        "./response-prefix-template.js",
+        "./typing.js",
+        "@openclaw/normalization-core/record-coerce"
+      ],
+      "exportedDeclarations": [
+        "ReplyDispatcherOptions",
+        "ReplyDispatcherWithTypingOptions",
+        "attachReplyDispatchUndeliveredFallback",
+        "bindReplyDispatcherConversationContext",
+        "captureReplyDispatchDeliveryOutcome",
+        "createReplyDispatcher",
+        "createReplyDispatcherWithTyping",
+        "prepareReplyPayloadForDispatcher",
+        "waitForReplyDispatcherIdle"
+      ]
+    },
+    {
+      "path": "src/auto-reply/reply/pending-final-delivery.ts",
+      "sha256": "9dba470e986ff78a59616f5d5511f9d41d3807b2fba1464a6fd8de25ad860abc",
+      "sourceImports": [
+        "../../infra/outbound/delivery-completion.js",
+        "../../infra/outbound/payloads.js",
+        "../reply-payload.js",
+        "./normalize-reply.js",
+        "./pending-final-delivery-state.js"
+      ],
+      "exportedDeclarations": [
+        "buildRecoverablePendingFinalDeliveryText",
+        "normalizePendingFinalDeliveryPayloads",
+        "normalizePendingFinalRecoveryPayloads",
+        "resolvePendingFinalDeliveryCompletion"
       ]
     }
   ]

@@ -26,7 +26,7 @@ The reference repository is `https://github.com/openclaw/openclaw.git`. Python-o
 
 The [source map](equivalence-source-map.md) links all 64 contracts and 128 acceptance points
 to the pinned upstream code and the current Python implementation. The inventory records
-199 upstream source modules, their tracked hashes, literal dependencies and exported
+206 upstream source modules, their tracked hashes, literal dependencies and exported
 declarations. Source presence and inventory validation do not establish behavior or add
 any differential-test coverage.
 
@@ -52,26 +52,33 @@ Comparisons must not normalize away behavior. A platform-specific path, generate
 Entries remain pending until their complete acceptance conditions are verified against `v2026.9.9`. Their detailed acceptance points and stable identifiers are in [scope.json](../equivalence/scope.json). A helper that already exists in Python still needs the new differential evidence. A known difference must stay visible until its implementation and tests agree. Bounded passing subsets are recorded below without closing the containing contract.
 
 <!-- CURRENT-VERIFICATION-START -->
-The latest verified bounded baseline has **69/128 acceptance conditions (53.9%)**, with
-**59 conditions** remaining. This percentage counts unweighted verified conditions; it is
-not engineering effort, elapsed work or a time estimate. The fixed scope remains 64 contracts
-and 128 conditions. The natural save/follow-up batch targeted **+1** and verified
-**+1**, from **68 to 69/128**. Contract #62 is partial: its maintenance/failure
-boundary remains open.
+The latest verified bounded baseline has **70/128 acceptance conditions (54.7%)**,
+with **58 conditions** remaining. This counts unweighted verified conditions, not
+engineering effort or a time estimate. The fixed scope stays 64 contracts and 128 conditions.
+The full-channel boundary package verifies **+1**, from **69 to 70/128**;
+fresh validation of the corrected SDK confirms the same 70, not a second increase.
+Contract #62 has **both original conditions verified, 2/2**, under its explicit profiles.
 
-The fresh complete differential report on clean `d306944` executes **1,415 cases:
-1,401 matches, 14 visible differences and 0 blocked cases**, with no runner errors.
-All four frozen cold/warm ASCII/Unicode whole-host cases match the original
-`host.turn-barrier.outcomes` condition. Cold retrieval succeeds; warm cases establish a
-populated positive control, then preserve the genuine empty first search for the new fact.
-This verifies bounded source-backed tool behavior, not immediately fresh warm recall.
-Full regressions pass **8,194 tests**; both offline installed package consumers pass,
-including public typing and **24 rejected invalid calls**.
-The **1,648 skips** grant no acceptance credit; no new skip is added.
-The full gate remains `mismatched`: 57 uncovered conditions and two registered but
-unresolved boundaries remain. These results do not establish complete OpenClaw equivalence.
+The fresh complete differential report on clean `b27624d` executes **1,421 cases:
+1,407 matches, 14 existing differences and zero blocked**, with no runner errors.
+All six exact boundary cases match with actual delivery, maintenance, tools,
+source bytes, pre-model target-open settlement and physical next-admission custody.
+All 1,415 prior definitions/statuses/annotations, 12 earlier evidence flags and the
+other 127 acceptance records remain unchanged. The earlier four outcomes are
+separate; immediate fresh warm recall is not promised.
 
-See the [natural next-turn outcomes closeout](host_turn_barrier_closeout.md) for exact
+The corrected SDK passes **8,670 general tests**, with zero failures and **1,648
+uncredited skips**, and both installed artifacts, including **27 invalid typed-call
+checks** each. The earlier failed general runs remain retained. The sessions-only
+separate-catalog reservation fixes a real source-preparation race without retry,
+weakened validation or timer draining. The initial hosted 3.11 validator failure
+and later guard validation have separate identities in the boundary closeout.
+The full gate stays `mismatched`: **56 uncovered conditions plus two registered
+unresolved conditions** remain. Complete OpenClaw equivalence is not established.
+
+See the [boundary closeout](host_turn_barrier_boundaries_closeout.md) for exact identities,
+complete public results, retained failures and measured limits. See the original
+[natural next-turn outcomes closeout](host_turn_barrier_closeout.md) for exact
 source, full-report and runtime identities, declared limits and retained attempts. The preceding
 [host update/isolation batch](host_update_isolation_closeout.md) verified **66 → 68/128**
 on clean `57270da`, with 1,411 cases, 1,397 matches, 14 differences and zero blocked.
@@ -115,10 +122,10 @@ reaching 66/128 before the update/isolation and natural next-turn packages.
 
 | Contract status | Contracts | Verified conditions | Remaining conditions |
 | --- | ---: | ---: | ---: |
-| Complete | 31 | 62 | 0 |
-| Partial | 7 | 7 | 7 |
+| Complete | 32 | 64 | 0 |
+| Partial | 6 | 6 | 6 |
 | Pending verification | 26 | 0 | 52 |
-| Total | 64 | 69 | 59 |
+| Total | 64 | 70 | 58 |
 
 Pending verification can include existing implementation. Partial contracts retain one open
 condition. Infrastructure sections 1–3 remain **20/22 tasks completed**; infrastructure and
@@ -190,7 +197,7 @@ Current status of all 64 contracts:
 | 59 | `engine.numeric-boundaries` | Pending verification | 0/2 |
 | 60 | `engine.unicode-collation` | Pending verification | 0/2 |
 | 61 | `engine.datetime-regex` | Pending verification | 0/2 |
-| 62 | `host.turn-barrier` | Partial | 1/2 |
+| 62 | `host.turn-barrier` | Complete | 2/2 |
 | 63 | `host.restart-recall` | Complete | 2/2 |
 | 64 | `host.update-isolation` | Complete | 2/2 |
 
@@ -312,7 +319,7 @@ pre-open race authority, full raw filesystem evidence and broader SDK-only limit
 
 ### Host lifecycle acceptance
 
-- [ ] **`host.turn-barrier` — Finalize memory before the next turn.** Drive a natural first-turn save and an immediate follow-up in both host paths. Compare committed and searchable memory, serialized maintenance and visible failure before next admission. The natural outcomes condition is verified; the maintenance/failure boundary remains open.
+- [x] **`host.turn-barrier` — Finalize memory before the next turn.** The separate four-case outcome and six-case full-channel boundary families verify both original conditions under declared profiles: committed/searchable memory, real optional maintenance, delivery and visible failure before the next admission. No in-flight append or universal scheduling guarantee is claimed.
 - [x] **`host.restart-recall` — Recall across fresh chats and process restart.** Use the same saved corpus with a fresh session and then a fresh host process. Compare source-backed retrieval and state continuity with facts omitted from the new prompt.
 - [x] **`host.update-isolation` — Update current facts while preserving isolation.** Replace a prior preference, retain unrelated facts and query from independent user/workspace scopes. Compare current versus superseded answers and honest write/index failure reporting.
 
@@ -2138,3 +2145,22 @@ This reruns an already verified family and grants **+0**: the overall baseline s
 **69/128 (53.9%)**, with **59 remaining**. It does not replace the previous complete
 catalog or resolve its 14 differences. The next acceptance target remains
 `host.turn-barrier.boundaries`, covering maintenance/failure before the next admission.
+
+
+## Full-channel maintenance boundary acceptance (2026-11-10)
+
+The [boundary closeout](host_turn_barrier_boundaries_closeout.md) verifies the
+existing `host.turn-barrier.boundaries` point: **69 → 70/128 (54.7%)**, with
+**58 remaining**. The final clean `b27624d` complete catalog validates the
+coherent-source SDK: **1,421 cases, 1,407 matches, 14 existing differences,
+zero blocked and no runner errors**. It confirms the same 70, not 71.
+All 1,415 earlier definitions/statuses, 12 earlier evidence flags and the other
+127 original point records remain unchanged. The gate remains `mismatched`.
+
+Actual pristine full-channel dispatch uses its own original reply operation.
+Pending optional preemption, running maintenance, real failures and an actual
+pre-model target-open lease are measured. In-flight append cancellation and
+unowned provider cleanup are not claimed. The corrected SDK passes **8,670 general
+tests** with **1,648 uncredited skips**, both installed artifacts and **27 invalid
+typed calls** each. Historical failures, initial SDK identity and the separate
+validator-only hosted follow-up retain their actual records and grant no extra point.

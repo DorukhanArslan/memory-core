@@ -417,6 +417,63 @@ with tempfile.TemporaryDirectory() as scratch:
     with sqlite3.connect(natural_config.resolved_store_path()) as published:
         assert published.execute("SELECT COUNT(*) FROM chunks WHERE text LIKE ?",
                                  ("%installedsearchnewquince%",)).fetchone()[0] > 0
+    background_root = root / "background-maintenance-host"
+    background_catalog = catalog_module.MemorySessionCatalog(root / "background-maintenance-catalog.sqlite",
+        clock_ms=lambda: 1794182400000)
+    background_config = core.MemoryConfig(workspace_dir=background_root, flags=flags, session_search=False)
+    background_host = managed_host_module.ManagedHostSession.open(background_root, catalog=background_catalog,
+        config=background_config, source_policy=visibility.resolve_memory_search_source_policy(["memory"]),
+        memory_publication="on-search", maintenance="background", now_ms=lambda: 1794182400000)
+
+    async def background_maintenance_consumer():
+        runner = background_host.runner(core.SessionState.new(
+            session_key="agent:main:installed-background", session_id="installed-background"))
+        written, aborted = asyncio.Event(), asyncio.Event()
+        deliveries = []
+
+        async def deliver(outcome):
+            deliveries.append(outcome.turn_id)
+
+        async def first_model(turn):
+            turn.record_message({"role": "assistant", "content": "Acknowledged."})
+            return core.HostModelResult(core.TurnUsage(176000, 3))
+
+        async def flush(turn):
+            args = {"path": turn.flush_request.target,
+                    "content": "The installedbackgroundsaffron preference is cedar tea.\\n"}
+            turn.record_message({"role": "assistant", "content": [{"type": "toolCall",
+                "id": "background-save", "name": "write", "arguments": args}]})
+            result = await turn.dispatch_async("background-save", "write", args)
+            assert result["status"] == "ok" and result["action"] == "appended"
+            written.set()
+            try:
+                await asyncio.Future()
+            except asyncio.CancelledError:
+                aborted.set()
+
+        async def next_model(turn):
+            assert aborted.is_set()
+            assert background_host.maintenance_status()["jobs"][0]["settled"]
+            turn.record_message({"role": "assistant", "content": "Next question admitted."})
+            return core.HostModelResult(core.TurnUsage(20, 3))
+
+        try:
+            first = await runner.run_turn("Retain the preference.", execute=first_model, execute_flush=flush,
+                                          request_id="background-first", deliver=deliver)
+            assert first.flush is None
+            await asyncio.wait_for(written.wait(), 5)
+            following = await runner.run_turn("Ask the next question.", execute=next_model,
+                                              request_id="background-next", deliver=deliver)
+            assert not following.failures and deliveries == [first.turn_id, following.turn_id]
+            job = background_host.maintenance_status()["jobs"][0]
+            assert job["state"] == "cancelled" and job["outcome"]["memory_writes_committed"]
+            source = next(background_root.glob("memory/*.md"))
+            assert source.read_text().count("installedbackgroundsaffron") == 1
+            json.dumps(background_host.maintenance_status())
+        finally:
+            await background_host.aclose()
+
+    asyncio.run(background_maintenance_consumer())
 print("installed core imports and FTS host lifecycle passed")
 print("installed session authority and compressed archive consumers passed")
 print("installed durable append, continuation and replay consumers passed")
@@ -427,6 +484,7 @@ print("installed managed cold bootstrap, live notice, warm recall and physical c
 print("installed selected-source publication, committed session queue and read-generation consumers passed")
 print("installed managed shared-host save, pending readiness and reopened recall consumer passed")
 print("installed opt-in natural save, pinned warm read and background publication consumer passed")
+print("installed optional maintenance write, real cancellation, next admission and delivery consumer passed")
 '''
 
 

@@ -333,6 +333,12 @@ def _validate_scope(scope: Any, cases: Any) -> tuple[list[dict], dict[str, set[s
         validate_host_turn_barrier_registration(cases)
     except ValueError as error:
         raise HarnessError("cases-invalid", str(error)) from None
+    from equivalence.host_turn_barrier_boundaries import validate_registration as validate_host_turn_barrier_boundaries_registration
+
+    try:
+        validate_host_turn_barrier_boundaries_registration(cases)
+    except ValueError as error:
+        raise HarnessError("cases-invalid", str(error)) from None
     return requirements, points
 
 
@@ -341,8 +347,10 @@ def _oracle(node: Path, script: Path, checkout: Path, cases: list[dict], timeout
             release_runtime: dict | None = None) -> dict:
     if not script.is_file():
         raise HarnessError("oracle-missing", "The independent TypeScript oracle runner is missing.")
-    if not isinstance(timeout, (int, float)) or isinstance(timeout, bool) or not 0 < timeout <= 120:
-        raise HarnessError("timeout-invalid", "The oracle requires a finite timeout of at most 120 seconds.")
+    boundary_case = len(cases) == 1 and cases[0]["operation"] == "host-turn-barrier-boundaries-runtime"
+    timeout_limit = 180 if boundary_case else 120
+    if not isinstance(timeout, (int, float)) or isinstance(timeout, bool) or not 0 < timeout <= timeout_limit:
+        raise HarnessError("timeout-invalid", f"The oracle requires a finite timeout of at most {timeout_limit} seconds.")
     if len(cases) == 1 and cases[0]["operation"] == "host-restart-session-runtime":
         from equivalence.host_restart_native import run_native_session_case
 
@@ -439,6 +447,37 @@ def _oracle(node: Path, script: Path, checkout: Path, cases: list[dict], timeout
                     "evidenceDirectory": native["evidenceDirectory"]}
         except Exception as error:
             failure = HarnessError("host-turn-barrier-evidence-invalid", "Whole host turn-barrier execution/authority failed; no retry was made.")
+            failure.rejected_evidence = {"caseIds": [cases[0]["id"]], "coverageCredit": False,
+                                         "retainedDirectory": str(attempt), "reason": str(error)}
+            raise failure from error
+    if boundary_case:
+        from equivalence.host_turn_barrier_boundaries_native import NATIVE_KIND, run_native_case as run_native_boundaries_case
+
+        if release_runtime is None:
+            raise HarnessError("release-runtime-unavailable", "Whole host turn-barrier boundaries require their authenticated release runtime.")
+        retained = ROOT / ".equivalence-results" / "host-turn-barrier-boundaries"
+        retained.mkdir(parents=True, exist_ok=True)
+        attempt = Path(tempfile.mkdtemp(prefix="attempt-", dir=retained)) / "case"
+        try:
+            native = run_native_boundaries_case(cases[0], node, release_runtime, attempt, timeout=timeout)
+            if native.get("kind") != NATIVE_KIND:
+                raise ValueError("The host turn-barrier boundary runner returned another capability kind")
+            evidence = attempt / "evidence/native-raw.json"
+            info = evidence.lstat()
+            if not stat.S_ISREG(info.st_mode) or info.st_nlink != 1 or info.st_size > 32 * 1024 * 1024:
+                raise ValueError("Invalid original host turn-barrier boundary diagnostic file")
+            raw = evidence.read_bytes()
+            snapshots = _json(raw.decode("utf-8"))
+            if not _same_json(snapshots, native["runtimeDiagnostics"]) or not isinstance(snapshots, list) or len(snapshots) != 1:
+                raise ValueError("Original boundary diagnostics differ from their actual retained file")
+            return {"kind": "official-release-runtime-comparison", "sources": [],
+                    "results": native["results"], "releaseSources": native["releaseSources"],
+                    "releaseTrace": native["releaseTrace"],
+                    "runtimeDiagnostics": [{"id": cases[0]["id"], "sha256": hashlib.sha256(raw).hexdigest(),
+                                            "rawSnapshots": snapshots, "validationStatus": "verified"}],
+                    "evidenceDirectory": native["evidenceDirectory"]}
+        except Exception as error:
+            failure = HarnessError("host-turn-barrier-boundaries-evidence-invalid", "Whole host turn-barrier boundary execution/authority failed; no retry was made.")
             failure.rejected_evidence = {"caseIds": [cases[0]["id"]], "coverageCredit": False,
                                          "retainedDirectory": str(attempt), "reason": str(error)}
             raise failure from error
@@ -709,9 +748,30 @@ def _host_update_isolation_family_complete(rows: list[dict]) -> bool:
 def _host_turn_barrier_family_complete(rows: list[dict]) -> bool:
     """The natural follow-up outcome is not credited without every exact, validated match."""
     from equivalence.host_turn_barrier import CASE_HASHES, OPERATION, POINTS, REQUIREMENT, validate_registration
+    from equivalence.host_turn_barrier_boundaries import OPERATION as boundary_operation
 
     family = [row for row in rows if row.get("operation") == OPERATION
-              or row.get("requirement") == REQUIREMENT
+              or row.get("requirement") == REQUIREMENT and row.get("operation") != boundary_operation
+              or set(row.get("covers", ())) & set(POINTS)]
+    if (len(family) != len(CASE_HASHES) or {row.get("id") for row in family} != set(CASE_HASHES)
+            or any(row.get("status") != "matched" or row.get("runtimeEvidenceValidated") is not True for row in family)):
+        return False
+    try:
+        validate_registration([{key: row[key] for key in ("id", "operation", "requirement", "covers", "input")}
+                               for row in family])
+    except (KeyError, TypeError, ValueError):
+        return False
+    return True
+
+
+def _host_turn_barrier_boundaries_family_complete(rows: list[dict]) -> bool:
+    """The boundary point needs all six exact, matched, affirmatively validated members."""
+    from equivalence.host_turn_barrier import OPERATION as outcome_operation
+    from equivalence.host_turn_barrier_boundaries import CASE_HASHES, OPERATION, POINTS, REQUIREMENT, validate_registration
+
+    family = [row for row in rows if row.get("operation") == OPERATION
+              or row.get("requirement") == REQUIREMENT and row.get("operation") != outcome_operation
+              or str(row.get("id", "")).startswith("host-turn-barrier-boundaries-")
               or set(row.get("covers", ())) & set(POINTS)]
     if (len(family) != len(CASE_HASHES) or {row.get("id") for row in family} != set(CASE_HASHES)
             or any(row.get("status") != "matched" or row.get("runtimeEvidenceValidated") is not True for row in family)):
@@ -820,6 +880,7 @@ def run_suite(*, checkout: Path, node: Path, smoke: bool = False,
             "host-restart-session-runtime",
             "host-update-isolation-runtime",
             "host-turn-barrier-runtime",
+            "host-turn-barrier-boundaries-runtime",
         }
         runtime_cases = [case for case in cases if case["operation"] in runtime_operations]
         source_cases = [case for case in cases if case["operation"] not in runtime_operations]
@@ -1164,13 +1225,21 @@ def run_suite(*, checkout: Path, node: Path, smoke: bool = False,
                 report["hostTurnBarrierBindings"] = prepare_host_turn_barrier_bindings(
                     checkout, Path(runtime_config["runtimeRoot"]))
                 report["hostTurnBarrierNode"] = prepare_model_node_authority(node)
+            if any(case["operation"] == "host-turn-barrier-boundaries-runtime" for case in runtime_cases):
+                from equivalence.host_turn_barrier_boundaries_bindings import prepare_host_turn_barrier_boundaries_bindings
+                from equivalence.model_runtime_authority import prepare_model_node_authority
+
+                report["hostTurnBarrierBoundariesBindings"] = prepare_host_turn_barrier_boundaries_bindings(
+                    checkout, Path(runtime_config["runtimeRoot"]))
+                report["hostTurnBarrierBoundariesNode"] = prepare_model_node_authority(node)
             observed_release = {}
             for case in runtime_cases:
                 # The real manager retains global state owners. Each distinct
                 # case gets one fresh process; failed cases are never retried.
                 try:
                     native = _oracle(node, ROOT / "equivalence/release-oracle.mjs", checkout, [case],
-                                     max(timeout_seconds, 120 if case["operation"] == "host-turn-barrier-runtime" else 60),
+                                     max(timeout_seconds, 180 if case["operation"] == "host-turn-barrier-boundaries-runtime" else
+                                         120 if case["operation"] == "host-turn-barrier-runtime" else 60),
                                      release_runtime=runtime_config)
                 except HarnessError:
                     report["failedReferenceCaseId"] = case["id"]
@@ -1207,6 +1276,11 @@ def run_suite(*, checkout: Path, node: Path, smoke: bool = False,
                         != report["hostTurnBarrierBindings"]
                         or prepare_model_node_authority(node) != report["hostTurnBarrierNode"]):
                     raise ValueError("Whole host turn-barrier source/artifact/executable owners changed.")
+                if "hostTurnBarrierBoundariesBindings" in report and (
+                        prepare_host_turn_barrier_boundaries_bindings(checkout, Path(runtime_config["runtimeRoot"]))
+                        != report["hostTurnBarrierBoundariesBindings"]
+                        or prepare_model_node_authority(node) != report["hostTurnBarrierBoundariesNode"]):
+                    raise ValueError("Whole host turn-barrier boundary source/artifact/executable owners changed.")
                 for name, prepare in model_binding_preparers.items():
                     if prepare(checkout, Path(runtime_config["runtimeRoot"])) != report[name]:
                         raise ValueError("A model runtime source/export declaration changed.")
@@ -1383,8 +1457,9 @@ def run_suite(*, checkout: Path, node: Path, smoke: bool = False,
                     if case in python_diagnostic_cases:
                         evidence = directory / "python-raw.json"
                         info = evidence.lstat()
+                        diagnostic_limit = 32 if case["operation"] == "host-turn-barrier-boundaries-runtime" else 16
                         if (not stat.S_ISREG(info.st_mode) or info.st_nlink != 1
-                                or info.st_size > 16 * 1024 * 1024):
+                                or info.st_size > diagnostic_limit * 1024 * 1024):
                             raise ValueError("Invalid runtime diagnostic file.")
                         raw = evidence.read_bytes()
                         snapshots = _json(raw.decode("utf-8"))
@@ -1451,9 +1526,25 @@ def run_suite(*, checkout: Path, node: Path, smoke: bool = False,
                                 raise ValueError("Host turn-barrier custody did not affirmatively validate")
                             turn_barrier_diagnostic["validationStatus"] = "verified"
                             row["runtimeEvidenceValidated"] = True
+                        if case["operation"] == "host-turn-barrier-boundaries-runtime":
+                            from equivalence.host_turn_barrier_boundaries_evidence import validate_pair
+
+                            boundary_diagnostic = {"id": case["id"], "side": "python", "sha256": hashlib.sha256(raw).hexdigest(),
+                                                   "rawSnapshots": snapshots, "validationStatus": "unverified"}
+                            report["runtimeDiagnostics"].append(boundary_diagnostic)
+                            original = next(d for d in report["runtimeDiagnostics"]
+                                            if d["side"] == "native" and d["id"] == case["id"])
+                            if (original.get("validationStatus") != "verified"
+                                    or len(original["rawSnapshots"]) != 1 or len(snapshots) != 1):
+                                raise ValueError("Host turn-barrier boundaries require one authenticated original and SDK capture")
+                            if validate_pair(case, original["rawSnapshots"][0], snapshots[0], native["result"], python) is not True:
+                                raise ValueError("Host turn-barrier boundary custody did not affirmatively validate")
+                            boundary_diagnostic["validationStatus"] = "verified"
+                            row["runtimeEvidenceValidated"] = True
                         diagnostic_key = "sourceDiagnostics" if case in source_diagnostic_cases else "runtimeDiagnostics"
                         if case["operation"] not in {"promotion-apply-family-runtime", "host-restart-session-runtime",
-                                                     "host-update-isolation-runtime", "host-turn-barrier-runtime"}:
+                                                     "host-update-isolation-runtime", "host-turn-barrier-runtime",
+                                                     "host-turn-barrier-boundaries-runtime"}:
                             report[diagnostic_key].append({
                                 "id": case["id"], "side": "python", "sha256": hashlib.sha256(raw).hexdigest(),
                                 "rawSnapshots": snapshots,
@@ -1467,12 +1558,13 @@ def run_suite(*, checkout: Path, node: Path, smoke: bool = False,
                 except Exception as error:
                     row.update(status="blocked", code="python-case-failed")
                     if case["operation"] in {"promotion-apply-family-runtime", "host-restart-session-runtime",
-                                             "host-update-isolation-runtime", "host-turn-barrier-runtime"}:
+                                             "host-update-isolation-runtime", "host-turn-barrier-runtime",
+                                             "host-turn-barrier-boundaries-runtime"}:
                         row["evidenceError"] = {"name": type(error).__name__, "message": str(error)}
                     if case["operation"] == "host-update-isolation-runtime" and python_diagnostics is not None:
                         _retain_failed_host_update_capture(
                             report, case, python_diagnostics / hashlib.sha256(case["id"].encode()).hexdigest())
-                    if case["operation"] == "host-turn-barrier-runtime" and python_diagnostics is not None:
+                    if case["operation"] in {"host-turn-barrier-runtime", "host-turn-barrier-boundaries-runtime"} and python_diagnostics is not None:
                         _retain_failed_host_turn_barrier_capture(
                             report, case, python_diagnostics / hashlib.sha256(case["id"].encode()).hexdigest())
             report["cases"].append(row)
@@ -1487,9 +1579,11 @@ def run_suite(*, checkout: Path, node: Path, smoke: bool = False,
         restart_complete = _host_restart_session_family_complete(report["cases"])
         update_complete = _host_update_isolation_family_complete(report["cases"])
         turn_barrier_complete = _host_turn_barrier_family_complete(report["cases"])
+        turn_barrier_boundaries_complete = _host_turn_barrier_boundaries_family_complete(report["cases"])
         from equivalence.host_restart_session import POINTS as host_restart_points
         from equivalence.host_update_isolation import POINTS as host_update_points
         from equivalence.host_turn_barrier import POINTS as host_turn_barrier_points
+        from equivalence.host_turn_barrier_boundaries import POINTS as host_turn_barrier_boundaries_points
 
         for requirement in requirements:
             rows = by_requirement[requirement["id"]]
@@ -1500,7 +1594,9 @@ def run_suite(*, checkout: Path, node: Path, smoke: bool = False,
                                    "matchedCaseIds": [row["id"] for row in covering if row["status"] == "matched"
                                                       and (point["id"] not in host_restart_points or restart_complete)
                                                       and (point["id"] not in host_update_points or update_complete)
-                                                      and (point["id"] not in host_turn_barrier_points or turn_barrier_complete)]})
+                                                      and (point["id"] not in host_turn_barrier_points or turn_barrier_complete)
+                                                      and (point["id"] not in host_turn_barrier_boundaries_points
+                                                           or turn_barrier_boundaries_complete)]})
             report["requirements"].append({"id": requirement["id"], "required": requirement["required"],
                                             "acceptance": acceptance, "registeredCases": len(rows)})
         uncovered = [point["id"] for requirement in report["requirements"] if requirement["required"]

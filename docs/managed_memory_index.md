@@ -1,5 +1,11 @@
 # Managed provider-none index
 
+With opt-in on-search publication, search results retain status from their actual
+pinned SQLite generation. A read that observed a publication failure keeps that
+stale notice even if real background recovery completes before the read returns.
+A subsequent read of the recovered generation reports current state without
+replaying the older error. Ordinary `store.status()` remains a live status read.
+
 `ManagedSQLiteMemoryStore` is an explicit FTS-only owner for hosts that need
 search-time cold-index bootstrap. It uses the normal SQLite search and atomic
 index publisher. The existing eager `HostKit.open()` API keeps its behavior.

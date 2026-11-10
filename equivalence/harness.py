@@ -339,6 +339,12 @@ def _validate_scope(scope: Any, cases: Any) -> tuple[list[dict], dict[str, set[s
         validate_host_turn_barrier_boundaries_registration(cases)
     except ValueError as error:
         raise HarnessError("cases-invalid", str(error)) from None
+    from equivalence.index_identity_boundaries import validate_registration as validate_identity_boundary_registration
+
+    try:
+        validate_identity_boundary_registration(cases)
+    except ValueError as error:
+        raise HarnessError("cases-invalid", str(error)) from None
     return requirements, points
 
 
@@ -348,6 +354,9 @@ def _oracle(node: Path, script: Path, checkout: Path, cases: list[dict], timeout
     if not script.is_file():
         raise HarnessError("oracle-missing", "The independent TypeScript oracle runner is missing.")
     boundary_case = len(cases) == 1 and cases[0]["operation"] == "host-turn-barrier-boundaries-runtime"
+    identity_boundary_case = len(cases) == 1 and cases[0]["operation"] == "index-identity-boundaries-runtime"
+    if any(case.get("operation") == "index-identity-boundaries-runtime" for case in cases) and not identity_boundary_case:
+        raise HarnessError("identity-boundary-capability-invalid", "Index identity boundaries require one exact isolated dispatch.")
     timeout_limit = 180 if boundary_case else 120
     if not isinstance(timeout, (int, float)) or isinstance(timeout, bool) or not 0 < timeout <= timeout_limit:
         raise HarnessError("timeout-invalid", f"The oracle requires a finite timeout of at most {timeout_limit} seconds.")
@@ -478,6 +487,37 @@ def _oracle(node: Path, script: Path, checkout: Path, cases: list[dict], timeout
                     "evidenceDirectory": native["evidenceDirectory"]}
         except Exception as error:
             failure = HarnessError("host-turn-barrier-boundaries-evidence-invalid", "Whole host turn-barrier boundary execution/authority failed; no retry was made.")
+            failure.rejected_evidence = {"caseIds": [cases[0]["id"]], "coverageCredit": False,
+                                         "retainedDirectory": str(attempt), "reason": str(error)}
+            raise failure from error
+    if identity_boundary_case:
+        from equivalence.index_identity_boundaries_native import NATIVE_KIND, run_native_case as run_native_identity_case
+
+        if release_runtime is None:
+            raise HarnessError("release-runtime-unavailable", "Whole index identity boundaries require their authenticated release runtime.")
+        retained = ROOT / ".equivalence-results" / "index-identity-boundaries"
+        retained.mkdir(parents=True, exist_ok=True)
+        attempt = Path(tempfile.mkdtemp(prefix="attempt-", dir=retained)) / "case"
+        try:
+            native = run_native_identity_case(cases[0], node, release_runtime, attempt, timeout=timeout)
+            if native.get("kind") != NATIVE_KIND:
+                raise ValueError("The index identity boundary runner returned another capability kind")
+            evidence = attempt / "evidence/native-raw.json"
+            info = evidence.lstat()
+            if not stat.S_ISREG(info.st_mode) or info.st_nlink != 1 or info.st_size > 16 * 1024 * 1024:
+                raise ValueError("Invalid original index identity boundary diagnostic file")
+            raw = evidence.read_bytes()
+            snapshots = _json(raw.decode("utf-8"))
+            if not _same_json(snapshots, native["runtimeDiagnostics"]) or not isinstance(snapshots, list) or len(snapshots) != 1:
+                raise ValueError("Original boundary diagnostics differ from their actual retained file")
+            return {"kind": "official-release-runtime-comparison", "sources": [],
+                    "results": native["results"], "releaseSources": native["releaseSources"],
+                    "releaseTrace": native["releaseTrace"],
+                    "runtimeDiagnostics": [{"id": cases[0]["id"], "sha256": hashlib.sha256(raw).hexdigest(),
+                                            "rawSnapshots": snapshots, "validationStatus": "verified"}],
+                    "evidenceDirectory": native["evidenceDirectory"]}
+        except Exception as error:
+            failure = HarnessError("index-identity-boundaries-evidence-invalid", "Whole index identity boundary execution/authority failed; no retry was made.")
             failure.rejected_evidence = {"caseIds": [cases[0]["id"]], "coverageCredit": False,
                                          "retainedDirectory": str(attempt), "reason": str(error)}
             raise failure from error
@@ -784,6 +824,23 @@ def _host_turn_barrier_boundaries_family_complete(rows: list[dict]) -> bool:
     return True
 
 
+def _index_identity_boundaries_family_complete(rows: list[dict]) -> bool:
+    """Only the complete exact family with affirmative custody can verify this original point."""
+    from equivalence.index_identity_boundaries import CASE_HASHES, family_members, validate_registration
+
+    family = family_members(rows)
+    if (len(family) != len(CASE_HASHES)
+            or any(row.get("status") != "matched" or row.get("runtimeEvidenceValidated") is not True
+                   for row in family)):
+        return False
+    try:
+        validate_registration([{key: row[key] for key in ("id", "operation", "requirement", "covers", "input")}
+                               for row in family])
+    except (KeyError, TypeError, ValueError):
+        return False
+    return True
+
+
 def _retain_failed_host_update_capture(report: dict, case: dict, directory: Path | None) -> None:
     """Keep the SDK host's own streams when it failed before any capture was admitted.
 
@@ -881,6 +938,7 @@ def run_suite(*, checkout: Path, node: Path, smoke: bool = False,
             "host-update-isolation-runtime",
             "host-turn-barrier-runtime",
             "host-turn-barrier-boundaries-runtime",
+            "index-identity-boundaries-runtime",
         }
         runtime_cases = [case for case in cases if case["operation"] in runtime_operations]
         source_cases = [case for case in cases if case["operation"] not in runtime_operations]
@@ -1232,6 +1290,13 @@ def run_suite(*, checkout: Path, node: Path, smoke: bool = False,
                 report["hostTurnBarrierBoundariesBindings"] = prepare_host_turn_barrier_boundaries_bindings(
                     checkout, Path(runtime_config["runtimeRoot"]))
                 report["hostTurnBarrierBoundariesNode"] = prepare_model_node_authority(node)
+            if any(case["operation"] == "index-identity-boundaries-runtime" for case in runtime_cases):
+                from equivalence.index_identity_boundaries_bindings import prepare_index_identity_boundaries_bindings
+                from equivalence.model_runtime_authority import prepare_model_node_authority
+
+                report["indexIdentityBoundariesBindings"] = prepare_index_identity_boundaries_bindings(
+                    checkout, Path(runtime_config["runtimeRoot"]))
+                report["indexIdentityBoundariesNode"] = prepare_model_node_authority(node)
             observed_release = {}
             for case in runtime_cases:
                 # The real manager retains global state owners. Each distinct
@@ -1239,7 +1304,7 @@ def run_suite(*, checkout: Path, node: Path, smoke: bool = False,
                 try:
                     native = _oracle(node, ROOT / "equivalence/release-oracle.mjs", checkout, [case],
                                      max(timeout_seconds, 180 if case["operation"] == "host-turn-barrier-boundaries-runtime" else
-                                         120 if case["operation"] == "host-turn-barrier-runtime" else 60),
+                                         120 if case["operation"] in {"host-turn-barrier-runtime", "index-identity-boundaries-runtime"} else 60),
                                      release_runtime=runtime_config)
                 except HarnessError:
                     report["failedReferenceCaseId"] = case["id"]
@@ -1281,6 +1346,11 @@ def run_suite(*, checkout: Path, node: Path, smoke: bool = False,
                         != report["hostTurnBarrierBoundariesBindings"]
                         or prepare_model_node_authority(node) != report["hostTurnBarrierBoundariesNode"]):
                     raise ValueError("Whole host turn-barrier boundary source/artifact/executable owners changed.")
+                if "indexIdentityBoundariesBindings" in report and (
+                        prepare_index_identity_boundaries_bindings(checkout, Path(runtime_config["runtimeRoot"]))
+                        != report["indexIdentityBoundariesBindings"]
+                        or prepare_model_node_authority(node) != report["indexIdentityBoundariesNode"]):
+                    raise ValueError("Original index identity boundary source/artifact/executable owners changed.")
                 for name, prepare in model_binding_preparers.items():
                     if prepare(checkout, Path(runtime_config["runtimeRoot"])) != report[name]:
                         raise ValueError("A model runtime source/export declaration changed.")
@@ -1541,10 +1611,25 @@ def run_suite(*, checkout: Path, node: Path, smoke: bool = False,
                                 raise ValueError("Host turn-barrier boundary custody did not affirmatively validate")
                             boundary_diagnostic["validationStatus"] = "verified"
                             row["runtimeEvidenceValidated"] = True
+                        if case["operation"] == "index-identity-boundaries-runtime":
+                            from equivalence.index_identity_boundaries_evidence import validate_pair
+
+                            identity_diagnostic = {"id": case["id"], "side": "python", "sha256": hashlib.sha256(raw).hexdigest(),
+                                                   "rawSnapshots": snapshots, "validationStatus": "unverified"}
+                            report["runtimeDiagnostics"].append(identity_diagnostic)
+                            original = next(d for d in report["runtimeDiagnostics"]
+                                            if d["side"] == "native" and d["id"] == case["id"])
+                            if (original.get("validationStatus") != "verified"
+                                    or len(original["rawSnapshots"]) != 1 or len(snapshots) != 1):
+                                raise ValueError("Index identity boundaries require one authenticated original and SDK capture")
+                            if validate_pair(case, original["rawSnapshots"][0], snapshots[0], native["result"], python) is not True:
+                                raise ValueError("Index identity boundary custody did not affirmatively validate")
+                            identity_diagnostic["validationStatus"] = "verified"
+                            row["runtimeEvidenceValidated"] = True
                         diagnostic_key = "sourceDiagnostics" if case in source_diagnostic_cases else "runtimeDiagnostics"
                         if case["operation"] not in {"promotion-apply-family-runtime", "host-restart-session-runtime",
                                                      "host-update-isolation-runtime", "host-turn-barrier-runtime",
-                                                     "host-turn-barrier-boundaries-runtime"}:
+                                                     "host-turn-barrier-boundaries-runtime", "index-identity-boundaries-runtime"}:
                             report[diagnostic_key].append({
                                 "id": case["id"], "side": "python", "sha256": hashlib.sha256(raw).hexdigest(),
                                 "rawSnapshots": snapshots,
@@ -1559,7 +1644,7 @@ def run_suite(*, checkout: Path, node: Path, smoke: bool = False,
                     row.update(status="blocked", code="python-case-failed")
                     if case["operation"] in {"promotion-apply-family-runtime", "host-restart-session-runtime",
                                              "host-update-isolation-runtime", "host-turn-barrier-runtime",
-                                             "host-turn-barrier-boundaries-runtime"}:
+                                             "host-turn-barrier-boundaries-runtime", "index-identity-boundaries-runtime"}:
                         row["evidenceError"] = {"name": type(error).__name__, "message": str(error)}
                     if case["operation"] == "host-update-isolation-runtime" and python_diagnostics is not None:
                         _retain_failed_host_update_capture(
@@ -1580,6 +1665,8 @@ def run_suite(*, checkout: Path, node: Path, smoke: bool = False,
         update_complete = _host_update_isolation_family_complete(report["cases"])
         turn_barrier_complete = _host_turn_barrier_family_complete(report["cases"])
         turn_barrier_boundaries_complete = _host_turn_barrier_boundaries_family_complete(report["cases"])
+        identity_boundaries_complete = _index_identity_boundaries_family_complete(report["cases"])
+        from equivalence.index_identity_boundaries import POINTS as identity_boundary_points
         from equivalence.host_restart_session import POINTS as host_restart_points
         from equivalence.host_update_isolation import POINTS as host_update_points
         from equivalence.host_turn_barrier import POINTS as host_turn_barrier_points
@@ -1596,7 +1683,9 @@ def run_suite(*, checkout: Path, node: Path, smoke: bool = False,
                                                       and (point["id"] not in host_update_points or update_complete)
                                                       and (point["id"] not in host_turn_barrier_points or turn_barrier_complete)
                                                       and (point["id"] not in host_turn_barrier_boundaries_points
-                                                           or turn_barrier_boundaries_complete)]})
+                                                           or turn_barrier_boundaries_complete)
+                                                      and (point["id"] not in identity_boundary_points
+                                                           or identity_boundaries_complete)]})
             report["requirements"].append({"id": requirement["id"], "required": requirement["required"],
                                             "acceptance": acceptance, "registeredCases": len(rows)})
         uncovered = [point["id"] for requirement in report["requirements"] if requirement["required"]

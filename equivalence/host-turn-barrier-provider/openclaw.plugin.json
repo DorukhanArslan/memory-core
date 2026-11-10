@@ -1,0 +1,5 @@
+{
+  "id": "fixture-turn-barrier-model",
+  "providers": ["fixture-turn-barrier-model"],
+  "configSchema": {"type": "object", "properties": {}, "additionalProperties": false}
+}

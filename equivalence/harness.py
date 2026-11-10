@@ -88,7 +88,11 @@ def _adapter_identity() -> dict[str, str]:
     fixture_manifest = ROOT / "equivalence/openclaw.plugin.json"
     if fixture_manifest.is_file():
         paths.append(fixture_manifest)
-    return {path.name: _digest(path) for path in paths}
+    for name in ("index.mjs", "openclaw.plugin.json"):
+        provider_file = ROOT / "equivalence/host-turn-barrier-provider" / name
+        if provider_file.is_file():
+            paths.append(provider_file)
+    return {path.relative_to(ROOT / "equivalence").as_posix(): _digest(path) for path in paths}
 
 
 def _reference_bindings(checkout: Path, *, cache: bool, publication: bool,
@@ -323,6 +327,12 @@ def _validate_scope(scope: Any, cases: Any) -> tuple[list[dict], dict[str, set[s
         validate_host_update_registration(cases)
     except ValueError as error:
         raise HarnessError("cases-invalid", str(error)) from None
+    from equivalence.host_turn_barrier import validate_registration as validate_host_turn_barrier_registration
+
+    try:
+        validate_host_turn_barrier_registration(cases)
+    except ValueError as error:
+        raise HarnessError("cases-invalid", str(error)) from None
     return requirements, points
 
 
@@ -396,6 +406,39 @@ def _oracle(node: Path, script: Path, checkout: Path, cases: list[dict], timeout
                     "evidenceDirectory": native["evidenceDirectory"]}
         except Exception as error:
             failure = HarnessError("host-update-evidence-invalid", "Whole host update execution/authority failed; no retry was made.")
+            failure.rejected_evidence = {"caseIds": [cases[0]["id"]], "coverageCredit": False,
+                                         "retainedDirectory": str(attempt), "reason": str(error)}
+            raise failure from error
+    if len(cases) == 1 and cases[0]["operation"] == "host-turn-barrier-runtime":
+        from equivalence.host_turn_barrier_native import NATIVE_KIND, run_native_case as run_native_turn_barrier_case
+
+        if release_runtime is None:
+            raise HarnessError("release-runtime-unavailable", "Whole host turn-barrier requires its authenticated release runtime.")
+        retained = ROOT / ".equivalence-results" / "host-turn-barrier"
+        retained.mkdir(parents=True, exist_ok=True)
+        attempt = Path(tempfile.mkdtemp(prefix="attempt-", dir=retained)) / "case"
+        try:
+            native = run_native_turn_barrier_case(cases[0], node, release_runtime, attempt, timeout=timeout)
+            if native.get("kind") != NATIVE_KIND:
+                raise ValueError("The host turn-barrier runner returned another capability kind")
+            evidence = attempt / "evidence/native-raw.json"
+            info = evidence.lstat()
+            if not stat.S_ISREG(info.st_mode) or info.st_nlink != 1 or info.st_size > 32 * 1024 * 1024:
+                raise ValueError("Invalid original host turn-barrier diagnostic file")
+            raw = evidence.read_bytes()
+            snapshots = _json(raw.decode("utf-8"))
+            if snapshots != native["runtimeDiagnostics"] or not isinstance(snapshots, list) or len(snapshots) != 1:
+                raise ValueError("Original turn-barrier diagnostics differ from their actual retained file")
+            # Only the transport envelope changes. The authenticated original
+            # result, full raw owner receipts and protected traces stay intact.
+            return {"kind": "official-release-runtime-comparison", "sources": [],
+                    "results": native["results"], "releaseSources": native["releaseSources"],
+                    "releaseTrace": native["releaseTrace"],
+                    "runtimeDiagnostics": [{"id": cases[0]["id"], "sha256": hashlib.sha256(raw).hexdigest(),
+                                            "rawSnapshots": snapshots, "validationStatus": "verified"}],
+                    "evidenceDirectory": native["evidenceDirectory"]}
+        except Exception as error:
+            failure = HarnessError("host-turn-barrier-evidence-invalid", "Whole host turn-barrier execution/authority failed; no retry was made.")
             failure.rejected_evidence = {"caseIds": [cases[0]["id"]], "coverageCredit": False,
                                          "retainedDirectory": str(attempt), "reason": str(error)}
             raise failure from error
@@ -475,8 +518,12 @@ def _oracle(node: Path, script: Path, checkout: Path, cases: list[dict], timeout
                     from equivalence.promotion_apply_profile import prepare_promotion_apply_profile
 
                     context_options["promotion_apply_profile"] = prepare_promotion_apply_profile(node)
+                # Global stability also covers the independent nested provider.
+                # The legacy context retains its plain-filename authority.
+                legacy_adapters = {name: digest for name, digest in _adapter_identity().items()
+                                   if Path(name).name == name}
                 execution = resources.enter_context(ReleaseOracleExecution(
-                    release_runtime, _adapter_identity(), **context_options))
+                    release_runtime, legacy_adapters, **context_options))
                 # Only this reviewed preload is supplied. User Node options,
                 # credentials, proxy/auth state and provider keys stay absent.
                 env.update(execution.env)
@@ -659,6 +706,24 @@ def _host_update_isolation_family_complete(rows: list[dict]) -> bool:
     return True
 
 
+def _host_turn_barrier_family_complete(rows: list[dict]) -> bool:
+    """The natural follow-up outcome is not credited without every exact, validated match."""
+    from equivalence.host_turn_barrier import CASE_HASHES, OPERATION, POINTS, REQUIREMENT, validate_registration
+
+    family = [row for row in rows if row.get("operation") == OPERATION
+              or row.get("requirement") == REQUIREMENT
+              or set(row.get("covers", ())) & set(POINTS)]
+    if (len(family) != len(CASE_HASHES) or {row.get("id") for row in family} != set(CASE_HASHES)
+            or any(row.get("status") != "matched" or row.get("runtimeEvidenceValidated") is not True for row in family)):
+        return False
+    try:
+        validate_registration([{key: row[key] for key in ("id", "operation", "requirement", "covers", "input")}
+                               for row in family])
+    except (KeyError, TypeError, ValueError):
+        return False
+    return True
+
+
 def _retain_failed_host_update_capture(report: dict, case: dict, directory: Path | None) -> None:
     """Keep the SDK host's own streams when it failed before any capture was admitted.
 
@@ -672,6 +737,28 @@ def _retain_failed_host_update_capture(report: dict, case: dict, directory: Path
     try:
         info = evidence.lstat()
         if not stat.S_ISREG(info.st_mode) or info.st_nlink != 1 or info.st_size > 16 * 1024 * 1024:
+            return
+        raw = evidence.read_bytes()
+        snapshots = _json(raw.decode("utf-8"))
+    except (OSError, ValueError):
+        return
+    report["runtimeDiagnostics"].append({"id": case["id"], "side": "python", "sha256": hashlib.sha256(raw).hexdigest(),
+                                         "rawSnapshots": snapshots, "validationStatus": "rejected"})
+
+
+def _retain_failed_host_turn_barrier_capture(report: dict, case: dict, directory: Path | None) -> None:
+    """Keep the SDK host's own streams when it failed before any capture was admitted.
+
+    The coordinator writes its complete record even when a host child fails. It is
+    attached as rejected evidence: it earns nothing and is never used for comparison.
+    """
+    if directory is None or any(item.get("side") == "python" and item.get("id") == case["id"]
+                                for item in report["runtimeDiagnostics"]):
+        return
+    evidence = directory / "python-raw.json"
+    try:
+        info = evidence.lstat()
+        if not stat.S_ISREG(info.st_mode) or info.st_nlink != 1 or info.st_size > 32 * 1024 * 1024:
             return
         raw = evidence.read_bytes()
         snapshots = _json(raw.decode("utf-8"))
@@ -732,6 +819,7 @@ def run_suite(*, checkout: Path, node: Path, smoke: bool = False,
             "promotion-ranking-runtime", "promotion-apply-reconcile-runtime", "promotion-apply-family-runtime",
             "host-restart-session-runtime",
             "host-update-isolation-runtime",
+            "host-turn-barrier-runtime",
         }
         runtime_cases = [case for case in cases if case["operation"] in runtime_operations]
         source_cases = [case for case in cases if case["operation"] not in runtime_operations]
@@ -1069,13 +1157,21 @@ def run_suite(*, checkout: Path, node: Path, smoke: bool = False,
                 report["hostUpdateIsolationBindings"] = prepare_host_update_isolation_bindings(
                     checkout, Path(runtime_config["runtimeRoot"]))
                 report["hostUpdateIsolationNode"] = prepare_model_node_authority(node)
+            if any(case["operation"] == "host-turn-barrier-runtime" for case in runtime_cases):
+                from equivalence.host_turn_barrier_bindings import prepare_host_turn_barrier_bindings
+                from equivalence.model_runtime_authority import prepare_model_node_authority
+
+                report["hostTurnBarrierBindings"] = prepare_host_turn_barrier_bindings(
+                    checkout, Path(runtime_config["runtimeRoot"]))
+                report["hostTurnBarrierNode"] = prepare_model_node_authority(node)
             observed_release = {}
             for case in runtime_cases:
                 # The real manager retains global state owners. Each distinct
                 # case gets one fresh process; failed cases are never retried.
                 try:
                     native = _oracle(node, ROOT / "equivalence/release-oracle.mjs", checkout, [case],
-                                     max(timeout_seconds, 60), release_runtime=runtime_config)
+                                     max(timeout_seconds, 120 if case["operation"] == "host-turn-barrier-runtime" else 60),
+                                     release_runtime=runtime_config)
                 except HarnessError:
                     report["failedReferenceCaseId"] = case["id"]
                     raise
@@ -1106,6 +1202,11 @@ def run_suite(*, checkout: Path, node: Path, smoke: bool = False,
                         != report["hostUpdateIsolationBindings"]
                         or prepare_model_node_authority(node) != report["hostUpdateIsolationNode"]):
                     raise ValueError("Whole host update source/artifact/executable owners changed.")
+                if "hostTurnBarrierBindings" in report and (
+                        prepare_host_turn_barrier_bindings(checkout, Path(runtime_config["runtimeRoot"]))
+                        != report["hostTurnBarrierBindings"]
+                        or prepare_model_node_authority(node) != report["hostTurnBarrierNode"]):
+                    raise ValueError("Whole host turn-barrier source/artifact/executable owners changed.")
                 for name, prepare in model_binding_preparers.items():
                     if prepare(checkout, Path(runtime_config["runtimeRoot"])) != report[name]:
                         raise ValueError("A model runtime source/export declaration changed.")
@@ -1335,9 +1436,24 @@ def run_suite(*, checkout: Path, node: Path, smoke: bool = False,
                             validate_pair(case, original["rawSnapshots"][0], snapshots[0], native["result"], python)
                             update_diagnostic["validationStatus"] = "verified"
                             row["runtimeEvidenceValidated"] = True
+                        if case["operation"] == "host-turn-barrier-runtime":
+                            from equivalence.host_turn_barrier_evidence import validate_pair
+
+                            turn_barrier_diagnostic = {"id": case["id"], "side": "python", "sha256": hashlib.sha256(raw).hexdigest(),
+                                                       "rawSnapshots": snapshots, "validationStatus": "unverified"}
+                            report["runtimeDiagnostics"].append(turn_barrier_diagnostic)
+                            original = next(d for d in report["runtimeDiagnostics"]
+                                            if d["side"] == "native" and d["id"] == case["id"])
+                            if (original.get("validationStatus") != "verified"
+                                    or len(original["rawSnapshots"]) != 1 or len(snapshots) != 1):
+                                raise ValueError("Host turn-barrier requires one authenticated original and SDK capture")
+                            if validate_pair(case, original["rawSnapshots"][0], snapshots[0], native["result"], python) is not True:
+                                raise ValueError("Host turn-barrier custody did not affirmatively validate")
+                            turn_barrier_diagnostic["validationStatus"] = "verified"
+                            row["runtimeEvidenceValidated"] = True
                         diagnostic_key = "sourceDiagnostics" if case in source_diagnostic_cases else "runtimeDiagnostics"
                         if case["operation"] not in {"promotion-apply-family-runtime", "host-restart-session-runtime",
-                                                     "host-update-isolation-runtime"}:
+                                                     "host-update-isolation-runtime", "host-turn-barrier-runtime"}:
                             report[diagnostic_key].append({
                                 "id": case["id"], "side": "python", "sha256": hashlib.sha256(raw).hexdigest(),
                                 "rawSnapshots": snapshots,
@@ -1351,10 +1467,13 @@ def run_suite(*, checkout: Path, node: Path, smoke: bool = False,
                 except Exception as error:
                     row.update(status="blocked", code="python-case-failed")
                     if case["operation"] in {"promotion-apply-family-runtime", "host-restart-session-runtime",
-                                             "host-update-isolation-runtime"}:
+                                             "host-update-isolation-runtime", "host-turn-barrier-runtime"}:
                         row["evidenceError"] = {"name": type(error).__name__, "message": str(error)}
                     if case["operation"] == "host-update-isolation-runtime" and python_diagnostics is not None:
                         _retain_failed_host_update_capture(
+                            report, case, python_diagnostics / hashlib.sha256(case["id"].encode()).hexdigest())
+                    if case["operation"] == "host-turn-barrier-runtime" and python_diagnostics is not None:
+                        _retain_failed_host_turn_barrier_capture(
                             report, case, python_diagnostics / hashlib.sha256(case["id"].encode()).hexdigest())
             report["cases"].append(row)
         after_implementation = _implementation_identity()
@@ -1367,8 +1486,10 @@ def run_suite(*, checkout: Path, node: Path, smoke: bool = False,
             by_requirement[row["requirement"]].append(row)
         restart_complete = _host_restart_session_family_complete(report["cases"])
         update_complete = _host_update_isolation_family_complete(report["cases"])
+        turn_barrier_complete = _host_turn_barrier_family_complete(report["cases"])
         from equivalence.host_restart_session import POINTS as host_restart_points
         from equivalence.host_update_isolation import POINTS as host_update_points
+        from equivalence.host_turn_barrier import POINTS as host_turn_barrier_points
 
         for requirement in requirements:
             rows = by_requirement[requirement["id"]]
@@ -1378,7 +1499,8 @@ def run_suite(*, checkout: Path, node: Path, smoke: bool = False,
                 acceptance.append({"id": point["id"], "caseIds": [row["id"] for row in covering],
                                    "matchedCaseIds": [row["id"] for row in covering if row["status"] == "matched"
                                                       and (point["id"] not in host_restart_points or restart_complete)
-                                                      and (point["id"] not in host_update_points or update_complete)]})
+                                                      and (point["id"] not in host_update_points or update_complete)
+                                                      and (point["id"] not in host_turn_barrier_points or turn_barrier_complete)]})
             report["requirements"].append({"id": requirement["id"], "required": requirement["required"],
                                             "acceptance": acceptance, "registeredCases": len(rows)})
         uncovered = [point["id"] for requirement in report["requirements"] if requirement["required"]

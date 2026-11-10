@@ -54,7 +54,7 @@ startup scan for every fresh session.
 
 ## Writes and readiness
 
-The managed kit keeps the curator's real write/index lock and publishes only
+By default (`memory_publication="on-write"`), the managed kit keeps the curator's real write/index lock and publishes only
 memory files after an ordinary memory write. A cold scoped write can commit its
 file while publication remains pending. Its result includes
 `indexStatus: "pending"`; this is not reported as an indexing failure. Ordinary
@@ -77,6 +77,35 @@ failures also keep readiness pending when a direct kit/curator call has no durab
 turn marker. The read-only failure snapshot remains available after close. A source
 already published can be current even while older queue hints remain pending; readiness stays
 conservative until the corresponding work is acknowledged.
+
+## Optional publication on search
+
+Pass `memory_publication="on-search"` to `ManagedHostSession.open(...)` to
+commit memory-file changes without publishing them in the ordinary writer turn
+or before admitting the next model. Both cold and warm writes honestly report
+`indexStatus: "pending"` while their actual sources differ from published SQL.
+The default managed policy and the eager host APIs keep their existing behavior.
+
+A cold or empty search still builds its real index before retrieving. A warm
+search first pins the actual published SQLite read generation, then admits a
+single background memory publisher. That search returns the complete results
+from its original generation: a newly saved fact can be absent until publication
+finishes. Background progress does not change an already returned search result.
+The publisher refreshes only memory files; session publication keeps its separate
+controller and queue.
+
+Dirty state compares discovered memory source hashes, sizes and modification
+times with published source rows. The opted-in store's `lifecycle_snapshot()`
+adds `memoryPublication` with actual dirty state, admitted work, job receipts and
+retained errors. A real failed memory publication remains stale until a matching
+publication succeeds; a later search can retry it after its cause is repaired.
+A failed whole reindex still requires explicit successful full reindex.
+
+Close joins admitted memory publishers, including a queued job whose thread has
+not entered yet. It does not publish dirty memory for which no search admitted
+work. Manual `owner.reindex(...)`, `owner.synchronize(...)` and memory-publication
+acknowledgment retain their actual, stronger publication operations. This option
+does not add optional-maintenance preemption or a memory-file watcher.
 
 ## Explicit publication and close
 

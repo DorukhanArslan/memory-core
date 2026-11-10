@@ -121,6 +121,7 @@ import importlib.util
 import json
 from pathlib import Path
 import pkgutil
+import sqlite3
 import sys
 import tempfile
 import tomllib
@@ -378,6 +379,44 @@ with tempfile.TemporaryDirectory() as scratch:
         asyncio.run(managed_host_consumer(reopened_host, save_first=False))
     finally:
         reopened_host.close()
+    natural_root = root / "on-search-host"
+    natural_catalog = catalog_module.MemorySessionCatalog(root / "on-search-catalog.sqlite")
+    natural_config = core.MemoryConfig(workspace_dir=natural_root, flags=flags, session_search=False)
+    natural_host = managed_host_module.ManagedHostSession.open(natural_root, catalog=natural_catalog,
+        config=natural_config, source_policy=visibility.resolve_memory_search_source_policy(["memory"]),
+        memory_publication="on-search")
+
+    async def natural_publication_consumer():
+        runner = natural_host.runner(core.SessionState.new(
+            session_key="agent:main:installed-on-search", session_id="installed-on-search"))
+        async def invoke(name, args, identifier):
+            observed = []
+            async def model(turn):
+                turn.record_message({"role": "assistant", "content": [{"type": "toolCall",
+                    "id": identifier, "name": name, "arguments": args}]})
+                observed.append(await turn.dispatch_async(identifier, name, args))
+                turn.record_message({"role": "assistant", "content": [{"type": "text", "text": "Done."}]})
+            outcome = await runner.run_turn(identifier, execute=model)
+            assert outcome.transcript_committed and not outcome.failures
+            return outcome, observed[0]
+        saved, _ = await invoke("add_memory_entry", {"section": "Facts",
+            "text": "My seed fact is installedsearchseedcedar."}, "seed-save")
+        assert saved.memory_writes_committed and saved.index_status == "pending"
+        _, seed = await invoke("memory_search", {"query": "installedsearchseedcedar", "minScore": 0}, "seed-read")
+        assert seed["results"]
+        updated, _ = await invoke("add_memory_entry", {"section": "Facts",
+            "text": "My new fact is installedsearchnewquince."}, "new-save")
+        assert updated.memory_writes_committed and updated.index_status == "pending"
+        _, immediate = await invoke("memory_search", {"query": "installedsearchnewquince", "minScore": 0}, "immediate-read")
+        assert immediate["results"] == []
+
+    try:
+        asyncio.run(natural_publication_consumer())
+    finally:
+        natural_host.close()
+    with sqlite3.connect(natural_config.resolved_store_path()) as published:
+        assert published.execute("SELECT COUNT(*) FROM chunks WHERE text LIKE ?",
+                                 ("%installedsearchnewquince%",)).fetchone()[0] > 0
 print("installed core imports and FTS host lifecycle passed")
 print("installed session authority and compressed archive consumers passed")
 print("installed durable append, continuation and replay consumers passed")
@@ -387,6 +426,7 @@ print("installed serialized save, immediate recall and reopened context consumer
 print("installed managed cold bootstrap, live notice, warm recall and physical close consumer passed")
 print("installed selected-source publication, committed session queue and read-generation consumers passed")
 print("installed managed shared-host save, pending readiness and reopened recall consumer passed")
+print("installed opt-in natural save, pinned warm read and background publication consumer passed")
 '''
 
 

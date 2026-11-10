@@ -1,0 +1,394 @@
+{
+  "kind": "host-turn-barrier-outcomes-acceptance-literals",
+  "acceptancePointsAwarded": 0,
+  "cases": [
+    {
+      "id": "host-turn-barrier-cold-ascii",
+      "operation": "host-turn-barrier-runtime",
+      "requirement": "host.turn-barrier",
+      "covers": [
+        "host.turn-barrier.outcomes"
+      ],
+      "input": {
+        "nowMs": 1794268800000,
+        "identity": {
+          "agentId": "main",
+          "sessionKey": "agent:main:host-turn-barrier-cold-ascii",
+          "sessionId": "host-turn-barrier-cold-ascii-session"
+        },
+        "source": "MEMORY.md",
+        "policy": {
+          "memoryProvider": "none",
+          "memorySources": [
+            "memory"
+          ],
+          "searchSources": [
+            "memory"
+          ],
+          "sessionMemory": false,
+          "compactionEnabled": true,
+          "memoryFlushEnabled": true,
+          "contextWindowTokens": 32768,
+          "reserveTokens": 8192,
+          "softThresholdTokens": 4000,
+          "nativeMemorySynchronization": "unmodified-default-watch-and-on-search-enabled",
+          "sdkMemoryPublication": "on-search",
+          "optionalMaintenancePreemption": "unclaimed"
+        },
+        "modelTransport": {
+          "kind": "deterministic-offline-provider",
+          "paidCalls": false,
+          "replyFromActualToolResults": true,
+          "fixtureFailureInjection": false
+        },
+        "firstTurnUsage": {
+          "input": 128,
+          "output": 32,
+          "total": 160
+        },
+        "followup": {
+          "prompt": "What is my drink preference? Use memory_search and read the first actual hit before answering.",
+          "search": {
+            "query": "aurorakumquat-739",
+            "maxResults": 5,
+            "minScore": 0,
+            "corpus": "memory"
+          },
+          "getRange": "first-actual-search-hit",
+          "reply": "actual-memory-get-text-or-no-source-backed-memory"
+        },
+        "followupTrigger": {
+          "event": "first-host-return",
+          "interveningHostActions": []
+        },
+        "initialState": "cold",
+        "save": {
+          "prompt": "Remember: My drink preference is aurorakumquat-739 tea without sugar.",
+          "content": "## Preferences\n\n- My drink preference is aurorakumquat-739 tea without sugar.\n",
+          "producer": "native-coding-write-or-sdk-add_memory_entry",
+          "section": "Preferences",
+          "text": "My drink preference is aurorakumquat-739 tea without sugar."
+        },
+        "clockFixture": {
+          "kind": "date-only-wall-clock",
+          "nowMs": 1794268800000,
+          "nativeScope": "all-processes-and-threads-including-workers",
+          "sdkClock": "public-host-clock-argument",
+          "monotonicAndTimers": "unmodified"
+        },
+        "sourceMetadataFixture": {
+          "operation": "os-utime-only",
+          "target": "MEMORY.md",
+          "atimeMs": 1794268800000,
+          "mtimeMs": 1794268800000,
+          "placement": "inside-model-callback-after-real-producing-tool-result-before-terminal-reply",
+          "applyTo": "each-successful-corpus-producing-tool-result",
+          "indexOperations": [],
+          "sourceContentMutation": false
+        }
+      }
+    },
+    {
+      "id": "host-turn-barrier-warm-ascii",
+      "operation": "host-turn-barrier-runtime",
+      "requirement": "host.turn-barrier",
+      "covers": [
+        "host.turn-barrier.outcomes"
+      ],
+      "input": {
+        "nowMs": 1794268800000,
+        "identity": {
+          "agentId": "main",
+          "sessionKey": "agent:main:host-turn-barrier-warm-ascii",
+          "sessionId": "host-turn-barrier-warm-ascii-session"
+        },
+        "source": "MEMORY.md",
+        "policy": {
+          "memoryProvider": "none",
+          "memorySources": [
+            "memory"
+          ],
+          "searchSources": [
+            "memory"
+          ],
+          "sessionMemory": false,
+          "compactionEnabled": true,
+          "memoryFlushEnabled": true,
+          "contextWindowTokens": 32768,
+          "reserveTokens": 8192,
+          "softThresholdTokens": 4000,
+          "nativeMemorySynchronization": "unmodified-default-watch-and-on-search-enabled",
+          "sdkMemoryPublication": "on-search",
+          "optionalMaintenancePreemption": "unclaimed"
+        },
+        "modelTransport": {
+          "kind": "deterministic-offline-provider",
+          "paidCalls": false,
+          "replyFromActualToolResults": true,
+          "fixtureFailureInjection": false
+        },
+        "firstTurnUsage": {
+          "input": 128,
+          "output": 32,
+          "total": 160
+        },
+        "followup": {
+          "prompt": "What is my drink preference? Use memory_search and read the first actual hit before answering.",
+          "search": {
+            "query": "saffronplum-271",
+            "maxResults": 5,
+            "minScore": 0,
+            "corpus": "memory"
+          },
+          "getRange": "first-actual-search-hit",
+          "reply": "actual-memory-get-text-or-no-source-backed-memory"
+        },
+        "followupTrigger": {
+          "event": "first-host-return",
+          "interveningHostActions": []
+        },
+        "initialState": "warm",
+        "warmup": {
+          "save": {
+            "prompt": "Remember my bicycle lock code is marblefern-551.",
+            "content": "## Facts\n\n- My bicycle lock code is marblefern-551.\n",
+            "producer": "native-coding-write-or-sdk-add_memory_entry",
+            "section": "Facts",
+            "text": "My bicycle lock code is marblefern-551."
+          },
+          "recall": {
+            "prompt": "What is my bicycle lock code? Use memory_search and read the first actual hit.",
+            "search": {
+              "query": "marblefern-551",
+              "maxResults": 5,
+              "minScore": 0,
+              "corpus": "memory"
+            },
+            "getRange": "first-actual-search-hit",
+            "reply": "actual-memory-get-text"
+          },
+          "publication": "only-natural-tool-and-search-behavior",
+          "interveningHostActions": []
+        },
+        "save": {
+          "prompt": "Remember: My drink preference is saffronplum-271 coffee without sugar.",
+          "content": "## Facts\n\n- My bicycle lock code is marblefern-551.\n\n## Preferences\n\n- My drink preference is saffronplum-271 coffee without sugar.\n",
+          "producer": "native-coding-write-or-sdk-add_memory_entry",
+          "section": "Preferences",
+          "text": "My drink preference is saffronplum-271 coffee without sugar."
+        },
+        "clockFixture": {
+          "kind": "date-only-wall-clock",
+          "nowMs": 1794268800000,
+          "nativeScope": "all-processes-and-threads-including-workers",
+          "sdkClock": "public-host-clock-argument",
+          "monotonicAndTimers": "unmodified"
+        },
+        "sourceMetadataFixture": {
+          "operation": "os-utime-only",
+          "target": "MEMORY.md",
+          "atimeMs": 1794268800000,
+          "mtimeMs": 1794268800000,
+          "placement": "inside-model-callback-after-real-producing-tool-result-before-terminal-reply",
+          "applyTo": "each-successful-corpus-producing-tool-result",
+          "indexOperations": [],
+          "sourceContentMutation": false
+        }
+      }
+    },
+    {
+      "id": "host-turn-barrier-cold-unicode",
+      "operation": "host-turn-barrier-runtime",
+      "requirement": "host.turn-barrier",
+      "covers": [
+        "host.turn-barrier.outcomes"
+      ],
+      "input": {
+        "nowMs": 1794268800000,
+        "identity": {
+          "agentId": "main",
+          "sessionKey": "agent:main:host-turn-barrier-cold-unicode",
+          "sessionId": "host-turn-barrier-cold-unicode-session"
+        },
+        "source": "MEMORY.md",
+        "policy": {
+          "memoryProvider": "none",
+          "memorySources": [
+            "memory"
+          ],
+          "searchSources": [
+            "memory"
+          ],
+          "sessionMemory": false,
+          "compactionEnabled": true,
+          "memoryFlushEnabled": true,
+          "contextWindowTokens": 32768,
+          "reserveTokens": 8192,
+          "softThresholdTokens": 4000,
+          "nativeMemorySynchronization": "unmodified-default-watch-and-on-search-enabled",
+          "sdkMemoryPublication": "on-search",
+          "optionalMaintenancePreemption": "unclaimed"
+        },
+        "modelTransport": {
+          "kind": "deterministic-offline-provider",
+          "paidCalls": false,
+          "replyFromActualToolResults": true,
+          "fixtureFailureInjection": false
+        },
+        "firstTurnUsage": {
+          "input": 128,
+          "output": 32,
+          "total": 160
+        },
+        "followup": {
+          "prompt": "What is my drink preference? Use memory_search and read the first actual hit before answering.",
+          "search": {
+            "query": "yıldızarmudu-812",
+            "maxResults": 5,
+            "minScore": 0,
+            "corpus": "memory"
+          },
+          "getRange": "first-actual-search-hit",
+          "reply": "actual-memory-get-text-or-no-source-backed-memory"
+        },
+        "followupTrigger": {
+          "event": "first-host-return",
+          "interveningHostActions": []
+        },
+        "initialState": "cold",
+        "save": {
+          "prompt": "Remember: My drink preference is yıldızarmudu-812 çay without sugar.",
+          "content": "## Preferences\n\n- My drink preference is yıldızarmudu-812 çay without sugar.\n",
+          "producer": "native-coding-write-or-sdk-add_memory_entry",
+          "section": "Preferences",
+          "text": "My drink preference is yıldızarmudu-812 çay without sugar."
+        },
+        "clockFixture": {
+          "kind": "date-only-wall-clock",
+          "nowMs": 1794268800000,
+          "nativeScope": "all-processes-and-threads-including-workers",
+          "sdkClock": "public-host-clock-argument",
+          "monotonicAndTimers": "unmodified"
+        },
+        "sourceMetadataFixture": {
+          "operation": "os-utime-only",
+          "target": "MEMORY.md",
+          "atimeMs": 1794268800000,
+          "mtimeMs": 1794268800000,
+          "placement": "inside-model-callback-after-real-producing-tool-result-before-terminal-reply",
+          "applyTo": "each-successful-corpus-producing-tool-result",
+          "indexOperations": [],
+          "sourceContentMutation": false
+        }
+      }
+    },
+    {
+      "id": "host-turn-barrier-warm-unicode",
+      "operation": "host-turn-barrier-runtime",
+      "requirement": "host.turn-barrier",
+      "covers": [
+        "host.turn-barrier.outcomes"
+      ],
+      "input": {
+        "nowMs": 1794268800000,
+        "identity": {
+          "agentId": "main",
+          "sessionKey": "agent:main:host-turn-barrier-warm-unicode",
+          "sessionId": "host-turn-barrier-warm-unicode-session"
+        },
+        "source": "MEMORY.md",
+        "policy": {
+          "memoryProvider": "none",
+          "memorySources": [
+            "memory"
+          ],
+          "searchSources": [
+            "memory"
+          ],
+          "sessionMemory": false,
+          "compactionEnabled": true,
+          "memoryFlushEnabled": true,
+          "contextWindowTokens": 32768,
+          "reserveTokens": 8192,
+          "softThresholdTokens": 4000,
+          "nativeMemorySynchronization": "unmodified-default-watch-and-on-search-enabled",
+          "sdkMemoryPublication": "on-search",
+          "optionalMaintenancePreemption": "unclaimed"
+        },
+        "modelTransport": {
+          "kind": "deterministic-offline-provider",
+          "paidCalls": false,
+          "replyFromActualToolResults": true,
+          "fixtureFailureInjection": false
+        },
+        "firstTurnUsage": {
+          "input": 128,
+          "output": 32,
+          "total": 160
+        },
+        "followup": {
+          "prompt": "What is my drink preference? Use memory_search and read the first actual hit before answering.",
+          "search": {
+            "query": "ışıkinciri-526",
+            "maxResults": 5,
+            "minScore": 0,
+            "corpus": "memory"
+          },
+          "getRange": "first-actual-search-hit",
+          "reply": "actual-memory-get-text-or-no-source-backed-memory"
+        },
+        "followupTrigger": {
+          "event": "first-host-return",
+          "interveningHostActions": []
+        },
+        "initialState": "warm",
+        "warmup": {
+          "save": {
+            "prompt": "Remember my bicycle lock code is marblefern-551.",
+            "content": "## Facts\n\n- My bicycle lock code is marblefern-551.\n",
+            "producer": "native-coding-write-or-sdk-add_memory_entry",
+            "section": "Facts",
+            "text": "My bicycle lock code is marblefern-551."
+          },
+          "recall": {
+            "prompt": "What is my bicycle lock code? Use memory_search and read the first actual hit.",
+            "search": {
+              "query": "marblefern-551",
+              "maxResults": 5,
+              "minScore": 0,
+              "corpus": "memory"
+            },
+            "getRange": "first-actual-search-hit",
+            "reply": "actual-memory-get-text"
+          },
+          "publication": "only-natural-tool-and-search-behavior",
+          "interveningHostActions": []
+        },
+        "save": {
+          "prompt": "Remember: My drink preference is ışıkinciri-526 kahve without sugar.",
+          "content": "## Facts\n\n- My bicycle lock code is marblefern-551.\n\n## Preferences\n\n- My drink preference is ışıkinciri-526 kahve without sugar.\n",
+          "producer": "native-coding-write-or-sdk-add_memory_entry",
+          "section": "Preferences",
+          "text": "My drink preference is ışıkinciri-526 kahve without sugar."
+        },
+        "clockFixture": {
+          "kind": "date-only-wall-clock",
+          "nowMs": 1794268800000,
+          "nativeScope": "all-processes-and-threads-including-workers",
+          "sdkClock": "public-host-clock-argument",
+          "monotonicAndTimers": "unmodified"
+        },
+        "sourceMetadataFixture": {
+          "operation": "os-utime-only",
+          "target": "MEMORY.md",
+          "atimeMs": 1794268800000,
+          "mtimeMs": 1794268800000,
+          "placement": "inside-model-callback-after-real-producing-tool-result-before-terminal-reply",
+          "applyTo": "each-successful-corpus-producing-tool-result",
+          "indexOperations": [],
+          "sourceContentMutation": false
+        }
+      }
+    }
+  ]
+}

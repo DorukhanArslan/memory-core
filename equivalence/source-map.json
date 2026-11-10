@@ -5082,6 +5082,24 @@
           "symbol": "completeReplyAgentRun",
           "anchor": "export async function completeReplyAgentRun(",
           "line": 35
+        },
+        {
+          "path": "src/auto-reply/reply/agent-runner-run.ts",
+          "symbol": "runReplyAgent",
+          "anchor": "export async function runReplyAgent(",
+          "line": 75
+        },
+        {
+          "path": "src/auto-reply/reply/reply-turn-admission.ts",
+          "symbol": "admitReplyTurn",
+          "anchor": "export async function admitReplyTurn(",
+          "line": 174
+        },
+        {
+          "path": "src/auto-reply/reply/agent-runner-maintenance.ts",
+          "symbol": "scheduleReplySessionMaintenance",
+          "anchor": "export function scheduleReplySessionMaintenance(",
+          "line": 11
         }
       ],
       "python": [
@@ -5108,13 +5126,26 @@
           "symbol": "HostSessionRunner.run_turn",
           "anchor": "    async def run_turn(",
           "line": 742
+        },
+        {
+          "path": "memory_core/host/managed_session.py",
+          "symbol": "ManagedHostSession",
+          "anchor": "class ManagedHostSession:",
+          "line": 45
+        },
+        {
+          "path": "memory_core/host/managed_index.py",
+          "symbol": "ManagedSQLiteMemoryStore.search",
+          "anchor": "    def search(",
+          "line": 421
         }
       ],
       "implementation": "partial",
       "notes": [
         "The low-level immutable HostKit still returns maintenance requests. HostSessionRunner adds an explicit process-local per-session admission lane, durable catalog/context recording, actual registered dispatch, due flush settlement, real writer/index completion and fail-closed repair before the next model callback.",
-        "Real SDK cancellation, rejected executor submission, session rotation, inherited callback context and committed-write/index-failure regressions are exercised. This is a stronger synchronous publication policy than the observed native background refresh, not proof of the complete original Gateway host path. Both host.turn-barrier conditions remain uncredited.",
-        "HostKit returns maintenance requests and keeps no per-session queue; the Lab lock serializes its turn and maintenance, but the production host must own durable finalization and admission barriers."
+        "Real SDK cancellation, rejected executor submission, session rotation, inherited callback context and committed-write/index-failure regressions are exercised. The default runner is a stronger synchronous publication policy than the observed native background refresh, not proof of the complete original Gateway host path. The closed natural full-caller family now verifies the original outcomes condition; the maintenance/failure boundary remains unverified.",
+        "HostKit returns maintenance requests and keeps no per-session queue; the Lab lock serializes its turn and maintenance, but the production host must own durable finalization and admission barriers.",
+        "An opt-in ManagedHostSession on-search memory policy now commits writes, preserves the real warm SQLite read generation and admits an actual background publisher. Its cold/warm ASCII/Unicode whole-caller family uses original runReplyAgent admission and no forced publication between turns. The fresh complete catalog on clean d306944 verifies only host.turn-barrier.outcomes, reaching 69/128 overall. Optional maintenance preemption and visible failure admission remain separate and unverified."
       ],
       "acceptancePoints": [
         "host.turn-barrier.outcomes",
@@ -5166,7 +5197,7 @@
           "path": "memory_core/host/managed_index.py",
           "symbol": "ManagedSQLiteMemoryStore",
           "anchor": "class ManagedSQLiteMemoryStore(",
-          "line": 36
+          "line": 40
         },
         {
           "path": "memory_core/host/session_publication.py",
@@ -5190,7 +5221,7 @@
           "path": "memory_core/host/managed_session.py",
           "symbol": "ManagedHostSession",
           "anchor": "class ManagedHostSession:",
-          "line": 44
+          "line": 45
         },
         {
           "path": "memory_core/session_catalog.py",
@@ -5252,13 +5283,13 @@
           "path": "memory_core/host/managed_session.py",
           "symbol": "ManagedHostSession",
           "anchor": "class ManagedHostSession:",
-          "line": 44
+          "line": 45
         },
         {
           "path": "memory_core/host/managed_index.py",
           "symbol": "ManagedSQLiteMemoryStore.reindex",
           "anchor": "    def reindex(",
-          "line": 212
+          "line": 324
         },
         {
           "path": "memory_core/tools/memory_search.py",
@@ -9961,6 +9992,112 @@
         "isSameOpenClawAgentDatabasePath",
         "resolveIncognitoOpenClawAgentSqlitePath",
         "resolveOpenClawAgentSqlitePath"
+      ]
+    },
+    {
+      "path": "src/auto-reply/reply/agent-runner-run.ts",
+      "sha256": "789a725743e20fafc2208f45a0a390855057ca4abea07588bfa374951f6e82fa",
+      "sourceImports": [
+        "../../agents/agent-scope-config.js",
+        "../../agents/reply-completion.js",
+        "../../channels/message-access/admission-evidence.js",
+        "../../channels/progress-visibility.js",
+        "../../config/sessions/restart-recovery-receipt.js",
+        "../../config/sessions/restart-recovery-state.js",
+        "../../config/sessions/session-accessor.js",
+        "../../config/sessions/session-entry-read-runtime.js",
+        "../../globals.js",
+        "../../infra/agent-events.js",
+        "../../infra/diagnostics-timeline.js",
+        "../../infra/outbound/payloads.js",
+        "../../plugin-sdk/reply-payload.js",
+        "../../plugins/runtime/gateway-request-scope.js",
+        "../reply-payload.js",
+        "../templating.js",
+        "../types.js",
+        "./agent-runner-core.js",
+        "./agent-runner-execute.js",
+        "./agent-runner-fallback-authority.js",
+        "./agent-runner-helpers.js",
+        "./agent-runner-question-input.js",
+        "./agent-runner-steer-adoption.js",
+        "./agent-runner-utils.js",
+        "./block-reply-pipeline.js",
+        "./block-streaming.js",
+        "./compaction-notice.js",
+        "./followup-runner.js",
+        "./get-reply-run-queue.js",
+        "./origin-routing.js",
+        "./queue-policy.js",
+        "./queue.js",
+        "./queue/types.js",
+        "./reply-admission-ticket.js",
+        "./reply-media-paths.js",
+        "./reply-operation-run-state.js",
+        "./reply-run-registry.js",
+        "./reply-run-typing.js",
+        "./reply-threading.js",
+        "./reply-tool-authority.js",
+        "./reply-turn-admission.js",
+        "./restart-recovery-claim.js",
+        "./routed-delivery-thread.js",
+        "./source-reply-delivery-mode.js",
+        "./source-turn-id.js",
+        "./typing-mode.js",
+        "@openclaw/normalization-core/string-coerce"
+      ],
+      "exportedDeclarations": [
+        "runReplyAgent"
+      ]
+    },
+    {
+      "path": "src/auto-reply/reply/reply-turn-admission.ts",
+      "sha256": "6ddc894e6633f4e33306a6c373abfa049a88a76501f51bd97a9547f5284ed989",
+      "sourceImports": [
+        "../../agents/main-session-recovery/main-session-recovery-admission.js",
+        "../../agents/main-session-recovery/main-session-recovery-owner-release.js",
+        "../../agents/main-session-recovery/main-session-recovery-state.js",
+        "../../agents/main-session-recovery/main-session-recovery-store.js",
+        "../../agents/main-session-recovery/main-session-restart-recovery.js",
+        "../../agents/session-maintenance/coordinator.js",
+        "../../config/sessions/lifecycle.js",
+        "../../config/sessions/session-accessor.sqlite-entry-admission.js",
+        "../../config/sessions/session-accessor.sqlite-entry.js",
+        "../../config/sessions/store-entry.js",
+        "../../config/sessions/types.js",
+        "../../gateway/server-instance-runtime.types.js",
+        "../../gateway/server-methods/types.js",
+        "../../infra/abort-signal.js",
+        "../../infra/agent-events.js",
+        "../../infra/errors.js",
+        "../../logging/subsystem.js",
+        "../../plugins/runtime/gateway-request-scope.js",
+        "../../routing/session-key.js",
+        "../../sessions/provider-review.js",
+        "../../sessions/session-lifecycle-admission.js",
+        "./reply-run-registry.js",
+        "./reply-run-registry.state.js",
+        "./reply-turn-recovery-wait.js",
+        "./reply-turn-rotation.js"
+      ],
+      "exportedDeclarations": [
+        "admitReplyTurn",
+        "resolveReplyTurnKind",
+        "runWithReplyOperationLifecycleAdmission"
+      ]
+    },
+    {
+      "path": "src/auto-reply/reply/agent-runner-maintenance.ts",
+      "sha256": "261f036fcbf39cafee2dade0cd1255540464a6ee4abef1ec1f54ab8ec8f2da95",
+      "sourceImports": [
+        "../../agents/agent-runtime-id.js",
+        "../../agents/session-maintenance/run.js",
+        "../../config/sessions/types.js",
+        "./agent-runner-result-accounting.js",
+        "./agent-runner-result.types.js"
+      ],
+      "exportedDeclarations": [
+        "scheduleReplySessionMaintenance"
       ]
     }
   ]

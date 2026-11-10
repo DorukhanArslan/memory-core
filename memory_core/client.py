@@ -211,7 +211,9 @@ class Memory:
         An explicit source scope retains the same write/index lock. With
         ``defer_cold_index``, a cold scoped write commits its file and reports
         ``indexStatus=pending`` through dispatch instead of bootstrapping other
-        corpora or inventing an indexing error.
+        corpora or inventing an indexing error. An explicitly selected managed
+        ``on-search`` owner also defers warm memory publication through that
+        path; the search's pinned read generation admits its actual publisher.
         """
         scope = tuple(index_sources) if index_sources is not None else None
         if scope is not None and (not scope or not set(scope) <= {"memory", "sessions"}):
@@ -244,6 +246,14 @@ class Memory:
         if sources is None:
             self.store.reindex(self.workspace)
         else:
+            # A managed on-search owner may retain a committed source until a
+            # real search admits its background publisher. Ordinary stores and
+            # the existing managed policy return no deferral decision.
+            deferred = getattr(self.store, "_defer_memory_publication", None) if defer_cold else None
+            if deferred is not None:
+                published = deferred(self.workspace, sources=sources)
+                if published is not None:
+                    return published
             if defer_cold and self.store.index_identity()["status"] != "valid":
                 return False
             self.store.reindex_sources(self.workspace, sources=sources)

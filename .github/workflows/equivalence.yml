@@ -79,7 +79,12 @@ jobs:
         uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
         with:
           name: memory-equivalence-results
-          path: .equivalence-results/*.json
+          # The small per-attempt files hold a rejected original host's own streams and capture.
+          path: |
+            .equivalence-results/*.json
+            .equivalence-results/host-update-isolation/*/case/stdout.json
+            .equivalence-results/host-update-isolation/*/case/stderr.log
+            .equivalence-results/host-update-isolation/*/case/evidence/native-raw.json
           # The reports live in a dot-directory, which this action skips unless told otherwise.
           include-hidden-files: true
           if-no-files-found: ignore

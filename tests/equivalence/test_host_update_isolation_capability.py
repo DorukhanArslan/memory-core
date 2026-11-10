@@ -213,3 +213,36 @@ def test_update_actors_are_separate_files_and_no_restart_actor_was_changed_to_ad
     assert not restart_actors.intersection(LOCAL)
     for name in restart_actors:
         assert "host-update-isolation" not in (ROOT / "equivalence" / name).read_text()
+
+
+def test_fixture_listing_records_an_entry_that_vanishes_instead_of_failing_the_host(tmp_path, authority):
+    """A detached original sync deletes its lease journal on its own schedule; the listing is diagnostic."""
+    tree = tmp_path / "fixture"
+    (tree / "state").mkdir(parents=True)
+    (tree / "state/kept.sqlite").write_bytes(b"kept")
+    (tree / "state/lease.sqlite-journal").write_bytes(b"released during the listing")
+    (tree / "state/unreadable.sqlite").write_bytes(b"another failure")
+    script = f"""
+      import fs from "node:fs/promises";
+      import {{ filesystemObservation }} from {json.dumps(str(ROOT / "equivalence" / "host-update-isolation-phase.mjs"))};
+      const gone = Object.assign(new Error("ENOENT: no such file or directory"), {{ code: "ENOENT" }});
+      const denied = Object.assign(new Error("EACCES: permission denied"), {{ code: "EACCES" }});
+      const api = (failing, error) => ({{ readdir: fs.readdir, readFile: fs.readFile,
+        lstat: name => name.endsWith(failing) ? Promise.reject(error) : fs.lstat(name) }});
+      const listed = await filesystemObservation(process.argv[1], api("lease.sqlite-journal", gone));
+      let refused = null;
+      try {{ await filesystemObservation(process.argv[1], api("unreadable.sqlite", denied)); }} catch (error) {{ refused = error.code; }}
+      process.stdout.write(JSON.stringify({{ listed, refused }}));
+    """
+    result = subprocess.run([authority["execPath"], "--input-type=module", "--eval", script, str(tree)],
+                            env={"PATH": os.defpath, "LANG": "C.UTF-8", "TZ": "UTC"},
+                            capture_output=True, text=True, timeout=15)
+    assert result.returncode == 0, result.stderr
+    observed = json.loads(result.stdout)
+    rows = {row["path"]: row for row in observed["listed"]}
+    assert rows["state/lease.sqlite-journal"] == {"path": "state/lease.sqlite-journal", "kind": "vanished"}
+    assert rows["state/kept.sqlite"]["kind"] == "file" and rows["state/kept.sqlite"]["sha256"] == hashlib.sha256(b"kept").hexdigest()
+    assert rows["state"]["kind"] == "directory" and set(rows) == {
+        "state", "state/kept.sqlite", "state/lease.sqlite-journal", "state/unreadable.sqlite"}
+    # Any other failure is still a host failure.
+    assert observed["refused"] == "EACCES"

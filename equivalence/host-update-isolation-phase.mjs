@@ -80,15 +80,34 @@ async function sourceObservation(workspace, relative) {
   }
 }
 
-async function filesystemObservation(directory) {
+// A diagnostic listing only; no guard reads it. A detached synchronization of the
+// original may still hold its lease when the listing starts and delete the lease
+// journal while it runs. Such an entry is recorded as vanished, not treated as a
+// host failure. Every other error still fails the host.
+export async function filesystemObservation(directory, api = fs) {
   const entries = [];
+  const vanished = error => error?.code === "ENOENT";
   async function visit(relative) {
-    for (const entry of await fs.readdir(path.join(directory, relative), { withFileTypes: true })) {
+    let listing;
+    try {
+      listing = await api.readdir(path.join(directory, relative), { withFileTypes: true });
+    } catch (error) {
+      if (!vanished(error) || relative === "") throw error;
+      entries.push({ path: relative.replaceAll(path.sep, "/"), kind: "vanished" });
+      return;
+    }
+    for (const entry of listing) {
       const name = path.join(relative, entry.name), filename = path.join(directory, name);
-      const stat = await fs.lstat(filename);
-      const row = { path: name.replaceAll(path.sep, "/"), kind: entry.isDirectory() ? "directory" : entry.isFile() ? "file" : "other",
-        size: stat.size, mtimeMs: stat.mtimeMs };
-      if (entry.isFile()) row.sha256 = createHash("sha256").update(await fs.readFile(filename)).digest("hex");
+      const row = { path: name.replaceAll(path.sep, "/"), kind: entry.isDirectory() ? "directory" : entry.isFile() ? "file" : "other" };
+      try {
+        const stat = await api.lstat(filename);
+        Object.assign(row, { size: stat.size, mtimeMs: stat.mtimeMs });
+        if (entry.isFile()) row.sha256 = createHash("sha256").update(await api.readFile(filename)).digest("hex");
+      } catch (error) {
+        if (!vanished(error)) throw error;
+        entries.push({ path: row.path, kind: "vanished" });
+        continue;
+      }
       entries.push(row);
       if (entry.isDirectory()) await visit(name);
     }

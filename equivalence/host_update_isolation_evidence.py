@@ -50,8 +50,17 @@ Limits that a reader must not infer past:
 * The pinned original resolves on-search and watch synchronization as enabled
   whatever is configured, and the guard requires that resolved state. Only the
   explicit publications are bound here and compared.
+* The pinned original also resolves hybrid temporal decay and MMR as enabled,
+  and the guard requires that state too. The SDK owner runs with temporal decay
+  off. ``MEMORY.md`` is an undated source that the original does not decay and
+  every compared search has at most one hit, so ranking is not exercised here.
 * That a host's process input carries no fact outside its own phase is a
   property of the frozen literal, which the exact request check then enforces.
+* The original prints the refused path through a helper that replaces its
+  process's home directory by ``~`` when the fixture lies below it, as in a
+  checkout under a hosted runner's home. The guard accepts that spelling while
+  it still shows this run's own fixture directory. No compared field carries an
+  absolute path.
 """
 from __future__ import annotations
 
@@ -325,6 +334,29 @@ def _own_corpus(indexed, current, tokens):
             "A published index holds another agent's fact or does not reflect its own current source")
 
 
+def native_refusal_names_source(reason, workspace):
+    """Whether the original's hard-link refusal names this run's workspace and its source.
+
+    The release prints both paths through one helper. It replaces the home directory of
+    its process by ``~`` when a path lies below it, and leaves other paths absolute.
+    The absolute message names the paths exactly. The home-relative one is accepted only
+    while it still shows the fixture directory that this run created and its workspace,
+    so the replaced home is a proper ancestor of that directory. A text relative to the
+    fixture directory itself would name nothing of this run, and no run can print it.
+    """
+    source = f"{workspace}/{SOURCE}"
+    if reason == f"{NATIVE_REFUSAL} ({workspace}): {source}":
+        return True
+    opening, closing = f"{NATIVE_REFUSAL} (~", "): ~"
+    if not isinstance(reason, str) or not reason.startswith(opening + "/") or closing not in reason:
+        return False
+    below_home, _, shown = reason[len(opening):].partition(closing)
+    # One home directory, a proper ancestor of the fixture directory, was replaced in both paths.
+    home = workspace[:-len(below_home)]
+    return (shown == f"{below_home}/{SOURCE}" and workspace.endswith(below_home) and below_home.count("/") >= 2
+            and (home == "" or home.startswith("/") and not home.endswith("/")))
+
+
 def _public_publications(records):
     return [{"agentId": entry["agentId"], "stage": entry["stage"], "failed": entry["failed"],
              "error": entry["error"]["message"] if entry["failed"] else None} for entry in records]
@@ -365,6 +397,10 @@ def _native_phase(case, raw, record, phase, public, ordinal, plan, tokens):
                 "The original resolver used another source policy or database")
         require(all(config["sync"][key] is True for key in ("onSessionStart", "onSearch", "watch")),
                 "The pinned original no longer resolves its automatic synchronization as enabled")
+        query = config["query"]
+        require(query["maxResults"] == SEARCH_OPTIONS["maxResults"] and query["minScore"] == SEARCH_OPTIONS["minScore"]
+                and query["hybrid"]["temporalDecay"]["enabled"] is True and query["hybrid"]["mmr"]["enabled"] is True,
+                "The pinned original no longer resolves its declared query limits or its ranking defaults")
 
     sessions, loops, factories = phase["sessions"], phase["loops"], phase["toolFactoryCalls"]
     labels = [item["session"] for item in plan]
@@ -441,8 +477,9 @@ def _native_phase(case, raw, record, phase, public, ordinal, plan, tokens):
                 "The original edit dispatch differs from the declared update or its outcome")
         if refused:
             reason = _text(event["result"])
-            require(NATIVE_REFUSAL in reason and f"{workspace[agent]}/{SOURCE}" in reason,
-                    "The original refusal is not the declared hard-link refusal of this source")
+            # The refused text is kept, bounded, so that a rejection can be diagnosed from the report.
+            require(native_refusal_names_source(reason, workspace[agent]),
+                    f"The original refusal is not the declared hard-link refusal of this source: {reason[:400]!r}")
         else:
             require(event["result"]["details"].get("changed") is True, "The original edit reported no committed change")
 

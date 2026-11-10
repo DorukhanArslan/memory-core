@@ -7,6 +7,7 @@ import {DatabaseSync} from 'node:sqlite';
 import {Worker,MessagePort} from 'node:worker_threads';
 import {pathToFileURL} from 'node:url';
 import {isDeepStrictEqual} from 'node:util';
+import {deserialize} from 'node:v8';
 
 const plain=value=>JSON.parse(JSON.stringify(value));
 const sha=value=>crypto.createHash('sha256').update(value).digest('hex');
@@ -57,6 +58,18 @@ export async function runQuerySyncOutcomesRuntime(input,config){
     activeBackgroundSearchSyncs:owner.activeBackgroundSearchSyncs?.size??null,
     syncing:owner.syncing!==null,providerInitialized:owner.providerInitialized,
     memoryFullRetryDirty:owner.memoryFullRetryDirty,sessionsDirty:owner.sessionsDirty});
+  function decodedSerialized(message,direction){
+    const decoded={};
+    // The original SQLite broker protocol uses V8 bytes in these named fields.
+    // Keep those bytes intact and independently decode only their known carriers.
+    const keys=direction==='request'&&['open','execute','execute-frame'].includes(message?.type)
+      ? ['input','preparation']:direction==='reply'&&Number.isSafeInteger(message?.id)&&message?.ok===true
+        ? ['value']:[];
+    for(const key of keys){if(message[key] instanceof Uint8Array){
+      try{decoded[key]={value:carrier(deserialize(message[key])),bytesSha256:sha(message[key])};}
+      catch(error){decoded[key]={error:errorValue(error),bytesSha256:sha(message[key])};}
+    }}return decoded;
+  }
   const originalExec=DatabaseSync.prototype.exec,originalPrepare=DatabaseSync.prototype.prepare,
     originalDbClose=DatabaseSync.prototype.close,originalLocation=DatabaseSync.prototype.location;
   function coordination(database){
@@ -179,12 +192,12 @@ export async function runQuerySyncOutcomesRuntime(input,config){
     let workerId=workers.get(this);
     if(!workerId){workerId=`worker-${++workerCount}`;workers.set(this,workerId);
       raw.workerStates.push({workerId,threadId:this.threadId,firstObservedSeq:sequence});
-      this.on('message',message=>{const row=event('actual-worker-message',{workerId,threadId:this.threadId});raw.workerMessages.push({workerId,threadId:this.threadId,sequence:row.sequence,message:carrier(message)});});
+      this.on('message',message=>{const row=event('actual-worker-message',{workerId,threadId:this.threadId});raw.workerMessages.push({workerId,threadId:this.threadId,sequence:row.sequence,message:carrier(message),decodedSerialized:decodedSerialized(message,'reply')});});
       this.on('exit',exitCode=>{const row=event('actual-worker-exit',{workerId,exitCode});raw.workerStates.find(item=>item.workerId===workerId).exit={sequence:row.sequence,exitCode};});
     }
     const entered=event('actual-worker-dispatch-enter',{workerId,threadId:this.threadId});
     const call={workerId,threadId:this.threadId,phase,activeTool,enterSeq:entered.sequence,startedAtNs:entered.atNs,
-      message:carrier(args[0]),transferList:carrier(args[1])};raw.workerDispatches.push(call);
+      message:carrier(args[0]),decodedSerialized:decodedSerialized(args[0],'request'),transferList:carrier(args[1])};raw.workerDispatches.push(call);
     try{const result=originalPost.apply(this,args);call.returnedUndefined=result===undefined;return result;}
     catch(error){call.error=errorValue(error);throw error;}
     finally{const returned=event('actual-worker-dispatch-return',{workerId});call.returnSeq=returned.sequence;call.finishedAtNs=returned.atNs;}

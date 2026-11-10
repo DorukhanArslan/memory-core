@@ -148,20 +148,22 @@ export async function runIndexIdentityBoundariesRuntime(input,config){
     originalGet=OriginalManager.get;
     OriginalManager.get=async function(...args){
       const params=args[0];
+      const invokingTool=activeTool,observed=invokingTool==='seed'?producer:invokingTool==='query'?searchOwner:null;
       const entered=event('original-get-enter',{activeTool,agentId:params.agentId,
         requestedPurpose:params.purpose??'default',receiverIsOriginalClass:this===OriginalManager});
       const call={id:`get-${raw.originalGetCalls.length+1}`,phase,activeTool,agentId:params.agentId,
         requestedPurpose:params.purpose??'default',config:plain(params.cfg),enterSeq:entered.sequence,
-        startedAtNs:entered.atNs,receiverIsOriginalClass:this===OriginalManager};
+        startedAtNs:entered.atNs,receiverIsOriginalClass:this===OriginalManager,
+        parameterKeys:Object.keys(params),maintenanceSourceOwnerId:ref(params.maintenanceSource),
+        maintenanceSourceIsExactSampledOwner:observed?params.maintenanceSource===observed:null};
       raw.originalGetCalls.push(call);
       try{
         const owner=await originalGet.apply(this,args);
         call.ownerId=ref(owner);call.actualPurpose=owner?.purpose??null;
-        const observed=activeTool==='seed'?producer:activeTool==='query'?searchOwner:null;
         call.returnedIsExactSampledOwner=observed?owner===observed:null;
         return owner;
       }catch(error){call.error={name:error.name,message:error.message};throw error;}
-      finally{const returned=event('original-get-return',{activeTool,ownerId:call.ownerId,
+      finally{const returned=event('original-get-return',{activeTool:invokingTool,ownerId:call.ownerId,
         returnedIsExactSampledOwner:call.returnedIsExactSampledOwner});
         call.returnSeq=returned.sequence;call.finishedAtNs=returned.atNs;}
     };

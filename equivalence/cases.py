@@ -283,6 +283,9 @@ def build_cases(*, include_prospective: bool = False) -> list[dict[str, Any]]:
     from equivalence.host_restart_session import build_cases as build_host_restart_session_cases
 
     cases.extend(build_host_restart_session_cases())
+    from equivalence.host_update_isolation import build_cases as build_host_update_isolation_cases
+
+    cases.extend(build_host_update_isolation_cases())
     if include_prospective:
         from equivalence.flush_contract import build_prospective_flush_contract_cases
         from equivalence.session_projection import build_prospective_session_projection_cases
@@ -320,6 +323,12 @@ def run_python(case: dict[str, Any]) -> Any:
 
         validate_case({key: case[key] for key in ("id", "operation", "requirement", "covers", "input")})
         return run_host_restart(arguments, evidence_directory=case.get("_diagnosticDirectory"))
+    if operation == "host-update-isolation-runtime":
+        from equivalence.host_update_isolation import validate_case as validate_update_case
+        from equivalence.host_update_isolation_sdk import run_host_update_isolation
+
+        validate_update_case({key: case[key] for key in ("id", "operation", "requirement", "covers", "input")})
+        return run_host_update_isolation(arguments, evidence_directory=case.get("_diagnosticDirectory"))
     if operation == "promotion-ranking-runtime":
         from equivalence.promotion_ranking_runtime import run_promotion_ranking
 

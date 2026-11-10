@@ -97,6 +97,27 @@ the host kit. 0.1.0 is `main` at `b829bad` (2026-09-27), which had no build syst
 
 ### Changed
 
+- Managed host readiness (2026-11-10): `ManagedHostSession.publication_status()`
+  keeps memory publication pending after a real direct-curator or full-publication
+  failure, including when no runner turn marker exists and after owner close.
+  Session-only success does not clear a memory failure; matching publication
+  recovery restores readiness. The separate explicit-publication host
+  update/isolation comparison verifies two original conditions, moving the
+  bounded catalog from 66 to 68/128; complete OpenClaw equivalence remains open.
+- Managed index staleness (2026-11-10): `ManagedSQLiteMemoryStore.reindex_sources`
+  retains a failed memory-scope publication. After a committed curated write whose
+  index refresh fails, later `memory_search` results carry `stale`, the real error
+  in `warning`, and `action`, until the failed selection publishes (`paths=None`,
+  or path-limited publications that cover the failed paths) or a whole reindex
+  succeeds. Previously only a failed whole reindex was reported. Requests refused
+  before any publication (argument errors, an index that needs a full reindex) and
+  sessions-only publications do not set it; session-scope failures keep their
+  controller receipt. `lifecycle_snapshot()["lastSyncError"]` still records whole
+  reindexes only, and the scoped failure appears there as `memoryScopeSyncFailure`
+  while it is retained. The retained failure lives in the store instance and is
+  not persisted across close or restart. This is unit-tested Python behavior: the
+  host update comparison cannot attribute its stale report to it, and it adds no
+  equivalence credit.
 - Host search dispatch (2026-11-09): `HostKit` uses the registered search factory
   with its existing host clock, source policy and session visibility. Acquisition
   timing and store ownership checks now run at the real tool boundary; disabled

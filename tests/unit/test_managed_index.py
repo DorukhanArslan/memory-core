@@ -5,6 +5,8 @@ import asyncio
 from dataclasses import replace
 import json
 import inspect
+import os
+import sqlite3
 import threading
 
 import pytest
@@ -16,10 +18,12 @@ from memory_core.consolidation.artifact_provenance import MemoryArtifactProvenan
 from memory_core.flags import FeatureFlags
 from memory_core.host import HostKit, HostModelResult, HostSessionRunner, SessionState
 from memory_core.host.managed_index import ManagedSQLiteMemoryStore
+from memory_core.host.managed_session import ManagedHostSession
 from memory_core.index.identity import MEMORY_INDEX_META_KEY
-from memory_core.index.sqlite_store import SQLiteMemoryStore
+from memory_core.index.sqlite_store import MemoryIndexRequiresFullReindexError, SQLiteMemoryStore
 from memory_core.runtime_identity import OPENCLAW_COMPAT_RUNTIME_IDENTITY
 from memory_core.session_catalog import MemorySessionCatalog
+from memory_core.session_visibility import resolve_memory_search_source_policy
 from memory_core.tools.memory_search import MemorySearchToolContext
 from memory_core.tools.deadline import MemorySearchDeadlineControl
 from memory_core.tools.search_factory import create_memory_search_tool
@@ -295,3 +299,334 @@ def test_managed_search_rethrows_the_original_base_error(tmp_path, monkeypatch):
     with pytest.raises(RuntimeError) as raised:
         store.search("cedar")
     assert raised.value is failure
+
+
+def _block_index_publication(tmp_path):
+    """A real unusable rollback-journal path: readers work, every publication fails."""
+    journal = tmp_path / "index.sqlite-journal"
+    os.symlink(tmp_path / "missing-journal-directory" / "journal", journal)
+    return journal
+
+
+STALE_WARNING = "Memory index is stale: unable to open database file. Search results may be incomplete."
+STALE_ACTION = ("Run: openclaw memory status --index --agent main. Rebuilding uses keyword indexing only "
+                "and does not call an embedding provider.")
+
+
+def test_failed_memory_scope_publication_is_reported_stale_until_that_scope_publishes(tmp_path):
+    config, workspace, store = _owner(tmp_path, text="My drink preference is cedar tea.\n")
+    assert _search(config, store, "drink preference")["results"][0]["snippet"] == "My drink preference is cedar tea.\n"
+    (workspace.root / "memory/2026-11-09.md").write_text("My drink preference is now birch coffee.\n", encoding="utf-8")
+    journal = _block_index_publication(tmp_path)
+
+    with pytest.raises(sqlite3.OperationalError, match="unable to open database file"):
+        store.reindex_sources(workspace, sources=["memory"])
+
+    assert store.status()["lastSyncError"] == "unable to open database file"
+    stale = _search(config, store, "drink preference")
+    assert stale["stale"] is True
+    assert stale["warning"] == STALE_WARNING
+    assert stale["action"] == STALE_ACTION
+    assert stale["results"][0]["snippet"] == "My drink preference is cedar tea.\n"
+    # The whole-reindex receipt is unchanged; the scoped failure has its own.
+    snapshot = store.lifecycle_snapshot()
+    assert snapshot["lastSyncError"] is None
+    assert snapshot["memoryScopeSyncFailure"] == {"error": "unable to open database file", "paths": None}
+
+    journal.unlink()
+    assert store.reindex_sources(workspace, sources=["memory"]) >= 1
+    assert "lastSyncError" not in store.status()
+    assert "memoryScopeSyncFailure" not in store.lifecycle_snapshot()
+    current = _search(config, store, "drink preference")
+    assert "stale" not in current and "warning" not in current and "action" not in current
+    assert current["results"][0]["snippet"] == "My drink preference is now birch coffee.\n"
+
+
+def test_whole_reindex_failure_takes_precedence_and_its_success_clears_both(tmp_path, monkeypatch):
+    config, workspace, store = _owner(tmp_path, text="Cedar source remains on disk.\n")
+    _search(config, store)
+    (workspace.root / "memory/2026-11-09.md").write_text("Cedar source changed on disk.\n", encoding="utf-8")
+    journal = _block_index_publication(tmp_path)
+    with pytest.raises(sqlite3.OperationalError):
+        store.reindex_sources(workspace, sources=["memory"])
+    assert store.status()["lastSyncError"] == "unable to open database file"
+
+    def labelled_whole_failure(self, selected, *, force=False):
+        raise RuntimeError("labelled whole-reindex fixture failure")
+
+    with monkeypatch.context() as patched:
+        patched.setattr(SQLiteMemoryStore, "reindex", labelled_whole_failure)
+        with pytest.raises(RuntimeError, match="labelled whole-reindex fixture failure"):
+            store.reindex(workspace, force=True)
+    assert store.status()["lastSyncError"] == "labelled whole-reindex fixture failure"
+    snapshot = store.lifecycle_snapshot()
+    assert snapshot["lastSyncError"] == "labelled whole-reindex fixture failure"
+    assert snapshot["memoryScopeSyncFailure"]["error"] == "unable to open database file"
+
+    journal.unlink()
+    store.reindex(workspace, force=True)
+    assert "lastSyncError" not in store.status()
+    snapshot = store.lifecycle_snapshot()
+    assert snapshot["lastSyncError"] is None and "memoryScopeSyncFailure" not in snapshot
+    current = _search(config, store)
+    assert "stale" not in current and current["results"][0]["snippet"] == "Cedar source changed on disk.\n"
+
+
+def test_sessions_only_publications_neither_set_nor_settle_memory_staleness(tmp_path, monkeypatch):
+    config, workspace, store = _owner(tmp_path, text="Cedar source remains on disk.\n")
+    _search(config, store)
+
+    def labelled_session_failure(self, selected, *, sources, paths=None, force_sources=False):
+        raise RuntimeError("labelled session-scope fixture failure")
+
+    with monkeypatch.context() as patched:
+        patched.setattr(SQLiteMemoryStore, "reindex_sources", labelled_session_failure)
+        with pytest.raises(RuntimeError, match="labelled session-scope fixture failure"):
+            store.reindex_sources(workspace, sources={"sessions"})
+    assert "lastSyncError" not in store.status()
+
+    (workspace.root / "memory/2026-11-09.md").write_text("Cedar source changed on disk.\n", encoding="utf-8")
+    journal = _block_index_publication(tmp_path)
+    with pytest.raises(sqlite3.OperationalError):
+        store.reindex_sources(workspace, sources=["memory"])
+    journal.unlink()
+    # This workspace has no session source, so the sessions-only call publishes nothing;
+    # the next test repeats it with a real session row.
+    assert store.reindex_sources(workspace, sources={"sessions"}) == 0
+    assert store.status()["lastSyncError"] == "unable to open database file"
+    assert _search(config, store)["stale"] is True
+    assert store.reindex_sources(workspace, sources={"memory", "sessions"}) >= 1
+    assert "lastSyncError" not in store.status()
+    assert "stale" not in _search(config, store)
+
+
+def test_real_sessions_only_publication_leaves_the_memory_report_in_place(tmp_path):
+    root = tmp_path / "workspace"
+    (root / "memory").mkdir(parents=True)
+    (root / "memory/2026-11-09.md").write_text("Cedar source remains on disk.\n", encoding="utf-8")
+    catalog = MemorySessionCatalog(tmp_path / "catalog.sqlite", clock_ms=lambda: NOW)
+
+    def remark(session, text, at):
+        catalog.upsert_session(f"agent:main:{session}", {"sessionId": session, "updatedAt": at})
+        catalog.append_message(session, {"role": "user", "content": text}, session_key=f"agent:main:{session}",
+                               event_id=f"{session}:1", now_ms=at)
+
+    def session_rows():
+        return [row for row in store.read_published_index()["chunks"] if row["source"] == "sessions"]
+
+    remark("writer", "An earlier violet remark.", NOW)
+    workspace = MemoryWorkspace(root, session_catalog=catalog, index_sources=("memory", "sessions"))
+    config = MemoryConfig(workspace_dir=root, store_path=tmp_path / "index.sqlite", citation_mode="off",
+        flags=FeatureFlags(vector_search=False, temporal_decay=False))
+    store = ManagedSQLiteMemoryStore(config, workspace)
+    store.reindex(workspace)
+    assert len(session_rows()) == 1
+
+    (root / "memory/2026-11-09.md").write_text("Cedar source changed on disk.\n", encoding="utf-8")
+    journal = _block_index_publication(tmp_path)
+    with pytest.raises(sqlite3.OperationalError):
+        store.reindex_sources(workspace, sources=["memory"])
+    journal.unlink()
+    # What the background session publisher issues: every path of the sessions corpus only.
+    remark("fresh", "A later amber remark.", NOW + 1)
+    assert store.reindex_sources(workspace, sources={"sessions"}) == 2
+    assert len(session_rows()) == 2
+    assert store.status()["lastSyncError"] == "unable to open database file"
+    assert store.lifecycle_snapshot()["memoryScopeSyncFailure"]["paths"] is None
+    assert _search(config, store)["stale"] is True
+    assert store.reindex_sources(workspace, sources={"memory"}) == 1
+    assert "lastSyncError" not in store.status() and "stale" not in _search(config, store)
+
+
+def test_path_limited_publications_settle_exactly_the_failed_paths(tmp_path):
+    config, workspace, store = _owner(tmp_path, text="The first drink is cedar tea.\n")
+    first, second = "memory/2026-11-09.md", "memory/2026-11-10.md"
+    (workspace.root / second).write_text("The second drink is alder tea.\n", encoding="utf-8")
+    _search(config, store, "drink")
+    (workspace.root / first).write_text("The first drink is birch coffee.\n", encoding="utf-8")
+    (workspace.root / second).write_text("The second drink is maple coffee.\n", encoding="utf-8")
+    journal = _block_index_publication(tmp_path)
+    for path in (first, second):
+        with pytest.raises(sqlite3.OperationalError):
+            store.reindex_sources(workspace, sources=["memory"], paths=[path])
+    assert store.lifecycle_snapshot()["memoryScopeSyncFailure"] == {
+        "error": "unable to open database file", "paths": [first, second]}
+    # An empty selection has nothing to publish and changes nothing.
+    assert store.reindex_sources(workspace, sources=["memory"], paths=[]) == 0
+    journal.unlink()
+
+    assert store.reindex_sources(workspace, sources=["memory"], paths=[first]) == 1
+    assert store.lifecycle_snapshot()["memoryScopeSyncFailure"]["paths"] == [second]
+    partly = _search(config, store, "drink")
+    assert partly["stale"] is True and partly["warning"] == STALE_WARNING
+    assert {row["snippet"] for row in partly["results"]} == {
+        "The first drink is birch coffee.\n", "The second drink is alder tea.\n"}
+
+    assert store.reindex_sources(workspace, sources=["memory"], paths=[second]) == 1
+    assert "lastSyncError" not in store.status()
+    current = _search(config, store, "drink")
+    assert "stale" not in current
+    assert {row["snippet"] for row in current["results"]} == {
+        "The first drink is birch coffee.\n", "The second drink is maple coffee.\n"}
+
+
+def test_whole_scope_failure_is_not_settled_by_a_path_limited_publication(tmp_path):
+    config, workspace, store = _owner(tmp_path, text="The first drink is cedar tea.\n")
+    first, second = "memory/2026-11-09.md", "memory/2026-11-10.md"
+    (workspace.root / second).write_text("The second drink is alder tea.\n", encoding="utf-8")
+    _search(config, store, "drink")
+    (workspace.root / first).write_text("The first drink is birch coffee.\n", encoding="utf-8")
+    (workspace.root / second).write_text("The second drink is maple coffee.\n", encoding="utf-8")
+    journal = _block_index_publication(tmp_path)
+    with pytest.raises(sqlite3.OperationalError):
+        store.reindex_sources(workspace, sources=["memory"])
+    journal.unlink()
+
+    assert store.reindex_sources(workspace, sources=["memory"], paths=[first]) == 1
+    assert store.lifecycle_snapshot()["memoryScopeSyncFailure"] == {
+        "error": "unable to open database file", "paths": None}
+    assert _search(config, store, "drink")["stale"] is True
+    assert store.reindex_sources(workspace, sources=["memory"]) == 2
+    assert "lastSyncError" not in store.status()
+    current = _search(config, store, "drink")
+    assert "stale" not in current
+    assert {row["snippet"] for row in current["results"]} == {
+        "The first drink is birch coffee.\n", "The second drink is maple coffee.\n"}
+
+
+@pytest.mark.parametrize(("options", "error"), [
+    ({"sources": "memory"}, ValueError),
+    ({"sources": b"memory"}, ValueError),
+    ({"sources": {"memory", "unknown"}}, ValueError),
+    ({"sources": []}, ValueError),
+    ({"sources": ["memory"], "paths": "MEMORY.md"}, ValueError),
+    ({"sources": ["memory"], "paths": ["../outside.md"]}, ValueError),
+    ({"sources": ["memory"], "force_sources": 1}, TypeError),
+])
+def test_refused_selection_arguments_attempt_no_publication_and_report_nothing(tmp_path, options, error):
+    config, workspace, store = _owner(tmp_path, text="Cedar source remains on disk.\n")
+    _search(config, store)
+    _block_index_publication(tmp_path)
+    with pytest.raises(error):
+        store.reindex_sources(workspace, **options)
+    assert "lastSyncError" not in store.status()
+    assert "memoryScopeSyncFailure" not in store.lifecycle_snapshot()
+    assert "stale" not in _search(config, store)
+
+
+def test_cold_index_refusal_of_a_selected_publication_is_not_a_publication_failure(tmp_path):
+    config, workspace, store = _owner(tmp_path, text="Cedar source remains on disk.\n")
+    with pytest.raises(MemoryIndexRequiresFullReindexError):
+        store.reindex_sources(workspace, sources=["memory"])
+    assert "lastSyncError" not in store.status()
+    assert "memoryScopeSyncFailure" not in store.lifecycle_snapshot()
+    # The ordinary cold bootstrap still runs and reports only its own notice.
+    first = _search(config, store)
+    assert first["results"][0]["snippet"] == "Cedar source remains on disk.\n"
+    assert "stale" not in first
+
+
+def test_committed_write_with_failed_refresh_is_reported_stale_by_the_next_search(tmp_path):
+    root = tmp_path / "workspace"
+    root.mkdir()
+    config = MemoryConfig(workspace_dir=root, store_path=tmp_path / "index.sqlite", citation_mode="off",
+        session_search=False, flags=FeatureFlags(vector_search=False, temporal_decay=False))
+    owner = ManagedHostSession.open(root, catalog=MemorySessionCatalog(tmp_path / "catalog.sqlite", clock_ms=lambda: NOW),
+        config=config, identity=OPENCLAW_COMPAT_RUNTIME_IDENTITY, now_ms=lambda: NOW,
+        source_policy=resolve_memory_search_source_policy(["memory"], remember_across_conversations=False))
+    state = SessionState.new(session_key="agent:main:dm:stale-report", session_id="stale-report")
+    search = {"query": "drink preference", "corpus": "memory", "minScore": 0}
+    old, new = "My drink preference is cedar tea.", "My drink preference is birch coffee."
+    # The runner turns an exception raised by a host callback into a turn failure, so the
+    # callbacks only record what the tools returned; every assertion runs after the turn.
+    observed = {}
+
+    def call(turn, name, arguments):
+        turn.record_message({"role": "assistant", "content": [
+            {"type": "toolCall", "id": name, "name": name, "arguments": dict(arguments)}]})
+        return turn.dispatch(name, name, arguments)
+
+    def answer(turn):
+        turn.record_message({"role": "assistant", "content": [{"type": "text", "text": "Done."}]})
+        return HostModelResult()
+
+    async def save(turn):
+        observed["saved"] = call(turn, "add_memory_entry", {"section": "Preferences", "text": old})
+        return answer(turn)
+
+    async def update(turn):
+        observed["changed"] = call(turn, "replace_memory_entry", {"old": old, "new": new})
+        observed["found"] = call(turn, "memory_search", search)
+        return answer(turn)
+
+    async def read(turn):
+        observed["current"] = call(turn, "memory_search", search)
+        return answer(turn)
+
+    def failures(outcome):
+        return [(failure.phase, failure.error_type) for failure in outcome.failures]
+
+    async def scenario():
+        try:
+            saved = await owner.runner(state).run_turn("Remember my drink.", execute=save)
+            assert failures(saved) == [] and observed["saved"]["status"] == "ok"
+            owner.reindex(force=True)
+            journal = _block_index_publication(tmp_path)
+            failed = await owner.runner(state).run_turn("Change my drink.", execute=update)
+            # Only the index publication of the committed write failed; the callback itself did not.
+            assert failures(failed) == [("tool-index", "IndexPublicationFailure")]
+            assert failed.memory_writes_committed and failed.index_status == "failed"
+            changed, found = observed["changed"], observed["found"]
+            assert changed["status"] == "ok" and changed["afterWriteError"] == "unable to open database file"
+            assert found["stale"] is True and found["warning"] == STALE_WARNING and found["action"] == STALE_ACTION
+            assert found["results"][0]["snippet"] == f"- {old}\n"
+            assert new in (root / "MEMORY.md").read_text(encoding="utf-8")
+            assert owner.store.lifecycle_snapshot()["memoryScopeSyncFailure"] == {
+                "error": "unable to open database file", "paths": None}
+            journal.unlink()
+            # The next admission republishes the memory scope; the report ends with it.
+            recovered = await owner.runner(state).run_turn("What do I drink?", execute=read)
+            assert failures(recovered) == [] and recovered.ready
+            current = observed["current"]
+            assert "stale" not in current and "warning" not in current and "action" not in current
+            assert current["results"][0]["snippet"] == f"- {new}\n"
+            assert "lastSyncError" not in owner.store.status()
+        finally:
+            await owner.aclose()
+
+    asyncio.run(scenario())
+
+
+def test_path_limited_failure_across_both_corpora_is_retained_for_the_whole_memory_corpus(tmp_path):
+    config, workspace, store = _owner(tmp_path, text="The first drink is cedar tea.\n")
+    first = "memory/2026-11-09.md"
+    _search(config, store, "drink")
+    (workspace.root / first).write_text("The first drink is birch coffee.\n", encoding="utf-8")
+    journal = _block_index_publication(tmp_path)
+    with pytest.raises(sqlite3.OperationalError):
+        store.reindex_sources(workspace, sources={"memory", "sessions"}, paths=[first, "sessions/main/absent.jsonl"])
+    # The selection does not say which paths are memory files, so no path set is retained
+    # that a later sessions-only publication could never settle.
+    assert store.lifecycle_snapshot()["memoryScopeSyncFailure"] == {
+        "error": "unable to open database file", "paths": None}
+    journal.unlink()
+    assert store.reindex_sources(workspace, sources={"memory"}, paths=[first]) == 1
+    assert store.status()["lastSyncError"] == "unable to open database file"
+    assert store.reindex_sources(workspace, sources={"memory"}) == 1
+    assert "lastSyncError" not in store.status() and "stale" not in _search(config, store, "drink")
+
+
+def test_interrupted_memory_scope_publication_is_retained_like_a_failed_one(tmp_path, monkeypatch):
+    config, workspace, store = _owner(tmp_path, text="Cedar source remains on disk.\n")
+    _search(config, store)
+
+    def labelled_interrupt(self, selected, *, sources, paths=None, force_sources=False):
+        raise KeyboardInterrupt("labelled interrupt fixture")
+
+    with monkeypatch.context() as patched:
+        patched.setattr(SQLiteMemoryStore, "reindex_sources", labelled_interrupt)
+        with pytest.raises(KeyboardInterrupt):
+            store.reindex_sources(workspace, sources=["memory"])
+    assert store.status()["lastSyncError"] == "labelled interrupt fixture"
+    assert store.reindex_sources(workspace, sources=["memory"]) == 1
+    assert "lastSyncError" not in store.status()

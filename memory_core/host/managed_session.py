@@ -157,8 +157,14 @@ class ManagedHostSession:
 
     def publication_status(self) -> dict[str, Any]:
         controller = self.controller.status()
+        # The public kit/curator can publish outside a runner turn, so no
+        # durable turn marker is guaranteed to describe a retained failure.
+        # The read-only lifecycle receipt remains available after close.
+        publication = self.store.lifecycle_snapshot()
         entries = self.catalog.snapshot().entries.values()
-        memory_pending = self.store.index_identity()["status"] != "valid"
+        memory_pending = (self.store.index_identity()["status"] != "valid"
+                          or publication["lastSyncError"] is not None
+                          or publication.get("memoryScopeSyncFailure") is not None)
         session_dirty = False
         for entry in entries:
             state = entry.get("sdkHostLifecycle", {})

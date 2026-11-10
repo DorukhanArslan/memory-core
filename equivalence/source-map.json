@@ -494,7 +494,7 @@
           "path": "memory_core/index/sqlite_store.py",
           "symbol": "SQLiteMemoryStore._prepare_source_chunks",
           "anchor": "    def _prepare_source_chunks(entry: IndexSourceSnapshot, tokens: int, overlap: int) -> list[MemoryChunk]:",
-          "line": 880
+          "line": 885
         }
       ],
       "implementation": "present",
@@ -592,7 +592,7 @@
           "path": "memory_core/index/sqlite_store.py",
           "symbol": "SQLiteMemoryStore._prepare_source_chunks",
           "anchor": "    def _prepare_source_chunks(entry: IndexSourceSnapshot, tokens: int, overlap: int) -> list[MemoryChunk]:",
-          "line": 880
+          "line": 885
         },
         {
           "path": "memory_core/index/preparation.py",
@@ -628,7 +628,7 @@
           "path": "memory_core/index/sqlite_store.py",
           "symbol": "SQLiteMemoryStore._reindex_locked",
           "anchor": "    def _reindex_locked(",
-          "line": 583
+          "line": 588
         },
         {
           "path": "memory_core/client.py",
@@ -938,7 +938,7 @@
           "path": "memory_core/index/sqlite_store.py",
           "symbol": "SQLiteMemoryStore.search",
           "anchor": "    def search(",
-          "line": 929
+          "line": 934
         },
         {
           "path": "memory_core/tools/memory_search.py",
@@ -1015,7 +1015,7 @@
           "path": "memory_core/index/sqlite_store.py",
           "symbol": "SQLiteMemoryStore.search_vector_candidates",
           "anchor": "    def search_vector_candidates(",
-          "line": 1111
+          "line": 1116
         },
         {
           "path": "memory_core/index/vector.py",
@@ -1033,7 +1033,7 @@
           "path": "memory_core/index/sqlite_store.py",
           "symbol": "SQLiteMemoryStore._search_candidates",
           "anchor": "    def _search_candidates(",
-          "line": 1241
+          "line": 1246
         }
       ],
       "implementation": "present",
@@ -1153,7 +1153,7 @@
           "path": "memory_core/index/sqlite_store.py",
           "symbol": "SQLiteMemoryStore.search_path_candidates",
           "anchor": "    def search_path_candidates(",
-          "line": 1589
+          "line": 1594
         },
         {
           "path": "memory_core/index/keyword_search.py",
@@ -1360,13 +1360,13 @@
           "path": "memory_core/index/sqlite_store.py",
           "symbol": "SQLiteMemoryStore.attach_recall_metadata",
           "anchor": "    def attach_recall_metadata(",
-          "line": 1057
+          "line": 1062
         },
         {
           "path": "memory_core/index/sqlite_store.py",
           "symbol": "SQLiteMemoryStore.read_recall_metadata",
           "anchor": "    def read_recall_metadata(",
-          "line": 1027
+          "line": 1032
         },
         {
           "path": "memory_core/index/hybrid.py",
@@ -1384,13 +1384,13 @@
           "path": "memory_core/index/sqlite_store.py",
           "symbol": "SQLiteMemoryStore._finalize_keyword_only",
           "anchor": "    def _finalize_keyword_only(",
-          "line": 1426
+          "line": 1431
         },
         {
           "path": "memory_core/index/sqlite_store.py",
           "symbol": "SQLiteMemoryStore.search",
           "anchor": "    def search(",
-          "line": 929
+          "line": 934
         },
         {
           "path": "memory_core/client.py",
@@ -1975,7 +1975,7 @@
           "path": "memory_core/index/sqlite_store.py",
           "symbol": "SQLiteMemoryStore._search_candidates",
           "anchor": "    def _search_candidates(",
-          "line": 1241
+          "line": 1246
         },
         {
           "path": "memory_core/tools/memory_get.py",
@@ -5247,11 +5247,33 @@
           "symbol": "SubjectMemory",
           "anchor": "class SubjectMemory:",
           "line": 390
+        },
+        {
+          "path": "memory_core/host/managed_session.py",
+          "symbol": "ManagedHostSession",
+          "anchor": "class ManagedHostSession:",
+          "line": 44
+        },
+        {
+          "path": "memory_core/host/managed_index.py",
+          "symbol": "ManagedSQLiteMemoryStore.reindex",
+          "anchor": "    def reindex(",
+          "line": 212
+        },
+        {
+          "path": "memory_core/tools/memory_search.py",
+          "symbol": "stale index report",
+          "anchor": "\"warning\": f\"Memory index is stale: {sync_error}. Search results may be incomplete.\",",
+          "line": 790
         }
       ],
       "implementation": "partial",
       "notes": [
-        "Curated replacement and subject routing exist; curation is a Python extension, not a native identical API. A host-level updated-fact/isolation run must compare authoritative source results and distinguish committed writes from failed index refresh."
+        "Curated replacement and subject routing exist; curation is a Python extension, not a native identical API.",
+        "The closed four-literal host update family runs the host-level comparison across two host processes and two agents. The original coding write/edit tools and the SDK curated-memory tools are declared producers; the resulting source bytes, explicit publication outcomes and every later memory_search/memory_get result are compared, including a real hard-link write refusal and a real unusable publication sidecar. In the publication-failure literal both engines' explicit forced publication fails (SDK: ManagedHostSession.reindex through ManagedSQLiteMemoryStore.reindex), the next search reports the stale index, and the current source read returns the committed text. A positive control shows that the superseded query finds the entry before the update.",
+        "The SDK also reports a failed scoped after-write refresh (ManagedSQLiteMemoryStore.reindex_sources) as stale. In that literal the scoped refresh has already failed with the same error when the compared read runs, so the comparison cannot attribute the report to either record; the scoped report is unit-tested only and carries no equivalence claim.",
+        "Not compared: the write tools' own call shapes and results, automatic synchronization (an explicit forced publication precedes every compared read), agent scope resolution (the SDK host adapter opens one owner per agent) and source timestamp changes.",
+        "SubjectMemory routing and consolidateMemory are not executed by that family; consolidateMemory needs a model completion and is authenticated only."
       ],
       "acceptancePoints": [
         "host.update-isolation.outcomes",

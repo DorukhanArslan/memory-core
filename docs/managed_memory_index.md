@@ -47,6 +47,29 @@ not replay the old notice. A valid empty index can scan current sources without
 inventing another full-rebuild notice. A newer incompatible identity is left
 unchanged. Failed real repair is retained until an explicit refresh succeeds.
 
+A failed memory-scope `reindex_sources` publication is retained separately. The
+index is then behind its committed source, so `status()` reports the real error
+as `lastSyncError` (a failed whole reindex takes precedence) and the search tool
+marks results `stale` with that error and its rebuild guidance. The report ends
+when the failed selection publishes: a memory publication with `paths=None`,
+path-limited memory publications that together cover the failed paths, or a
+whole `reindex`. Requests refused before any publication (argument errors, an
+index that needs a full reindex) are not retained, and sessions-only
+publications neither set nor settle it. Unlike a failed whole reindex, it does
+not pause automatic preparation. `lifecycle_snapshot()` keeps `lastSyncError`
+for whole reindexes and adds `memoryScopeSyncFailure` (`error`, `paths`) only
+while such a failure is retained. A path-limited failure that selected both
+corpora is retained for the whole memory corpus.
+
+Both retained failures live in the store instance. They are not persisted, so
+a reopened store starts without them even if the index is still behind; the
+managed session's durable `needsMemoryIndex` then repairs it at that session's
+next admission. A refused selected publication is not retained either. One
+such case is an index last published for another workspace root: the write
+result's `afterWriteError` and the managed turn outcome report it, and search
+does not. This report is Python behavior covered by unit tests; no differential
+comparison with OpenClaw establishes it.
+
 `status()` reads actual published SQL state. `lifecycle_snapshot()` returns
 bounded operation/repair journals, totals, truncation indicators and close
 state. The typed `search` signature and original SQLite results/errors are

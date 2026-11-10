@@ -385,6 +385,10 @@ class ManagedSQLiteMemoryStore(SQLiteMemoryStore):
         ``reindex``. Refused requests (argument errors, an index that needs a
         full reindex) attempted no publication and are not retained. Sessions-only
         publications neither set nor settle it; they keep their controller receipt.
+        A sessions-only refresh over a separate durable catalog reserves its
+        source generation through publication. Mixed scopes, process-memory
+        catalogs and a catalog sharing the index database retain strict source
+        validation without that reservation.
         """
         with self._operation("reindex-sources") as operation:
             self._assert_workspace(workspace)
@@ -394,15 +398,22 @@ class ManagedSQLiteMemoryStore(SQLiteMemoryStore):
             selection = self._validated_source_selection(workspace, sources, paths, force_sources)
             # As in ``reindex``, the outcome is recorded under the publisher's guard.
             with workspace_index_lock(workspace.root):
+                reservation = None
                 try:
-                    result = super().reindex_sources(workspace, sources=selection.sources,
-                                                     paths=selection.paths, force_sources=force_sources)
+                    with self._session_source_reservation(selection.sources) as reservation:
+                        if reservation is not None:
+                            self._update(operation, catalogSourceReservation=deepcopy(reservation))
+                        result = super().reindex_sources(workspace, sources=selection.sources,
+                                                         paths=selection.paths, force_sources=force_sources)
                 except MemoryIndexRequiresFullReindexError:
                     raise
                 except BaseException as error:
                     # As in ``reindex``: an interrupted publication also leaves the index behind.
                     self._settle_memory_scope(selection.sources, selection.paths, error)
                     raise
+                finally:
+                    if reservation is not None:
+                        self._update(operation, catalogSourceReservation=deepcopy(reservation))
                 self._settle_memory_scope(selection.sources, selection.paths, None)
                 if "memory" in selection.sources:
                     # Background admissions select the complete memory corpus;
@@ -412,6 +423,40 @@ class ManagedSQLiteMemoryStore(SQLiteMemoryStore):
                     self._refresh_memory_dirty()
             self._update(operation, returned=result, revisionAfter=self.index_revision())
             return result
+
+    @contextmanager
+    def _session_source_reservation(self, sources: frozenset[str]) -> Iterator[dict[str, Any] | None]:
+        catalog = self._bound_catalog
+        if "sessions" not in sources or catalog is None:
+            yield None
+            return
+        if sources != frozenset({"sessions"}):
+            # Memory publication may consult a lazily created trust ledger in
+            # the catalog database. Keep that broader scope on its existing
+            # strict source validation rather than reserving its own writer.
+            yield {"catalogPath": str(catalog.path), "agentId": catalog.agent_id,
+                   "mode": "strict-source-validation", "acquired": False,
+                   "reason": "mixed-source-selection", "released": True}
+            return
+        # A reservation on the index's own physical database would prevent its
+        # separate publisher connection from writing. Preserve strict optimistic
+        # validation for that layout, including aliases of the same inode.
+        same_database = False
+        if catalog._memory_uri is None:
+            same_database = catalog.path == self.path
+            if not same_database:
+                try:
+                    same_database = catalog.path.samefile(self.path)
+                except FileNotFoundError:
+                    pass
+        if same_database or catalog._memory_uri is not None:
+            yield {"catalogPath": str(catalog.path), "agentId": catalog.agent_id,
+                   "mode": "strict-source-validation", "acquired": False,
+                   "reason": ("catalog-and-index-share-physical-database" if same_database else
+                              "process-memory-catalog"), "released": True}
+            return
+        with catalog._reserve_index_sources() as reservation:
+            yield reservation
 
     def _settle_memory_scope(self, sources: frozenset[str], paths: frozenset[str] | None,
                              error: BaseException | None) -> None:

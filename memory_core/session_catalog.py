@@ -8,8 +8,8 @@ guessing ownership or reset state from transcript filenames.
 from __future__ import annotations
 
 from collections import deque
-from collections.abc import Callable, Mapping, Sequence
-from contextlib import closing
+from collections.abc import Callable, Iterator, Mapping, Sequence
+from contextlib import closing, contextmanager
 from dataclasses import dataclass, field as dataclass_field
 import json
 import hashlib
@@ -380,6 +380,7 @@ class MemorySessionCatalog:
         self._catalog_owner_path = self.path
         self._memory_uri: str | None = None
         self._memory_lock: Any = None
+        self._index_source_local = threading.local()
         self._listener_identity: tuple[int, str, str, str] | None = None
         self._listeners: _TranscriptListeners | None = None
         self._initialize_schema()
@@ -553,6 +554,44 @@ class MemorySessionCatalog:
             db = sqlite3.connect(self.path, timeout=30)
         db.row_factory = sqlite3.Row
         return db
+
+    @contextmanager
+    def _reserve_index_sources(self) -> Iterator[dict[str, Any]]:
+        """Reserve coherent catalog sources without changing a catalog row.
+
+        A separate index publisher holds its workspace publication guard first.
+        Reserving SQLite's writer slot lets its ordinary independent source
+        readers observe one committed catalog generation through preparation,
+        validation and publication. Other writers commit after this reservation
+        is released and retain their own postcommit publication notifications.
+        The publisher must perform only catalog reads inside this context, and
+        its index must live in a different physical database.
+        """
+        if getattr(self._index_source_local, "active", False):
+            raise RuntimeError("A catalog index source reservation is already active on this thread")
+        with closing(self._connect()) as db:
+            db.execute("BEGIN IMMEDIATE")
+            revision = db.execute(
+                "SELECT revision FROM memory_session_catalog_state WHERE agent=?", (self.agent_id,),
+            ).fetchone()[0]
+            receipt = {"catalogPath": str(self.path), "agentId": self.agent_id,
+                       "mode": "sqlite-writer-reservation", "acquired": db.in_transaction,
+                       "catalogRevisionBefore": revision, "released": False}
+            try:
+                self._index_source_local.active = True
+                yield receipt
+            finally:
+                try:
+                    receipt["catalogRevisionAfter"] = db.execute(
+                        "SELECT revision FROM memory_session_catalog_state WHERE agent=?", (self.agent_id,),
+                    ).fetchone()[0]
+                    receipt["catalogChanges"] = db.total_changes
+                finally:
+                    try:
+                        db.rollback()
+                    finally:
+                        self._index_source_local.active = False
+                        receipt["released"] = not db.in_transaction
 
     def _process_catalog(self, agent: str, *, create: bool = False) -> MemorySessionCatalog | None:
         identity = (os.getpid(), str(self._catalog_owner_path), agent)

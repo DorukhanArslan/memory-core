@@ -15,6 +15,9 @@ from equivalence.host_turn_barrier_boundaries import (
     CASE_HASHES as BOUNDARY_HASHES, OPERATION as BOUNDARY_OPERATION,
     build_cases as build_boundary_cases, validate_registration as validate_boundary_registration,
 )
+from equivalence.index_identity_boundaries import (
+    OPERATION as IDENTITY_OPERATION, validate_registration as validate_identity_registration,
+)
 
 
 ROOT = Path(__file__).resolve().parents[2]
@@ -33,7 +36,10 @@ def _matched_rows():
 
 
 def test_catalog_adds_exactly_the_four_frozen_outcomes_without_changing_prior_1411_literals():
-    catalog = build_catalog()
+    registered = build_catalog()
+    validate_identity_registration(registered)
+    catalog = [case for case in registered if case["operation"] != IDENTITY_OPERATION]
+    assert registered[:len(catalog)] == catalog
     family = [case for case in catalog if case["operation"] == OPERATION]
     assert family == build_cases()
     assert len(family) == len(CASE_HASHES) == 4

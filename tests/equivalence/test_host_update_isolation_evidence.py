@@ -1227,6 +1227,7 @@ NATIVE_RUNTIME = "borrowed another runtime location"
 NATIVE_OWNERS = "Both original owners must resolve their source policy"
 NATIVE_POLICY = "original resolver used another source policy or database"
 NATIVE_SYNC = "no longer resolves its automatic synchronization as enabled"
+NATIVE_RANKING = "no longer resolves its declared query limits or its ranking defaults"
 NATIVE_SCOPE = "another identity, agent or store than declared"
 NATIVE_FRESH = "declared fresh session inherited earlier history"
 NATIVE_COMMITS = "did not commit exactly this session's own loop messages"
@@ -1326,6 +1327,11 @@ def _native_attack(name, case, raw, result):  # noqa: C901 - one flat catalogue 
     elif name in ("search-sync-resolved-disabled", "watch-sync-resolved-disabled"):
         key = "onSearch" if name.startswith("search") else "watch"
         first["resolvedMemorySearch"][0]["config"]["sync"][key] = False
+    elif name in ("temporal-decay-resolved-disabled", "mmr-resolved-disabled"):
+        key = "temporalDecay" if name.startswith("temporal") else "mmr"
+        second["resolvedMemorySearch"][1]["config"]["query"]["hybrid"][key]["enabled"] = False
+    elif name == "query-limit-resolved-changed":
+        first["resolvedMemorySearch"][0]["config"]["query"]["maxResults"] = 6
     # --- sessions and first model inputs
     elif name == "read-session-removed":
         for key in ("sessions", "loops", "toolFactoryCalls"):
@@ -1754,6 +1760,8 @@ NATIVE_CUSTODY_ATTACKS = [
     (ASCII, "one-owner-resolved", NATIVE_OWNERS), (ASCII, "sessions-source-resolved", NATIVE_POLICY),
     (ASCII, "session-memory-resolved", NATIVE_POLICY), (ASCII, "owners-share-one-database", NATIVE_POLICY),
     (ASCII, "search-sync-resolved-disabled", NATIVE_SYNC), (PUBLICATION, "watch-sync-resolved-disabled", NATIVE_SYNC),
+    (ASCII, "temporal-decay-resolved-disabled", NATIVE_RANKING), (UNICODE, "mmr-resolved-disabled", NATIVE_RANKING),
+    (REFUSAL, "query-limit-resolved-changed", NATIVE_RANKING),
     (ASCII, "read-session-removed", SESSIONS), (ASCII, "session-identity-reassigned", NATIVE_SCOPE),
     (ASCII, "session-on-other-agent", NATIVE_SCOPE),
     (ASCII, "inherited-messages", NATIVE_FRESH), (ASCII, "persisted-history", NATIVE_FRESH),

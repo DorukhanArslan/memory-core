@@ -50,6 +50,10 @@ Limits that a reader must not infer past:
 * The pinned original resolves on-search and watch synchronization as enabled
   whatever is configured, and the guard requires that resolved state. Only the
   explicit publications are bound here and compared.
+* The pinned original also resolves hybrid temporal decay and MMR as enabled,
+  and the guard requires that state too. The SDK owner runs with temporal decay
+  off. ``MEMORY.md`` is an undated source that the original does not decay and
+  every compared search has at most one hit, so ranking is not exercised here.
 * That a host's process input carries no fact outside its own phase is a
   property of the frozen literal, which the exact request check then enforces.
 * The original prints the refused path through a helper that replaces its
@@ -389,6 +393,10 @@ def _native_phase(case, raw, record, phase, public, ordinal, plan, tokens):
                 "The original resolver used another source policy or database")
         require(all(config["sync"][key] is True for key in ("onSessionStart", "onSearch", "watch")),
                 "The pinned original no longer resolves its automatic synchronization as enabled")
+        query = config["query"]
+        require(query["maxResults"] == SEARCH_OPTIONS["maxResults"] and query["minScore"] == SEARCH_OPTIONS["minScore"]
+                and query["hybrid"]["temporalDecay"]["enabled"] is True and query["hybrid"]["mmr"]["enabled"] is True,
+                "The pinned original no longer resolves its declared query limits or its ranking defaults")
 
     sessions, loops, factories = phase["sessions"], phase["loops"], phase["toolFactoryCalls"]
     labels = [item["session"] for item in plan]

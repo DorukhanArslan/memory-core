@@ -98,6 +98,12 @@ def prepare_host_update_isolation_bindings(checkout: Path, runtime_root: Path) -
             "Agent scope resolution. The original resolves each agent's workspace from its configuration; on the "
             "SDK the host adapter opens one owner per agent on separate workspace and index paths.",
             "A change of the source timestamp: it is set to the same instant before and after the update.",
+            "Prompt assembly. The SDK host's system prompt embeds the agent's own MEMORY.md as project context; "
+            "the original actor drives a bare agent loop with an empty system prompt. Replies on both engines "
+            "are scripted from the tool results.",
+            "Ranking. Every compared search has at most one hit. The pinned original resolves hybrid temporal "
+            "decay and MMR as enabled whatever is configured, while the SDK owner runs with temporal decay off; "
+            "MEMORY.md is an undated source that the original does not decay.",
             "SubjectMemory routing, consolidateMemory, the sessions corpus and any embedding provider.",
         ],
         "consolidateMemoryExecuted": False,

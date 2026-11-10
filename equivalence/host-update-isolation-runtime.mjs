@@ -32,10 +32,11 @@ export async function runHostUpdateIsolationRuntime(input, runtimeConfig) {
     memory: { citations: "off", search: {
       enabled: true, provider: "none", fallback: "none", sources: [...policy.configuredSources],
       store: { vector: { enabled: false } },
-      // No sync block: the pinned release resolves session-start, on-search and watch
-      // synchronization as enabled whatever is configured. The custody guard requires
-      // that resolved state, and only the explicit publications are compared.
-      query: { maxResults: 5, minScore: 0, hybrid: { temporalDecay: { enabled: false } } },
+      // No sync or hybrid block: the pinned release resolves session-start, on-search and
+      // watch synchronization, hybrid temporal decay and MMR as enabled whatever is
+      // configured. The custody guard requires that resolved state. Only the explicit
+      // publications are compared, and no compared search has more than one hit.
+      query: { maxResults: 5, minScore: 0 },
       rememberAcrossConversations: policy.rememberAcrossConversations,
       experimental: { sessionMemory: policy.configuredSessionMemory },
     } },

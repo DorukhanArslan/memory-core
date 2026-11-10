@@ -76,4 +76,6 @@ jobs:
         with:
           name: memory-equivalence-results
           path: .equivalence-results/*.json
+          # The reports live in a dot-directory, which this action skips unless told otherwise.
+          include-hidden-files: true
           if-no-files-found: ignore

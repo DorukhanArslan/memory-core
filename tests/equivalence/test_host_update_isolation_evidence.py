@@ -18,7 +18,8 @@ import equivalence.host_update_isolation_evidence as evidence
 from equivalence.host_restart_session import build_cases as restart_cases
 from equivalence.host_update_isolation import build_cases
 from equivalence.host_update_isolation_evidence import (
-    EMPTY_ANSWER, STALE_ERROR, expected_sources, saved_tokens, validate_capture, validate_pair, validate_result,
+    EMPTY_ANSWER, STALE_ERROR, expected_sources, native_refusal_names_source, saved_tokens, validate_capture,
+    validate_pair, validate_result,
 )
 from equivalence.host_update_isolation_sdk import run_host_update_isolation
 
@@ -1677,6 +1678,22 @@ def _native_attack(name, case, raw, result):  # noqa: C901 - one flat catalogue 
     elif name == "refusal-flag-hidden-from-model":
         for shown in _native_shown(updater, "edit"):
             shown["isError"] = False
+    elif name in ("refusal-shortened-for-another-file", "refusal-shortened-under-two-homes",
+                  "refusal-half-shortened", "refusal-shortened-with-trailing-text"):
+        workspace = raw["fixtureBase"] + "/workspace"
+        home, other = workspace.rsplit("/", 3)[0], workspace.rsplit("/", 2)[0]
+        root = "~" + workspace[len(home):]
+        source = root + "/" + value["source"]
+        if name == "refusal-shortened-for-another-file":
+            source = root + "/USER.md"
+        elif name == "refusal-shortened-under-two-homes":
+            source = "~" + workspace[len(other):] + "/" + value["source"]
+        elif name == "refusal-half-shortened":
+            source = workspace + "/" + value["source"]
+        else:
+            source += " and another file"
+        _native_reason(updater, "edit", f"Hardlinked path is not allowed under sandbox root ({root}): {source}",
+                       failed=True)
     elif name == "refusal-other-cause-same-path":
         _native_reason(updater, "edit", f"Could not find the exact text in {value['source']} at "
                        f"{raw['fixtureBase']}/workspace/{value['source']}", failed=True)
@@ -1824,6 +1841,10 @@ NATIVE_CUSTODY_ATTACKS = [
     (ASCII, "producer-dispatched-another-tool", NATIVE_PRODUCER),
     (ASCII, "producer-result-shown-twice", NATIVE_SHOWN), (REFUSAL, "refusal-flag-hidden-from-model", NATIVE_SHOWN),
     (REFUSAL, "refusal-other-cause-same-path", NATIVE_REFUSED),
+    (REFUSAL, "refusal-shortened-for-another-file", NATIVE_REFUSED),
+    (REFUSAL, "refusal-shortened-under-two-homes", NATIVE_REFUSED),
+    (REFUSAL, "refusal-half-shortened", NATIVE_REFUSED),
+    (REFUSAL, "refusal-shortened-with-trailing-text", NATIVE_REFUSED),
     (ASCII, "publication-other-operation", NATIVE_FORCED), (ASCII, "publication-other-workspace", NATIVE_FORCED),
     (ASCII, "final-publication-status-still-failed", NATIVE_PUBLISHED),
     (REFUSAL, "link-stages-relabelled", LINK_WINDOW), (REFUSAL, "link-other-operation", LINK_WINDOW),
@@ -1887,6 +1908,19 @@ def test_original_guard_refuses_each_custody_substitution_for_its_own_reason(nat
         validate_capture(case, raw, result, native=True)
 
 
+@pytest.mark.parametrize("levels", [1, 3, 6])
+def test_original_refusal_shown_relative_to_the_process_home_is_the_same_declared_cause(native_captures, levels):
+    """A hosted runner checks the repository out below its home, and the release then prints ``~``."""
+    case, original, public = native_captures[REFUSAL]
+    raw = deepcopy(original)
+    workspace = raw["fixtureBase"] + "/workspace"
+    shown = "~" + workspace[len(workspace.rsplit("/", levels)[0]):]
+    _native_reason(_loop(raw, UPDATE, "updater"), "edit",
+                   f"Hardlinked path is not allowed under sandbox root ({shown}): {shown}/MEMORY.md", failed=True)
+    _seal(raw, True)
+    assert validate_capture(case, raw, public, native=True) is True
+
+
 def test_an_original_capture_without_its_receipts_is_refused_rather_than_trusted(native_captures):
     case, original, public = native_captures[ASCII]
     for key in ("sessions", "loops", "toolFactoryCalls", "toolOutcomes", "sourceMetadataSetup", "publications",
@@ -1903,3 +1937,38 @@ def test_original_capture_cannot_pass_as_the_sdk_capture(native_captures):
     case, raw, result = native_captures[ASCII]
     with pytest.raises(ValueError):
         validate_capture(case, raw, result, native=False)
+
+
+WORKSPACE = ("/home/runner/work/memory-core/memory-core/.equivalence-results/host-update-isolation/"
+             "attempt-labelled/case/evidence/native-host-update-AbCdEf/workspace")
+REFUSAL_TEXT = "Hardlinked path is not allowed under sandbox root"
+
+
+def _shown(home, path=WORKSPACE):
+    return "~" + path[len(home):]
+
+
+@pytest.mark.parametrize("home", [None, "/home/runner", "/home", WORKSPACE.rsplit("/", 1)[0], ""])
+def test_refusal_cause_accepts_the_absolute_and_the_home_relative_spelling_of_the_same_paths(home):
+    root = WORKSPACE if home is None else _shown(home)
+    assert native_refusal_names_source(f"{REFUSAL_TEXT} ({root}): {root}/MEMORY.md", WORKSPACE) is True
+
+
+@pytest.mark.parametrize("reason", [
+    f"{REFUSAL_TEXT} ({WORKSPACE}): {WORKSPACE}/USER.md",
+    f"{REFUSAL_TEXT} ({WORKSPACE}-other): {WORKSPACE}-other/MEMORY.md",
+    f"{REFUSAL_TEXT} ({_shown('/home/runner')}): {_shown('/home/runner')}/USER.md",
+    f"{REFUSAL_TEXT} ({_shown('/home/runner')}): {_shown('/home')}/MEMORY.md",
+    f"{REFUSAL_TEXT} ({_shown('/home/runner')}): {WORKSPACE}/MEMORY.md",
+    f"{REFUSAL_TEXT} ({WORKSPACE}): {_shown('/home/runner')}/MEMORY.md",
+    f"{REFUSAL_TEXT} ({_shown('/home/run')}): {_shown('/home/run')}/MEMORY.md",
+    f"{REFUSAL_TEXT} (~/another/workspace): ~/another/workspace/MEMORY.md",
+    f"{REFUSAL_TEXT} (~): ~/MEMORY.md",
+    f"{REFUSAL_TEXT} (~/): ~//MEMORY.md",
+    f"{REFUSAL_TEXT} ({WORKSPACE}): {WORKSPACE}/MEMORY.md and more",
+    f"Note: {REFUSAL_TEXT} ({WORKSPACE}): {WORKSPACE}/MEMORY.md",
+    f"Could not find the exact text in {WORKSPACE}/MEMORY.md",
+    "", None,
+])
+def test_refusal_cause_rejects_other_files_roots_homes_and_causes(reason):
+    assert native_refusal_names_source(reason, WORKSPACE) is False

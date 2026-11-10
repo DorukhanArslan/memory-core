@@ -52,6 +52,10 @@ Limits that a reader must not infer past:
   explicit publications are bound here and compared.
 * That a host's process input carries no fact outside its own phase is a
   property of the frozen literal, which the exact request check then enforces.
+* The original prints the refused path through a helper that replaces its
+  process's home directory by ``~`` when the fixture lies below it, as in a
+  checkout under a hosted runner's home. The guard accepts that spelling as the
+  same absolute path. No compared field carries an absolute path.
 """
 from __future__ import annotations
 
@@ -325,6 +329,26 @@ def _own_corpus(indexed, current, tokens):
             "A published index holds another agent's fact or does not reflect its own current source")
 
 
+def native_refusal_names_source(reason, workspace):
+    """Whether the original's hard-link refusal names exactly this workspace and its source.
+
+    The release prints both paths through one helper. It replaces the home directory of
+    its process by ``~`` when a path lies below it, and leaves other paths absolute.
+    Either spelling of the whole message is the declared cause; nothing else is.
+    """
+    source = f"{workspace}/{SOURCE}"
+    if reason == f"{NATIVE_REFUSAL} ({workspace}): {source}":
+        return True
+    opening, closing = f"{NATIVE_REFUSAL} (~", "): ~"
+    if not isinstance(reason, str) or not reason.startswith(opening + "/") or closing not in reason:
+        return False
+    below_home, _, shown = reason[len(opening):].partition(closing)
+    # One home directory, an ancestor of the workspace, was replaced in both paths.
+    home = workspace[:-len(below_home)]
+    return (shown == f"{below_home}/{SOURCE}" and workspace.endswith(below_home)
+            and (home == "" or home.startswith("/") and not home.endswith("/")))
+
+
 def _public_publications(records):
     return [{"agentId": entry["agentId"], "stage": entry["stage"], "failed": entry["failed"],
              "error": entry["error"]["message"] if entry["failed"] else None} for entry in records]
@@ -440,8 +464,7 @@ def _native_phase(case, raw, record, phase, public, ordinal, plan, tokens):
                 and event["isError"] is refused and _text(assistant) == public["update"]["answer"],
                 "The original edit dispatch differs from the declared update or its outcome")
         if refused:
-            reason = _text(event["result"])
-            require(NATIVE_REFUSAL in reason and f"{workspace[agent]}/{SOURCE}" in reason,
+            require(native_refusal_names_source(_text(event["result"]), workspace[agent]),
                     "The original refusal is not the declared hard-link refusal of this source")
         else:
             require(event["result"]["details"].get("changed") is True, "The original edit reported no committed change")

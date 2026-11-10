@@ -232,18 +232,29 @@ def _published_sources(row, sources, *, native, initial_sources=None):
         own = [item for item in chunks if item["path"] == source["path"]]
         require(source["hash"] == hashlib.sha256(data).hexdigest()
                 and _same(source["size"], len(data)) and source["mtime"] in valid_mtimes
-                and own and (native or _same(source["chunk_count"], len(own))),
+                and len(own) == 1 and (native or _same(source["chunk_count"], len(own))),
                 "query-sync completed source SQL fingerprint/count is detached from actual bytes")
         for chunk in own:
             require(chunk["source"] == "memory" and isinstance(chunk["text"], str)
-                    and chunk["text"] and chunk["text"].strip() in text
+                    and chunk["text"] == text
                     and type(chunk["start_line"]) is int and type(chunk["end_line"]) is int
-                    and 0 < chunk["start_line"] <= chunk["end_line"],
+                    and chunk["start_line"] == 1 and chunk["end_line"] == len(text.split("\n")),
                     "query-sync completed SQL chunk text/range lost its source")
             detail = chunk if native else _one(tables["memory_index_chunk_details"],
                         lambda item: item["chunk_id"] == chunk["id"], "chunk lost its real details")
             require(detail["hash"] == hashlib.sha256(chunk["text"].encode()).hexdigest()
                     and detail["model"] == "fts-only", "query-sync chunk hash/model was reassigned")
+            provenance = _one(tables["memory_index_chunk_provenance"],
+                              lambda item: item["chunk_id"] == chunk["id"],
+                              "published chunk lost complete source provenance")
+            recall = _one(tables["memory_index_chunk_recall_metadata"],
+                          lambda item: item["chunk_id"] == chunk["id"],
+                          "published chunk lost complete recall metadata")
+            require(_same(provenance, {"chunk_id": chunk["id"], "origin_class": "agent",
+                        "session_kind": "unknown", "observed_at": source["mtime"], "supersedes_key": None})
+                    and _same(recall, {"chunk_id": chunk["id"], "importance": None,
+                                      "triggers": None, "project_key": None}),
+                    "query-sync published source provenance/recall values changed independently of actual source")
     require(all(item["path"] in expected for item in chunks)
             and len({item["id"] for item in chunks}) == len(chunks),
             "query-sync completed SQL retains removed/duplicate chunks")
@@ -271,7 +282,10 @@ def _published_sources(row, sources, *, native, initial_sources=None):
                     "original published metadata is missing")
     meta = json.loads(metadata["value"])
     require(meta["provider"] == "none" and meta["model"] == "fts-only"
-            and meta["sources"] in (["memory"], ["memory", "sessions"]),
+            and meta["sources"] == (["memory"] if native else ["memory", "sessions"])
+            and meta["chunkTokens"] == 400 and meta["chunkOverlap"] == 80
+            and meta["chunkingVersion"] == 5 and meta["provenanceVersion"] == 1
+            and meta["ftsTokenizer"] == "unicode61",
             "query-sync original metadata changed provider/model/source ownership")
 
 
@@ -395,6 +409,20 @@ def _snapshot_map(case, raw, events, *, native):
             "query-sync fresh owner acquisition changed its already completed publication")
     if "after-seed" in snapshots:
         _published_sources(snapshots["after-seed"], before, native=native)
+    if native:
+        reads = [call for call in raw["methodCalls"] if call["method"] == "prepareKeywordSearch"
+                 and call["activeTool"] == "reopened"]
+        reopened = _one(raw["snapshots"], lambda row: reads and row.get("methodCallId") == reads[-1]["id"],
+                        "final SQL lost original reopened reader")
+    else:
+        reopened = _one(raw["readAdmissions"], lambda row: row["activeTool"] == "reopened",
+                        "final SQL lost actual reopened pinned transaction")["pinnedSnapshot"]
+    semantic_tables = (["memory_index_chunks", "memory_index_sources"] if native else
+                       ["chunks", "memory_core_index_sources", "memory_index_chunk_details"])
+    semantic_tables += ["memory_index_meta", "memory_index_chunk_provenance", "memory_index_chunk_recall_metadata"]
+    require(all(_same(snapshots["after-final-close"]["tables"][name], reopened["tables"][name])
+                for name in semantic_tables),
+            "query-sync final closed publication differs from actual reopened source/chunk/metadata generation")
     if not native:
         catalogs = [row for row in rows if row["label"] in {"catalog-before", "catalog-after"}]
         require(len(catalogs) == 2 and _same(catalogs[0]["tables"], catalogs[1]["tables"])
@@ -638,6 +666,14 @@ def _sdk_reads(case, raw, result, events, tools):
                     and call["jobAtEntry"]["id"] == call["jobId"]
                     and _same(call["jobAtReturn"], own),
                     "query-sync SDK caught background failure was presented as success")
+            submit = _one(raw["backgroundCalls"], lambda row: row["method"] == "_submit_memory_publication"
+                          and row["ownerId"] == call["ownerId"] and row["enterSeq"] < start
+                          and call["jobId"] not in {job["id"] for job in row["before"]["jobs"]}
+                          and call["jobId"] in {job["id"] for job in row["lifecycleAfter"]["memoryPublication"]["jobs"]},
+                          "SDK actual worker lost its unique original job admission")
+            require(call["jobAtEntry"] == {"id": call["jobId"], "readRevision": submit["readRevision"], "state": "queued"}
+                    and own["readRevision"] == submit["readRevision"],
+                    "query-sync SDK actual publication job detached from its admitted pinned revision")
         else:
             require(call["method"] == "_submit_memory_publication",
                     "query-sync SDK added unreviewed manual publication method")
@@ -997,7 +1033,7 @@ def replay_case(case, directory, *, approved_node=None):
 
 
 # This program only decodes the original Node V8 transport. It imports no engine,
-# evaluates no captured code, opens no fixture, and has no network capability.
+# evaluates no captured code, opens no fixture, and makes no network calls.
 V8_DECODER = r'''
 import {deserialize} from 'node:v8';
 import fs from 'node:fs';
@@ -1142,7 +1178,12 @@ def _native_publication(case, raw, authority):
             continue
         data = dispatch["decodedSerialized"].get("input", {}).get("value")
         if not isinstance(data, dict) or "type" not in data:
+            require(message.get("type") == "open", "query-sync Native actual execute command type was removed")
             continue
+        require(data["type"] in {"database.domain.bind", "database.domain.close", "database.domain.execute",
+                "database.prepareWrite", "database.publish", "pluginState.appendJournal", "pluginState.compareDelete",
+                "pluginState.compareUpdate", "pluginState.lookup", "pluginState.observe", "source.delete", "source.replace",
+                "stage.append", "stage.start"}, "query-sync Native decoded original command type is unreviewed")
         replies = [row for row in raw["workerMessages"] if row["workerId"] == dispatch["workerId"]
                    and row["message"].get("id") == message.get("id")]
         if not replies:
@@ -1157,6 +1198,10 @@ def _native_publication(case, raw, authority):
                 "query-sync Native actual SQL worker rejected or lost a dispatched operation")
         reply = replies[0]
         command = data["input"]["command"] if data["type"] == "database.domain.execute" else data
+        require(command["type"] in {"database.domain.bind", "database.domain.close", "database.prepareWrite", "database.publish",
+                "pluginState.appendJournal", "pluginState.compareDelete", "pluginState.compareUpdate", "pluginState.lookup",
+                "pluginState.observe", "source.delete", "source.replace", "stage.append", "stage.start"},
+                "query-sync Native actual publication command type bypassed reviewed dataflow")
         commands.append((dispatch, command, reply))
     stages = {}
     _, before, after = _expected_sources(case)
@@ -1191,6 +1236,14 @@ def _native_publication(case, raw, authority):
             require(len(stage["fragments"]) == 1 and stage["fragments"][0][0]["returnSeq"] < dispatch["enterSeq"]
                     and stage["replace"] is None, "query-sync Native original replace omitted its actual staged bytes")
             stage["replace"] = dispatch
+        elif typ == "database.publish":
+            index_path = raw["owners"][raw["ownerNames"]["foreground"]]["settings"]["store"]["databasePath"]
+            require(value["sourcePath"].startswith(index_path + ".memory-reindex-")
+                    and value["metaKey"] == "memory_index_meta_v1"
+                    and type(value["expectedRevision"]) is int and value["expectedRevision"] >= 0
+                    and value["sourceHasVectors"] is False and value["vectorIndexComplete"] is True
+                    and value["sourceIdentity"]["device"].isdigit() and value["sourceIdentity"]["inode"].isdigit(),
+                    "query-sync Native original full publication parameters changed staged identity/profile")
         elif typ == "source.delete":
             require(value["source"] == "memory" and value["path"] in before
                     and (value["path"] not in after or before[value["path"]] != after[value["path"]])

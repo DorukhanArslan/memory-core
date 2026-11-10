@@ -380,3 +380,113 @@ def test_no_invented_fresh_first_result_or_samehash_mtime_requirement():
         assert stored["mtime"] == case["input"]["initialSourceMtimeMs"]
         assert real["mtimeMs"] == case["input"]["sourceMutation"]["mtimeMs"]
         assert evidence.validate_capture(case, capture, result, native=native)
+
+
+@pytest.mark.parametrize("attack", ["final-only-provenance", "sentinel-only-provenance", "final-only-recall"])
+def test_unqueried_and_final_sql_metadata_values_remain_source_bound(edit, attack):
+    native, baseline = edit
+    capture = deepcopy(baseline)
+    raw = _raw(capture, native)
+    if attack == "sentinel-only-provenance":
+        rows = _all_sql(raw, native)
+        table = "memory_index_chunks" if native else "chunks"
+        for row in rows:
+            sentinel = next((chunk for chunk in row["tables"][table] if chunk["path"] == "USER.md"), None)
+            if sentinel is not None:
+                provenance = next(item for item in row["tables"]["memory_index_chunk_provenance"]
+                                  if item["chunk_id"] == sentinel["id"])
+                provenance["origin_class"] = "owner"
+                _resnapshot(row)
+    else:
+        row = next(row for row in raw["snapshots"] if row["label"] == "after-final-close")
+        if attack == "final-only-provenance":
+            row["tables"]["memory_index_chunk_provenance"][0]["observed_at"] = 1
+        else:
+            row["tables"]["memory_index_chunk_recall_metadata"][0]["importance"] = 10
+        _resnapshot(row)
+    _reject(capture, native)
+
+
+@pytest.mark.parametrize("attack", ["range", "truncated-text", "chunking-metadata", "metadata-source"])
+def test_final_only_sql_cannot_reassign_small_frozen_chunks_or_identity(edit, attack):
+    native, baseline = edit
+    capture = deepcopy(baseline)
+    raw = _raw(capture, native)
+    row = next(row for row in raw["snapshots"] if row["label"] == "after-final-close")
+    if attack in {"range", "truncated-text"}:
+        chunk = row["tables"]["memory_index_chunks" if native else "chunks"][0]
+        if attack == "range":
+            chunk["start_line"], chunk["end_line"] = 100000, 100001
+        else:
+            chunk["text"] = chunk["text"].split("\n")[0]
+    else:
+        meta = next(item for item in row["tables"]["memory_index_meta"] if item["key"] == "memory_index_meta_v1")
+        value = json.loads(meta["value"])
+        if attack == "chunking-metadata":
+            value["chunkTokens"] = 100
+        else:
+            value["sources"] = ["memory", "sessions"] if native else ["memory"]
+        meta["value"] = json.dumps(value)
+    _resnapshot(row)
+    _reject(capture, native)
+
+
+def test_sdk_coedited_worker_job_revision_cannot_detach_actual_admission():
+    capture = deepcopy(_load(CASES[3], False))
+    raw = _raw(capture, False)
+
+    def forge(value):
+        if isinstance(value, dict):
+            if "id" in value and "state" in value and "readRevision" in value:
+                value["readRevision"] = 999
+            for item in value.values():
+                forge(item)
+        elif isinstance(value, list):
+            for item in value:
+                forge(item)
+    forge(raw)
+    _reject(capture, False)
+
+
+@pytest.mark.parametrize("attack", ["scope-hash", "provider-key", "chunk-identity"])
+def test_final_sql_metadata_and_chunk_identity_match_real_reopened_generation(edit, attack):
+    native, baseline = edit
+    capture = deepcopy(baseline)
+    raw = _raw(capture, native)
+    row = next(row for row in raw["snapshots"] if row["label"] == "after-final-close")
+    if attack == "chunk-identity":
+        chunks = row["tables"]["memory_index_chunks" if native else "chunks"]
+        original, changed = chunks[0]["id"], "0" * len(chunks[0]["id"])
+        for values in row["tables"].values():
+            for item in values:
+                for key, value in list(item.items()):
+                    if value == original:
+                        item[key] = changed
+    else:
+        meta = next(item for item in row["tables"]["memory_index_meta"] if item["key"] == "memory_index_meta_v1")
+        value = json.loads(meta["value"])
+        value["scopeHash" if attack == "scope-hash" else "providerKey"] = "0" * 64
+        meta["value"] = json.dumps(value)
+    _resnapshot(row)
+    _reject(capture, native)
+
+
+def test_native_unknown_types_cannot_erase_all_actual_stage_dataflow():
+    capture = deepcopy(_load(CASES[3], True))
+    raw = _raw(capture, True)
+    for row in raw["workerDispatches"]:
+        value = row.get("decodedSerialized", {}).get("input", {}).get("value")
+        if not isinstance(value, dict) or "type" not in value:
+            continue
+        command = value["input"]["command"] if value["type"] == "database.domain.execute" else value
+        if command["type"] not in {"stage.start", "stage.append", "source.replace"}:
+            continue
+        original = command["type"]
+        changed = "x" * len(original)
+        command["type"] = changed
+        wire = row["message"]["input"]
+        data = bytes.fromhex(wire["hex"])
+        assert data.count(original.encode()) == 1
+        wire["hex"] = data.replace(original.encode(), changed.encode()).hex()
+        row["decodedSerialized"]["input"]["bytesSha256"] = hashlib.sha256(bytes.fromhex(wire["hex"])).hexdigest()
+    _reject(capture, True)

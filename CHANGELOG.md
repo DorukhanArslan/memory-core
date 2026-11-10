@@ -10,6 +10,12 @@ the host kit. 0.1.0 is `main` at `b829bad` (2026-09-27), which had no build syst
 
 ### Added
 
+- Managed index identity before first query (2026-11-10): a reopened
+  provider-none owner keeps provider-key knowledge uninitialized during plain
+  status reads. The first admitted search or checked publication establishes
+  that phase; real retrieval and direct identity inspection keep their full
+  configuration checks. Missing/stale metadata diagnostics remain query-free,
+  and newer formats are preserved.
 - Optional managed maintenance after reply delivery (2026-11-10):
   `ManagedHostSession.open(maintenance="background")` gives new foreground work
   priority over pending optional jobs and joins actual admitted work before the

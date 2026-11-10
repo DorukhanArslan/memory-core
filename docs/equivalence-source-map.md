@@ -179,7 +179,7 @@ Its final complete catalog on clean `b27624d` validates the sessions-only
 source-coherence correction and confirms the same 70, with no additional point.
 Source inventory itself still awards no behavioral credit.
 
-The current inventory maps **206 upstream modules**, with 18 present and 46 partial
+The current inventory maps **225 upstream modules**, with 18 present and 46 partial
 Python counterparts. Durable catalog and session-runner owners now provide partial SDK
 counterparts for the three previously host-owned rows; this source classification adds no
 behavioral credit. Original Gateway host acceptance remains incomplete. The shared-deadline package maps the actual control,
@@ -192,6 +192,35 @@ skips the index constructor. Get uses an actual owned file and secure native rea
 no manager substitute. This grants no new index-worker, manager startup, live provider latency,
 transcript visibility, or OS scheduling credit. Source and official release provenance remain
 separate; the release build is not independently reproduced.
+
+The developing index-identity boundary map now includes the original manager
+factory, constructor and published status, provider initialization, actual query
+read generation, publication and public diagnostic finalization. Its
+[index-identity bindings](../equivalence/index_identity_boundaries_bindings.py)
+authenticate **37 tracked source owners and 23 official compiled owners** as
+separate authorities. Nineteen newly mapped tracked modules bring this inventory
+to 225; compiled artifacts are not counted as Git source modules.
+
+The SDK counterpart includes the protected strict
+[`SQLiteMemoryStore._resolve_index_identity`](../memory_core/index/sqlite_store.py#L509),
+managed pre-query status and actual search/preparation admission. Plain managed
+status retains unknown provider-key knowledge until an actual nonempty query or
+accepted publication establishes it. The public base identity check, retrieval
+and write readiness remain strict. Empty, cancelled and refused requests leave
+that phase unchanged; admitted source-read or storage failures retain established
+knowledge. This provider-none counterpart remains classified `partial` because
+semantic-provider initialization and extraPaths configuration are still broader
+source gaps.
+
+The sixteen independently frozen development pairs match complete pre-query
+identity diagnostics and first-query results. These development runs and this
+inventory add **zero conditions**: the verified baseline remains **70/128**, with
+**58 remaining**. The fresh **1,437-case full catalog is pending**. Both complete
+raw manager statuses and physical SQL layouts remain engine-specific custody;
+this is not a claim that those APIs are identical. No disabled-sync behavior,
+semantic-provider latency, or absence of speculative internal FTS queries is
+inferred. Original source and publisher release evidence stay separate; the
+release build is not independently reproduced.
 
 The historical maintenance baseline has **62/128 conditions**, with **66 remaining**:
 28 contracts complete, 6 partial and 30 pending. These are unweighted verification
@@ -216,16 +245,16 @@ current limitations and retained first failures.
 | `chunking.utf16-cjk-budget` | [estimateStringChars](https://github.com/openclaw/openclaw/blob/bcfc88812a35243893585dbeca87ca41b48272ca/packages/normalization-core/src/cjk-chars.ts#L79) | [estimate_string_chars](../memory_core/index/cjk_chars.py#L73) | present |
 | `chunking.entry-provenance` | [prepareMemoryIndexChunks](https://github.com/openclaw/openclaw/blob/bcfc88812a35243893585dbeca87ca41b48272ca/extensions/memory-core/src/memory/manager-index-preparation.ts#L42) | [MemoryChunk](../memory_core/index/chunking.py#L36) | partial |
 | `indexing.identity` | [resolveMemoryIndexIdentityState](https://github.com/openclaw/openclaw/blob/bcfc88812a35243893585dbeca87ca41b48272ca/extensions/memory-core/src/memory/manager-reindex-state.ts#L222) | [resolve_memory_index_identity_state](../memory_core/index/identity.py#L269) | partial |
-| `indexing.incremental-sync` | [MemoryManagerSyncBase.executeSourceSync](https://github.com/openclaw/openclaw/blob/bcfc88812a35243893585dbeca87ca41b48272ca/extensions/memory-core/src/memory/manager-sync-base.ts#L294) | [SQLiteMemoryStore.reindex](../memory_core/index/sqlite_store.py#L523) | partial |
-| `indexing.transaction-publication` | [publishMemoryDatabaseTables](https://github.com/openclaw/openclaw/blob/bcfc88812a35243893585dbeca87ca41b48272ca/extensions/memory-core/src/memory/manager-db-kernel.ts#L108) | [SQLiteMemoryStore.reindex](../memory_core/index/sqlite_store.py#L523) | present |
+| `indexing.incremental-sync` | [MemoryManagerSyncBase.executeSourceSync](https://github.com/openclaw/openclaw/blob/bcfc88812a35243893585dbeca87ca41b48272ca/extensions/memory-core/src/memory/manager-sync-base.ts#L294) | [SQLiteMemoryStore.reindex](../memory_core/index/sqlite_store.py#L551) | partial |
+| `indexing.transaction-publication` | [publishMemoryDatabaseTables](https://github.com/openclaw/openclaw/blob/bcfc88812a35243893585dbeca87ca41b48272ca/extensions/memory-core/src/memory/manager-db-kernel.ts#L108) | [SQLiteMemoryStore.reindex](../memory_core/index/sqlite_store.py#L551) | present |
 | `indexing.embedding-cache` | [loadMemoryEmbeddingCache](https://github.com/openclaw/openclaw/blob/bcfc88812a35243893585dbeca87ca41b48272ca/extensions/memory-core/src/memory/manager-embedding-cache.ts#L40) | [load_memory_embedding_cache](../memory_core/index/embedding_cache.py#L86) | partial |
-| `indexing.query-sync` | [MemorySearchOrchestration.searchCandidates](https://github.com/openclaw/openclaw/blob/bcfc88812a35243893585dbeca87ca41b48272ca/extensions/memory-core/src/memory/manager-search-orchestration.ts#L109) | [SQLiteMemoryStore.search](../memory_core/index/sqlite_store.py#L934) | partial |
-| `retrieval.vector-scoring` | [searchVector](https://github.com/openclaw/openclaw/blob/bcfc88812a35243893585dbeca87ca41b48272ca/extensions/memory-core/src/memory/manager-search-vector.ts#L24) | [SQLiteMemoryStore.search_vector_candidates](../memory_core/index/sqlite_store.py#L1116) | present |
+| `indexing.query-sync` | [MemorySearchOrchestration.searchCandidates](https://github.com/openclaw/openclaw/blob/bcfc88812a35243893585dbeca87ca41b48272ca/extensions/memory-core/src/memory/manager-search-orchestration.ts#L109) | [SQLiteMemoryStore.search](../memory_core/index/sqlite_store.py#L963) | partial |
+| `retrieval.vector-scoring` | [searchVector](https://github.com/openclaw/openclaw/blob/bcfc88812a35243893585dbeca87ca41b48272ca/extensions/memory-core/src/memory/manager-search-vector.ts#L24) | [SQLiteMemoryStore.search_vector_candidates](../memory_core/index/sqlite_store.py#L1145) | present |
 | `retrieval.hybrid-scoring` | [mergeHybridResults](https://github.com/openclaw/openclaw/blob/bcfc88812a35243893585dbeca87ca41b48272ca/extensions/memory-core/src/memory/hybrid.ts#L58) | [merge_hybrid_results](../memory_core/index/hybrid.py#L228) | present |
-| `retrieval.exact-path-priority` | [prepareExactPathMatcher](https://github.com/openclaw/openclaw/blob/bcfc88812a35243893585dbeca87ca41b48272ca/extensions/memory-core/src/memory/manager-search.ts#L135) | [SQLiteMemoryStore.search_path_candidates](../memory_core/index/sqlite_store.py#L1594) | present |
+| `retrieval.exact-path-priority` | [prepareExactPathMatcher](https://github.com/openclaw/openclaw/blob/bcfc88812a35243893585dbeca87ca41b48272ca/extensions/memory-core/src/memory/manager-search.ts#L135) | [SQLiteMemoryStore.search_path_candidates](../memory_core/index/sqlite_store.py#L1623) | present |
 | `retrieval.mmr` | [applyMMRToHybridResults](https://github.com/openclaw/openclaw/blob/bcfc88812a35243893585dbeca87ca41b48272ca/extensions/memory-core/src/memory/mmr.ts#L32) | [apply_mmr_to_hybrid_results](../memory_core/index/mmr.py#L130) | present |
 | `retrieval.temporal-decay` | [applyTemporalDecayToHybridResults](https://github.com/openclaw/openclaw/blob/bcfc88812a35243893585dbeca87ca41b48272ca/extensions/memory-core/src/memory/temporal-decay.ts#L112) | [apply_temporal_decay_to_hybrid_results](../memory_core/index/temporal_decay.py#L122) | partial |
-| `retrieval.importance-project` | [applyImportanceMultiplier](https://github.com/openclaw/openclaw/blob/bcfc88812a35243893585dbeca87ca41b48272ca/extensions/memory-core/src/memory/importance.ts#L9) | [SQLiteMemoryStore.attach_recall_metadata](../memory_core/index/sqlite_store.py#L1062) | present |
+| `retrieval.importance-project` | [applyImportanceMultiplier](https://github.com/openclaw/openclaw/blob/bcfc88812a35243893585dbeca87ca41b48272ca/extensions/memory-core/src/memory/importance.ts#L9) | [SQLiteMemoryStore.attach_recall_metadata](../memory_core/index/sqlite_store.py#L1091) | present |
 | `tools.search-contract` | [createMemorySearchTool](https://github.com/openclaw/openclaw/blob/bcfc88812a35243893585dbeca87ca41b48272ca/extensions/memory-core/src/tools.ts#L226) | [memory_search_tool_definition](../memory_core/tools/memory_search.py#L170) | partial |
 | `tools.get-contract` | [createMemoryGetTool](https://github.com/openclaw/openclaw/blob/bcfc88812a35243893585dbeca87ca41b48272ca/extensions/memory-core/src/tools.ts#L569) | [create_memory_get_tool](../memory_core/tools/get_factory.py#L96) | partial |
 | `tools.deadline-cooldown` | [runMemorySearchWithDeadline](https://github.com/openclaw/openclaw/blob/bcfc88812a35243893585dbeca87ca41b48272ca/extensions/memory-core/src/memory/search-deadline.ts#L28) | [MemoryToolDeadlineContext](../memory_core/tools/deadline.py#L66) | partial |
@@ -262,7 +291,7 @@ current limitations and retained first failures.
 | `automation.job-state` | [computeJobNextRunAtMs](https://github.com/openclaw/openclaw/blob/bcfc88812a35243893585dbeca87ca41b48272ca/src/cron/service/jobs-scheduling.ts#L317) | [compute_job_next_run_at_ms](../memory_core/automation.py#L281) | partial |
 | `concurrency.workspace-locks` | [withMemoryWorkspaceLock](https://github.com/openclaw/openclaw/blob/bcfc88812a35243893585dbeca87ca41b48272ca/extensions/memory-core/src/memory-workspace-lock.ts#L207) | [memory_workspace_lock](../memory_core/consolidation/store.py#L194) | partial |
 | `recovery.repair-diagnostics` | [auditShortTermPromotionArtifacts](https://github.com/openclaw/openclaw/blob/bcfc88812a35243893585dbeca87ca41b48272ca/extensions/memory-core/src/short-term-promotion-artifacts.ts#L47) | [audit_short_term_promotion_artifacts](../memory_core/consolidation/audit.py#L79) | partial |
-| `recovery.failure-publication` | [publishMemoryDatabaseTables](https://github.com/openclaw/openclaw/blob/bcfc88812a35243893585dbeca87ca41b48272ca/extensions/memory-core/src/memory/manager-db-kernel.ts#L108) | [SQLiteMemoryStore.reindex](../memory_core/index/sqlite_store.py#L523) | partial |
+| `recovery.failure-publication` | [publishMemoryDatabaseTables](https://github.com/openclaw/openclaw/blob/bcfc88812a35243893585dbeca87ca41b48272ca/extensions/memory-core/src/memory/manager-db-kernel.ts#L108) | [SQLiteMemoryStore.reindex](../memory_core/index/sqlite_store.py#L551) | partial |
 | `engine.numeric-boundaries` | [asFiniteNumber](https://github.com/openclaw/openclaw/blob/bcfc88812a35243893585dbeca87ca41b48272ca/packages/normalization-core/src/number-coercion.ts#L4) | [js_to_fixed](../memory_core/consolidation/_util.py#L70) | partial |
 | `engine.unicode-collation` | [sliceUtf16Safe](https://github.com/openclaw/openclaw/blob/bcfc88812a35243893585dbeca87ca41b48272ca/packages/normalization-core/src/utf16-slice.ts#L30) | [utf16_slice](../memory_core/bootstrap/_js.py#L96) | partial |
 | `engine.datetime-regex` | [resolveCronStyleNow](https://github.com/openclaw/openclaw/blob/bcfc88812a35243893585dbeca87ca41b48272ca/src/agents/current-time.ts#L23) | [format_current_time_line](../memory_core/current_time.py#L198) | partial |

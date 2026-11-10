@@ -1515,7 +1515,14 @@ def run_suite(*, checkout: Path, node: Path, smoke: bool = False,
                 try:
                     python_case = deepcopy(case)
                     if case in python_diagnostic_cases:
-                        directory = python_diagnostics / hashlib.sha256(case["id"].encode()).hexdigest()
+                        if case["operation"] == "index-identity-boundaries-runtime":
+                            # Keep the original child paths and bytes for the post-run
+                            # semantic replay, including failed SDK captures.
+                            retained = ROOT / ".equivalence-results" / "index-identity-boundaries"
+                            retained.mkdir(parents=True, exist_ok=True)
+                            directory = Path(tempfile.mkdtemp(prefix="sdk-attempt-", dir=retained))
+                        else:
+                            directory = python_diagnostics / hashlib.sha256(case["id"].encode()).hexdigest()
                         python_case["_diagnosticDirectory"] = directory
                     if case in runtime_cases or case in policy_source_cases:
                         row["referenceMode"] = (

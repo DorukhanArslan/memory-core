@@ -5,6 +5,7 @@ import asyncio
 from copy import deepcopy
 import os
 from pathlib import Path
+import sqlite3
 import threading
 
 import pytest
@@ -102,6 +103,85 @@ def _seed_transcript(owner):
     owner.catalog.upsert_session(KEY, {"sessionId": ID, "updatedAt": NOW})
     owner.catalog.append_message(ID, {"role": "user", "content": "An older published violet token."},
         session_key=KEY, event_id="older-user", now_ms=NOW)
+
+
+def test_direct_curator_failure_keeps_owner_pending_until_real_matching_publication(tmp_path):
+    owner, _ = _owner(tmp_path)
+    _seed_transcript(owner)
+    try:
+        first = owner.kit.curator.append_daily_note("Older cedar preference.", date="2026-11-10")
+        assert first.after_write_error is None
+        owner.reindex(force=True)
+        assert owner.publication_status()["ready"] is True
+        # No turn owns this public curator write, so no lifecycle marker can
+        # substitute for its real failed publisher receipt.
+        assert "sdkHostLifecycle" not in owner.catalog.get_session_entry(KEY)
+        journal = Path(str(owner.store.path) + "-journal")
+        journal.symlink_to(tmp_path / "missing-journal-directory" / "journal")
+        committed = owner.kit.curator.append_daily_note("New maple preference.", date="2026-11-10")
+        assert committed.after_write_error == "unable to open database file"
+        source = owner.kit.memory.workspace.root / "memory/2026-11-10.md"
+        assert "New maple preference." in source.read_text()
+        assert all("New maple preference." not in row["text"] for row in owner.store.read_published_index()["chunks"])
+        status = owner.publication_status()
+        assert status["memoryIndexStatus"] == status["indexStatus"] == "pending"
+        assert status["ready"] is False
+
+        journal.unlink()
+        owner.catalog.append_message(ID, {"role": "user", "content": "A genuine later session remark."},
+            session_key=KEY, event_id="later-user", now_ms=NOW + 1)
+        revision = owner.store.index_revision()
+        assert owner.store.reindex_sources(owner.kit.memory.workspace, sources={"sessions"}) == 1
+        assert owner.store.index_revision() > revision
+        assert owner.publication_status()["memoryIndexStatus"] == "pending"
+        assert owner.store.status()["lastSyncError"] == "unable to open database file"
+
+        current = owner.synchronize(timeout=5)
+        assert current["ready"] is True and current["memoryIndexStatus"] == "ready"
+        assert "lastSyncError" not in owner.store.status()
+        assert any("New maple preference." in row["text"] for row in owner.store.read_published_index()["chunks"])
+    finally:
+        owner.close()
+    assert owner.publication_status()["closed"] is True
+    assert owner.publication_status()["memoryIndexStatus"] == "ready"
+
+
+def test_closed_owner_still_reports_actual_unsettled_curator_publication(tmp_path):
+    policy = resolve_memory_search_source_policy(["memory"], remember_across_conversations=False)
+    owner, _ = _owner(tmp_path, source_policy=policy)
+    try:
+        owner.kit.curator.append_daily_note("Older cedar preference.", date="2026-11-10")
+        owner.reindex(force=True)
+        Path(str(owner.store.path) + "-journal").symlink_to(tmp_path / "missing" / "journal")
+        result = owner.kit.curator.append_daily_note("New maple preference.", date="2026-11-10")
+        assert result.after_write_error == "unable to open database file"
+    finally:
+        owner.close()
+    status = owner.publication_status()
+    assert status["closed"] is True
+    assert status["ready"] is False
+    assert status["memoryIndexStatus"] == status["indexStatus"] == "pending"
+
+
+def test_actual_full_publication_failure_keeps_owner_pending_until_full_recovery(tmp_path):
+    policy = resolve_memory_search_source_policy(["memory"], remember_across_conversations=False)
+    owner, _ = _owner(tmp_path, source_policy=policy)
+    try:
+        owner.kit.curator.append_daily_note("Published cedar preference.", date="2026-11-10")
+        owner.reindex(force=True)
+        assert owner.publication_status()["ready"] is True
+        journal = Path(str(owner.store.path) + "-journal")
+        journal.symlink_to(tmp_path / "missing" / "journal")
+        with pytest.raises(sqlite3.OperationalError, match="unable to open database file"):
+            owner.reindex(force=True)
+        assert owner.store.lifecycle_snapshot()["lastSyncError"] == "unable to open database file"
+        assert owner.publication_status()["ready"] is False
+        assert owner.publication_status()["memoryIndexStatus"] == "pending"
+        journal.unlink()
+        owner.reindex(force=True)
+        assert owner.publication_status()["ready"] is True
+    finally:
+        owner.close()
 
 
 def test_cold_curator_commits_real_bytes_without_claiming_index_publication(tmp_path):

@@ -10,6 +10,13 @@ the host kit. 0.1.0 is `main` at `b829bad` (2026-09-27), which had no build syst
 
 ### Added
 
+- Opt-in managed on-search publication (2026-11-10):
+  `ManagedHostSession.open(memory_publication="on-search")` commits memory writes
+  without an ordinary publication barrier. Cold searches bootstrap naturally;
+  a dirty warm search retains its actual SQLite read generation while admitting
+  a real background publisher. Publication failures remain visible, actual
+  matching recovery clears them, and close joins admitted publishers. The
+  default `on-write` policy retains its existing behavior.
 - Managed provider-none index (2026-11-09): optional
   `host.managed_index.ManagedSQLiteMemoryStore` performs real cold-search
   bootstrap, exposes live SQL-derived repair notices and joins admitted physical

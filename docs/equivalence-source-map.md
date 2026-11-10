@@ -173,7 +173,7 @@ verified both original restart conditions at **66/128**. The later
 #64 conditions in a fresh complete catalog: **68/128**, with **60 remaining**.
 Source inventory itself still awards no behavioral credit.
 
-The current inventory maps **196 upstream modules**, with 17 present and 47 partial
+The current inventory maps **199 upstream modules**, with 17 present and 47 partial
 Python counterparts. Durable catalog and session-runner owners now provide partial SDK
 counterparts for the three previously host-owned rows; this source classification adds no
 behavioral credit. Original Gateway host acceptance remains incomplete. The shared-deadline package maps the actual control,

@@ -1,9 +1,10 @@
 """Explicit shared managed host ownership; eager HostSessionRunner stays unchanged.
 
-Memory scopes publish synchronously when an index namespace already exists.
+The default memory policy publishes synchronously when an index namespace
+exists. Opt-in ``on-search`` publication commits writes and admits a real
+background memory publisher only after a search pins its SQLite generation.
 Cold writes and deferred session publication remain pending. Full ``reindex``
-is an explicit owner barrier and joins its actual startup/reconciliation work;
-ordinary turns never drain a future session timer to claim readiness.
+is an explicit owner barrier; ordinary turns never drain a future session timer.
 """
 from __future__ import annotations
 
@@ -68,7 +69,11 @@ class ManagedHostSession:
              config: MemoryConfig | None = None, source_policy: Mapping[str, Any] | None = None,
              artifact_provenance: MemoryArtifactProvenanceStore | None = None,
              scheduler: Scheduler | None = None, identity: RuntimeIdentity = MEMORY_CORE_RUNTIME_IDENTITY,
-             initialize: bool = False, **kit_options: Any) -> ManagedHostSession:
+             initialize: bool = False,
+             memory_publication: Literal["on-write", "on-search"] = "on-write",
+             **kit_options: Any) -> ManagedHostSession:
+        if not isinstance(memory_publication, str) or memory_publication not in {"on-write", "on-search"}:
+            raise ValueError("memory_publication must be on-write or on-search")
         root = Path(workspace_dir).resolve()
         config = config or MemoryConfig(root, agent_id=catalog.agent_id, flags=FeatureFlags(vector_search=False))
         if Path(config.workspace_dir).resolve() != root or normalize_session_agent_id(config.agent_id) != catalog.agent_id:
@@ -80,7 +85,8 @@ class ManagedHostSession:
                                     index_sources=policy["sources"] if policy is not None else None)
         index = config.resolved_store_path().resolve()
         ledger = artifact_provenance or MemoryArtifactProvenanceStore(index.with_name(f"{index.stem}.provenance.sqlite"))
-        store = ManagedSQLiteMemoryStore(config, workspace, artifact_provenance=ledger, runtime_identity=identity)
+        store = ManagedSQLiteMemoryStore(config, workspace, artifact_provenance=ledger, runtime_identity=identity,
+                                        memory_publication=memory_publication)
         controller = SessionPublicationController(store, workspace, catalog, scheduler=scheduler)
         store.bind_session_publication(controller)
         memory = Memory(config, workspace, store, SessionVisibilityContext.from_catalog(catalog), policy)
@@ -164,7 +170,10 @@ class ManagedHostSession:
         entries = self.catalog.snapshot().entries.values()
         memory_pending = (self.store.index_identity()["status"] != "valid"
                           or publication["lastSyncError"] is not None
-                          or publication.get("memoryScopeSyncFailure") is not None)
+                          or publication.get("memoryScopeSyncFailure") is not None
+                          or publication.get("memoryPublication", {}).get("dirty", False)
+                          or publication.get("memoryPublication", {}).get("active", False)
+                          or publication.get("memoryPublication", {}).get("lastError") is not None)
         session_dirty = False
         for entry in entries:
             state = entry.get("sdkHostLifecycle", {})

@@ -283,6 +283,9 @@ def build_cases(*, include_prospective: bool = False) -> list[dict[str, Any]]:
     from equivalence.host_restart_session import build_cases as build_host_restart_session_cases
 
     cases.extend(build_host_restart_session_cases())
+    from equivalence.host_turn_barrier import build_cases as build_host_turn_barrier_cases
+
+    cases.extend(build_host_turn_barrier_cases())
     from equivalence.host_update_isolation import build_cases as build_host_update_isolation_cases
 
     cases.extend(build_host_update_isolation_cases())
@@ -329,6 +332,12 @@ def run_python(case: dict[str, Any]) -> Any:
 
         validate_update_case({key: case[key] for key in ("id", "operation", "requirement", "covers", "input")})
         return run_host_update_isolation(arguments, evidence_directory=case.get("_diagnosticDirectory"))
+    if operation == "host-turn-barrier-runtime":
+        from equivalence.host_turn_barrier import validate_case as validate_turn_barrier_case
+        from equivalence.host_turn_barrier_sdk import run_host_turn_barrier_case
+
+        validate_turn_barrier_case({key: case[key] for key in ("id", "operation", "requirement", "covers", "input")})
+        return run_host_turn_barrier_case(arguments, evidence_directory=case.get("_diagnosticDirectory"))
     if operation == "promotion-ranking-runtime":
         from equivalence.promotion_ranking_runtime import run_promotion_ranking
 

@@ -91,6 +91,15 @@ constructor. Its normal awaited end-of-turn publication remains in effect;
 selecting this store does not change that guarantee. Supply a fully resolved
 source policy, as above; indexed sources and ordinary query sources are distinct.
 
+For the separate deferred warm-memory policy, construct the shared
+[managed host](managed_host_session.md#optional-publication-on-search) with
+`memory_publication="on-search"`. Its ordinary writes and turns retain pending
+state; an actual pinned warm search read admits the memory-only background
+publisher. The same optional constructor argument on `ManagedSQLiteMemoryStore`
+controls that store's search admission, but the shared host also supplies the
+matching curation/finalization policy. Merely replacing an eager runner's store
+does not remove the runner's full publication barrier.
+
 The owner defaults to the SDK runtime identity. Interoperability callers can
 explicitly pass `OPENCLAW_COMPAT_RUNTIME_IDENTITY` as the store's
 `runtime_identity` and the kit's `identity` so guidance names the intended host.

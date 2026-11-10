@@ -4,17 +4,20 @@ Ordinary ``HostKit.open`` remains eager. Hosts selecting this owner construct a
 ``Memory``/``HostKit`` around it without an initial reindex. Repairs use the
 normal checked SQLite publisher; status and notices describe those real calls.
 An optional explicitly bound session controller starts after a real search read
-generation is acquired. Ordinary construction does not start background work.
+generation is acquired. The explicit ``on-search`` memory policy also admits a
+scoped publisher at that boundary, retaining the query's original read snapshot.
+Ordinary construction does not start background work.
 """
 from __future__ import annotations
 
 from collections import deque
 from collections.abc import Callable, Collection, Iterator, Sequence
+from concurrent.futures import ThreadPoolExecutor
 from contextlib import closing, contextmanager
 from copy import deepcopy
 import threading
 import sqlite3
-from typing import TYPE_CHECKING, Any
+from typing import TYPE_CHECKING, Any, Literal
 
 from memory_core.bootstrap._js import js_trim
 from memory_core.cancellation import CancellationSignal
@@ -22,6 +25,7 @@ from memory_core.config import MemoryConfig
 from memory_core.consolidation.artifact_provenance import MemoryArtifactProvenanceStore
 from memory_core.consolidation.origins import IndexRevisionFence
 from memory_core.index.sqlite_store import MemoryIndexRequiresFullReindexError, SQLiteMemoryStore
+from memory_core.index.identity import INDEX_SOURCES_TABLE
 from memory_core.index.hybrid import HybridResult
 from memory_core.runtime_identity import MEMORY_CORE_RUNTIME_IDENTITY, RuntimeIdentity
 from memory_core.session_catalog import normalize_session_agent_id
@@ -52,7 +56,10 @@ class ManagedSQLiteMemoryStore(SQLiteMemoryStore):
     def __init__(self, config: MemoryConfig, workspace: MemoryWorkspace, *,
                  artifact_provenance: MemoryArtifactProvenanceStore | None = None,
                  revision_fence: IndexRevisionFence | None = None,
-                 runtime_identity: RuntimeIdentity = MEMORY_CORE_RUNTIME_IDENTITY) -> None:
+                 runtime_identity: RuntimeIdentity = MEMORY_CORE_RUNTIME_IDENTITY,
+                 memory_publication: Literal["on-write", "on-search"] = "on-write") -> None:
+        if not isinstance(memory_publication, str) or memory_publication not in {"on-write", "on-search"}:
+            raise ValueError("memory_publication must be on-write or on-search")
         if not isinstance(workspace, MemoryWorkspace):
             raise TypeError("A managed memory index requires its actual MemoryWorkspace")
         if (config.workspace_dir.resolve() != workspace.root.resolve()
@@ -68,6 +75,7 @@ class ManagedSQLiteMemoryStore(SQLiteMemoryStore):
         self._bound_agent = normalize_session_agent_id(config.agent_id)
         self._bound_catalog = workspace.session_catalog
         self._runtime_identity = runtime_identity
+        self._memory_publication = memory_publication
         self._condition = threading.Condition(threading.RLock())
         self._local = threading.local()
         self._active_operations = 0
@@ -84,6 +92,13 @@ class ManagedSQLiteMemoryStore(SQLiteMemoryStore):
         self._session_publication: SessionPublicationController | None = None
         self._read_admissions: deque[dict[str, Any]] = deque(maxlen=256)
         self._read_admission_count = 0
+        self._memory_dirty = False
+        self._memory_active = False
+        self._memory_worker_token: object | None = None
+        self._memory_executor: ThreadPoolExecutor | None = None
+        self._memory_job_error: str | None = None
+        self._memory_jobs: deque[dict[str, Any]] = deque(maxlen=256)
+        self._memory_job_count = 0
         super().__init__(config, None, revision_fence=revision_fence, artifact_provenance=artifact_provenance)
 
     @contextmanager
@@ -92,7 +107,8 @@ class ManagedSQLiteMemoryStore(SQLiteMemoryStore):
             depth = getattr(self._local, "depth", 0)
             draining_publication = (name == "reindex-sources" and self._session_publication is not None
                                     and self._session_publication.owns_current_job())
-            if self._closed or self._closing and not depth and not draining_publication:
+            draining_memory = getattr(self._local, "memory_publisher", False)
+            if self._closed or self._closing and not depth and not draining_publication and not draining_memory:
                 raise RuntimeError("Memory index manager is closed")
             self._active_operations += 1
             self._local.depth = depth + 1
@@ -147,6 +163,98 @@ class ManagedSQLiteMemoryStore(SQLiteMemoryStore):
                     "ftsAvailable": fts_available,
                     "sourceCounts": [{"source": source, "chunks": counts.get(source, 0)} for source in sources]}
 
+    def _refresh_memory_dirty(self) -> None:
+        """Compare actual memory sources with SQL; caller holds the workspace guard."""
+        if self._memory_publication != "on-search":
+            return
+        selection = self._validated_source_selection(self._workspace, ("memory",), None, False)
+        sources = self._read_source_snapshots(self._workspace, selection=selection)
+        current = {path: (entry.hash, entry.mtime, entry.size)
+                   for (_, path), entry in sources.items()}
+        with closing(self.connect()) as db:
+            published = {path: (digest, mtime, size) for path, digest, mtime, size in db.execute(
+                f"SELECT path,hash,mtime,size FROM {INDEX_SOURCES_TABLE} WHERE source='memory'")}
+        with self._condition:
+            self._memory_dirty = current != published
+
+    def _defer_memory_publication(self, workspace: MemoryWorkspace, *,
+                                  sources: Collection[str]) -> bool | None:
+        """Select the opt-in policy, returning actual current/pending readiness.
+
+        ``None`` leaves other policies and publication scopes unchanged. No
+        publication is scheduled here; only a pinned search reader admits work.
+        """
+        if self._memory_publication != "on-search" or set(sources) != {"memory"}:
+            return None
+        with self._operation("defer-memory-publication"):
+            self._assert_workspace(workspace)
+            with workspace_index_lock(workspace.root):
+                self._refresh_memory_dirty()
+                identity = self.index_identity()
+                with self._condition:
+                    return (identity["status"] == "valid" and not self._memory_dirty
+                            and self._last_sync_error is None and self._memory_scope_failure is None
+                            and self._memory_job_error is None)
+
+    def _submit_memory_publication(self, revision: int) -> None:
+        """Admit one actual memory publisher under the pinned reader's gate."""
+        needed = self._memory_dirty or self._memory_scope_failure is not None or self._memory_job_error is not None
+        if (self._memory_publication != "on-search" or not needed
+                or self._memory_active or self._closing or self._closed
+                or self._last_sync_error is not None):
+            return
+        if self._memory_executor is None:
+            self._memory_executor = ThreadPoolExecutor(max_workers=1, thread_name_prefix="memory-publication")
+        self._memory_job_count += 1
+        job: dict[str, Any] = {"id": self._memory_job_count, "readRevision": revision, "state": "queued"}
+        self._memory_jobs.append(job)
+        token = object()
+        self._memory_worker_token = token
+        self._memory_active = True
+        try:
+            self._memory_executor.submit(self._run_memory_publication, job, token)
+        except BaseException as error:
+            self._memory_worker_token = None
+            self._memory_active = False
+            self._memory_job_error = format_error_message(error)
+            job.update(state="failed", error=self._error(error))
+            self._condition.notify_all()
+
+    def _run_memory_publication(self, job: dict[str, Any], token: object) -> None:
+        """Keep an admitted worker owned through its real publication and close."""
+        with self._condition:
+            if self._memory_worker_token is not token:
+                return
+            self._local.memory_publisher = True
+            job.update(state="running", threadId=threading.get_ident())
+        error = None
+        try:
+            with self._operation("memory-background-publication"):
+                # Publish the live outcome under the same guard as its source
+                # and SQL work. A later real recovery must remain authoritative
+                # even if this worker's historical receipt settles afterwards.
+                with workspace_index_lock(self._workspace.root):
+                    try:
+                        returned = self.reindex_sources(self._workspace, sources=("memory",))
+                    except BaseException as caught:
+                        with self._condition:
+                            self._memory_job_error = format_error_message(caught)
+                        raise
+                with self._condition:
+                    job["returned"] = returned
+        except BaseException as caught:
+            error = caught
+        finally:
+            with self._condition:
+                if error is None:
+                    job["state"] = "completed"
+                else:
+                    job.update(state="failed", error=self._error(error))
+                self._memory_worker_token = None
+                self._memory_active = False
+                self._local.memory_publisher = False
+                self._condition.notify_all()
+
     def status(self) -> dict[str, Any]:
         """Read actual published SQL state and the live repair-request notice."""
         with self._operation("status"):
@@ -162,6 +270,8 @@ class ManagedSQLiteMemoryStore(SQLiteMemoryStore):
                 sync_error = scoped[0]
             if sync_error is not None:
                 result["lastSyncError"] = sync_error
+            elif self._memory_publication == "on-search" and self._memory_job_error is not None:
+                result["lastSyncError"] = self._memory_job_error
             if self._session_publication is not None:
                 result["custom"]["sessionPublication"] = self._session_publication.status()
             return result
@@ -192,7 +302,7 @@ class ManagedSQLiteMemoryStore(SQLiteMemoryStore):
 
     def _on_search_snapshot(self, db: sqlite3.Connection) -> None:
         controller = self._session_publication
-        if controller is None:
+        if controller is None and self._memory_publication != "on-search":
             return
         # The caller has already read index identity in this transaction: BEGIN
         # alone would not pin SQLite's deferred read snapshot.
@@ -207,7 +317,9 @@ class ManagedSQLiteMemoryStore(SQLiteMemoryStore):
             # already admitted query can finish its reader without starting
             # new controller work after close has begun.
             if not self._closing and not self._closed:
-                controller.start()
+                if controller is not None:
+                    controller.start()
+                self._submit_memory_publication(revision)
 
     def reindex(self, workspace: MemoryWorkspace, *, force: bool = False) -> int:
         """Publish only the bound workspace; preserve the original return/error."""
@@ -225,6 +337,8 @@ class ManagedSQLiteMemoryStore(SQLiteMemoryStore):
                     raise
                 self._last_sync_error = None
                 self._memory_scope_failure = None
+                self._memory_job_error = None
+                self._refresh_memory_dirty()
             self._update(operation, returned=result, after=self._read_state(),
                          revisionAfter=self.read_published_index()["revision"])
             return result
@@ -260,6 +374,12 @@ class ManagedSQLiteMemoryStore(SQLiteMemoryStore):
                     self._settle_memory_scope(selection.sources, selection.paths, error)
                     raise
                 self._settle_memory_scope(selection.sources, selection.paths, None)
+                if "memory" in selection.sources:
+                    # Background admissions select the complete memory corpus;
+                    # an empty or path-limited refresh cannot certify that job.
+                    if selection.paths is None:
+                        self._memory_job_error = None
+                    self._refresh_memory_dirty()
             self._update(operation, returned=result, revisionAfter=self.index_revision())
             return result
 
@@ -325,6 +445,7 @@ class ManagedSQLiteMemoryStore(SQLiteMemoryStore):
                 return super().search(query, **options)
             self._update(operation, query=query)
             with workspace_index_lock(self._workspace.root):
+                self._refresh_memory_dirty()
                 state = self._read_state()
                 identity = state["identity"]
                 repair = self._automatic_repair_allowed(identity)
@@ -376,6 +497,12 @@ class ManagedSQLiteMemoryStore(SQLiteMemoryStore):
             # receipts of runs without one are unchanged.
             snapshot["memoryScopeSyncFailure"] = {
                 "error": scoped[0], "paths": None if scoped[1] is None else sorted(scoped[1])}
+        if self._memory_publication == "on-search":
+            with self._condition:
+                snapshot["memoryPublication"] = deepcopy({"policy": "on-search", "dirty": self._memory_dirty,
+                    "active": self._memory_active, "lastError": self._memory_job_error,
+                    "jobCount": self._memory_job_count, "jobs": list(self._memory_jobs),
+                    "jobsTruncated": self._memory_job_count > len(self._memory_jobs)})
         if controller is not None:
             snapshot["sessionPublication"] = controller.status()
         return snapshot
@@ -390,6 +517,8 @@ class ManagedSQLiteMemoryStore(SQLiteMemoryStore):
         with self._condition:
             if getattr(self._local, "depth", 0):
                 raise RuntimeError("An active managed index operation cannot close its own owner")
+            if getattr(self._local, "memory_publisher", False):
+                raise RuntimeError("A memory publication job cannot close its own managed index")
             controller = self._session_publication
             if controller is not None and controller.owns_current_job():
                 raise RuntimeError("A session publication job cannot close its own managed index")
@@ -408,8 +537,12 @@ class ManagedSQLiteMemoryStore(SQLiteMemoryStore):
                 self._condition.notify_all()
             raise
         with self._condition:
-            while self._active_operations:
+            while self._active_operations or self._memory_active:
                 self._condition.wait()
+            executor = self._memory_executor
+        if executor is not None:
+            executor.shutdown(wait=True)
+        with self._condition:
             self._closed = True
             self._closing = False
             self._condition.notify_all()

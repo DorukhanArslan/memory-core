@@ -1,0 +1,1195 @@
+{
+  "kind": "host-turn-barrier-outcomes-acceptance-closeout",
+  "preparedDate": "2026-11-10",
+  "timezone": "Europe/Istanbul",
+  "acceptanceIncrease": 1,
+  "verifiedBefore": 68,
+  "verifiedAfter": 69,
+  "remaining": 59,
+  "fixedScopeSha256": "a8e066e63970dd0be734485d62a5932640894b8c0a42f47ac3eb67f784cbc7b9",
+  "fullCatalog": {
+    "report": "work/host-turn-barrier-full-002.json",
+    "reportSha256": "d7b1033bd167c6dd88c1e9cbcf4f64e78c857b5da194cd30ed89ab9d5dd11ff2",
+    "bytes": 529372823,
+    "mode": "full",
+    "status": "mismatched",
+    "fullScopePassed": false,
+    "summary": {
+      "matched": 1401,
+      "mismatched": 14,
+      "blocked": 0,
+      "uncoveredAcceptance": 57
+    },
+    "cases": 1415,
+    "errors": [],
+    "verified": 69,
+    "total": 128,
+    "remaining": 59,
+    "contractStates": {
+      "complete": 31,
+      "partial": 7,
+      "pending": 26
+    },
+    "durationSeconds": 1704.858035,
+    "implementation": {
+      "gitCommit": "d3069449e91c2ce373be0270bd2d6b54b472cf02",
+      "trackedWorkingTreeDirty": false,
+      "sourceSha256": "03bf15292a2a795c7e0a5897eb3cc742d2ba61ec11be516c9cbf16d5230c9aa2",
+      "sourceFiles": 159
+    },
+    "turnBarrierOutcomesComplete": true
+  },
+  "node": {
+    "execPath": "/workspace/memory-core/work/node-v24.16.0-linux-x64/bin/node",
+    "nodeVersion": "v24.16.0",
+    "icuVersion": "78.3",
+    "unicodeVersion": "17.0",
+    "sha256": "b2959781cc5a74c357ffa02367efa8a0330cbb1c9cb347732fdfaaaca381cbcd"
+  },
+  "cases": [
+    {
+      "id": "host-turn-barrier-cold-ascii",
+      "requirement": "host.turn-barrier",
+      "covers": [
+        "host.turn-barrier.outcomes"
+      ],
+      "operation": "host-turn-barrier-runtime",
+      "input": {
+        "nowMs": 1794268800000,
+        "identity": {
+          "agentId": "main",
+          "sessionKey": "agent:main:host-turn-barrier-cold-ascii",
+          "sessionId": "host-turn-barrier-cold-ascii-session"
+        },
+        "source": "MEMORY.md",
+        "policy": {
+          "memoryProvider": "none",
+          "memorySources": [
+            "memory"
+          ],
+          "searchSources": [
+            "memory"
+          ],
+          "sessionMemory": false,
+          "compactionEnabled": true,
+          "memoryFlushEnabled": true,
+          "contextWindowTokens": 32768,
+          "reserveTokens": 8192,
+          "softThresholdTokens": 4000,
+          "nativeMemorySynchronization": "unmodified-default-watch-and-on-search-enabled",
+          "sdkMemoryPublication": "on-search",
+          "optionalMaintenancePreemption": "unclaimed"
+        },
+        "modelTransport": {
+          "kind": "deterministic-offline-provider",
+          "paidCalls": false,
+          "replyFromActualToolResults": true,
+          "fixtureFailureInjection": false
+        },
+        "firstTurnUsage": {
+          "input": 128,
+          "output": 32,
+          "total": 160
+        },
+        "followup": {
+          "prompt": "What is my drink preference? Use memory_search and read the first actual hit before answering.",
+          "search": {
+            "query": "aurorakumquat-739",
+            "maxResults": 5,
+            "minScore": 0,
+            "corpus": "memory"
+          },
+          "getRange": "first-actual-search-hit",
+          "reply": "actual-memory-get-text-or-no-source-backed-memory"
+        },
+        "followupTrigger": {
+          "event": "first-host-return",
+          "interveningHostActions": []
+        },
+        "initialState": "cold",
+        "save": {
+          "prompt": "Remember: My drink preference is aurorakumquat-739 tea without sugar.",
+          "content": "## Preferences\n\n- My drink preference is aurorakumquat-739 tea without sugar.\n",
+          "producer": "native-coding-write-or-sdk-add_memory_entry",
+          "section": "Preferences",
+          "text": "My drink preference is aurorakumquat-739 tea without sugar."
+        },
+        "clockFixture": {
+          "kind": "date-only-wall-clock",
+          "nowMs": 1794268800000,
+          "nativeScope": "all-processes-and-threads-including-workers",
+          "sdkClock": "public-host-clock-argument",
+          "monotonicAndTimers": "unmodified"
+        },
+        "sourceMetadataFixture": {
+          "operation": "os-utime-only",
+          "target": "MEMORY.md",
+          "atimeMs": 1794268800000,
+          "mtimeMs": 1794268800000,
+          "placement": "inside-model-callback-after-real-producing-tool-result-before-terminal-reply",
+          "applyTo": "each-successful-corpus-producing-tool-result",
+          "indexOperations": [],
+          "sourceContentMutation": false
+        }
+      },
+      "referenceMode": "authenticated-official-release",
+      "runtimeEvidenceValidated": true,
+      "status": "matched",
+      "nativeResult": {
+        "provider": "none",
+        "warmup": null,
+        "source": {
+          "path": "MEMORY.md",
+          "kind": "file",
+          "text": "## Preferences\n\n- My drink preference is aurorakumquat-739 tea without sugar.\n",
+          "hex": "232320507265666572656e6365730a0a2d204d79206472696e6b20707265666572656e6365206973206175726f72616b756d717561742d3733392074656120776974686f75742073756761722e0a"
+        },
+        "followup": {
+          "search": {
+            "results": [
+              {
+                "path": "MEMORY.md",
+                "startLine": 3,
+                "endLine": 4,
+                "score": 0.6744459512914889,
+                "textScore": 1.5068470444770565e-06,
+                "snippet": "- My drink preference is aurorakumquat-739 tea without sugar.\n",
+                "source": "memory",
+                "provenance": {
+                  "originClass": "agent",
+                  "sessionKind": "unknown",
+                  "observedAt": 1794268800000
+                },
+                "corpus": "memory"
+              }
+            ],
+            "provider": "none",
+            "citations": "off",
+            "corpora": [],
+            "warning": "Automatic memory index repair was requested. To rebuild manually, run: openclaw memory status --index --agent main. Rebuilding uses keyword indexing only and does not call an embedding provider.",
+            "debug": {
+              "backend": "builtin",
+              "effectiveMode": "n/a",
+              "managerMs": 0,
+              "searchMs": 0,
+              "hits": 1,
+              "candidateHits": 1,
+              "withheldHits": 0,
+              "searchWindow": 5,
+              "toolMs": 0,
+              "outsideSearchMs": 0
+            }
+          },
+          "get": {
+            "status": "ok",
+            "text": "- My drink preference is aurorakumquat-739 tea without sugar.",
+            "path": "MEMORY.md",
+            "from": 3,
+            "lines": 1
+          },
+          "reply": {
+            "text": "- My drink preference is aurorakumquat-739 tea without sugar.",
+            "replyToTag": false,
+            "audioAsVoice": false
+          }
+        }
+      },
+      "sdkResult": {
+        "provider": "none",
+        "warmup": null,
+        "source": {
+          "path": "MEMORY.md",
+          "kind": "file",
+          "text": "## Preferences\n\n- My drink preference is aurorakumquat-739 tea without sugar.\n",
+          "hex": "232320507265666572656e6365730a0a2d204d79206472696e6b20707265666572656e6365206973206175726f72616b756d717561742d3733392074656120776974686f75742073756761722e0a"
+        },
+        "followup": {
+          "search": {
+            "results": [
+              {
+                "path": "MEMORY.md",
+                "startLine": 3,
+                "endLine": 4,
+                "score": 0.6744459512914889,
+                "snippet": "- My drink preference is aurorakumquat-739 tea without sugar.\n",
+                "source": "memory",
+                "textScore": 1.5068470444770565e-06,
+                "provenance": {
+                  "originClass": "agent",
+                  "sessionKind": "unknown",
+                  "observedAt": 1794268800000
+                },
+                "corpus": "memory"
+              }
+            ],
+            "provider": "none",
+            "citations": "off",
+            "corpora": [],
+            "warning": "Automatic memory index repair was requested. To rebuild manually, run: openclaw memory status --index --agent main. Rebuilding uses keyword indexing only and does not call an embedding provider.",
+            "debug": {
+              "effectiveMode": "n/a",
+              "searchMs": 0,
+              "hits": 1,
+              "candidateHits": 1,
+              "withheldHits": 0,
+              "searchWindow": 5,
+              "backend": "builtin",
+              "managerMs": 0,
+              "toolMs": 0,
+              "outsideSearchMs": 0
+            }
+          },
+          "get": {
+            "status": "ok",
+            "text": "- My drink preference is aurorakumquat-739 tea without sugar.",
+            "path": "MEMORY.md",
+            "from": 3,
+            "lines": 1
+          },
+          "reply": {
+            "text": "- My drink preference is aurorakumquat-739 tea without sugar.",
+            "replyToTag": false,
+            "audioAsVoice": false
+          }
+        }
+      },
+      "custodyValidated": true,
+      "differences": [],
+      "rawDiagnostics": {
+        "native": {
+          "sha256": "b00f65be659bf7e284c8413e56a142a560bafed076d87ade6d0e4e18f7c128b8",
+          "validationStatus": "verified"
+        },
+        "python": {
+          "sha256": "3c21dc9bb0e69d898cf27e1068daa806a95f8e8ea5e461db41c8ccb27eac592a",
+          "validationStatus": "verified"
+        }
+      }
+    },
+    {
+      "id": "host-turn-barrier-warm-ascii",
+      "requirement": "host.turn-barrier",
+      "covers": [
+        "host.turn-barrier.outcomes"
+      ],
+      "operation": "host-turn-barrier-runtime",
+      "input": {
+        "nowMs": 1794268800000,
+        "identity": {
+          "agentId": "main",
+          "sessionKey": "agent:main:host-turn-barrier-warm-ascii",
+          "sessionId": "host-turn-barrier-warm-ascii-session"
+        },
+        "source": "MEMORY.md",
+        "policy": {
+          "memoryProvider": "none",
+          "memorySources": [
+            "memory"
+          ],
+          "searchSources": [
+            "memory"
+          ],
+          "sessionMemory": false,
+          "compactionEnabled": true,
+          "memoryFlushEnabled": true,
+          "contextWindowTokens": 32768,
+          "reserveTokens": 8192,
+          "softThresholdTokens": 4000,
+          "nativeMemorySynchronization": "unmodified-default-watch-and-on-search-enabled",
+          "sdkMemoryPublication": "on-search",
+          "optionalMaintenancePreemption": "unclaimed"
+        },
+        "modelTransport": {
+          "kind": "deterministic-offline-provider",
+          "paidCalls": false,
+          "replyFromActualToolResults": true,
+          "fixtureFailureInjection": false
+        },
+        "firstTurnUsage": {
+          "input": 128,
+          "output": 32,
+          "total": 160
+        },
+        "followup": {
+          "prompt": "What is my drink preference? Use memory_search and read the first actual hit before answering.",
+          "search": {
+            "query": "saffronplum-271",
+            "maxResults": 5,
+            "minScore": 0,
+            "corpus": "memory"
+          },
+          "getRange": "first-actual-search-hit",
+          "reply": "actual-memory-get-text-or-no-source-backed-memory"
+        },
+        "followupTrigger": {
+          "event": "first-host-return",
+          "interveningHostActions": []
+        },
+        "initialState": "warm",
+        "warmup": {
+          "save": {
+            "prompt": "Remember my bicycle lock code is marblefern-551.",
+            "content": "## Facts\n\n- My bicycle lock code is marblefern-551.\n",
+            "producer": "native-coding-write-or-sdk-add_memory_entry",
+            "section": "Facts",
+            "text": "My bicycle lock code is marblefern-551."
+          },
+          "recall": {
+            "prompt": "What is my bicycle lock code? Use memory_search and read the first actual hit.",
+            "search": {
+              "query": "marblefern-551",
+              "maxResults": 5,
+              "minScore": 0,
+              "corpus": "memory"
+            },
+            "getRange": "first-actual-search-hit",
+            "reply": "actual-memory-get-text"
+          },
+          "publication": "only-natural-tool-and-search-behavior",
+          "interveningHostActions": []
+        },
+        "save": {
+          "prompt": "Remember: My drink preference is saffronplum-271 coffee without sugar.",
+          "content": "## Facts\n\n- My bicycle lock code is marblefern-551.\n\n## Preferences\n\n- My drink preference is saffronplum-271 coffee without sugar.\n",
+          "producer": "native-coding-write-or-sdk-add_memory_entry",
+          "section": "Preferences",
+          "text": "My drink preference is saffronplum-271 coffee without sugar."
+        },
+        "clockFixture": {
+          "kind": "date-only-wall-clock",
+          "nowMs": 1794268800000,
+          "nativeScope": "all-processes-and-threads-including-workers",
+          "sdkClock": "public-host-clock-argument",
+          "monotonicAndTimers": "unmodified"
+        },
+        "sourceMetadataFixture": {
+          "operation": "os-utime-only",
+          "target": "MEMORY.md",
+          "atimeMs": 1794268800000,
+          "mtimeMs": 1794268800000,
+          "placement": "inside-model-callback-after-real-producing-tool-result-before-terminal-reply",
+          "applyTo": "each-successful-corpus-producing-tool-result",
+          "indexOperations": [],
+          "sourceContentMutation": false
+        }
+      },
+      "referenceMode": "authenticated-official-release",
+      "runtimeEvidenceValidated": true,
+      "status": "matched",
+      "nativeResult": {
+        "provider": "none",
+        "warmup": {
+          "search": {
+            "results": [
+              {
+                "path": "MEMORY.md",
+                "startLine": 3,
+                "endLine": 4,
+                "score": 0.6871443875752974,
+                "textScore": 1.5304324403816562e-06,
+                "snippet": "- My bicycle lock code is marblefern-551.\n",
+                "source": "memory",
+                "provenance": {
+                  "originClass": "agent",
+                  "sessionKind": "unknown",
+                  "observedAt": 1794268800000
+                },
+                "corpus": "memory"
+              }
+            ],
+            "provider": "none",
+            "citations": "off",
+            "corpora": [],
+            "warning": "Automatic memory index repair was requested. To rebuild manually, run: openclaw memory status --index --agent main. Rebuilding uses keyword indexing only and does not call an embedding provider.",
+            "debug": {
+              "backend": "builtin",
+              "effectiveMode": "n/a",
+              "managerMs": 0,
+              "searchMs": 0,
+              "hits": 1,
+              "candidateHits": 1,
+              "withheldHits": 0,
+              "searchWindow": 5,
+              "toolMs": 0,
+              "outsideSearchMs": 0
+            }
+          },
+          "get": {
+            "status": "ok",
+            "text": "- My bicycle lock code is marblefern-551.",
+            "path": "MEMORY.md",
+            "from": 3,
+            "lines": 1
+          },
+          "reply": {
+            "text": "- My bicycle lock code is marblefern-551.",
+            "replyToTag": false,
+            "audioAsVoice": false
+          }
+        },
+        "source": {
+          "path": "MEMORY.md",
+          "kind": "file",
+          "text": "## Facts\n\n- My bicycle lock code is marblefern-551.\n\n## Preferences\n\n- My drink preference is saffronplum-271 coffee without sugar.\n",
+          "hex": "23232046616374730a0a2d204d792062696379636c65206c6f636b20636f6465206973206d6172626c656665726e2d3535312e0a0a232320507265666572656e6365730a0a2d204d79206472696e6b20707265666572656e63652069732073616666726f6e706c756d2d32373120636f6666656520776974686f75742073756761722e0a"
+        },
+        "followup": {
+          "search": {
+            "results": [],
+            "provider": "none",
+            "citations": "off",
+            "debug": {
+              "backend": "builtin",
+              "effectiveMode": "n/a",
+              "managerMs": 0,
+              "searchMs": 0,
+              "hits": 0,
+              "candidateHits": 0,
+              "withheldHits": 0,
+              "searchWindow": 5,
+              "toolMs": 0,
+              "outsideSearchMs": 0
+            }
+          },
+          "get": null,
+          "reply": {
+            "text": "No source-backed memory found.",
+            "replyToTag": false,
+            "audioAsVoice": false
+          }
+        }
+      },
+      "sdkResult": {
+        "provider": "none",
+        "warmup": {
+          "search": {
+            "results": [
+              {
+                "path": "MEMORY.md",
+                "startLine": 3,
+                "endLine": 4,
+                "score": 0.6871443875752974,
+                "snippet": "- My bicycle lock code is marblefern-551.\n",
+                "source": "memory",
+                "textScore": 1.5304324403816562e-06,
+                "provenance": {
+                  "originClass": "agent",
+                  "sessionKind": "unknown",
+                  "observedAt": 1794268800000
+                },
+                "corpus": "memory"
+              }
+            ],
+            "provider": "none",
+            "citations": "off",
+            "corpora": [],
+            "warning": "Automatic memory index repair was requested. To rebuild manually, run: openclaw memory status --index --agent main. Rebuilding uses keyword indexing only and does not call an embedding provider.",
+            "debug": {
+              "effectiveMode": "n/a",
+              "searchMs": 0,
+              "hits": 1,
+              "candidateHits": 1,
+              "withheldHits": 0,
+              "searchWindow": 5,
+              "backend": "builtin",
+              "managerMs": 0,
+              "toolMs": 0,
+              "outsideSearchMs": 0
+            }
+          },
+          "get": {
+            "status": "ok",
+            "text": "- My bicycle lock code is marblefern-551.",
+            "path": "MEMORY.md",
+            "from": 3,
+            "lines": 1
+          },
+          "reply": {
+            "text": "- My bicycle lock code is marblefern-551.",
+            "replyToTag": false,
+            "audioAsVoice": false
+          }
+        },
+        "source": {
+          "path": "MEMORY.md",
+          "kind": "file",
+          "text": "## Facts\n\n- My bicycle lock code is marblefern-551.\n\n## Preferences\n\n- My drink preference is saffronplum-271 coffee without sugar.\n",
+          "hex": "23232046616374730a0a2d204d792062696379636c65206c6f636b20636f6465206973206d6172626c656665726e2d3535312e0a0a232320507265666572656e6365730a0a2d204d79206472696e6b20707265666572656e63652069732073616666726f6e706c756d2d32373120636f6666656520776974686f75742073756761722e0a"
+        },
+        "followup": {
+          "search": {
+            "results": [],
+            "provider": "none",
+            "citations": "off",
+            "debug": {
+              "effectiveMode": "n/a",
+              "searchMs": 0,
+              "hits": 0,
+              "candidateHits": 0,
+              "withheldHits": 0,
+              "searchWindow": 5,
+              "backend": "builtin",
+              "managerMs": 0,
+              "toolMs": 0,
+              "outsideSearchMs": 0
+            }
+          },
+          "get": null,
+          "reply": {
+            "text": "No source-backed memory found.",
+            "replyToTag": false,
+            "audioAsVoice": false
+          }
+        }
+      },
+      "custodyValidated": true,
+      "differences": [],
+      "rawDiagnostics": {
+        "native": {
+          "sha256": "144be34b1b75e61dd7691b58b4cea27302dbdca5112c48305a694fdea7a79bc8",
+          "validationStatus": "verified"
+        },
+        "python": {
+          "sha256": "72ed5eb8bedd8bf629d276d2b0384bc53f4743d18481b44750439de019c5537e",
+          "validationStatus": "verified"
+        }
+      }
+    },
+    {
+      "id": "host-turn-barrier-cold-unicode",
+      "requirement": "host.turn-barrier",
+      "covers": [
+        "host.turn-barrier.outcomes"
+      ],
+      "operation": "host-turn-barrier-runtime",
+      "input": {
+        "nowMs": 1794268800000,
+        "identity": {
+          "agentId": "main",
+          "sessionKey": "agent:main:host-turn-barrier-cold-unicode",
+          "sessionId": "host-turn-barrier-cold-unicode-session"
+        },
+        "source": "MEMORY.md",
+        "policy": {
+          "memoryProvider": "none",
+          "memorySources": [
+            "memory"
+          ],
+          "searchSources": [
+            "memory"
+          ],
+          "sessionMemory": false,
+          "compactionEnabled": true,
+          "memoryFlushEnabled": true,
+          "contextWindowTokens": 32768,
+          "reserveTokens": 8192,
+          "softThresholdTokens": 4000,
+          "nativeMemorySynchronization": "unmodified-default-watch-and-on-search-enabled",
+          "sdkMemoryPublication": "on-search",
+          "optionalMaintenancePreemption": "unclaimed"
+        },
+        "modelTransport": {
+          "kind": "deterministic-offline-provider",
+          "paidCalls": false,
+          "replyFromActualToolResults": true,
+          "fixtureFailureInjection": false
+        },
+        "firstTurnUsage": {
+          "input": 128,
+          "output": 32,
+          "total": 160
+        },
+        "followup": {
+          "prompt": "What is my drink preference? Use memory_search and read the first actual hit before answering.",
+          "search": {
+            "query": "yıldızarmudu-812",
+            "maxResults": 5,
+            "minScore": 0,
+            "corpus": "memory"
+          },
+          "getRange": "first-actual-search-hit",
+          "reply": "actual-memory-get-text-or-no-source-backed-memory"
+        },
+        "followupTrigger": {
+          "event": "first-host-return",
+          "interveningHostActions": []
+        },
+        "initialState": "cold",
+        "save": {
+          "prompt": "Remember: My drink preference is yıldızarmudu-812 çay without sugar.",
+          "content": "## Preferences\n\n- My drink preference is yıldızarmudu-812 çay without sugar.\n",
+          "producer": "native-coding-write-or-sdk-add_memory_entry",
+          "section": "Preferences",
+          "text": "My drink preference is yıldızarmudu-812 çay without sugar."
+        },
+        "clockFixture": {
+          "kind": "date-only-wall-clock",
+          "nowMs": 1794268800000,
+          "nativeScope": "all-processes-and-threads-including-workers",
+          "sdkClock": "public-host-clock-argument",
+          "monotonicAndTimers": "unmodified"
+        },
+        "sourceMetadataFixture": {
+          "operation": "os-utime-only",
+          "target": "MEMORY.md",
+          "atimeMs": 1794268800000,
+          "mtimeMs": 1794268800000,
+          "placement": "inside-model-callback-after-real-producing-tool-result-before-terminal-reply",
+          "applyTo": "each-successful-corpus-producing-tool-result",
+          "indexOperations": [],
+          "sourceContentMutation": false
+        }
+      },
+      "referenceMode": "authenticated-official-release",
+      "runtimeEvidenceValidated": true,
+      "status": "matched",
+      "nativeResult": {
+        "provider": "none",
+        "warmup": null,
+        "source": {
+          "path": "MEMORY.md",
+          "kind": "file",
+          "text": "## Preferences\n\n- My drink preference is yıldızarmudu-812 çay without sugar.\n",
+          "hex": "232320507265666572656e6365730a0a2d204d79206472696e6b20707265666572656e63652069732079c4b16c64c4b17a61726d7564752d38313220c3a7617920776974686f75742073756761722e0a"
+        },
+        "followup": {
+          "search": {
+            "results": [
+              {
+                "path": "MEMORY.md",
+                "startLine": 3,
+                "endLine": 4,
+                "score": 0.6744459512914889,
+                "textScore": 1.5068470444770565e-06,
+                "snippet": "- My drink preference is yıldızarmudu-812 çay without sugar.\n",
+                "source": "memory",
+                "provenance": {
+                  "originClass": "agent",
+                  "sessionKind": "unknown",
+                  "observedAt": 1794268800000
+                },
+                "corpus": "memory"
+              }
+            ],
+            "provider": "none",
+            "citations": "off",
+            "corpora": [],
+            "warning": "Automatic memory index repair was requested. To rebuild manually, run: openclaw memory status --index --agent main. Rebuilding uses keyword indexing only and does not call an embedding provider.",
+            "debug": {
+              "backend": "builtin",
+              "effectiveMode": "n/a",
+              "managerMs": 0,
+              "searchMs": 0,
+              "hits": 1,
+              "candidateHits": 1,
+              "withheldHits": 0,
+              "searchWindow": 5,
+              "toolMs": 0,
+              "outsideSearchMs": 0
+            }
+          },
+          "get": {
+            "status": "ok",
+            "text": "- My drink preference is yıldızarmudu-812 çay without sugar.",
+            "path": "MEMORY.md",
+            "from": 3,
+            "lines": 1
+          },
+          "reply": {
+            "text": "- My drink preference is yıldızarmudu-812 çay without sugar.",
+            "replyToTag": false,
+            "audioAsVoice": false
+          }
+        }
+      },
+      "sdkResult": {
+        "provider": "none",
+        "warmup": null,
+        "source": {
+          "path": "MEMORY.md",
+          "kind": "file",
+          "text": "## Preferences\n\n- My drink preference is yıldızarmudu-812 çay without sugar.\n",
+          "hex": "232320507265666572656e6365730a0a2d204d79206472696e6b20707265666572656e63652069732079c4b16c64c4b17a61726d7564752d38313220c3a7617920776974686f75742073756761722e0a"
+        },
+        "followup": {
+          "search": {
+            "results": [
+              {
+                "path": "MEMORY.md",
+                "startLine": 3,
+                "endLine": 4,
+                "score": 0.6744459512914889,
+                "snippet": "- My drink preference is yıldızarmudu-812 çay without sugar.\n",
+                "source": "memory",
+                "textScore": 1.5068470444770565e-06,
+                "provenance": {
+                  "originClass": "agent",
+                  "sessionKind": "unknown",
+                  "observedAt": 1794268800000
+                },
+                "corpus": "memory"
+              }
+            ],
+            "provider": "none",
+            "citations": "off",
+            "corpora": [],
+            "warning": "Automatic memory index repair was requested. To rebuild manually, run: openclaw memory status --index --agent main. Rebuilding uses keyword indexing only and does not call an embedding provider.",
+            "debug": {
+              "effectiveMode": "n/a",
+              "searchMs": 0,
+              "hits": 1,
+              "candidateHits": 1,
+              "withheldHits": 0,
+              "searchWindow": 5,
+              "backend": "builtin",
+              "managerMs": 0,
+              "toolMs": 0,
+              "outsideSearchMs": 0
+            }
+          },
+          "get": {
+            "status": "ok",
+            "text": "- My drink preference is yıldızarmudu-812 çay without sugar.",
+            "path": "MEMORY.md",
+            "from": 3,
+            "lines": 1
+          },
+          "reply": {
+            "text": "- My drink preference is yıldızarmudu-812 çay without sugar.",
+            "replyToTag": false,
+            "audioAsVoice": false
+          }
+        }
+      },
+      "custodyValidated": true,
+      "differences": [],
+      "rawDiagnostics": {
+        "native": {
+          "sha256": "306e6227af1f259f0511a017d2f353f2a1e19b80b8c221b137c39310012b0278",
+          "validationStatus": "verified"
+        },
+        "python": {
+          "sha256": "7f3ad1b314c4ec10a88103eb1d33b664a3a19ce7661450c7ccb06e838ef40a29",
+          "validationStatus": "verified"
+        }
+      }
+    },
+    {
+      "id": "host-turn-barrier-warm-unicode",
+      "requirement": "host.turn-barrier",
+      "covers": [
+        "host.turn-barrier.outcomes"
+      ],
+      "operation": "host-turn-barrier-runtime",
+      "input": {
+        "nowMs": 1794268800000,
+        "identity": {
+          "agentId": "main",
+          "sessionKey": "agent:main:host-turn-barrier-warm-unicode",
+          "sessionId": "host-turn-barrier-warm-unicode-session"
+        },
+        "source": "MEMORY.md",
+        "policy": {
+          "memoryProvider": "none",
+          "memorySources": [
+            "memory"
+          ],
+          "searchSources": [
+            "memory"
+          ],
+          "sessionMemory": false,
+          "compactionEnabled": true,
+          "memoryFlushEnabled": true,
+          "contextWindowTokens": 32768,
+          "reserveTokens": 8192,
+          "softThresholdTokens": 4000,
+          "nativeMemorySynchronization": "unmodified-default-watch-and-on-search-enabled",
+          "sdkMemoryPublication": "on-search",
+          "optionalMaintenancePreemption": "unclaimed"
+        },
+        "modelTransport": {
+          "kind": "deterministic-offline-provider",
+          "paidCalls": false,
+          "replyFromActualToolResults": true,
+          "fixtureFailureInjection": false
+        },
+        "firstTurnUsage": {
+          "input": 128,
+          "output": 32,
+          "total": 160
+        },
+        "followup": {
+          "prompt": "What is my drink preference? Use memory_search and read the first actual hit before answering.",
+          "search": {
+            "query": "ışıkinciri-526",
+            "maxResults": 5,
+            "minScore": 0,
+            "corpus": "memory"
+          },
+          "getRange": "first-actual-search-hit",
+          "reply": "actual-memory-get-text-or-no-source-backed-memory"
+        },
+        "followupTrigger": {
+          "event": "first-host-return",
+          "interveningHostActions": []
+        },
+        "initialState": "warm",
+        "warmup": {
+          "save": {
+            "prompt": "Remember my bicycle lock code is marblefern-551.",
+            "content": "## Facts\n\n- My bicycle lock code is marblefern-551.\n",
+            "producer": "native-coding-write-or-sdk-add_memory_entry",
+            "section": "Facts",
+            "text": "My bicycle lock code is marblefern-551."
+          },
+          "recall": {
+            "prompt": "What is my bicycle lock code? Use memory_search and read the first actual hit.",
+            "search": {
+              "query": "marblefern-551",
+              "maxResults": 5,
+              "minScore": 0,
+              "corpus": "memory"
+            },
+            "getRange": "first-actual-search-hit",
+            "reply": "actual-memory-get-text"
+          },
+          "publication": "only-natural-tool-and-search-behavior",
+          "interveningHostActions": []
+        },
+        "save": {
+          "prompt": "Remember: My drink preference is ışıkinciri-526 kahve without sugar.",
+          "content": "## Facts\n\n- My bicycle lock code is marblefern-551.\n\n## Preferences\n\n- My drink preference is ışıkinciri-526 kahve without sugar.\n",
+          "producer": "native-coding-write-or-sdk-add_memory_entry",
+          "section": "Preferences",
+          "text": "My drink preference is ışıkinciri-526 kahve without sugar."
+        },
+        "clockFixture": {
+          "kind": "date-only-wall-clock",
+          "nowMs": 1794268800000,
+          "nativeScope": "all-processes-and-threads-including-workers",
+          "sdkClock": "public-host-clock-argument",
+          "monotonicAndTimers": "unmodified"
+        },
+        "sourceMetadataFixture": {
+          "operation": "os-utime-only",
+          "target": "MEMORY.md",
+          "atimeMs": 1794268800000,
+          "mtimeMs": 1794268800000,
+          "placement": "inside-model-callback-after-real-producing-tool-result-before-terminal-reply",
+          "applyTo": "each-successful-corpus-producing-tool-result",
+          "indexOperations": [],
+          "sourceContentMutation": false
+        }
+      },
+      "referenceMode": "authenticated-official-release",
+      "runtimeEvidenceValidated": true,
+      "status": "matched",
+      "nativeResult": {
+        "provider": "none",
+        "warmup": {
+          "search": {
+            "results": [
+              {
+                "path": "MEMORY.md",
+                "startLine": 3,
+                "endLine": 4,
+                "score": 0.6871443875752974,
+                "textScore": 1.5304324403816562e-06,
+                "snippet": "- My bicycle lock code is marblefern-551.\n",
+                "source": "memory",
+                "provenance": {
+                  "originClass": "agent",
+                  "sessionKind": "unknown",
+                  "observedAt": 1794268800000
+                },
+                "corpus": "memory"
+              }
+            ],
+            "provider": "none",
+            "citations": "off",
+            "corpora": [],
+            "warning": "Automatic memory index repair was requested. To rebuild manually, run: openclaw memory status --index --agent main. Rebuilding uses keyword indexing only and does not call an embedding provider.",
+            "debug": {
+              "backend": "builtin",
+              "effectiveMode": "n/a",
+              "managerMs": 0,
+              "searchMs": 0,
+              "hits": 1,
+              "candidateHits": 1,
+              "withheldHits": 0,
+              "searchWindow": 5,
+              "toolMs": 0,
+              "outsideSearchMs": 0
+            }
+          },
+          "get": {
+            "status": "ok",
+            "text": "- My bicycle lock code is marblefern-551.",
+            "path": "MEMORY.md",
+            "from": 3,
+            "lines": 1
+          },
+          "reply": {
+            "text": "- My bicycle lock code is marblefern-551.",
+            "replyToTag": false,
+            "audioAsVoice": false
+          }
+        },
+        "source": {
+          "path": "MEMORY.md",
+          "kind": "file",
+          "text": "## Facts\n\n- My bicycle lock code is marblefern-551.\n\n## Preferences\n\n- My drink preference is ışıkinciri-526 kahve without sugar.\n",
+          "hex": "23232046616374730a0a2d204d792062696379636c65206c6f636b20636f6465206973206d6172626c656665726e2d3535312e0a0a232320507265666572656e6365730a0a2d204d79206472696e6b20707265666572656e636520697320c4b1c59fc4b16b696e636972692d353236206b6168766520776974686f75742073756761722e0a"
+        },
+        "followup": {
+          "search": {
+            "results": [],
+            "provider": "none",
+            "citations": "off",
+            "debug": {
+              "backend": "builtin",
+              "effectiveMode": "n/a",
+              "managerMs": 0,
+              "searchMs": 0,
+              "hits": 0,
+              "candidateHits": 0,
+              "withheldHits": 0,
+              "searchWindow": 5,
+              "toolMs": 0,
+              "outsideSearchMs": 0
+            }
+          },
+          "get": null,
+          "reply": {
+            "text": "No source-backed memory found.",
+            "replyToTag": false,
+            "audioAsVoice": false
+          }
+        }
+      },
+      "sdkResult": {
+        "provider": "none",
+        "warmup": {
+          "search": {
+            "results": [
+              {
+                "path": "MEMORY.md",
+                "startLine": 3,
+                "endLine": 4,
+                "score": 0.6871443875752974,
+                "snippet": "- My bicycle lock code is marblefern-551.\n",
+                "source": "memory",
+                "textScore": 1.5304324403816562e-06,
+                "provenance": {
+                  "originClass": "agent",
+                  "sessionKind": "unknown",
+                  "observedAt": 1794268800000
+                },
+                "corpus": "memory"
+              }
+            ],
+            "provider": "none",
+            "citations": "off",
+            "corpora": [],
+            "warning": "Automatic memory index repair was requested. To rebuild manually, run: openclaw memory status --index --agent main. Rebuilding uses keyword indexing only and does not call an embedding provider.",
+            "debug": {
+              "effectiveMode": "n/a",
+              "searchMs": 0,
+              "hits": 1,
+              "candidateHits": 1,
+              "withheldHits": 0,
+              "searchWindow": 5,
+              "backend": "builtin",
+              "managerMs": 0,
+              "toolMs": 0,
+              "outsideSearchMs": 0
+            }
+          },
+          "get": {
+            "status": "ok",
+            "text": "- My bicycle lock code is marblefern-551.",
+            "path": "MEMORY.md",
+            "from": 3,
+            "lines": 1
+          },
+          "reply": {
+            "text": "- My bicycle lock code is marblefern-551.",
+            "replyToTag": false,
+            "audioAsVoice": false
+          }
+        },
+        "source": {
+          "path": "MEMORY.md",
+          "kind": "file",
+          "text": "## Facts\n\n- My bicycle lock code is marblefern-551.\n\n## Preferences\n\n- My drink preference is ışıkinciri-526 kahve without sugar.\n",
+          "hex": "23232046616374730a0a2d204d792062696379636c65206c6f636b20636f6465206973206d6172626c656665726e2d3535312e0a0a232320507265666572656e6365730a0a2d204d79206472696e6b20707265666572656e636520697320c4b1c59fc4b16b696e636972692d353236206b6168766520776974686f75742073756761722e0a"
+        },
+        "followup": {
+          "search": {
+            "results": [],
+            "provider": "none",
+            "citations": "off",
+            "debug": {
+              "effectiveMode": "n/a",
+              "searchMs": 0,
+              "hits": 0,
+              "candidateHits": 0,
+              "withheldHits": 0,
+              "searchWindow": 5,
+              "backend": "builtin",
+              "managerMs": 0,
+              "toolMs": 0,
+              "outsideSearchMs": 0
+            }
+          },
+          "get": null,
+          "reply": {
+            "text": "No source-backed memory found.",
+            "replyToTag": false,
+            "audioAsVoice": false
+          }
+        }
+      },
+      "custodyValidated": true,
+      "differences": [],
+      "rawDiagnostics": {
+        "native": {
+          "sha256": "306238b552365fbc2c30e40b893f2252897402bdfe018b0550a15f21bdbda99b",
+          "validationStatus": "verified"
+        },
+        "python": {
+          "sha256": "a0bfb764617cfdc78ed25858592ca65ea74dccc1be787dab9c4dd204a6c5306b",
+          "validationStatus": "verified"
+        }
+      }
+    }
+  ],
+  "regressions": {
+    "sessionId": 8089,
+    "log": "work/host-turn-barrier-full-regressions-002.log",
+    "state": "passed",
+    "passed": 8194,
+    "skipped": 1648,
+    "failed": 0,
+    "durationSeconds": 406.91,
+    "sha256": "cb644bd114ed3752f36624993d8687cf1bd68cf70e8ea348a4c63715b81e3cd3"
+  },
+  "installedConsumers": {
+    "log": "work/host-turn-barrier-distribution-001.log",
+    "status": "passed",
+    "wheel": "passed",
+    "sdist": "passed",
+    "invalidTypedCalls": 24,
+    "sha256": "422bf3ea37a5b60730dd140ebedc6286515722e635f7c3238e6db2b640dfc066",
+    "sourceSha256": "03bf15292a2a795c7e0a5897eb3cc742d2ba61ec11be516c9cbf16d5230c9aa2"
+  },
+  "retention": {
+    "nativeRawFiles": "four original physical files retained in ignored directories",
+    "sdkRawFiles": "temporary directories removed after full-gate collection",
+    "sdkEvidence": "complete original raw snapshots and stdin/stdout embedded in actual full report; exact writer serialization matches recorded SHA-256",
+    "replayAddsAcceptanceCredit": false,
+    "actualEvidenceTamperTests": 252,
+    "capabilityTests": 39
+  },
+  "developmentReports": [
+    {
+      "path": "work/host-turn-barrier/attempt-001-development/report.json",
+      "sha256": "a9cb23dc4d55705c97d93c4e159a0f790a72e7f17a0351f2142e52e75f78b378",
+      "bytes": 17074024,
+      "implementation": {
+        "gitCommit": "5da61690f7dd08741a412d638a55b18f924f77d1",
+        "trackedWorkingTreeDirty": true,
+        "sourceSha256": "03bf15292a2a795c7e0a5897eb3cc742d2ba61ec11be516c9cbf16d5230c9aa2",
+        "sourceFiles": 159
+      },
+      "summary": {
+        "match": 0,
+        "mismatch": 0,
+        "blocked": 4
+      },
+      "errors": [],
+      "acceptancePointsAwarded": 0,
+      "finalAuthenticationPassed": true
+    },
+    {
+      "path": "work/host-turn-barrier/attempt-002-development/report.json",
+      "sha256": "db1f235d2d8d8537bbeadd2677ca16a3c2580f06c0210d9a72f18582983f465c",
+      "bytes": 17074015,
+      "implementation": {
+        "gitCommit": "5da61690f7dd08741a412d638a55b18f924f77d1",
+        "trackedWorkingTreeDirty": true,
+        "sourceSha256": "03bf15292a2a795c7e0a5897eb3cc742d2ba61ec11be516c9cbf16d5230c9aa2",
+        "sourceFiles": 159
+      },
+      "summary": {
+        "match": 4,
+        "mismatch": 0,
+        "blocked": 0
+      },
+      "errors": [],
+      "acceptancePointsAwarded": 0,
+      "finalAuthenticationPassed": true
+    },
+    {
+      "path": "work/host-turn-barrier/attempt-003-5b7fc99/report.json",
+      "sha256": "1dae184998017e2ef2e539bedec2903d3246c2bac809613086c0e9d0b8e99593",
+      "bytes": 17074016,
+      "implementation": {
+        "gitCommit": "5b7fc994717d4f93cf831e685d6e93138843a0b3",
+        "trackedWorkingTreeDirty": false,
+        "sourceSha256": "03bf15292a2a795c7e0a5897eb3cc742d2ba61ec11be516c9cbf16d5230c9aa2",
+        "sourceFiles": 159
+      },
+      "summary": {
+        "match": 4,
+        "mismatch": 0,
+        "blocked": 0
+      },
+      "errors": [],
+      "acceptancePointsAwarded": 0,
+      "finalAuthenticationPassed": true
+    }
+  ],
+  "retainedFailedCatalog": {
+    "path": "work/host-turn-barrier-full-001.json",
+    "sha256": "a4cd296b62afc43d91f8a3a8a8ebcaf823877f9ffd842623d6d2d8da571fbe20",
+    "implementation": {
+      "gitCommit": "5b7fc994717d4f93cf831e685d6e93138843a0b3",
+      "trackedWorkingTreeDirty": false,
+      "sourceSha256": "03bf15292a2a795c7e0a5897eb3cc742d2ba61ec11be516c9cbf16d5230c9aa2",
+      "sourceFiles": 159
+    },
+    "cases": 0,
+    "errors": [
+      {
+        "code": "runtime-context-invalid",
+        "message": "The verified release execution context is unavailable."
+      }
+    ],
+    "reason": "New nested provider hashes reached the legacy plain-filename-only context; fixed by giving legacy execution its own flat authority view while retaining complete global hashes."
+  },
+  "independentRetainedEvidenceAudit": {
+    "path": "work/turn-barrier-independent-audit.json",
+    "bytes": 31447,
+    "sha256": "9fdbfac714b12dc8332d829ae8e4b02fce34bf848b278c69c33530e8531170e9",
+    "priorCasesUnchanged": 1411,
+    "priorEvidenceFlagsUnchanged": 8,
+    "newMatchedValidatedCases": 4,
+    "newVerifiedConditions": [
+      "host.turn-barrier.outcomes"
+    ],
+    "otherAcceptanceRecordsUnchanged": 127,
+    "nativeClockAttestations": 38,
+    "additionalAcceptanceCredit": 0
+  },
+  "limits": [
+    "Only the original outcome is verified; maintenance preemption, writer settlement and visible failure before next admission remain unverified.",
+    "Warm new-fact search returns an actual empty result from the previous read generation; immediately fresh warm recall is not guaranteed.",
+    "The scripted provider replies follow actual memory tools; real-language-model quality and answers from persistent conversation/current workspace context are not assessed.",
+    "Native coding and SDK curated producer API shapes are custody, not cross-API identity.",
+    "Native Date-only clocks and producer metadata are declared inputs; timers and monotonic clocks remain real.",
+    "No forced publication or maintenance wait occurs before follow-up.",
+    "The full gate remains mismatched with 14 differences and fullScopePassed=false.",
+    "No restart-family per-message physical SQL commit/readback chain is claimed."
+  ]
+}

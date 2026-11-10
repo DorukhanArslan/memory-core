@@ -170,7 +170,10 @@ The eager runner remains unchanged. Those primitives alone awarded zero credit.
 The later [shared managed-host restart package](host_restart_session_closeout.md)
 verified both original restart conditions at **66/128**. The later
 [update/isolation package](host_update_isolation_closeout.md) verifies both original
-#64 conditions in a fresh complete catalog: **68/128**, with **60 remaining**.
+#64 conditions at **68/128**. The later
+[natural next-turn package](host_turn_barrier_closeout.md) verifies the original
+#62 outcome in a fresh complete catalog: **69/128**, with **59 remaining**.
+The separate maintenance/failure boundary remains open.
 Source inventory itself still awards no behavioral credit.
 
 The current inventory maps **199 upstream modules**, with 17 present and 47 partial

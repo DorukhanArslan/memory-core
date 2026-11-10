@@ -1,10 +1,12 @@
 # Promotion and heartbeat maintenance integration
 
-The latest [host update/isolation closeout](host_update_isolation_closeout.md)
-verifies **68/128 conditions**, with **60 remaining**, on a fresh complete catalog.
-It follows the [shared managed-host restart closeout](host_restart_session_closeout.md),
-which verified 66/128. This historical maintenance package still awards zero;
-its original captures remain unchanged.
+The latest [natural next-turn outcomes closeout](host_turn_barrier_closeout.md)
+verifies **69/128 conditions**, with **59 remaining**, on a fresh complete catalog.
+It adds the original save/follow-up outcome; the maintenance/failure boundary remains
+open. The preceding [host update/isolation closeout](host_update_isolation_closeout.md)
+verified 68/128, following [shared managed-host restart](host_restart_session_closeout.md)
+at 66/128. This historical maintenance package still awards zero; its original captures
+remain unchanged.
 
 This is the historical zero-credit maintenance closeout. Subsequent work is
 recorded separately in the [promotion apply/reconciliation closeout](promotion_apply_reconcile_closeout.md):

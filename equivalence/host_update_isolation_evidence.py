@@ -58,8 +58,9 @@ Limits that a reader must not infer past:
   property of the frozen literal, which the exact request check then enforces.
 * The original prints the refused path through a helper that replaces its
   process's home directory by ``~`` when the fixture lies below it, as in a
-  checkout under a hosted runner's home. The guard accepts that spelling as the
-  same absolute path. No compared field carries an absolute path.
+  checkout under a hosted runner's home. The guard accepts that spelling while
+  it still shows this run's own fixture directory. No compared field carries an
+  absolute path.
 """
 from __future__ import annotations
 
@@ -334,11 +335,14 @@ def _own_corpus(indexed, current, tokens):
 
 
 def native_refusal_names_source(reason, workspace):
-    """Whether the original's hard-link refusal names exactly this workspace and its source.
+    """Whether the original's hard-link refusal names this run's workspace and its source.
 
     The release prints both paths through one helper. It replaces the home directory of
     its process by ``~`` when a path lies below it, and leaves other paths absolute.
-    Either spelling of the whole message is the declared cause; nothing else is.
+    The absolute message names the paths exactly. The home-relative one is accepted only
+    while it still shows the fixture directory that this run created and its workspace,
+    so the replaced home is a proper ancestor of that directory. A text relative to the
+    fixture directory itself would name nothing of this run, and no run can print it.
     """
     source = f"{workspace}/{SOURCE}"
     if reason == f"{NATIVE_REFUSAL} ({workspace}): {source}":
@@ -347,9 +351,9 @@ def native_refusal_names_source(reason, workspace):
     if not isinstance(reason, str) or not reason.startswith(opening + "/") or closing not in reason:
         return False
     below_home, _, shown = reason[len(opening):].partition(closing)
-    # One home directory, an ancestor of the workspace, was replaced in both paths.
+    # One home directory, a proper ancestor of the fixture directory, was replaced in both paths.
     home = workspace[:-len(below_home)]
-    return (shown == f"{below_home}/{SOURCE}" and workspace.endswith(below_home)
+    return (shown == f"{below_home}/{SOURCE}" and workspace.endswith(below_home) and below_home.count("/") >= 2
             and (home == "" or home.startswith("/") and not home.endswith("/")))
 
 
@@ -472,8 +476,10 @@ def _native_phase(case, raw, record, phase, public, ordinal, plan, tokens):
                 and event["isError"] is refused and _text(assistant) == public["update"]["answer"],
                 "The original edit dispatch differs from the declared update or its outcome")
         if refused:
-            require(native_refusal_names_source(_text(event["result"]), workspace[agent]),
-                    "The original refusal is not the declared hard-link refusal of this source")
+            reason = _text(event["result"])
+            # The refused text is kept, bounded, so that a rejection can be diagnosed from the report.
+            require(native_refusal_names_source(reason, workspace[agent]),
+                    f"The original refusal is not the declared hard-link refusal of this source: {reason[:400]!r}")
         else:
             require(event["result"]["details"].get("changed") is True, "The original edit reported no committed change")
 

@@ -1916,17 +1916,28 @@ def test_original_guard_refuses_each_custody_substitution_for_its_own_reason(nat
         validate_capture(case, raw, result, native=True)
 
 
-@pytest.mark.parametrize("levels", [1, 3, 6])
-def test_original_refusal_shown_relative_to_the_process_home_is_the_same_declared_cause(native_captures, levels):
-    """A hosted runner checks the repository out below its home, and the release then prints ``~``."""
-    case, original, public = native_captures[REFUSAL]
+def _home_relative_refusal(original, levels):
     raw = deepcopy(original)
     workspace = raw["fixtureBase"] + "/workspace"
     shown = "~" + workspace[len(workspace.rsplit("/", levels)[0]):]
     _native_reason(_loop(raw, UPDATE, "updater"), "edit",
                    f"Hardlinked path is not allowed under sandbox root ({shown}): {shown}/MEMORY.md", failed=True)
     _seal(raw, True)
-    assert validate_capture(case, raw, public, native=True) is True
+    return raw
+
+
+@pytest.mark.parametrize("levels", [2, 3, 6])
+def test_original_refusal_shown_relative_to_the_process_home_is_the_same_declared_cause(native_captures, levels):
+    """A hosted runner checks the repository out below its home, and the release then prints ``~``."""
+    case, original, public = native_captures[REFUSAL]
+    assert validate_capture(case, _home_relative_refusal(original, levels), public, native=True) is True
+
+
+def test_original_refusal_relative_to_the_fixture_directory_names_nothing_of_this_run(native_captures):
+    """``(~/workspace): ~/workspace/MEMORY.md`` would fit every run; the home cannot be the fixture directory."""
+    case, original, public = native_captures[REFUSAL]
+    with pytest.raises(ValueError, match=NATIVE_REFUSED + r": 'Hardlinked path is not allowed under sandbox root \(~/workspace\)"):
+        validate_capture(case, _home_relative_refusal(original, 1), public, native=True)
 
 
 def test_an_original_capture_without_its_receipts_is_refused_rather_than_trusted(native_captures):
@@ -1956,7 +1967,7 @@ def _shown(home, path=WORKSPACE):
     return "~" + path[len(home):]
 
 
-@pytest.mark.parametrize("home", [None, "/home/runner", "/home", WORKSPACE.rsplit("/", 1)[0], ""])
+@pytest.mark.parametrize("home", [None, "/home/runner", "/home", WORKSPACE.rsplit("/", 2)[0], ""])
 def test_refusal_cause_accepts_the_absolute_and_the_home_relative_spelling_of_the_same_paths(home):
     root = WORKSPACE if home is None else _shown(home)
     assert native_refusal_names_source(f"{REFUSAL_TEXT} ({root}): {root}/MEMORY.md", WORKSPACE) is True
@@ -1972,6 +1983,7 @@ def test_refusal_cause_accepts_the_absolute_and_the_home_relative_spelling_of_th
     f"{REFUSAL_TEXT} ({_shown('/home/run')}): {_shown('/home/run')}/MEMORY.md",
     f"{REFUSAL_TEXT} (~/another/workspace): ~/another/workspace/MEMORY.md",
     f"{REFUSAL_TEXT} (~): ~/MEMORY.md",
+    f"{REFUSAL_TEXT} (~/workspace): ~/workspace/MEMORY.md",
     f"{REFUSAL_TEXT} (~/): ~//MEMORY.md",
     f"{REFUSAL_TEXT} ({WORKSPACE}): {WORKSPACE}/MEMORY.md and more",
     f"Note: {REFUSAL_TEXT} ({WORKSPACE}): {WORKSPACE}/MEMORY.md",

@@ -377,6 +377,10 @@ class SQLiteMemoryStore:
     ) -> None:
         """Observe a real prepared-write attempt before its transaction commits or rolls back."""
 
+    def _on_index_preparation_admitted(self) -> None:
+        """A checked publisher may now prepare its selected sources."""
+        return None
+
     def publish_prepared_index(
         self,
         prepared: PreparedIndexRevision,
@@ -500,13 +504,21 @@ class SQLiteMemoryStore:
             with closing(self.connect()) as connection:
                 connection.execute("BEGIN")
                 return self.index_identity(db=connection)
+        return self._resolve_index_identity(db=db, provider_key_known=True)
+
+    def _resolve_index_identity(self, *, db: sqlite3.Connection, provider_key_known: bool) -> dict[str, Any]:
+        """Read identity under the caller's actual provider-knowledge phase.
+
+        Public inspection and all ordinary retrieval gates remain strict. The
+        managed owner can use its not-yet-initialized phase for plain status.
+        """
         identities = self._provider_identities()
         return resolve_memory_index_identity_state(
             meta=self.read_index_meta(db=db),
             provider=self._index_provider(),
             provider_key=identities[0]["providerKey"],
             provider_aliases=identities[1:],
-            provider_key_known=True,
+            provider_key_known=provider_key_known,
             configured_sources=resolve_configured_sources_for_meta(CONFIGURED_SOURCES),
             configured_scope_hash=resolve_configured_scope_hash(),
             chunk_tokens=CHUNK_TOKENS,
@@ -641,6 +653,7 @@ class SQLiteMemoryStore:
             raise MemoryIndexRequiresFullReindexError(
                 "Selected source refresh requires a current full index for this workspace; call reindex(workspace)."
             )
+        self._on_index_preparation_admitted()
         snapshots = (self._read_source_snapshots(workspace) if selection is None else
                      self._read_source_snapshots(workspace, selection=selection))
         def content_hash(key, value):

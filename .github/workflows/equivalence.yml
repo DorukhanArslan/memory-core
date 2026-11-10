@@ -77,6 +77,9 @@ jobs:
       - name: Replay the retained original turn-barrier boundary captures
         if: always()
         run: MEMORY_EQ_NODE="$(command -v node)" uv run --frozen pytest -q tests/equivalence/test_host_turn_barrier_boundaries_evidence.py
+      - name: Replay both retained index identity boundary engines
+        if: always()
+        run: uv run --frozen pytest -q tests/equivalence/test_index_identity_boundaries_evidence.py
       - name: Retain results, including failed acceptance runs
         if: always()
         uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
@@ -94,6 +97,14 @@ jobs:
             .equivalence-results/host-turn-barrier-boundaries/*/case/evidence/native-raw.json
             .equivalence-results/host-turn-barrier-boundaries/*/case/evidence/fixture-source-captures/*.mjs
             .equivalence-results/host-turn-barrier-boundaries/*/case/traces/*.jsonl
+            .equivalence-results/index-identity-boundaries/*/case/stdout.json
+            .equivalence-results/index-identity-boundaries/*/case/stderr.log
+            .equivalence-results/index-identity-boundaries/*/case/context.json
+            .equivalence-results/index-identity-boundaries/*/case/evidence/native-raw.json
+            .equivalence-results/index-identity-boundaries/*/case/traces/*.jsonl
+            .equivalence-results/index-identity-boundaries/sdk-attempt-*/python-raw.json
+            .equivalence-results/index-identity-boundaries/sdk-attempt-*/sdk-identity-boundary-*/sdk-host-raw.json
+            .equivalence-results/index-identity-boundaries/sdk-attempt-*/sdk-identity-boundary-*/tool-*-envelope.json
           # The reports live in a dot-directory, which this action skips unless told otherwise.
           include-hidden-files: true
           if-no-files-found: ignore

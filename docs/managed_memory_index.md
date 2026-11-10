@@ -10,6 +10,15 @@ replaying the older error. Ordinary `store.status()` remains a live status read.
 search-time cold-index bootstrap. It uses the normal SQLite search and atomic
 index publisher. The existing eager `HostKit.open()` API keeps its behavior.
 
+On reopening, plain `status()` treats the provider key as not yet initialized.
+If only that stored key differs, the pre-query diagnostic can still be `valid`;
+missing metadata, format versions and other configuration checks remain visible.
+The first admitted nonempty search checks the key before delivering hits. A
+checked publication also advances this phase, including when source preparation
+subsequently fails. Empty queries and requests rejected or cancelled before
+admission leave it unchanged. Status calls perform no rebuild. The direct
+`SQLiteMemoryStore.index_identity()` inspection always checks the key strictly.
+
 ```python
 from dataclasses import replace
 from pathlib import Path

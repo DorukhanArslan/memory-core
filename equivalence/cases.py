@@ -292,6 +292,9 @@ def build_cases(*, include_prospective: bool = False) -> list[dict[str, Any]]:
     from equivalence.host_turn_barrier_boundaries import build_cases as build_host_turn_barrier_boundaries_cases
 
     cases.extend(build_host_turn_barrier_boundaries_cases())
+    from equivalence.index_identity_boundaries import build_cases as build_identity_boundary_cases
+
+    cases.extend(build_identity_boundary_cases())
     if include_prospective:
         from equivalence.flush_contract import build_prospective_flush_contract_cases
         from equivalence.session_projection import build_prospective_session_projection_cases
@@ -348,6 +351,14 @@ def run_python(case: dict[str, Any]) -> Any:
         validate_turn_barrier_boundaries_case(
             {key: case[key] for key in ("id", "operation", "requirement", "covers", "input")})
         return run_host_turn_barrier_boundaries_case(arguments, evidence_directory=case.get("_diagnosticDirectory"))
+    if operation == "index-identity-boundaries-runtime":
+        from equivalence.index_identity_boundaries import validate_case as validate_identity_boundary_case
+
+        validate_identity_boundary_case(
+            {key: case[key] for key in ("id", "operation", "requirement", "covers", "input")})
+        from equivalence.index_identity_boundaries_sdk import run_index_identity_boundaries_case
+
+        return run_index_identity_boundaries_case(arguments, evidence_directory=case.get("_diagnosticDirectory"))
     if operation == "promotion-ranking-runtime":
         from equivalence.promotion_ranking_runtime import run_promotion_ranking
 

@@ -86,6 +86,7 @@ class ManagedSQLiteMemoryStore(SQLiteMemoryStore):
         self._memory_publication = memory_publication
         self._condition = threading.Condition(threading.RLock())
         self._local = threading.local()
+        self._provider_initialized = False
         self._active_operations = 0
         self._closing = False
         self._closed = False
@@ -158,12 +159,16 @@ class ManagedSQLiteMemoryStore(SQLiteMemoryStore):
         with self._condition:
             record.update(values)
 
-    def _read_state(self, *, db: sqlite3.Connection | None = None) -> dict[str, Any]:
+    def _read_state(self, *, db: sqlite3.Connection | None = None,
+                    provider_key_known: bool | None = None) -> dict[str, Any]:
         if db is None:
             with closing(self.connect()) as connection:
                 connection.execute("BEGIN")
-                return self._read_state(db=connection)
-        identity = self.index_identity(db=db)
+                return self._read_state(db=connection, provider_key_known=provider_key_known)
+        if provider_key_known is None:
+            with self._condition:
+                provider_key_known = self._provider_initialized
+        identity = self._resolve_index_identity(db=db, provider_key_known=provider_key_known)
         fts_available = db.execute("SELECT 1 FROM sqlite_master WHERE type='table' AND name='chunks_fts'").fetchone() is not None
         chunks = db.execute("SELECT COUNT(*) FROM chunks").fetchone()[0]
         fts_content = fts_available and db.execute("SELECT 1 FROM chunks_fts LIMIT 1").fetchone() is not None
@@ -487,6 +492,13 @@ class ManagedSQLiteMemoryStore(SQLiteMemoryStore):
             and identity.get("versionOrder") == "older"
         )
 
+    def _on_index_preparation_admitted(self) -> None:
+        super()._on_index_preparation_admitted()
+        # Provider-none initialization requires no external resource, but its
+        # knowledge still belongs to an admitted search/publication, not status.
+        with self._condition:
+            self._provider_initialized = True
+
     def _record_rebuild_request(self) -> None:
         agent = f" --agent {self.config.agent_id}" if self.config.agent_id else ""
         guidance = self._runtime_identity.memory_index_rebuild_guidance_keyword_only.format(agent=agent)
@@ -540,7 +552,9 @@ class ManagedSQLiteMemoryStore(SQLiteMemoryStore):
             self._update(operation, query=query)
             with workspace_index_lock(self._workspace.root):
                 self._refresh_memory_dirty()
-                state = self._read_state()
+                state = self._read_state(provider_key_known=True)
+                with self._condition:
+                    self._provider_initialized = True
                 identity = state["identity"]
                 repair = self._automatic_repair_allowed(identity)
                 if self._last_sync_error is None and (repair or not state["hasContent"] and identity["status"] == "valid"):

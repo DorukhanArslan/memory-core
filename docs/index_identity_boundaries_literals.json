@@ -1,0 +1,2357 @@
+{
+  "kind": "index-identity-boundaries-acceptance-literals",
+  "acceptancePointsAwarded": 0,
+  "cases": [
+    {
+      "id": "index-identity-boundaries-matching",
+      "requirement": "indexing.identity",
+      "operation": "index-identity-boundaries-runtime",
+      "covers": [
+        "indexing.identity.boundaries"
+      ],
+      "input": {
+        "profile": "provider-none-reopened-manager-identity-diagnostics",
+        "nowMs": 1794268800000,
+        "sourceMtimeMs": 1794268800000,
+        "identity": {
+          "agentId": "main"
+        },
+        "files": {
+          "MEMORY.md": "# Library marker\n\nThe library shelf marker is copperlarch-583.\n"
+        },
+        "config": {
+          "memory": {
+            "citations": "off",
+            "search": {
+              "enabled": true,
+              "provider": "none",
+              "fallback": "none",
+              "sources": [
+                "memory",
+                "sessions"
+              ],
+              "experimental": {
+                "sessionMemory": true
+              },
+              "rememberAcrossConversations": false,
+              "extraPaths": [],
+              "store": {
+                "vector": {
+                  "enabled": false
+                },
+                "fts": {
+                  "tokenizer": "unicode61"
+                }
+              },
+              "cache": {
+                "enabled": false
+              },
+              "multimodal": {
+                "enabled": false,
+                "modalities": [],
+                "maxFileBytes": 10485760
+              },
+              "query": {
+                "maxResults": 5,
+                "minScore": 0
+              }
+            }
+          }
+        },
+        "seed": {
+          "publication": "real-full-producer-once-before-metadata-mutation",
+          "baselineSearch": {
+            "query": "copperlarch-583",
+            "maxResults": 5,
+            "minScore": 0,
+            "corpus": "memory"
+          },
+          "closeBeforeMutation": true
+        },
+        "diagnosticSchedule": {
+          "readsBeforeSearchManager": 2,
+          "closeStatusManager": true,
+          "searchManagerPurpose": "default",
+          "readsBeforeFirstQuery": 2,
+          "searchOwnerAcquisition": "original-getMemorySearchManager-facade",
+          "sameDefaultOwnerMustHandleActualToolQuery": true,
+          "nativeReadOnlyStatusPurpose": "status",
+          "sdkInspection": "separate-managed-owner-status-only"
+        },
+        "search": {
+          "query": "copperlarch-583",
+          "maxResults": 5,
+          "minScore": 0,
+          "corpus": "memory"
+        },
+        "closeAfterQuery": true,
+        "metadataMutation": {
+          "kind": "none"
+        },
+        "nativeResolvedPolicyContract": {
+          "source": "src/agents/memory-search.ts",
+          "sync": {
+            "onSessionStart": true,
+            "onSearch": true,
+            "watch": true,
+            "watchDebounceMs": 1500,
+            "intervalMinutes": 0,
+            "sessions": {
+              "deltaBytes": 100000,
+              "deltaMessages": 50,
+              "postCompactionForce": true
+            }
+          },
+          "chunking": {
+            "tokens": 400,
+            "overlap": 80
+          },
+          "cacheMaxEntries": 50000,
+          "query": {
+            "hybrid": {
+              "enabled": true,
+              "vectorWeight": 0.7,
+              "textWeight": 0.3,
+              "candidateMultiplier": 4,
+              "mmr": {
+                "enabled": true,
+                "lambda": 0.7
+              },
+              "temporalDecay": {
+                "enabled": true,
+                "halfLifeDays": 30
+              }
+            }
+          }
+        },
+        "fixtureSchedule": {
+          "sourceFilesAndMtimeFinishedBeforeSeedAcquisition": true,
+          "allSeedOwnersClosedBeforeMetadataMutation": true,
+          "metadataMutationCommittedBeforeReadOnlyStatusAcquisition": true,
+          "sourceFilesUnchangedAfterDefaultOwnerAcquisition": true,
+          "sessionsCorpus": {
+            "kind": "actual-agent-session-store",
+            "entries": []
+          },
+          "backgroundPolicy": "keep-real-default-owner-watch-and-session-startup-ownership; no fake disable or timer drain"
+        },
+        "toolOptions": {
+          "agentId": "main",
+          "oneShotCliRun": false
+        },
+        "clockProfile": {
+          "nativeOwner": "Date-only",
+          "timersAndMonotonic": "unmodified",
+          "memorySourceDating": "root-MEMORY.md-is-evergreen-under-real-enabled-temporal-decay"
+        }
+      }
+    },
+    {
+      "id": "index-identity-boundaries-missing-metadata",
+      "requirement": "indexing.identity",
+      "operation": "index-identity-boundaries-runtime",
+      "covers": [
+        "indexing.identity.boundaries"
+      ],
+      "input": {
+        "profile": "provider-none-reopened-manager-identity-diagnostics",
+        "nowMs": 1794268800000,
+        "sourceMtimeMs": 1794268800000,
+        "identity": {
+          "agentId": "main"
+        },
+        "files": {
+          "MEMORY.md": "# Library marker\n\nThe library shelf marker is copperlarch-583.\n"
+        },
+        "config": {
+          "memory": {
+            "citations": "off",
+            "search": {
+              "enabled": true,
+              "provider": "none",
+              "fallback": "none",
+              "sources": [
+                "memory",
+                "sessions"
+              ],
+              "experimental": {
+                "sessionMemory": true
+              },
+              "rememberAcrossConversations": false,
+              "extraPaths": [],
+              "store": {
+                "vector": {
+                  "enabled": false
+                },
+                "fts": {
+                  "tokenizer": "unicode61"
+                }
+              },
+              "cache": {
+                "enabled": false
+              },
+              "multimodal": {
+                "enabled": false,
+                "modalities": [],
+                "maxFileBytes": 10485760
+              },
+              "query": {
+                "maxResults": 5,
+                "minScore": 0
+              }
+            }
+          }
+        },
+        "seed": {
+          "publication": "real-full-producer-once-before-metadata-mutation",
+          "baselineSearch": {
+            "query": "copperlarch-583",
+            "maxResults": 5,
+            "minScore": 0,
+            "corpus": "memory"
+          },
+          "closeBeforeMutation": true
+        },
+        "diagnosticSchedule": {
+          "readsBeforeSearchManager": 2,
+          "closeStatusManager": true,
+          "searchManagerPurpose": "default",
+          "readsBeforeFirstQuery": 2,
+          "searchOwnerAcquisition": "original-getMemorySearchManager-facade",
+          "sameDefaultOwnerMustHandleActualToolQuery": true,
+          "nativeReadOnlyStatusPurpose": "status",
+          "sdkInspection": "separate-managed-owner-status-only"
+        },
+        "search": {
+          "query": "copperlarch-583",
+          "maxResults": 5,
+          "minScore": 0,
+          "corpus": "memory"
+        },
+        "closeAfterQuery": true,
+        "metadataMutation": {
+          "kind": "delete-metadata-row",
+          "key": "memory_index_meta_v1"
+        },
+        "nativeResolvedPolicyContract": {
+          "source": "src/agents/memory-search.ts",
+          "sync": {
+            "onSessionStart": true,
+            "onSearch": true,
+            "watch": true,
+            "watchDebounceMs": 1500,
+            "intervalMinutes": 0,
+            "sessions": {
+              "deltaBytes": 100000,
+              "deltaMessages": 50,
+              "postCompactionForce": true
+            }
+          },
+          "chunking": {
+            "tokens": 400,
+            "overlap": 80
+          },
+          "cacheMaxEntries": 50000,
+          "query": {
+            "hybrid": {
+              "enabled": true,
+              "vectorWeight": 0.7,
+              "textWeight": 0.3,
+              "candidateMultiplier": 4,
+              "mmr": {
+                "enabled": true,
+                "lambda": 0.7
+              },
+              "temporalDecay": {
+                "enabled": true,
+                "halfLifeDays": 30
+              }
+            }
+          }
+        },
+        "fixtureSchedule": {
+          "sourceFilesAndMtimeFinishedBeforeSeedAcquisition": true,
+          "allSeedOwnersClosedBeforeMetadataMutation": true,
+          "metadataMutationCommittedBeforeReadOnlyStatusAcquisition": true,
+          "sourceFilesUnchangedAfterDefaultOwnerAcquisition": true,
+          "sessionsCorpus": {
+            "kind": "actual-agent-session-store",
+            "entries": []
+          },
+          "backgroundPolicy": "keep-real-default-owner-watch-and-session-startup-ownership; no fake disable or timer drain"
+        },
+        "toolOptions": {
+          "agentId": "main",
+          "oneShotCliRun": false
+        },
+        "clockProfile": {
+          "nativeOwner": "Date-only",
+          "timersAndMonotonic": "unmodified",
+          "memorySourceDating": "root-MEMORY.md-is-evergreen-under-real-enabled-temporal-decay"
+        }
+      }
+    },
+    {
+      "id": "index-identity-boundaries-malformed-metadata",
+      "requirement": "indexing.identity",
+      "operation": "index-identity-boundaries-runtime",
+      "covers": [
+        "indexing.identity.boundaries"
+      ],
+      "input": {
+        "profile": "provider-none-reopened-manager-identity-diagnostics",
+        "nowMs": 1794268800000,
+        "sourceMtimeMs": 1794268800000,
+        "identity": {
+          "agentId": "main"
+        },
+        "files": {
+          "MEMORY.md": "# Library marker\n\nThe library shelf marker is copperlarch-583.\n"
+        },
+        "config": {
+          "memory": {
+            "citations": "off",
+            "search": {
+              "enabled": true,
+              "provider": "none",
+              "fallback": "none",
+              "sources": [
+                "memory",
+                "sessions"
+              ],
+              "experimental": {
+                "sessionMemory": true
+              },
+              "rememberAcrossConversations": false,
+              "extraPaths": [],
+              "store": {
+                "vector": {
+                  "enabled": false
+                },
+                "fts": {
+                  "tokenizer": "unicode61"
+                }
+              },
+              "cache": {
+                "enabled": false
+              },
+              "multimodal": {
+                "enabled": false,
+                "modalities": [],
+                "maxFileBytes": 10485760
+              },
+              "query": {
+                "maxResults": 5,
+                "minScore": 0
+              }
+            }
+          }
+        },
+        "seed": {
+          "publication": "real-full-producer-once-before-metadata-mutation",
+          "baselineSearch": {
+            "query": "copperlarch-583",
+            "maxResults": 5,
+            "minScore": 0,
+            "corpus": "memory"
+          },
+          "closeBeforeMutation": true
+        },
+        "diagnosticSchedule": {
+          "readsBeforeSearchManager": 2,
+          "closeStatusManager": true,
+          "searchManagerPurpose": "default",
+          "readsBeforeFirstQuery": 2,
+          "searchOwnerAcquisition": "original-getMemorySearchManager-facade",
+          "sameDefaultOwnerMustHandleActualToolQuery": true,
+          "nativeReadOnlyStatusPurpose": "status",
+          "sdkInspection": "separate-managed-owner-status-only"
+        },
+        "search": {
+          "query": "copperlarch-583",
+          "maxResults": 5,
+          "minScore": 0,
+          "corpus": "memory"
+        },
+        "closeAfterQuery": true,
+        "metadataMutation": {
+          "kind": "replace-metadata-serialized",
+          "key": "memory_index_meta_v1",
+          "value": "{\"broken\":"
+        },
+        "nativeResolvedPolicyContract": {
+          "source": "src/agents/memory-search.ts",
+          "sync": {
+            "onSessionStart": true,
+            "onSearch": true,
+            "watch": true,
+            "watchDebounceMs": 1500,
+            "intervalMinutes": 0,
+            "sessions": {
+              "deltaBytes": 100000,
+              "deltaMessages": 50,
+              "postCompactionForce": true
+            }
+          },
+          "chunking": {
+            "tokens": 400,
+            "overlap": 80
+          },
+          "cacheMaxEntries": 50000,
+          "query": {
+            "hybrid": {
+              "enabled": true,
+              "vectorWeight": 0.7,
+              "textWeight": 0.3,
+              "candidateMultiplier": 4,
+              "mmr": {
+                "enabled": true,
+                "lambda": 0.7
+              },
+              "temporalDecay": {
+                "enabled": true,
+                "halfLifeDays": 30
+              }
+            }
+          }
+        },
+        "fixtureSchedule": {
+          "sourceFilesAndMtimeFinishedBeforeSeedAcquisition": true,
+          "allSeedOwnersClosedBeforeMetadataMutation": true,
+          "metadataMutationCommittedBeforeReadOnlyStatusAcquisition": true,
+          "sourceFilesUnchangedAfterDefaultOwnerAcquisition": true,
+          "sessionsCorpus": {
+            "kind": "actual-agent-session-store",
+            "entries": []
+          },
+          "backgroundPolicy": "keep-real-default-owner-watch-and-session-startup-ownership; no fake disable or timer drain"
+        },
+        "toolOptions": {
+          "agentId": "main",
+          "oneShotCliRun": false
+        },
+        "clockProfile": {
+          "nativeOwner": "Date-only",
+          "timersAndMonotonic": "unmodified",
+          "memorySourceDating": "root-MEMORY.md-is-evergreen-under-real-enabled-temporal-decay"
+        }
+      }
+    },
+    {
+      "id": "index-identity-boundaries-older-provenance",
+      "requirement": "indexing.identity",
+      "operation": "index-identity-boundaries-runtime",
+      "covers": [
+        "indexing.identity.boundaries"
+      ],
+      "input": {
+        "profile": "provider-none-reopened-manager-identity-diagnostics",
+        "nowMs": 1794268800000,
+        "sourceMtimeMs": 1794268800000,
+        "identity": {
+          "agentId": "main"
+        },
+        "files": {
+          "MEMORY.md": "# Library marker\n\nThe library shelf marker is copperlarch-583.\n"
+        },
+        "config": {
+          "memory": {
+            "citations": "off",
+            "search": {
+              "enabled": true,
+              "provider": "none",
+              "fallback": "none",
+              "sources": [
+                "memory",
+                "sessions"
+              ],
+              "experimental": {
+                "sessionMemory": true
+              },
+              "rememberAcrossConversations": false,
+              "extraPaths": [],
+              "store": {
+                "vector": {
+                  "enabled": false
+                },
+                "fts": {
+                  "tokenizer": "unicode61"
+                }
+              },
+              "cache": {
+                "enabled": false
+              },
+              "multimodal": {
+                "enabled": false,
+                "modalities": [],
+                "maxFileBytes": 10485760
+              },
+              "query": {
+                "maxResults": 5,
+                "minScore": 0
+              }
+            }
+          }
+        },
+        "seed": {
+          "publication": "real-full-producer-once-before-metadata-mutation",
+          "baselineSearch": {
+            "query": "copperlarch-583",
+            "maxResults": 5,
+            "minScore": 0,
+            "corpus": "memory"
+          },
+          "closeBeforeMutation": true
+        },
+        "diagnosticSchedule": {
+          "readsBeforeSearchManager": 2,
+          "closeStatusManager": true,
+          "searchManagerPurpose": "default",
+          "readsBeforeFirstQuery": 2,
+          "searchOwnerAcquisition": "original-getMemorySearchManager-facade",
+          "sameDefaultOwnerMustHandleActualToolQuery": true,
+          "nativeReadOnlyStatusPurpose": "status",
+          "sdkInspection": "separate-managed-owner-status-only"
+        },
+        "search": {
+          "query": "copperlarch-583",
+          "maxResults": 5,
+          "minScore": 0,
+          "corpus": "memory"
+        },
+        "closeAfterQuery": true,
+        "metadataMutation": {
+          "kind": "merge-metadata-fields",
+          "fields": {
+            "provenanceVersion": 0
+          }
+        },
+        "nativeResolvedPolicyContract": {
+          "source": "src/agents/memory-search.ts",
+          "sync": {
+            "onSessionStart": true,
+            "onSearch": true,
+            "watch": true,
+            "watchDebounceMs": 1500,
+            "intervalMinutes": 0,
+            "sessions": {
+              "deltaBytes": 100000,
+              "deltaMessages": 50,
+              "postCompactionForce": true
+            }
+          },
+          "chunking": {
+            "tokens": 400,
+            "overlap": 80
+          },
+          "cacheMaxEntries": 50000,
+          "query": {
+            "hybrid": {
+              "enabled": true,
+              "vectorWeight": 0.7,
+              "textWeight": 0.3,
+              "candidateMultiplier": 4,
+              "mmr": {
+                "enabled": true,
+                "lambda": 0.7
+              },
+              "temporalDecay": {
+                "enabled": true,
+                "halfLifeDays": 30
+              }
+            }
+          }
+        },
+        "fixtureSchedule": {
+          "sourceFilesAndMtimeFinishedBeforeSeedAcquisition": true,
+          "allSeedOwnersClosedBeforeMetadataMutation": true,
+          "metadataMutationCommittedBeforeReadOnlyStatusAcquisition": true,
+          "sourceFilesUnchangedAfterDefaultOwnerAcquisition": true,
+          "sessionsCorpus": {
+            "kind": "actual-agent-session-store",
+            "entries": []
+          },
+          "backgroundPolicy": "keep-real-default-owner-watch-and-session-startup-ownership; no fake disable or timer drain"
+        },
+        "toolOptions": {
+          "agentId": "main",
+          "oneShotCliRun": false
+        },
+        "clockProfile": {
+          "nativeOwner": "Date-only",
+          "timersAndMonotonic": "unmodified",
+          "memorySourceDating": "root-MEMORY.md-is-evergreen-under-real-enabled-temporal-decay"
+        }
+      }
+    },
+    {
+      "id": "index-identity-boundaries-older-chunker-only",
+      "requirement": "indexing.identity",
+      "operation": "index-identity-boundaries-runtime",
+      "covers": [
+        "indexing.identity.boundaries"
+      ],
+      "input": {
+        "profile": "provider-none-reopened-manager-identity-diagnostics",
+        "nowMs": 1794268800000,
+        "sourceMtimeMs": 1794268800000,
+        "identity": {
+          "agentId": "main"
+        },
+        "files": {
+          "MEMORY.md": "# Library marker\n\nThe library shelf marker is copperlarch-583.\n"
+        },
+        "config": {
+          "memory": {
+            "citations": "off",
+            "search": {
+              "enabled": true,
+              "provider": "none",
+              "fallback": "none",
+              "sources": [
+                "memory",
+                "sessions"
+              ],
+              "experimental": {
+                "sessionMemory": true
+              },
+              "rememberAcrossConversations": false,
+              "extraPaths": [],
+              "store": {
+                "vector": {
+                  "enabled": false
+                },
+                "fts": {
+                  "tokenizer": "unicode61"
+                }
+              },
+              "cache": {
+                "enabled": false
+              },
+              "multimodal": {
+                "enabled": false,
+                "modalities": [],
+                "maxFileBytes": 10485760
+              },
+              "query": {
+                "maxResults": 5,
+                "minScore": 0
+              }
+            }
+          }
+        },
+        "seed": {
+          "publication": "real-full-producer-once-before-metadata-mutation",
+          "baselineSearch": {
+            "query": "copperlarch-583",
+            "maxResults": 5,
+            "minScore": 0,
+            "corpus": "memory"
+          },
+          "closeBeforeMutation": true
+        },
+        "diagnosticSchedule": {
+          "readsBeforeSearchManager": 2,
+          "closeStatusManager": true,
+          "searchManagerPurpose": "default",
+          "readsBeforeFirstQuery": 2,
+          "searchOwnerAcquisition": "original-getMemorySearchManager-facade",
+          "sameDefaultOwnerMustHandleActualToolQuery": true,
+          "nativeReadOnlyStatusPurpose": "status",
+          "sdkInspection": "separate-managed-owner-status-only"
+        },
+        "search": {
+          "query": "copperlarch-583",
+          "maxResults": 5,
+          "minScore": 0,
+          "corpus": "memory"
+        },
+        "closeAfterQuery": true,
+        "metadataMutation": {
+          "kind": "merge-metadata-fields",
+          "fields": {
+            "chunkingVersion": 4
+          }
+        },
+        "nativeResolvedPolicyContract": {
+          "source": "src/agents/memory-search.ts",
+          "sync": {
+            "onSessionStart": true,
+            "onSearch": true,
+            "watch": true,
+            "watchDebounceMs": 1500,
+            "intervalMinutes": 0,
+            "sessions": {
+              "deltaBytes": 100000,
+              "deltaMessages": 50,
+              "postCompactionForce": true
+            }
+          },
+          "chunking": {
+            "tokens": 400,
+            "overlap": 80
+          },
+          "cacheMaxEntries": 50000,
+          "query": {
+            "hybrid": {
+              "enabled": true,
+              "vectorWeight": 0.7,
+              "textWeight": 0.3,
+              "candidateMultiplier": 4,
+              "mmr": {
+                "enabled": true,
+                "lambda": 0.7
+              },
+              "temporalDecay": {
+                "enabled": true,
+                "halfLifeDays": 30
+              }
+            }
+          }
+        },
+        "fixtureSchedule": {
+          "sourceFilesAndMtimeFinishedBeforeSeedAcquisition": true,
+          "allSeedOwnersClosedBeforeMetadataMutation": true,
+          "metadataMutationCommittedBeforeReadOnlyStatusAcquisition": true,
+          "sourceFilesUnchangedAfterDefaultOwnerAcquisition": true,
+          "sessionsCorpus": {
+            "kind": "actual-agent-session-store",
+            "entries": []
+          },
+          "backgroundPolicy": "keep-real-default-owner-watch-and-session-startup-ownership; no fake disable or timer drain"
+        },
+        "toolOptions": {
+          "agentId": "main",
+          "oneShotCliRun": false
+        },
+        "clockProfile": {
+          "nativeOwner": "Date-only",
+          "timersAndMonotonic": "unmodified",
+          "memorySourceDating": "root-MEMORY.md-is-evergreen-under-real-enabled-temporal-decay"
+        }
+      }
+    },
+    {
+      "id": "index-identity-boundaries-newer-provenance-older-chunker",
+      "requirement": "indexing.identity",
+      "operation": "index-identity-boundaries-runtime",
+      "covers": [
+        "indexing.identity.boundaries"
+      ],
+      "input": {
+        "profile": "provider-none-reopened-manager-identity-diagnostics",
+        "nowMs": 1794268800000,
+        "sourceMtimeMs": 1794268800000,
+        "identity": {
+          "agentId": "main"
+        },
+        "files": {
+          "MEMORY.md": "# Library marker\n\nThe library shelf marker is copperlarch-583.\n"
+        },
+        "config": {
+          "memory": {
+            "citations": "off",
+            "search": {
+              "enabled": true,
+              "provider": "none",
+              "fallback": "none",
+              "sources": [
+                "memory",
+                "sessions"
+              ],
+              "experimental": {
+                "sessionMemory": true
+              },
+              "rememberAcrossConversations": false,
+              "extraPaths": [],
+              "store": {
+                "vector": {
+                  "enabled": false
+                },
+                "fts": {
+                  "tokenizer": "unicode61"
+                }
+              },
+              "cache": {
+                "enabled": false
+              },
+              "multimodal": {
+                "enabled": false,
+                "modalities": [],
+                "maxFileBytes": 10485760
+              },
+              "query": {
+                "maxResults": 5,
+                "minScore": 0
+              }
+            }
+          }
+        },
+        "seed": {
+          "publication": "real-full-producer-once-before-metadata-mutation",
+          "baselineSearch": {
+            "query": "copperlarch-583",
+            "maxResults": 5,
+            "minScore": 0,
+            "corpus": "memory"
+          },
+          "closeBeforeMutation": true
+        },
+        "diagnosticSchedule": {
+          "readsBeforeSearchManager": 2,
+          "closeStatusManager": true,
+          "searchManagerPurpose": "default",
+          "readsBeforeFirstQuery": 2,
+          "searchOwnerAcquisition": "original-getMemorySearchManager-facade",
+          "sameDefaultOwnerMustHandleActualToolQuery": true,
+          "nativeReadOnlyStatusPurpose": "status",
+          "sdkInspection": "separate-managed-owner-status-only"
+        },
+        "search": {
+          "query": "copperlarch-583",
+          "maxResults": 5,
+          "minScore": 0,
+          "corpus": "memory"
+        },
+        "closeAfterQuery": true,
+        "metadataMutation": {
+          "kind": "merge-metadata-fields",
+          "fields": {
+            "provenanceVersion": 2,
+            "chunkingVersion": 4
+          }
+        },
+        "nativeResolvedPolicyContract": {
+          "source": "src/agents/memory-search.ts",
+          "sync": {
+            "onSessionStart": true,
+            "onSearch": true,
+            "watch": true,
+            "watchDebounceMs": 1500,
+            "intervalMinutes": 0,
+            "sessions": {
+              "deltaBytes": 100000,
+              "deltaMessages": 50,
+              "postCompactionForce": true
+            }
+          },
+          "chunking": {
+            "tokens": 400,
+            "overlap": 80
+          },
+          "cacheMaxEntries": 50000,
+          "query": {
+            "hybrid": {
+              "enabled": true,
+              "vectorWeight": 0.7,
+              "textWeight": 0.3,
+              "candidateMultiplier": 4,
+              "mmr": {
+                "enabled": true,
+                "lambda": 0.7
+              },
+              "temporalDecay": {
+                "enabled": true,
+                "halfLifeDays": 30
+              }
+            }
+          }
+        },
+        "fixtureSchedule": {
+          "sourceFilesAndMtimeFinishedBeforeSeedAcquisition": true,
+          "allSeedOwnersClosedBeforeMetadataMutation": true,
+          "metadataMutationCommittedBeforeReadOnlyStatusAcquisition": true,
+          "sourceFilesUnchangedAfterDefaultOwnerAcquisition": true,
+          "sessionsCorpus": {
+            "kind": "actual-agent-session-store",
+            "entries": []
+          },
+          "backgroundPolicy": "keep-real-default-owner-watch-and-session-startup-ownership; no fake disable or timer drain"
+        },
+        "toolOptions": {
+          "agentId": "main",
+          "oneShotCliRun": false
+        },
+        "clockProfile": {
+          "nativeOwner": "Date-only",
+          "timersAndMonotonic": "unmodified",
+          "memorySourceDating": "root-MEMORY.md-is-evergreen-under-real-enabled-temporal-decay"
+        }
+      }
+    },
+    {
+      "id": "index-identity-boundaries-newer-chunker-older-provenance",
+      "requirement": "indexing.identity",
+      "operation": "index-identity-boundaries-runtime",
+      "covers": [
+        "indexing.identity.boundaries"
+      ],
+      "input": {
+        "profile": "provider-none-reopened-manager-identity-diagnostics",
+        "nowMs": 1794268800000,
+        "sourceMtimeMs": 1794268800000,
+        "identity": {
+          "agentId": "main"
+        },
+        "files": {
+          "MEMORY.md": "# Library marker\n\nThe library shelf marker is copperlarch-583.\n"
+        },
+        "config": {
+          "memory": {
+            "citations": "off",
+            "search": {
+              "enabled": true,
+              "provider": "none",
+              "fallback": "none",
+              "sources": [
+                "memory",
+                "sessions"
+              ],
+              "experimental": {
+                "sessionMemory": true
+              },
+              "rememberAcrossConversations": false,
+              "extraPaths": [],
+              "store": {
+                "vector": {
+                  "enabled": false
+                },
+                "fts": {
+                  "tokenizer": "unicode61"
+                }
+              },
+              "cache": {
+                "enabled": false
+              },
+              "multimodal": {
+                "enabled": false,
+                "modalities": [],
+                "maxFileBytes": 10485760
+              },
+              "query": {
+                "maxResults": 5,
+                "minScore": 0
+              }
+            }
+          }
+        },
+        "seed": {
+          "publication": "real-full-producer-once-before-metadata-mutation",
+          "baselineSearch": {
+            "query": "copperlarch-583",
+            "maxResults": 5,
+            "minScore": 0,
+            "corpus": "memory"
+          },
+          "closeBeforeMutation": true
+        },
+        "diagnosticSchedule": {
+          "readsBeforeSearchManager": 2,
+          "closeStatusManager": true,
+          "searchManagerPurpose": "default",
+          "readsBeforeFirstQuery": 2,
+          "searchOwnerAcquisition": "original-getMemorySearchManager-facade",
+          "sameDefaultOwnerMustHandleActualToolQuery": true,
+          "nativeReadOnlyStatusPurpose": "status",
+          "sdkInspection": "separate-managed-owner-status-only"
+        },
+        "search": {
+          "query": "copperlarch-583",
+          "maxResults": 5,
+          "minScore": 0,
+          "corpus": "memory"
+        },
+        "closeAfterQuery": true,
+        "metadataMutation": {
+          "kind": "merge-metadata-fields",
+          "fields": {
+            "provenanceVersion": 0,
+            "chunkingVersion": 6
+          }
+        },
+        "nativeResolvedPolicyContract": {
+          "source": "src/agents/memory-search.ts",
+          "sync": {
+            "onSessionStart": true,
+            "onSearch": true,
+            "watch": true,
+            "watchDebounceMs": 1500,
+            "intervalMinutes": 0,
+            "sessions": {
+              "deltaBytes": 100000,
+              "deltaMessages": 50,
+              "postCompactionForce": true
+            }
+          },
+          "chunking": {
+            "tokens": 400,
+            "overlap": 80
+          },
+          "cacheMaxEntries": 50000,
+          "query": {
+            "hybrid": {
+              "enabled": true,
+              "vectorWeight": 0.7,
+              "textWeight": 0.3,
+              "candidateMultiplier": 4,
+              "mmr": {
+                "enabled": true,
+                "lambda": 0.7
+              },
+              "temporalDecay": {
+                "enabled": true,
+                "halfLifeDays": 30
+              }
+            }
+          }
+        },
+        "fixtureSchedule": {
+          "sourceFilesAndMtimeFinishedBeforeSeedAcquisition": true,
+          "allSeedOwnersClosedBeforeMetadataMutation": true,
+          "metadataMutationCommittedBeforeReadOnlyStatusAcquisition": true,
+          "sourceFilesUnchangedAfterDefaultOwnerAcquisition": true,
+          "sessionsCorpus": {
+            "kind": "actual-agent-session-store",
+            "entries": []
+          },
+          "backgroundPolicy": "keep-real-default-owner-watch-and-session-startup-ownership; no fake disable or timer drain"
+        },
+        "toolOptions": {
+          "agentId": "main",
+          "oneShotCliRun": false
+        },
+        "clockProfile": {
+          "nativeOwner": "Date-only",
+          "timersAndMonotonic": "unmodified",
+          "memorySourceDating": "root-MEMORY.md-is-evergreen-under-real-enabled-temporal-decay"
+        }
+      }
+    },
+    {
+      "id": "index-identity-boundaries-provider-key-only",
+      "requirement": "indexing.identity",
+      "operation": "index-identity-boundaries-runtime",
+      "covers": [
+        "indexing.identity.boundaries"
+      ],
+      "input": {
+        "profile": "provider-none-reopened-manager-identity-diagnostics",
+        "nowMs": 1794268800000,
+        "sourceMtimeMs": 1794268800000,
+        "identity": {
+          "agentId": "main"
+        },
+        "files": {
+          "MEMORY.md": "# Library marker\n\nThe library shelf marker is copperlarch-583.\n"
+        },
+        "config": {
+          "memory": {
+            "citations": "off",
+            "search": {
+              "enabled": true,
+              "provider": "none",
+              "fallback": "none",
+              "sources": [
+                "memory",
+                "sessions"
+              ],
+              "experimental": {
+                "sessionMemory": true
+              },
+              "rememberAcrossConversations": false,
+              "extraPaths": [],
+              "store": {
+                "vector": {
+                  "enabled": false
+                },
+                "fts": {
+                  "tokenizer": "unicode61"
+                }
+              },
+              "cache": {
+                "enabled": false
+              },
+              "multimodal": {
+                "enabled": false,
+                "modalities": [],
+                "maxFileBytes": 10485760
+              },
+              "query": {
+                "maxResults": 5,
+                "minScore": 0
+              }
+            }
+          }
+        },
+        "seed": {
+          "publication": "real-full-producer-once-before-metadata-mutation",
+          "baselineSearch": {
+            "query": "copperlarch-583",
+            "maxResults": 5,
+            "minScore": 0,
+            "corpus": "memory"
+          },
+          "closeBeforeMutation": true
+        },
+        "diagnosticSchedule": {
+          "readsBeforeSearchManager": 2,
+          "closeStatusManager": true,
+          "searchManagerPurpose": "default",
+          "readsBeforeFirstQuery": 2,
+          "searchOwnerAcquisition": "original-getMemorySearchManager-facade",
+          "sameDefaultOwnerMustHandleActualToolQuery": true,
+          "nativeReadOnlyStatusPurpose": "status",
+          "sdkInspection": "separate-managed-owner-status-only"
+        },
+        "search": {
+          "query": "copperlarch-583",
+          "maxResults": 5,
+          "minScore": 0,
+          "corpus": "memory"
+        },
+        "closeAfterQuery": true,
+        "metadataMutation": {
+          "kind": "merge-metadata-fields",
+          "fields": {
+            "providerKey": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
+          }
+        },
+        "nativeResolvedPolicyContract": {
+          "source": "src/agents/memory-search.ts",
+          "sync": {
+            "onSessionStart": true,
+            "onSearch": true,
+            "watch": true,
+            "watchDebounceMs": 1500,
+            "intervalMinutes": 0,
+            "sessions": {
+              "deltaBytes": 100000,
+              "deltaMessages": 50,
+              "postCompactionForce": true
+            }
+          },
+          "chunking": {
+            "tokens": 400,
+            "overlap": 80
+          },
+          "cacheMaxEntries": 50000,
+          "query": {
+            "hybrid": {
+              "enabled": true,
+              "vectorWeight": 0.7,
+              "textWeight": 0.3,
+              "candidateMultiplier": 4,
+              "mmr": {
+                "enabled": true,
+                "lambda": 0.7
+              },
+              "temporalDecay": {
+                "enabled": true,
+                "halfLifeDays": 30
+              }
+            }
+          }
+        },
+        "fixtureSchedule": {
+          "sourceFilesAndMtimeFinishedBeforeSeedAcquisition": true,
+          "allSeedOwnersClosedBeforeMetadataMutation": true,
+          "metadataMutationCommittedBeforeReadOnlyStatusAcquisition": true,
+          "sourceFilesUnchangedAfterDefaultOwnerAcquisition": true,
+          "sessionsCorpus": {
+            "kind": "actual-agent-session-store",
+            "entries": []
+          },
+          "backgroundPolicy": "keep-real-default-owner-watch-and-session-startup-ownership; no fake disable or timer drain"
+        },
+        "toolOptions": {
+          "agentId": "main",
+          "oneShotCliRun": false
+        },
+        "clockProfile": {
+          "nativeOwner": "Date-only",
+          "timersAndMonotonic": "unmodified",
+          "memorySourceDating": "root-MEMORY.md-is-evergreen-under-real-enabled-temporal-decay"
+        }
+      }
+    },
+    {
+      "id": "index-identity-boundaries-model-only",
+      "requirement": "indexing.identity",
+      "operation": "index-identity-boundaries-runtime",
+      "covers": [
+        "indexing.identity.boundaries"
+      ],
+      "input": {
+        "profile": "provider-none-reopened-manager-identity-diagnostics",
+        "nowMs": 1794268800000,
+        "sourceMtimeMs": 1794268800000,
+        "identity": {
+          "agentId": "main"
+        },
+        "files": {
+          "MEMORY.md": "# Library marker\n\nThe library shelf marker is copperlarch-583.\n"
+        },
+        "config": {
+          "memory": {
+            "citations": "off",
+            "search": {
+              "enabled": true,
+              "provider": "none",
+              "fallback": "none",
+              "sources": [
+                "memory",
+                "sessions"
+              ],
+              "experimental": {
+                "sessionMemory": true
+              },
+              "rememberAcrossConversations": false,
+              "extraPaths": [],
+              "store": {
+                "vector": {
+                  "enabled": false
+                },
+                "fts": {
+                  "tokenizer": "unicode61"
+                }
+              },
+              "cache": {
+                "enabled": false
+              },
+              "multimodal": {
+                "enabled": false,
+                "modalities": [],
+                "maxFileBytes": 10485760
+              },
+              "query": {
+                "maxResults": 5,
+                "minScore": 0
+              }
+            }
+          }
+        },
+        "seed": {
+          "publication": "real-full-producer-once-before-metadata-mutation",
+          "baselineSearch": {
+            "query": "copperlarch-583",
+            "maxResults": 5,
+            "minScore": 0,
+            "corpus": "memory"
+          },
+          "closeBeforeMutation": true
+        },
+        "diagnosticSchedule": {
+          "readsBeforeSearchManager": 2,
+          "closeStatusManager": true,
+          "searchManagerPurpose": "default",
+          "readsBeforeFirstQuery": 2,
+          "searchOwnerAcquisition": "original-getMemorySearchManager-facade",
+          "sameDefaultOwnerMustHandleActualToolQuery": true,
+          "nativeReadOnlyStatusPurpose": "status",
+          "sdkInspection": "separate-managed-owner-status-only"
+        },
+        "search": {
+          "query": "copperlarch-583",
+          "maxResults": 5,
+          "minScore": 0,
+          "corpus": "memory"
+        },
+        "closeAfterQuery": true,
+        "metadataMutation": {
+          "kind": "merge-metadata-fields",
+          "fields": {
+            "model": "fixture-prior-semantic-model"
+          }
+        },
+        "nativeResolvedPolicyContract": {
+          "source": "src/agents/memory-search.ts",
+          "sync": {
+            "onSessionStart": true,
+            "onSearch": true,
+            "watch": true,
+            "watchDebounceMs": 1500,
+            "intervalMinutes": 0,
+            "sessions": {
+              "deltaBytes": 100000,
+              "deltaMessages": 50,
+              "postCompactionForce": true
+            }
+          },
+          "chunking": {
+            "tokens": 400,
+            "overlap": 80
+          },
+          "cacheMaxEntries": 50000,
+          "query": {
+            "hybrid": {
+              "enabled": true,
+              "vectorWeight": 0.7,
+              "textWeight": 0.3,
+              "candidateMultiplier": 4,
+              "mmr": {
+                "enabled": true,
+                "lambda": 0.7
+              },
+              "temporalDecay": {
+                "enabled": true,
+                "halfLifeDays": 30
+              }
+            }
+          }
+        },
+        "fixtureSchedule": {
+          "sourceFilesAndMtimeFinishedBeforeSeedAcquisition": true,
+          "allSeedOwnersClosedBeforeMetadataMutation": true,
+          "metadataMutationCommittedBeforeReadOnlyStatusAcquisition": true,
+          "sourceFilesUnchangedAfterDefaultOwnerAcquisition": true,
+          "sessionsCorpus": {
+            "kind": "actual-agent-session-store",
+            "entries": []
+          },
+          "backgroundPolicy": "keep-real-default-owner-watch-and-session-startup-ownership; no fake disable or timer drain"
+        },
+        "toolOptions": {
+          "agentId": "main",
+          "oneShotCliRun": false
+        },
+        "clockProfile": {
+          "nativeOwner": "Date-only",
+          "timersAndMonotonic": "unmodified",
+          "memorySourceDating": "root-MEMORY.md-is-evergreen-under-real-enabled-temporal-decay"
+        }
+      }
+    },
+    {
+      "id": "index-identity-boundaries-provider-only",
+      "requirement": "indexing.identity",
+      "operation": "index-identity-boundaries-runtime",
+      "covers": [
+        "indexing.identity.boundaries"
+      ],
+      "input": {
+        "profile": "provider-none-reopened-manager-identity-diagnostics",
+        "nowMs": 1794268800000,
+        "sourceMtimeMs": 1794268800000,
+        "identity": {
+          "agentId": "main"
+        },
+        "files": {
+          "MEMORY.md": "# Library marker\n\nThe library shelf marker is copperlarch-583.\n"
+        },
+        "config": {
+          "memory": {
+            "citations": "off",
+            "search": {
+              "enabled": true,
+              "provider": "none",
+              "fallback": "none",
+              "sources": [
+                "memory",
+                "sessions"
+              ],
+              "experimental": {
+                "sessionMemory": true
+              },
+              "rememberAcrossConversations": false,
+              "extraPaths": [],
+              "store": {
+                "vector": {
+                  "enabled": false
+                },
+                "fts": {
+                  "tokenizer": "unicode61"
+                }
+              },
+              "cache": {
+                "enabled": false
+              },
+              "multimodal": {
+                "enabled": false,
+                "modalities": [],
+                "maxFileBytes": 10485760
+              },
+              "query": {
+                "maxResults": 5,
+                "minScore": 0
+              }
+            }
+          }
+        },
+        "seed": {
+          "publication": "real-full-producer-once-before-metadata-mutation",
+          "baselineSearch": {
+            "query": "copperlarch-583",
+            "maxResults": 5,
+            "minScore": 0,
+            "corpus": "memory"
+          },
+          "closeBeforeMutation": true
+        },
+        "diagnosticSchedule": {
+          "readsBeforeSearchManager": 2,
+          "closeStatusManager": true,
+          "searchManagerPurpose": "default",
+          "readsBeforeFirstQuery": 2,
+          "searchOwnerAcquisition": "original-getMemorySearchManager-facade",
+          "sameDefaultOwnerMustHandleActualToolQuery": true,
+          "nativeReadOnlyStatusPurpose": "status",
+          "sdkInspection": "separate-managed-owner-status-only"
+        },
+        "search": {
+          "query": "copperlarch-583",
+          "maxResults": 5,
+          "minScore": 0,
+          "corpus": "memory"
+        },
+        "closeAfterQuery": true,
+        "metadataMutation": {
+          "kind": "merge-metadata-fields",
+          "fields": {
+            "provider": "fixture-prior-provider"
+          }
+        },
+        "nativeResolvedPolicyContract": {
+          "source": "src/agents/memory-search.ts",
+          "sync": {
+            "onSessionStart": true,
+            "onSearch": true,
+            "watch": true,
+            "watchDebounceMs": 1500,
+            "intervalMinutes": 0,
+            "sessions": {
+              "deltaBytes": 100000,
+              "deltaMessages": 50,
+              "postCompactionForce": true
+            }
+          },
+          "chunking": {
+            "tokens": 400,
+            "overlap": 80
+          },
+          "cacheMaxEntries": 50000,
+          "query": {
+            "hybrid": {
+              "enabled": true,
+              "vectorWeight": 0.7,
+              "textWeight": 0.3,
+              "candidateMultiplier": 4,
+              "mmr": {
+                "enabled": true,
+                "lambda": 0.7
+              },
+              "temporalDecay": {
+                "enabled": true,
+                "halfLifeDays": 30
+              }
+            }
+          }
+        },
+        "fixtureSchedule": {
+          "sourceFilesAndMtimeFinishedBeforeSeedAcquisition": true,
+          "allSeedOwnersClosedBeforeMetadataMutation": true,
+          "metadataMutationCommittedBeforeReadOnlyStatusAcquisition": true,
+          "sourceFilesUnchangedAfterDefaultOwnerAcquisition": true,
+          "sessionsCorpus": {
+            "kind": "actual-agent-session-store",
+            "entries": []
+          },
+          "backgroundPolicy": "keep-real-default-owner-watch-and-session-startup-ownership; no fake disable or timer drain"
+        },
+        "toolOptions": {
+          "agentId": "main",
+          "oneShotCliRun": false
+        },
+        "clockProfile": {
+          "nativeOwner": "Date-only",
+          "timersAndMonotonic": "unmodified",
+          "memorySourceDating": "root-MEMORY.md-is-evergreen-under-real-enabled-temporal-decay"
+        }
+      }
+    },
+    {
+      "id": "index-identity-boundaries-sources-only",
+      "requirement": "indexing.identity",
+      "operation": "index-identity-boundaries-runtime",
+      "covers": [
+        "indexing.identity.boundaries"
+      ],
+      "input": {
+        "profile": "provider-none-reopened-manager-identity-diagnostics",
+        "nowMs": 1794268800000,
+        "sourceMtimeMs": 1794268800000,
+        "identity": {
+          "agentId": "main"
+        },
+        "files": {
+          "MEMORY.md": "# Library marker\n\nThe library shelf marker is copperlarch-583.\n"
+        },
+        "config": {
+          "memory": {
+            "citations": "off",
+            "search": {
+              "enabled": true,
+              "provider": "none",
+              "fallback": "none",
+              "sources": [
+                "memory",
+                "sessions"
+              ],
+              "experimental": {
+                "sessionMemory": true
+              },
+              "rememberAcrossConversations": false,
+              "extraPaths": [],
+              "store": {
+                "vector": {
+                  "enabled": false
+                },
+                "fts": {
+                  "tokenizer": "unicode61"
+                }
+              },
+              "cache": {
+                "enabled": false
+              },
+              "multimodal": {
+                "enabled": false,
+                "modalities": [],
+                "maxFileBytes": 10485760
+              },
+              "query": {
+                "maxResults": 5,
+                "minScore": 0
+              }
+            }
+          }
+        },
+        "seed": {
+          "publication": "real-full-producer-once-before-metadata-mutation",
+          "baselineSearch": {
+            "query": "copperlarch-583",
+            "maxResults": 5,
+            "minScore": 0,
+            "corpus": "memory"
+          },
+          "closeBeforeMutation": true
+        },
+        "diagnosticSchedule": {
+          "readsBeforeSearchManager": 2,
+          "closeStatusManager": true,
+          "searchManagerPurpose": "default",
+          "readsBeforeFirstQuery": 2,
+          "searchOwnerAcquisition": "original-getMemorySearchManager-facade",
+          "sameDefaultOwnerMustHandleActualToolQuery": true,
+          "nativeReadOnlyStatusPurpose": "status",
+          "sdkInspection": "separate-managed-owner-status-only"
+        },
+        "search": {
+          "query": "copperlarch-583",
+          "maxResults": 5,
+          "minScore": 0,
+          "corpus": "memory"
+        },
+        "closeAfterQuery": true,
+        "metadataMutation": {
+          "kind": "merge-metadata-fields",
+          "fields": {
+            "sources": [
+              "memory"
+            ]
+          }
+        },
+        "nativeResolvedPolicyContract": {
+          "source": "src/agents/memory-search.ts",
+          "sync": {
+            "onSessionStart": true,
+            "onSearch": true,
+            "watch": true,
+            "watchDebounceMs": 1500,
+            "intervalMinutes": 0,
+            "sessions": {
+              "deltaBytes": 100000,
+              "deltaMessages": 50,
+              "postCompactionForce": true
+            }
+          },
+          "chunking": {
+            "tokens": 400,
+            "overlap": 80
+          },
+          "cacheMaxEntries": 50000,
+          "query": {
+            "hybrid": {
+              "enabled": true,
+              "vectorWeight": 0.7,
+              "textWeight": 0.3,
+              "candidateMultiplier": 4,
+              "mmr": {
+                "enabled": true,
+                "lambda": 0.7
+              },
+              "temporalDecay": {
+                "enabled": true,
+                "halfLifeDays": 30
+              }
+            }
+          }
+        },
+        "fixtureSchedule": {
+          "sourceFilesAndMtimeFinishedBeforeSeedAcquisition": true,
+          "allSeedOwnersClosedBeforeMetadataMutation": true,
+          "metadataMutationCommittedBeforeReadOnlyStatusAcquisition": true,
+          "sourceFilesUnchangedAfterDefaultOwnerAcquisition": true,
+          "sessionsCorpus": {
+            "kind": "actual-agent-session-store",
+            "entries": []
+          },
+          "backgroundPolicy": "keep-real-default-owner-watch-and-session-startup-ownership; no fake disable or timer drain"
+        },
+        "toolOptions": {
+          "agentId": "main",
+          "oneShotCliRun": false
+        },
+        "clockProfile": {
+          "nativeOwner": "Date-only",
+          "timersAndMonotonic": "unmodified",
+          "memorySourceDating": "root-MEMORY.md-is-evergreen-under-real-enabled-temporal-decay"
+        }
+      }
+    },
+    {
+      "id": "index-identity-boundaries-scope-only",
+      "requirement": "indexing.identity",
+      "operation": "index-identity-boundaries-runtime",
+      "covers": [
+        "indexing.identity.boundaries"
+      ],
+      "input": {
+        "profile": "provider-none-reopened-manager-identity-diagnostics",
+        "nowMs": 1794268800000,
+        "sourceMtimeMs": 1794268800000,
+        "identity": {
+          "agentId": "main"
+        },
+        "files": {
+          "MEMORY.md": "# Library marker\n\nThe library shelf marker is copperlarch-583.\n"
+        },
+        "config": {
+          "memory": {
+            "citations": "off",
+            "search": {
+              "enabled": true,
+              "provider": "none",
+              "fallback": "none",
+              "sources": [
+                "memory",
+                "sessions"
+              ],
+              "experimental": {
+                "sessionMemory": true
+              },
+              "rememberAcrossConversations": false,
+              "extraPaths": [],
+              "store": {
+                "vector": {
+                  "enabled": false
+                },
+                "fts": {
+                  "tokenizer": "unicode61"
+                }
+              },
+              "cache": {
+                "enabled": false
+              },
+              "multimodal": {
+                "enabled": false,
+                "modalities": [],
+                "maxFileBytes": 10485760
+              },
+              "query": {
+                "maxResults": 5,
+                "minScore": 0
+              }
+            }
+          }
+        },
+        "seed": {
+          "publication": "real-full-producer-once-before-metadata-mutation",
+          "baselineSearch": {
+            "query": "copperlarch-583",
+            "maxResults": 5,
+            "minScore": 0,
+            "corpus": "memory"
+          },
+          "closeBeforeMutation": true
+        },
+        "diagnosticSchedule": {
+          "readsBeforeSearchManager": 2,
+          "closeStatusManager": true,
+          "searchManagerPurpose": "default",
+          "readsBeforeFirstQuery": 2,
+          "searchOwnerAcquisition": "original-getMemorySearchManager-facade",
+          "sameDefaultOwnerMustHandleActualToolQuery": true,
+          "nativeReadOnlyStatusPurpose": "status",
+          "sdkInspection": "separate-managed-owner-status-only"
+        },
+        "search": {
+          "query": "copperlarch-583",
+          "maxResults": 5,
+          "minScore": 0,
+          "corpus": "memory"
+        },
+        "closeAfterQuery": true,
+        "metadataMutation": {
+          "kind": "merge-metadata-fields",
+          "fields": {
+            "scopeHash": "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb"
+          }
+        },
+        "nativeResolvedPolicyContract": {
+          "source": "src/agents/memory-search.ts",
+          "sync": {
+            "onSessionStart": true,
+            "onSearch": true,
+            "watch": true,
+            "watchDebounceMs": 1500,
+            "intervalMinutes": 0,
+            "sessions": {
+              "deltaBytes": 100000,
+              "deltaMessages": 50,
+              "postCompactionForce": true
+            }
+          },
+          "chunking": {
+            "tokens": 400,
+            "overlap": 80
+          },
+          "cacheMaxEntries": 50000,
+          "query": {
+            "hybrid": {
+              "enabled": true,
+              "vectorWeight": 0.7,
+              "textWeight": 0.3,
+              "candidateMultiplier": 4,
+              "mmr": {
+                "enabled": true,
+                "lambda": 0.7
+              },
+              "temporalDecay": {
+                "enabled": true,
+                "halfLifeDays": 30
+              }
+            }
+          }
+        },
+        "fixtureSchedule": {
+          "sourceFilesAndMtimeFinishedBeforeSeedAcquisition": true,
+          "allSeedOwnersClosedBeforeMetadataMutation": true,
+          "metadataMutationCommittedBeforeReadOnlyStatusAcquisition": true,
+          "sourceFilesUnchangedAfterDefaultOwnerAcquisition": true,
+          "sessionsCorpus": {
+            "kind": "actual-agent-session-store",
+            "entries": []
+          },
+          "backgroundPolicy": "keep-real-default-owner-watch-and-session-startup-ownership; no fake disable or timer drain"
+        },
+        "toolOptions": {
+          "agentId": "main",
+          "oneShotCliRun": false
+        },
+        "clockProfile": {
+          "nativeOwner": "Date-only",
+          "timersAndMonotonic": "unmodified",
+          "memorySourceDating": "root-MEMORY.md-is-evergreen-under-real-enabled-temporal-decay"
+        }
+      }
+    },
+    {
+      "id": "index-identity-boundaries-chunk-tokens-only",
+      "requirement": "indexing.identity",
+      "operation": "index-identity-boundaries-runtime",
+      "covers": [
+        "indexing.identity.boundaries"
+      ],
+      "input": {
+        "profile": "provider-none-reopened-manager-identity-diagnostics",
+        "nowMs": 1794268800000,
+        "sourceMtimeMs": 1794268800000,
+        "identity": {
+          "agentId": "main"
+        },
+        "files": {
+          "MEMORY.md": "# Library marker\n\nThe library shelf marker is copperlarch-583.\n"
+        },
+        "config": {
+          "memory": {
+            "citations": "off",
+            "search": {
+              "enabled": true,
+              "provider": "none",
+              "fallback": "none",
+              "sources": [
+                "memory",
+                "sessions"
+              ],
+              "experimental": {
+                "sessionMemory": true
+              },
+              "rememberAcrossConversations": false,
+              "extraPaths": [],
+              "store": {
+                "vector": {
+                  "enabled": false
+                },
+                "fts": {
+                  "tokenizer": "unicode61"
+                }
+              },
+              "cache": {
+                "enabled": false
+              },
+              "multimodal": {
+                "enabled": false,
+                "modalities": [],
+                "maxFileBytes": 10485760
+              },
+              "query": {
+                "maxResults": 5,
+                "minScore": 0
+              }
+            }
+          }
+        },
+        "seed": {
+          "publication": "real-full-producer-once-before-metadata-mutation",
+          "baselineSearch": {
+            "query": "copperlarch-583",
+            "maxResults": 5,
+            "minScore": 0,
+            "corpus": "memory"
+          },
+          "closeBeforeMutation": true
+        },
+        "diagnosticSchedule": {
+          "readsBeforeSearchManager": 2,
+          "closeStatusManager": true,
+          "searchManagerPurpose": "default",
+          "readsBeforeFirstQuery": 2,
+          "searchOwnerAcquisition": "original-getMemorySearchManager-facade",
+          "sameDefaultOwnerMustHandleActualToolQuery": true,
+          "nativeReadOnlyStatusPurpose": "status",
+          "sdkInspection": "separate-managed-owner-status-only"
+        },
+        "search": {
+          "query": "copperlarch-583",
+          "maxResults": 5,
+          "minScore": 0,
+          "corpus": "memory"
+        },
+        "closeAfterQuery": true,
+        "metadataMutation": {
+          "kind": "merge-metadata-fields",
+          "fields": {
+            "chunkTokens": 401
+          }
+        },
+        "nativeResolvedPolicyContract": {
+          "source": "src/agents/memory-search.ts",
+          "sync": {
+            "onSessionStart": true,
+            "onSearch": true,
+            "watch": true,
+            "watchDebounceMs": 1500,
+            "intervalMinutes": 0,
+            "sessions": {
+              "deltaBytes": 100000,
+              "deltaMessages": 50,
+              "postCompactionForce": true
+            }
+          },
+          "chunking": {
+            "tokens": 400,
+            "overlap": 80
+          },
+          "cacheMaxEntries": 50000,
+          "query": {
+            "hybrid": {
+              "enabled": true,
+              "vectorWeight": 0.7,
+              "textWeight": 0.3,
+              "candidateMultiplier": 4,
+              "mmr": {
+                "enabled": true,
+                "lambda": 0.7
+              },
+              "temporalDecay": {
+                "enabled": true,
+                "halfLifeDays": 30
+              }
+            }
+          }
+        },
+        "fixtureSchedule": {
+          "sourceFilesAndMtimeFinishedBeforeSeedAcquisition": true,
+          "allSeedOwnersClosedBeforeMetadataMutation": true,
+          "metadataMutationCommittedBeforeReadOnlyStatusAcquisition": true,
+          "sourceFilesUnchangedAfterDefaultOwnerAcquisition": true,
+          "sessionsCorpus": {
+            "kind": "actual-agent-session-store",
+            "entries": []
+          },
+          "backgroundPolicy": "keep-real-default-owner-watch-and-session-startup-ownership; no fake disable or timer drain"
+        },
+        "toolOptions": {
+          "agentId": "main",
+          "oneShotCliRun": false
+        },
+        "clockProfile": {
+          "nativeOwner": "Date-only",
+          "timersAndMonotonic": "unmodified",
+          "memorySourceDating": "root-MEMORY.md-is-evergreen-under-real-enabled-temporal-decay"
+        }
+      }
+    },
+    {
+      "id": "index-identity-boundaries-chunk-overlap-only",
+      "requirement": "indexing.identity",
+      "operation": "index-identity-boundaries-runtime",
+      "covers": [
+        "indexing.identity.boundaries"
+      ],
+      "input": {
+        "profile": "provider-none-reopened-manager-identity-diagnostics",
+        "nowMs": 1794268800000,
+        "sourceMtimeMs": 1794268800000,
+        "identity": {
+          "agentId": "main"
+        },
+        "files": {
+          "MEMORY.md": "# Library marker\n\nThe library shelf marker is copperlarch-583.\n"
+        },
+        "config": {
+          "memory": {
+            "citations": "off",
+            "search": {
+              "enabled": true,
+              "provider": "none",
+              "fallback": "none",
+              "sources": [
+                "memory",
+                "sessions"
+              ],
+              "experimental": {
+                "sessionMemory": true
+              },
+              "rememberAcrossConversations": false,
+              "extraPaths": [],
+              "store": {
+                "vector": {
+                  "enabled": false
+                },
+                "fts": {
+                  "tokenizer": "unicode61"
+                }
+              },
+              "cache": {
+                "enabled": false
+              },
+              "multimodal": {
+                "enabled": false,
+                "modalities": [],
+                "maxFileBytes": 10485760
+              },
+              "query": {
+                "maxResults": 5,
+                "minScore": 0
+              }
+            }
+          }
+        },
+        "seed": {
+          "publication": "real-full-producer-once-before-metadata-mutation",
+          "baselineSearch": {
+            "query": "copperlarch-583",
+            "maxResults": 5,
+            "minScore": 0,
+            "corpus": "memory"
+          },
+          "closeBeforeMutation": true
+        },
+        "diagnosticSchedule": {
+          "readsBeforeSearchManager": 2,
+          "closeStatusManager": true,
+          "searchManagerPurpose": "default",
+          "readsBeforeFirstQuery": 2,
+          "searchOwnerAcquisition": "original-getMemorySearchManager-facade",
+          "sameDefaultOwnerMustHandleActualToolQuery": true,
+          "nativeReadOnlyStatusPurpose": "status",
+          "sdkInspection": "separate-managed-owner-status-only"
+        },
+        "search": {
+          "query": "copperlarch-583",
+          "maxResults": 5,
+          "minScore": 0,
+          "corpus": "memory"
+        },
+        "closeAfterQuery": true,
+        "metadataMutation": {
+          "kind": "merge-metadata-fields",
+          "fields": {
+            "chunkOverlap": 81
+          }
+        },
+        "nativeResolvedPolicyContract": {
+          "source": "src/agents/memory-search.ts",
+          "sync": {
+            "onSessionStart": true,
+            "onSearch": true,
+            "watch": true,
+            "watchDebounceMs": 1500,
+            "intervalMinutes": 0,
+            "sessions": {
+              "deltaBytes": 100000,
+              "deltaMessages": 50,
+              "postCompactionForce": true
+            }
+          },
+          "chunking": {
+            "tokens": 400,
+            "overlap": 80
+          },
+          "cacheMaxEntries": 50000,
+          "query": {
+            "hybrid": {
+              "enabled": true,
+              "vectorWeight": 0.7,
+              "textWeight": 0.3,
+              "candidateMultiplier": 4,
+              "mmr": {
+                "enabled": true,
+                "lambda": 0.7
+              },
+              "temporalDecay": {
+                "enabled": true,
+                "halfLifeDays": 30
+              }
+            }
+          }
+        },
+        "fixtureSchedule": {
+          "sourceFilesAndMtimeFinishedBeforeSeedAcquisition": true,
+          "allSeedOwnersClosedBeforeMetadataMutation": true,
+          "metadataMutationCommittedBeforeReadOnlyStatusAcquisition": true,
+          "sourceFilesUnchangedAfterDefaultOwnerAcquisition": true,
+          "sessionsCorpus": {
+            "kind": "actual-agent-session-store",
+            "entries": []
+          },
+          "backgroundPolicy": "keep-real-default-owner-watch-and-session-startup-ownership; no fake disable or timer drain"
+        },
+        "toolOptions": {
+          "agentId": "main",
+          "oneShotCliRun": false
+        },
+        "clockProfile": {
+          "nativeOwner": "Date-only",
+          "timersAndMonotonic": "unmodified",
+          "memorySourceDating": "root-MEMORY.md-is-evergreen-under-real-enabled-temporal-decay"
+        }
+      }
+    },
+    {
+      "id": "index-identity-boundaries-tokenizer-only",
+      "requirement": "indexing.identity",
+      "operation": "index-identity-boundaries-runtime",
+      "covers": [
+        "indexing.identity.boundaries"
+      ],
+      "input": {
+        "profile": "provider-none-reopened-manager-identity-diagnostics",
+        "nowMs": 1794268800000,
+        "sourceMtimeMs": 1794268800000,
+        "identity": {
+          "agentId": "main"
+        },
+        "files": {
+          "MEMORY.md": "# Library marker\n\nThe library shelf marker is copperlarch-583.\n"
+        },
+        "config": {
+          "memory": {
+            "citations": "off",
+            "search": {
+              "enabled": true,
+              "provider": "none",
+              "fallback": "none",
+              "sources": [
+                "memory",
+                "sessions"
+              ],
+              "experimental": {
+                "sessionMemory": true
+              },
+              "rememberAcrossConversations": false,
+              "extraPaths": [],
+              "store": {
+                "vector": {
+                  "enabled": false
+                },
+                "fts": {
+                  "tokenizer": "unicode61"
+                }
+              },
+              "cache": {
+                "enabled": false
+              },
+              "multimodal": {
+                "enabled": false,
+                "modalities": [],
+                "maxFileBytes": 10485760
+              },
+              "query": {
+                "maxResults": 5,
+                "minScore": 0
+              }
+            }
+          }
+        },
+        "seed": {
+          "publication": "real-full-producer-once-before-metadata-mutation",
+          "baselineSearch": {
+            "query": "copperlarch-583",
+            "maxResults": 5,
+            "minScore": 0,
+            "corpus": "memory"
+          },
+          "closeBeforeMutation": true
+        },
+        "diagnosticSchedule": {
+          "readsBeforeSearchManager": 2,
+          "closeStatusManager": true,
+          "searchManagerPurpose": "default",
+          "readsBeforeFirstQuery": 2,
+          "searchOwnerAcquisition": "original-getMemorySearchManager-facade",
+          "sameDefaultOwnerMustHandleActualToolQuery": true,
+          "nativeReadOnlyStatusPurpose": "status",
+          "sdkInspection": "separate-managed-owner-status-only"
+        },
+        "search": {
+          "query": "copperlarch-583",
+          "maxResults": 5,
+          "minScore": 0,
+          "corpus": "memory"
+        },
+        "closeAfterQuery": true,
+        "metadataMutation": {
+          "kind": "merge-metadata-fields",
+          "fields": {
+            "ftsTokenizer": "porter"
+          }
+        },
+        "nativeResolvedPolicyContract": {
+          "source": "src/agents/memory-search.ts",
+          "sync": {
+            "onSessionStart": true,
+            "onSearch": true,
+            "watch": true,
+            "watchDebounceMs": 1500,
+            "intervalMinutes": 0,
+            "sessions": {
+              "deltaBytes": 100000,
+              "deltaMessages": 50,
+              "postCompactionForce": true
+            }
+          },
+          "chunking": {
+            "tokens": 400,
+            "overlap": 80
+          },
+          "cacheMaxEntries": 50000,
+          "query": {
+            "hybrid": {
+              "enabled": true,
+              "vectorWeight": 0.7,
+              "textWeight": 0.3,
+              "candidateMultiplier": 4,
+              "mmr": {
+                "enabled": true,
+                "lambda": 0.7
+              },
+              "temporalDecay": {
+                "enabled": true,
+                "halfLifeDays": 30
+              }
+            }
+          }
+        },
+        "fixtureSchedule": {
+          "sourceFilesAndMtimeFinishedBeforeSeedAcquisition": true,
+          "allSeedOwnersClosedBeforeMetadataMutation": true,
+          "metadataMutationCommittedBeforeReadOnlyStatusAcquisition": true,
+          "sourceFilesUnchangedAfterDefaultOwnerAcquisition": true,
+          "sessionsCorpus": {
+            "kind": "actual-agent-session-store",
+            "entries": []
+          },
+          "backgroundPolicy": "keep-real-default-owner-watch-and-session-startup-ownership; no fake disable or timer drain"
+        },
+        "toolOptions": {
+          "agentId": "main",
+          "oneShotCliRun": false
+        },
+        "clockProfile": {
+          "nativeOwner": "Date-only",
+          "timersAndMonotonic": "unmodified",
+          "memorySourceDating": "root-MEMORY.md-is-evergreen-under-real-enabled-temporal-decay"
+        }
+      }
+    },
+    {
+      "id": "index-identity-boundaries-older-chunker-scope-incompatible",
+      "requirement": "indexing.identity",
+      "operation": "index-identity-boundaries-runtime",
+      "covers": [
+        "indexing.identity.boundaries"
+      ],
+      "input": {
+        "profile": "provider-none-reopened-manager-identity-diagnostics",
+        "nowMs": 1794268800000,
+        "sourceMtimeMs": 1794268800000,
+        "identity": {
+          "agentId": "main"
+        },
+        "files": {
+          "MEMORY.md": "# Library marker\n\nThe library shelf marker is copperlarch-583.\n"
+        },
+        "config": {
+          "memory": {
+            "citations": "off",
+            "search": {
+              "enabled": true,
+              "provider": "none",
+              "fallback": "none",
+              "sources": [
+                "memory",
+                "sessions"
+              ],
+              "experimental": {
+                "sessionMemory": true
+              },
+              "rememberAcrossConversations": false,
+              "extraPaths": [],
+              "store": {
+                "vector": {
+                  "enabled": false
+                },
+                "fts": {
+                  "tokenizer": "unicode61"
+                }
+              },
+              "cache": {
+                "enabled": false
+              },
+              "multimodal": {
+                "enabled": false,
+                "modalities": [],
+                "maxFileBytes": 10485760
+              },
+              "query": {
+                "maxResults": 5,
+                "minScore": 0
+              }
+            }
+          }
+        },
+        "seed": {
+          "publication": "real-full-producer-once-before-metadata-mutation",
+          "baselineSearch": {
+            "query": "copperlarch-583",
+            "maxResults": 5,
+            "minScore": 0,
+            "corpus": "memory"
+          },
+          "closeBeforeMutation": true
+        },
+        "diagnosticSchedule": {
+          "readsBeforeSearchManager": 2,
+          "closeStatusManager": true,
+          "searchManagerPurpose": "default",
+          "readsBeforeFirstQuery": 2,
+          "searchOwnerAcquisition": "original-getMemorySearchManager-facade",
+          "sameDefaultOwnerMustHandleActualToolQuery": true,
+          "nativeReadOnlyStatusPurpose": "status",
+          "sdkInspection": "separate-managed-owner-status-only"
+        },
+        "search": {
+          "query": "copperlarch-583",
+          "maxResults": 5,
+          "minScore": 0,
+          "corpus": "memory"
+        },
+        "closeAfterQuery": true,
+        "metadataMutation": {
+          "kind": "merge-metadata-fields",
+          "fields": {
+            "chunkingVersion": 4,
+            "scopeHash": "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb"
+          }
+        },
+        "nativeResolvedPolicyContract": {
+          "source": "src/agents/memory-search.ts",
+          "sync": {
+            "onSessionStart": true,
+            "onSearch": true,
+            "watch": true,
+            "watchDebounceMs": 1500,
+            "intervalMinutes": 0,
+            "sessions": {
+              "deltaBytes": 100000,
+              "deltaMessages": 50,
+              "postCompactionForce": true
+            }
+          },
+          "chunking": {
+            "tokens": 400,
+            "overlap": 80
+          },
+          "cacheMaxEntries": 50000,
+          "query": {
+            "hybrid": {
+              "enabled": true,
+              "vectorWeight": 0.7,
+              "textWeight": 0.3,
+              "candidateMultiplier": 4,
+              "mmr": {
+                "enabled": true,
+                "lambda": 0.7
+              },
+              "temporalDecay": {
+                "enabled": true,
+                "halfLifeDays": 30
+              }
+            }
+          }
+        },
+        "fixtureSchedule": {
+          "sourceFilesAndMtimeFinishedBeforeSeedAcquisition": true,
+          "allSeedOwnersClosedBeforeMetadataMutation": true,
+          "metadataMutationCommittedBeforeReadOnlyStatusAcquisition": true,
+          "sourceFilesUnchangedAfterDefaultOwnerAcquisition": true,
+          "sessionsCorpus": {
+            "kind": "actual-agent-session-store",
+            "entries": []
+          },
+          "backgroundPolicy": "keep-real-default-owner-watch-and-session-startup-ownership; no fake disable or timer drain"
+        },
+        "toolOptions": {
+          "agentId": "main",
+          "oneShotCliRun": false
+        },
+        "clockProfile": {
+          "nativeOwner": "Date-only",
+          "timersAndMonotonic": "unmodified",
+          "memorySourceDating": "root-MEMORY.md-is-evergreen-under-real-enabled-temporal-decay"
+        }
+      }
+    }
+  ]
+}

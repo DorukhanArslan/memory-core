@@ -26,7 +26,7 @@ The reference repository is `https://github.com/openclaw/openclaw.git`. Python-o
 
 The [source map](equivalence-source-map.md) links all 64 contracts and 128 acceptance points
 to the pinned upstream code and the current Python implementation. The inventory records
-206 upstream source modules, their tracked hashes, literal dependencies and exported
+225 upstream source modules, their tracked hashes, literal dependencies and exported
 declarations. Source presence and inventory validation do not establish behavior or add
 any differential-test coverage.
 
@@ -52,29 +52,34 @@ Comparisons must not normalize away behavior. A platform-specific path, generate
 Entries remain pending until their complete acceptance conditions are verified against `v2026.9.9`. Their detailed acceptance points and stable identifiers are in [scope.json](../equivalence/scope.json). A helper that already exists in Python still needs the new differential evidence. A known difference must stay visible until its implementation and tests agree. Bounded passing subsets are recorded below without closing the containing contract.
 
 <!-- CURRENT-VERIFICATION-START -->
-The latest verified bounded baseline has **70/128 acceptance conditions (54.7%)**,
-with **58 conditions** remaining. This counts unweighted verified conditions, not
+The latest verified bounded baseline has **71/128 acceptance conditions (55.5%)**,
+with **57 conditions** remaining. This counts unweighted verified conditions, not
 engineering effort or a time estimate. The fixed scope stays 64 contracts and 128 conditions.
-The full-channel boundary package verifies **+1**, from **69 to 70/128**;
-fresh validation of the corrected SDK confirms the same 70, not a second increase.
-Contract #62 has **both original conditions verified, 2/2**, under its explicit profiles.
+The index-identity boundary package verifies **+1**, from **70 to 71/128**;
+contract #11 now has **both original conditions verified, 2/2**, under its explicit profiles.
 
-The fresh complete differential report on clean `b27624d` executes **1,421 cases:
-1,407 matches, 14 existing differences and zero blocked**, with no runner errors.
-All six exact boundary cases match with actual delivery, maintenance, tools,
-source bytes, pre-model target-open settlement and physical next-admission custody.
-All 1,415 prior definitions/statuses/annotations, 12 earlier evidence flags and the
-other 127 acceptance records remain unchanged. The earlier four outcomes are
-separate; immediate fresh warm recall is not promised.
+The fresh complete report on clean `5856b4e` executes **1,437 cases: 1,423 matches,
+14 existing mismatch cases and zero blocked**, with no runner errors. All 16 new
+manager/status/first-query pairs match with authenticated actual tools, owners,
+physical SQL and complete public results. All 1,421 earlier definitions/statuses/
+annotations, 18 prior evidence flags and the other 127 original point records remain
+unchanged. One already-declared zero-credit Native warm-index diagnostic sees a
+different published generation; its two actual result arrays remain retained and
+mismatched. Complete historical mismatch-payload equality is not claimed.
 
-The corrected SDK passes **8,670 general tests**, with zero failures and **1,648
-uncredited skips**, and both installed artifacts, including **27 invalid typed-call
-checks** each. The earlier failed general runs remain retained. The sessions-only
-separate-catalog reservation fixes a real source-preparation race without retry,
-weakened validation or timer draining. The initial hosted 3.11 validator failure
-and later guard validation have separate identities in the boundary closeout.
-The full gate stays `mismatched`: **56 uncovered conditions plus two registered
+The SDK passes **9,757 general tests**, zero failures and **1,648 uncredited skips**;
+fresh full-run custody replay passes **981 tests with zero skips**. Both installed
+artifacts and **27 invalid typed-call checks each** pass. Code-head GitHub package
+checks pass on Python 3.11 and 3.12. The previous hosted 18-versus-local-14 discrepancy
+is separate and remains unresolved; it is not relabeled as the local known fourteen.
+The full gate remains `mismatched`: **55 uncovered conditions plus two registered
 unresolved conditions** remain. Complete OpenClaw equivalence is not established.
+
+See the [index-identity boundary closeout](index_identity_boundaries_closeout.md)
+for exact identities, full-result evidence, preserved failures, the declared Native
+timing variation and profile limits. The proposed next condition is
+`indexing.query-sync.outcomes`: compare what actual searches see when source files
+are added, edited, deleted or renamed, before and after natural publication settles.
 
 See the [boundary closeout](host_turn_barrier_boundaries_closeout.md) for exact identities,
 complete public results, retained failures and measured limits. See the original
@@ -122,10 +127,10 @@ reaching 66/128 before the update/isolation and natural next-turn packages.
 
 | Contract status | Contracts | Verified conditions | Remaining conditions |
 | --- | ---: | ---: | ---: |
-| Complete | 32 | 64 | 0 |
-| Partial | 6 | 6 | 6 |
+| Complete | 33 | 66 | 0 |
+| Partial | 5 | 5 | 5 |
 | Pending verification | 26 | 0 | 52 |
-| Total | 64 | 70 | 58 |
+| Total | 64 | 71 | 57 |
 
 Pending verification can include existing implementation. Partial contracts retain one open
 condition. Infrastructure sections 1–3 remain **20/22 tasks completed**; infrastructure and
@@ -146,7 +151,7 @@ Current status of all 64 contracts:
 | 8 | `chunking.markdown-boundaries` | Complete | 2/2 |
 | 9 | `chunking.utf16-cjk-budget` | Complete | 2/2 |
 | 10 | `chunking.entry-provenance` | Complete | 2/2 |
-| 11 | `indexing.identity` | Partial | 1/2 |
+| 11 | `indexing.identity` | Complete | 2/2 |
 | 12 | `indexing.incremental-sync` | Complete | 2/2 |
 | 13 | `indexing.transaction-publication` | Complete | 2/2 |
 | 14 | `indexing.embedding-cache` | Pending verification | 0/2 |
@@ -229,7 +234,7 @@ pre-open race authority, full raw filesystem evidence and broader SDK-only limit
 
 ### Index lifecycle
 
-- [ ] **`indexing.identity` — Match index identity gating.** Vary provider, model, endpoint settings, scope, sources, tokenizer and chunking versions. Compare missing, matching and stale metadata diagnostics before any query is admitted.
+- [x] **`indexing.identity` — Match index identity gating.** Vary provider, model, endpoint settings, scope, sources, tokenizer and chunking versions. Compare missing, matching and stale metadata diagnostics before any query is admitted.
 - [x] **`indexing.incremental-sync` — Match index refresh and invalidation.** Create, update, rename and delete files and sessions while retaining an index. Compare discovery, chunk replacement and unchanged-file handling across reopen.
 - [x] **`indexing.transaction-publication` — Publish one coherent index revision.** Interleave readers with successful and failing rebuilds. Compare visible old/new revisions and prevent partial chunk, FTS or provenance publication. Both acceptance points are covered by the prepared-publication comparisons recorded below.
 - [ ] **`indexing.embedding-cache` — Match embedding reuse and invalidation.** Use a deterministic instrumented embedder to count query and document calls. Compare cache identity, batching, changed chunks, failed batches and retained entries.
@@ -2164,3 +2169,22 @@ unowned provider cleanup are not claimed. The corrected SDK passes **8,670 gener
 tests** with **1,648 uncredited skips**, both installed artifacts and **27 invalid
 typed calls** each. Historical failures, initial SDK identity and the separate
 validator-only hosted follow-up retain their actual records and grant no extra point.
+
+
+## Index identity pre-query boundary acceptance (2026-11-10)
+
+The [identity boundary closeout](index_identity_boundaries_closeout.md) verifies
+only the original `indexing.identity.boundaries` condition: **70 → 71/128 (55.5%)**,
+with **57 remaining**. Clean `5856b4e` executes **1,437 cases: 1,423 matched,
+14 mismatched, zero blocked and no runner errors**. The 16 independently frozen
+pairs retain complete pre-query identity diagnostics, actual first-search results,
+real owner/publication/import/process/SQL custody and unchanged source bytes.
+
+All earlier 1,421 definitions/statuses/annotations, 18 evidence flags and the other
+127 point records are unchanged. The two Native first-recall result arrays in one
+already-declared zero-credit warm diagnostic vary with background publication;
+its complete SDK payload and the other 13 mismatch payloads remain identical.
+That diagnostic remains mismatched and uncredited. Full regressions pass 9,757
+tests with 1,648 uncredited skips; fresh evidence replay passes 981 with zero skips.
+Both installed artifacts and 27 invalid typed calls each pass. The full gate
+remains mismatched, with 55 uncovered and two registered unresolved conditions.

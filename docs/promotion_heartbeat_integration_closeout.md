@@ -1,12 +1,11 @@
 # Promotion and heartbeat maintenance integration
 
-The latest [full-channel boundary closeout](host_turn_barrier_boundaries_closeout.md)
-confirms **70/128 conditions**, with **58 remaining**, in the final clean `b27624d`
-complete catalog. General regressions and both installed artifacts validate the
-corrected sessions-only source publication. This repeats the same 70, not a
-second increase. The earlier outcomes, update/isolation and restart packages
-retain their own historical identities. This maintenance package still awards
-zero; none of its original captures is relabeled.
+The latest [index-identity boundary closeout](index_identity_boundaries_closeout.md)
+verifies **71/128 conditions**, with **57 remaining**, in the complete catalog on
+clean `5856b4e`: 1,437 cases, 1,423 matches, 14 mismatch cases and zero blocked/errors.
+Only the original identity boundary adds one condition. Earlier maintenance,
+promotion, restart and full-channel packages retain their own historical identities.
+This maintenance package still awards zero; none of its captures is relabeled.
 
 This is the historical zero-credit maintenance closeout. Subsequent work is
 recorded separately in the [promotion apply/reconciliation closeout](promotion_apply_reconcile_closeout.md):

@@ -494,7 +494,7 @@
           "path": "memory_core/index/sqlite_store.py",
           "symbol": "SQLiteMemoryStore._prepare_source_chunks",
           "anchor": "    def _prepare_source_chunks(entry: IndexSourceSnapshot, tokens: int, overlap: int) -> list[MemoryChunk]:",
-          "line": 901
+          "line": 914
         }
       ],
       "implementation": "present",
@@ -586,13 +586,13 @@
           "path": "memory_core/index/sqlite_store.py",
           "symbol": "SQLiteMemoryStore.reindex",
           "anchor": "    def reindex(self, workspace: MemoryWorkspace, *, force: bool = False) -> int:",
-          "line": 539
+          "line": 551
         },
         {
           "path": "memory_core/index/sqlite_store.py",
           "symbol": "SQLiteMemoryStore._prepare_source_chunks",
           "anchor": "    def _prepare_source_chunks(entry: IndexSourceSnapshot, tokens: int, overlap: int) -> list[MemoryChunk]:",
-          "line": 901
+          "line": 914
         },
         {
           "path": "memory_core/index/preparation.py",
@@ -628,7 +628,7 @@
           "path": "memory_core/index/sqlite_store.py",
           "symbol": "SQLiteMemoryStore._reindex_locked",
           "anchor": "    def _reindex_locked(",
-          "line": 604
+          "line": 616
         },
         {
           "path": "memory_core/client.py",
@@ -682,6 +682,336 @@
           "symbol": "MemoryManagerSyncBase.resolveCurrentIndexIdentityState",
           "anchor": "  protected resolveCurrentIndexIdentityState(params?: {",
           "line": 354
+        },
+        {
+          "path": "extensions/memory-core/src/tools.ts",
+          "symbol": "createMemorySearchTool",
+          "anchor": "export function createMemorySearchTool(options: MemoryToolOptions) {",
+          "line": 226
+        },
+        {
+          "path": "extensions/memory-core/src/tools.ts",
+          "symbol": "readCorpusParam",
+          "anchor": "function readCorpusParam<T extends string>(",
+          "line": 86
+        },
+        {
+          "path": "extensions/memory-core/src/memory-tool-contract.ts",
+          "symbol": "MEMORY_SEARCH_TOOL_CONTRACT",
+          "anchor": "export const MEMORY_SEARCH_TOOL_CONTRACT = {",
+          "line": 90
+        },
+        {
+          "path": "extensions/memory-core/src/memory-tool-contract.ts",
+          "symbol": "resolveMemoryToolContext",
+          "anchor": "export function resolveMemoryToolContext(options: MemoryToolOptions) {",
+          "line": 68
+        },
+        {
+          "path": "extensions/memory-core/src/tools.shared.ts",
+          "symbol": "buildMemorySearchUnavailableResult",
+          "anchor": "export function buildMemorySearchUnavailableResult(",
+          "line": 93
+        },
+        {
+          "path": "extensions/memory-core/src/tools.shared.ts",
+          "symbol": "createMemoryTool",
+          "anchor": "export function createMemoryTool(params: {",
+          "line": 62
+        },
+        {
+          "path": "extensions/memory-core/src/tools.citations.ts",
+          "symbol": "buildMemorySearchPresentation",
+          "anchor": "export function buildMemorySearchPresentation(",
+          "line": 21
+        },
+        {
+          "path": "extensions/memory-core/src/tools.citations.ts",
+          "symbol": "shouldIncludeCitations",
+          "anchor": "export function shouldIncludeCitations(params: {",
+          "line": 49
+        },
+        {
+          "path": "extensions/memory-core/src/memory-search-tool-query.ts",
+          "symbol": "executeMemorySearchToolQuery",
+          "anchor": "export async function executeMemorySearchToolQuery(params: {",
+          "line": 72
+        },
+        {
+          "path": "extensions/memory-core/src/memory-corpus.ts",
+          "symbol": "composeMemoryCorpusMetadata",
+          "anchor": "export function composeMemoryCorpusMetadata(",
+          "line": 191
+        },
+        {
+          "path": "extensions/memory-core/src/memory-corpus.ts",
+          "symbol": "searchMemoryCorpusSupplements",
+          "anchor": "export async function searchMemoryCorpusSupplements(params: {",
+          "line": 275
+        },
+        {
+          "path": "extensions/memory-core/src/session-search-visibility.ts",
+          "symbol": "filterMemorySearchHitsBySessionVisibility",
+          "anchor": "export async function filterMemorySearchHitsBySessionVisibility(params: {",
+          "line": 164
+        },
+        {
+          "path": "src/agents/tools/tool-results.ts",
+          "symbol": "jsonResult",
+          "anchor": "export function jsonResult<TDetails>(payload: TDetails): AgentToolResult<TDetails> {",
+          "line": 10
+        },
+        {
+          "path": "src/agents/tools/common.ts",
+          "symbol": "readPositiveIntegerParam",
+          "anchor": "export function readPositiveIntegerParam(",
+          "line": 199
+        },
+        {
+          "path": "src/agents/tools/common.ts",
+          "symbol": "readFiniteNumberParam",
+          "anchor": "export function readFiniteNumberParam(",
+          "line": 247
+        },
+        {
+          "path": "extensions/memory-core/src/memory/manager-runtime.ts",
+          "symbol": "MemoryIndexManager",
+          "anchor": "export { MemoryIndexManager };",
+          "line": 3
+        },
+        {
+          "path": "extensions/memory-core/src/memory/manager.ts",
+          "symbol": "MemoryIndexManager",
+          "anchor": "export class MemoryIndexManager extends MemorySearchOrchestration implements MemorySearchManager {",
+          "line": 65
+        },
+        {
+          "path": "extensions/memory-core/src/memory/manager.ts",
+          "symbol": "MemoryIndexManager.get",
+          "anchor": "  static async get(params: {",
+          "line": 106
+        },
+        {
+          "path": "extensions/memory-core/src/memory/manager.ts",
+          "symbol": "MemoryIndexManager.constructor",
+          "anchor": "  private constructor(params: {",
+          "line": 211
+        },
+        {
+          "path": "extensions/memory-core/src/memory/manager.ts",
+          "symbol": "MemoryIndexManager.status",
+          "anchor": "  status(): MemoryProviderStatus {",
+          "line": 513
+        },
+        {
+          "path": "extensions/memory-core/src/memory/manager.ts",
+          "symbol": "MemoryIndexManager.publishedStatus",
+          "anchor": "  private publishedStatus(): MemoryProviderStatus {",
+          "line": 520
+        },
+        {
+          "path": "src/plugins/memory-state.ts",
+          "symbol": "registerMemoryCorpusSupplement",
+          "anchor": "export function registerMemoryCorpusSupplement(",
+          "line": 98
+        },
+        {
+          "path": "extensions/memory-core/runtime-api.ts",
+          "symbol": "getMemorySearchManager",
+          "anchor": "export { getMemorySearchManager } from \"./src/memory/index.js\";",
+          "line": 2
+        },
+        {
+          "path": "extensions/memory-core/src/tools.runtime.ts",
+          "symbol": "getMemorySearchManager",
+          "anchor": "export { getMemorySearchManager } from \"./memory/index.js\";",
+          "line": 5
+        },
+        {
+          "path": "extensions/memory-core/src/memory/index.ts",
+          "symbol": "getMemorySearchManager",
+          "anchor": "  getMemorySearchManager,",
+          "line": 5
+        },
+        {
+          "path": "extensions/memory-core/src/memory/search-manager.ts",
+          "symbol": "getMemorySearchManager",
+          "anchor": "export async function getMemorySearchManager(",
+          "line": 35
+        },
+        {
+          "path": "src/plugin-sdk/memory-core-host-engine-foundation.ts",
+          "symbol": "resolveMemorySearchConfig",
+          "anchor": "  resolveMemorySearchConfig,",
+          "line": 12
+        },
+        {
+          "path": "src/agents/memory-search.ts",
+          "symbol": "resolveMemorySearchIndexConfig",
+          "anchor": "export function resolveMemorySearchIndexConfig(",
+          "line": 97
+        },
+        {
+          "path": "src/agents/memory-search.ts",
+          "symbol": "resolveMemorySearchConfig",
+          "anchor": "export function resolveMemorySearchConfig(",
+          "line": 273
+        },
+        {
+          "path": "src/agents/memory-search.ts",
+          "symbol": "resolveSyncConfig",
+          "anchor": "function resolveSyncConfig() {",
+          "line": 280
+        },
+        {
+          "path": "extensions/memory-core/src/memory/manager-registry.ts",
+          "symbol": "MemoryManagerRegistry",
+          "anchor": "export class MemoryManagerRegistry<T extends ClosableMemoryManager> {",
+          "line": 89
+        },
+        {
+          "path": "extensions/memory-core/src/memory/manager-database-context.ts",
+          "symbol": "MemoryIndexDatabase",
+          "anchor": "export class MemoryIndexDatabase {",
+          "line": 45
+        },
+        {
+          "path": "extensions/memory-core/src/memory/manager-sync-base.ts",
+          "symbol": "MemoryManagerSyncBase.readMeta",
+          "anchor": "  protected readMeta(): MemoryIndexMeta | null {",
+          "line": 621
+        },
+        {
+          "path": "extensions/memory-core/src/memory/manager-reindex-state.ts",
+          "symbol": "MEMORY_INDEX_PROVENANCE_VERSION",
+          "anchor": "export const MEMORY_INDEX_PROVENANCE_VERSION = 1;",
+          "line": 30
+        },
+        {
+          "path": "extensions/memory-core/src/memory/manager-retrieval-read.ts",
+          "symbol": "readMemoryIndexMetadata",
+          "anchor": "export function readMemoryIndexMetadata(db: DatabaseSync): {",
+          "line": 18
+        },
+        {
+          "path": "extensions/memory-core/src/memory/manager-retrieval-read.ts",
+          "symbol": "readMemoryRetrievalIndexState",
+          "anchor": "export function readMemoryRetrievalIndexState(db: DatabaseSync): MemoryRetrievalIndexState {",
+          "line": 43
+        },
+        {
+          "path": "extensions/memory-core/src/memory/manager-provider-lifecycle.ts",
+          "symbol": "MemoryProviderLifecycle.ensureProviderInitialized",
+          "anchor": "  protected async ensureProviderInitialized(): Promise<void> {",
+          "line": 321
+        },
+        {
+          "path": "extensions/memory-core/src/memory/manager-provider-lifecycle.ts",
+          "symbol": "MemoryProviderLifecycle.ensureEmbeddingProviderForSearch",
+          "anchor": "  protected async ensureEmbeddingProviderForSearch(",
+          "line": 181
+        },
+        {
+          "path": "extensions/memory-core/src/memory/manager-search-orchestration.ts",
+          "symbol": "MemorySearchOrchestration.search",
+          "anchor": "  async search(query: string, opts?: MemoryIndexSearchOptions): Promise<MemorySearchResult[]> {",
+          "line": 61
+        },
+        {
+          "path": "extensions/memory-core/src/memory/manager-search-orchestration.ts",
+          "symbol": "MemorySearchOrchestration.search.shouldRepairIdentity",
+          "anchor": "      const shouldRepairIdentity =",
+          "line": 279
+        },
+        {
+          "path": "extensions/memory-core/src/memory/manager-sync-ops.ts",
+          "symbol": "MemoryManagerSyncOps",
+          "anchor": "export abstract class MemoryManagerSyncOps extends MemoryManagerSourceSyncOps {",
+          "line": 78
+        },
+        {
+          "path": "extensions/memory-core/src/memory/manager-db-kernel.ts",
+          "symbol": "publishMemoryDatabaseTables",
+          "anchor": "export function publishMemoryDatabaseTables(params: MemoryDatabasePublication): void {",
+          "line": 108
+        },
+        {
+          "path": "extensions/memory-core/src/memory/manager-source-index-kernel.ts",
+          "symbol": "MemorySourceIndexKernel",
+          "anchor": "export class MemorySourceIndexKernel {",
+          "line": 65
+        },
+        {
+          "path": "extensions/memory-core/src/memory/manager-publication.worker.ts",
+          "symbol": "bindSqliteWorkerBackend",
+          "anchor": "export function bindSqliteWorkerBackend(",
+          "line": 57
+        },
+        {
+          "path": "extensions/memory-core/src/memory/manager-index-preparation.ts",
+          "symbol": "prepareMemoryIndexChunks",
+          "anchor": "export function prepareMemoryIndexChunks({",
+          "line": 42
+        },
+        {
+          "path": "extensions/memory-core/src/memory/manager-cpu-worker-runtime.ts",
+          "symbol": "runMemoryIndexState",
+          "anchor": "export async function runMemoryIndexState(",
+          "line": 42
+        },
+        {
+          "path": "extensions/memory-core/src/memory/manager-cpu-worker-runtime.ts",
+          "symbol": "runMemoryKeywordSearch",
+          "anchor": "export async function runMemoryKeywordSearch(",
+          "line": 106
+        },
+        {
+          "path": "extensions/memory-core/src/memory/manager-cpu-worker-runtime.ts",
+          "symbol": "prepareMemoryIndexInWorker",
+          "anchor": "export async function prepareMemoryIndexInWorker(",
+          "line": 150
+        },
+        {
+          "path": "extensions/memory-core/src/memory/manager-search.worker.ts",
+          "symbol": "serveWorkerTasks",
+          "anchor": "serveWorkerTasks(async (input): Promise<MemorySearchWorkerOutput> => {",
+          "line": 73
+        },
+        {
+          "path": "extensions/memory-core/src/memory/manager-index.worker.ts",
+          "symbol": "serveWorkerTasks",
+          "anchor": "serveWorkerTasks<MemoryIndexTaskResult>((input) => {",
+          "line": 5
+        },
+        {
+          "path": "extensions/memory-core/src/memory/manager-index-generation-lease.ts",
+          "symbol": "acquireMemoryIndexReadGeneration",
+          "anchor": "export async function acquireMemoryIndexReadGeneration(",
+          "line": 227
+        },
+        {
+          "path": "src/plugin-sdk/memory-core-host-engine-storage.ts",
+          "symbol": "resolveMemoryIndexIdentityDiagnostic",
+          "anchor": "  resolveMemoryIndexIdentityDiagnostic,",
+          "line": 68
+        },
+        {
+          "path": "packages/memory-host-sdk/src/engine-storage.ts",
+          "symbol": "resolveMemoryIndexIdentityDiagnostic",
+          "anchor": "  resolveMemoryIndexIdentityDiagnostic,",
+          "line": 47
+        },
+        {
+          "path": "packages/memory-host-sdk/src/host/types.ts",
+          "symbol": "resolveMemoryIndexIdentityDiagnostic",
+          "anchor": "export function resolveMemoryIndexIdentityDiagnostic(",
+          "line": 250
+        },
+        {
+          "path": "packages/memory-host-sdk/src/host/types.ts",
+          "symbol": "resolveMemoryIndexSearchDiagnostic",
+          "anchor": "export function resolveMemoryIndexSearchDiagnostic(",
+          "line": 313
         }
       ],
       "python": [
@@ -701,14 +1031,71 @@
           "path": "memory_core/index/sqlite_store.py",
           "symbol": "SQLiteMemoryStore.index_identity",
           "anchor": "    def index_identity(self, *, db: sqlite3.Connection | None = None) -> dict[str, Any]:",
-          "line": 491
+          "line": 495
+        },
+        {
+          "path": "memory_core/index/sqlite_store.py",
+          "symbol": "SQLiteMemoryStore._resolve_index_identity",
+          "anchor": "    def _resolve_index_identity(",
+          "line": 509
+        },
+        {
+          "path": "memory_core/index/sqlite_store.py",
+          "symbol": "SQLiteMemoryStore._on_index_preparation_admitted",
+          "anchor": "    def _on_index_preparation_admitted(",
+          "line": 380
+        },
+        {
+          "path": "memory_core/host/managed_index.py",
+          "symbol": "ManagedSQLiteMemoryStore._read_state",
+          "anchor": "    def _read_state(",
+          "line": 162
+        },
+        {
+          "path": "memory_core/host/managed_index.py",
+          "symbol": "ManagedSQLiteMemoryStore.status",
+          "anchor": "    def status(",
+          "line": 281
+        },
+        {
+          "path": "memory_core/host/managed_index.py",
+          "symbol": "ManagedSQLiteMemoryStore.search",
+          "anchor": "    def search(",
+          "line": 527
+        },
+        {
+          "path": "memory_core/host/managed_index.py",
+          "symbol": "ManagedSQLiteMemoryStore._on_index_preparation_admitted",
+          "anchor": "    def _on_index_preparation_admitted(",
+          "line": 495
+        },
+        {
+          "path": "memory_core/tools/memory_search.py",
+          "symbol": "resolve_paused_memory_index_identity",
+          "anchor": "def resolve_paused_memory_index_identity(",
+          "line": 253
+        },
+        {
+          "path": "memory_core/tools/memory_search.py",
+          "symbol": "build_paused_memory_index_unavailable_result",
+          "anchor": "def build_paused_memory_index_unavailable_result(",
+          "line": 271
+        },
+        {
+          "path": "memory_core/tools/search_factory.py",
+          "symbol": "create_memory_search_tool",
+          "anchor": "def create_memory_search_tool(",
+          "line": 143
         }
       ],
       "implementation": "partial",
       "notes": [
         "Real native identity-kernel comparisons exercise provider aliases/settings, stored metadata, source/scope hashes, tokenizer/chunking/provenance versions and JavaScript stored-JSON numeric coercion.",
-        "Scope hashing still fixes extraPaths to an empty list. The verified storage facade binding projection tests the kernel, not facade initialization or manager/query admission; indexing.identity.boundaries remains open.",
-        "Python version constants alone do not establish that stored chunks implement the native version; current native repair/admission lifecycle is mapped separately under indexing.query-sync."
+        "Scope hashing still fixes extraPaths to an empty list. The earlier verified storage-facade projection tests the identity kernel; the separately frozen real-manager boundary family adds actual provider-none constructor/status and first-query admission observations without broadening those original helper cases.",
+        "Python version constants alone do not establish that stored chunks implement the native version. Broader semantic-provider initialization, extraPaths configuration and query-sync lifecycle remain partial counterparts; the provider-none phase correction does not claim those whole contracts.",
+        "The managed owner now preserves unknown provider-key knowledge for plain pre-query status, then establishes it after the actual strict search-state read or admitted source preparation. Public SQLiteMemoryStore.index_identity(), retrieval and write-readiness gates stay strict; empty or refused requests and cancellation before admission do not initialize the owner, while real admitted preparation failures retain established knowledge.",
+        "The new binding map separately authenticates 37 tracked source owners and 23 official compiled owners, including the real manager facade, provider lifecycle, retrieval generation and diagnostic finalization. Publisher compiled artifacts are not inventoried as tracked Git source; no independently reproduced source build is claimed.",
+        "The sixteen independently frozen manager-boundary pairs match complete pre-query identity diagnostics and first-query results in the fresh full catalog on clean 5856b4e (1437 cases, 1423 matched, 14 mismatched, 0 blocked/errors). Only indexing.identity.boundaries adds one original condition, reaching 71/128 with 57 remaining. Source inventory itself adds no behavioral credit and the broader provider/configuration counterpart remains partial. Full statuses and SQL layouts remain engine-specific custody; semantic-provider latency, disabled synchronization and absence of speculative internal FTS probes are not claimed."
       ]
     },
     {
@@ -736,7 +1123,7 @@
           "path": "memory_core/index/sqlite_store.py",
           "symbol": "SQLiteMemoryStore.reindex",
           "anchor": "    def reindex(self, workspace: MemoryWorkspace, *, force: bool = False) -> int:",
-          "line": 539
+          "line": 551
         },
         {
           "path": "memory_core/workspace.py",
@@ -801,7 +1188,7 @@
           "path": "memory_core/index/sqlite_store.py",
           "symbol": "SQLiteMemoryStore.reindex",
           "anchor": "    def reindex(self, workspace: MemoryWorkspace, *, force: bool = False) -> int:",
-          "line": 539
+          "line": 551
         },
         {
           "path": "memory_core/consolidation/origins.py",
@@ -813,7 +1200,7 @@
           "path": "memory_core/index/sqlite_store.py",
           "symbol": "SQLiteMemoryStore.publish_prepared_index",
           "anchor": "    def publish_prepared_index(",
-          "line": 380
+          "line": 384
         },
         {
           "path": "memory_core/index/publication.py",
@@ -896,7 +1283,7 @@
           "path": "memory_core/index/sqlite_store.py",
           "symbol": "SQLiteMemoryStore.reindex",
           "anchor": "    def reindex(self, workspace: MemoryWorkspace, *, force: bool = False) -> int:",
-          "line": 539
+          "line": 551
         },
         {
           "path": "memory_core/consolidation/forget.py",
@@ -938,7 +1325,7 @@
           "path": "memory_core/index/sqlite_store.py",
           "symbol": "SQLiteMemoryStore.search",
           "anchor": "    def search(",
-          "line": 950
+          "line": 963
         },
         {
           "path": "memory_core/tools/memory_search.py",
@@ -956,7 +1343,7 @@
           "path": "memory_core/index/sqlite_store.py",
           "symbol": "SQLiteMemoryStore.index_identity",
           "anchor": "    def index_identity(self, *, db: sqlite3.Connection | None = None) -> dict[str, Any]:",
-          "line": 491
+          "line": 495
         }
       ],
       "implementation": "partial",
@@ -1015,7 +1402,7 @@
           "path": "memory_core/index/sqlite_store.py",
           "symbol": "SQLiteMemoryStore.search_vector_candidates",
           "anchor": "    def search_vector_candidates(",
-          "line": 1132
+          "line": 1145
         },
         {
           "path": "memory_core/index/vector.py",
@@ -1033,7 +1420,7 @@
           "path": "memory_core/index/sqlite_store.py",
           "symbol": "SQLiteMemoryStore._search_candidates",
           "anchor": "    def _search_candidates(",
-          "line": 1262
+          "line": 1275
         }
       ],
       "implementation": "present",
@@ -1153,7 +1540,7 @@
           "path": "memory_core/index/sqlite_store.py",
           "symbol": "SQLiteMemoryStore.search_path_candidates",
           "anchor": "    def search_path_candidates(",
-          "line": 1610
+          "line": 1623
         },
         {
           "path": "memory_core/index/keyword_search.py",
@@ -1360,13 +1747,13 @@
           "path": "memory_core/index/sqlite_store.py",
           "symbol": "SQLiteMemoryStore.attach_recall_metadata",
           "anchor": "    def attach_recall_metadata(",
-          "line": 1078
+          "line": 1091
         },
         {
           "path": "memory_core/index/sqlite_store.py",
           "symbol": "SQLiteMemoryStore.read_recall_metadata",
           "anchor": "    def read_recall_metadata(",
-          "line": 1048
+          "line": 1061
         },
         {
           "path": "memory_core/index/hybrid.py",
@@ -1384,13 +1771,13 @@
           "path": "memory_core/index/sqlite_store.py",
           "symbol": "SQLiteMemoryStore._finalize_keyword_only",
           "anchor": "    def _finalize_keyword_only(",
-          "line": 1447
+          "line": 1460
         },
         {
           "path": "memory_core/index/sqlite_store.py",
           "symbol": "SQLiteMemoryStore.search",
           "anchor": "    def search(",
-          "line": 950
+          "line": 963
         },
         {
           "path": "memory_core/client.py",
@@ -1975,7 +2362,7 @@
           "path": "memory_core/index/sqlite_store.py",
           "symbol": "SQLiteMemoryStore._search_candidates",
           "anchor": "    def _search_candidates(",
-          "line": 1262
+          "line": 1275
         },
         {
           "path": "memory_core/tools/memory_get.py",
@@ -4131,7 +4518,7 @@
           "path": "memory_core/index/sqlite_store.py",
           "symbol": "SQLiteMemoryStore.reindex",
           "anchor": "    def reindex(self, workspace: MemoryWorkspace, *, force: bool = False) -> int:",
-          "line": 539
+          "line": 551
         },
         {
           "path": "memory_core/consolidation/forget.py",
@@ -4143,7 +4530,7 @@
           "path": "memory_core/index/sqlite_store.py",
           "symbol": "SQLiteMemoryStore.publish_prepared_index",
           "anchor": "    def publish_prepared_index(",
-          "line": 380
+          "line": 384
         }
       ],
       "implementation": "partial",
@@ -4870,7 +5257,7 @@
           "path": "memory_core/index/sqlite_store.py",
           "symbol": "SQLiteMemoryStore.reindex",
           "anchor": "    def reindex(self, workspace: MemoryWorkspace, *, force: bool = False) -> int:",
-          "line": 539
+          "line": 551
         },
         {
           "path": "memory_core/consolidation/artifacts.py",
@@ -4894,7 +5281,7 @@
           "path": "memory_core/index/sqlite_store.py",
           "symbol": "SQLiteMemoryStore.publish_prepared_index",
           "anchor": "    def publish_prepared_index(",
-          "line": 380
+          "line": 384
         }
       ],
       "implementation": "partial",
@@ -5179,7 +5566,7 @@
           "path": "memory_core/host/managed_index.py",
           "symbol": "ManagedSQLiteMemoryStore.search",
           "anchor": "    def search(",
-          "line": 515
+          "line": 527
         },
         {
           "path": "memory_core/host/managed_maintenance.py",
@@ -5277,7 +5664,7 @@
           "path": "memory_core/index/sqlite_store.py",
           "symbol": "SQLiteMemoryStore.reindex_sources",
           "anchor": "    def reindex_sources(",
-          "line": 562
+          "line": 574
         },
         {
           "path": "memory_core/session_catalog.py",
@@ -5364,7 +5751,7 @@
           "path": "memory_core/host/managed_index.py",
           "symbol": "ManagedSQLiteMemoryStore.reindex",
           "anchor": "    def reindex(",
-          "line": 354
+          "line": 359
         },
         {
           "path": "memory_core/tools/memory_search.py",
@@ -10372,6 +10759,362 @@
         "normalizePendingFinalDeliveryPayloads",
         "normalizePendingFinalRecoveryPayloads",
         "resolvePendingFinalDeliveryCompletion"
+      ]
+    },
+    {
+      "path": "src/agents/tools/tool-results.ts",
+      "sha256": "36a3500e0cc46b1615daf70636c651f7f35ff6c6ed5273a2c63a3e9182bc14f7",
+      "sourceImports": [
+        "../../../packages/agent-core/src/types.js"
+      ],
+      "exportedDeclarations": [
+        "jsonResult",
+        "textResult"
+      ]
+    },
+    {
+      "path": "extensions/memory-core/src/memory/manager-runtime.ts",
+      "sha256": "0aa26fecd02844613b2e671b00e417ade5f0354df30e36afb9dcc2b559178c6b",
+      "sourceImports": [
+        "./manager.js"
+      ],
+      "exportedDeclarations": [
+        "closeAllMemoryIndexManagers",
+        "closeMemoryIndexManagersForAgent"
+      ]
+    },
+    {
+      "path": "src/plugins/memory-state.ts",
+      "sha256": "b334c9eed9bbb43c54560515a62511b6ff5ea77a044c584d0ea029670ad37229",
+      "sourceImports": [
+        "../config/types.openclaw.js",
+        "../logging/subsystem.js",
+        "./config-state.js",
+        "./plugin-instance-scope.js",
+        "./registry-contribution-types.js",
+        "./registry-types.js",
+        "./runtime.js",
+        "@openclaw/normalization-core/string-normalization",
+        "node:async_hooks"
+      ],
+      "exportedDeclarations": [
+        "adoptRuntimeMemoryRegistrations",
+        "buildMemoryPromptSection",
+        "clearMemoryPluginState",
+        "getActivePreparedMemoryPromptSection",
+        "getMemoryCapabilityRegistration",
+        "getMemoryRuntime",
+        "hasMemoryRuntime",
+        "listActiveMemoryPublicArtifacts",
+        "listMemoryCorpusSupplements",
+        "listMemoryPromptPreparations",
+        "listMemoryPromptSupplements",
+        "prepareMemoryPromptSection",
+        "registerMemoryCapability",
+        "registerMemoryCorpusSupplement",
+        "registerMemoryPromptPreparation",
+        "registerMemoryPromptSupplement",
+        "resolveMemoryCapabilityRegistration",
+        "resolveMemoryFlushPlan",
+        "runWithPreparedMemoryPromptSection",
+        "setStandaloneMemoryManagerActive"
+      ]
+    },
+    {
+      "path": "extensions/memory-core/runtime-api.ts",
+      "sha256": "9b7bbd261019d84c40ab9826b14020ac40d18e92010e1b21757d9383145a98f8",
+      "sourceImports": [
+        "./src/dreaming-repair.js",
+        "./src/dreaming-state.js",
+        "./src/memory/embeddings.js",
+        "./src/memory/index.js",
+        "./src/runtime-provider.js",
+        "./src/short-term-promotion.js",
+        "openclaw/plugin-sdk/memory-core-host-secret",
+        "openclaw/plugin-sdk/memory-core-host-status"
+      ],
+      "exportedDeclarations": []
+    },
+    {
+      "path": "extensions/memory-core/src/tools.runtime.ts",
+      "sha256": "db0cca56eef6ad7b7cd6d56429d42529442a541ca0597f87be0603583e730fc5",
+      "sourceImports": [
+        "./memory/index.js",
+        "openclaw/plugin-sdk/memory-core-host-runtime-files"
+      ],
+      "exportedDeclarations": []
+    },
+    {
+      "path": "extensions/memory-core/src/memory/index.ts",
+      "sha256": "efea33108241b8558b13082bf9742b86dee93c7d143ed8bd1cb097b11607136d",
+      "sourceImports": [
+        "./search-manager.js"
+      ],
+      "exportedDeclarations": []
+    },
+    {
+      "path": "extensions/memory-core/src/memory/search-manager.ts",
+      "sha256": "c416ce10a435f0eaa8b3dbeae9158ea989b33de2aedf9a8816e52472bb2b1c23",
+      "sourceImports": [
+        "../../manager-runtime.js",
+        "./embedding-local-service.js",
+        "openclaw/plugin-sdk/agent-workspace-runtime",
+        "openclaw/plugin-sdk/error-runtime",
+        "openclaw/plugin-sdk/lazy-runtime",
+        "openclaw/plugin-sdk/memory-core-host-engine-foundation",
+        "openclaw/plugin-sdk/memory-core-host-engine-storage",
+        "openclaw/plugin-sdk/routing"
+      ],
+      "exportedDeclarations": [
+        "closeAllMemorySearchManagers",
+        "closeMemorySearchManager",
+        "getMemorySearchManager"
+      ]
+    },
+    {
+      "path": "extensions/memory-core/src/memory/manager-registry.ts",
+      "sha256": "54f25cee8827b40510d34da84d6316481df1d6cf686264235ed45338a8dafb4f",
+      "sourceImports": [
+        "./embedding-local-service.js",
+        "./lifecycle.js",
+        "openclaw/plugin-sdk/error-runtime",
+        "openclaw/plugin-sdk/memory-core-host-engine-embeddings",
+        "openclaw/plugin-sdk/memory-core-host-engine-foundation",
+        "openclaw/plugin-sdk/memory-core-host-engine-storage",
+        "openclaw/plugin-sdk/routing"
+      ],
+      "exportedDeclarations": [
+        "MemoryEmbeddingProbeCacheEntry",
+        "MemoryIndexManagerPurpose",
+        "MemoryManagerProviderFactory",
+        "MemoryManagerRegistry",
+        "normalizeMemoryIndexManagerPurpose",
+        "resolveMemoryIndexManagerCacheKey"
+      ]
+    },
+    {
+      "path": "extensions/memory-core/src/memory/manager-database-context.ts",
+      "sha256": "bf2006808241b2ed7c07636b49f447e44d1d2fcf1141a4c9d60744738d194bf8",
+      "sourceImports": [
+        "./manager-cpu-entrypoints.js",
+        "./manager-db-kernel.js",
+        "./manager-db.js",
+        "./manager-publication-task.js",
+        "./manager-publication-transfer.js",
+        "./manager-shadow-task.js",
+        "./manager-source-index-kernel.js",
+        "node:async_hooks",
+        "node:crypto",
+        "node:sqlite",
+        "node:timers/promises",
+        "openclaw/plugin-sdk/memory-core-host-engine-foundation",
+        "openclaw/plugin-sdk/process-runtime",
+        "openclaw/plugin-sdk/sqlite-runtime"
+      ],
+      "exportedDeclarations": [
+        "MemoryIndexDatabase"
+      ]
+    },
+    {
+      "path": "extensions/memory-core/src/memory/manager-provider-lifecycle.ts",
+      "sha256": "128250bef2657f587c891ed833c32abd9ae66d387a9d40b2b9c89fa0cdd1df79",
+      "sourceImports": [
+        "./embeddings.js",
+        "./lifecycle.js",
+        "./manager-cpu-worker-runtime.js",
+        "./manager-embedding-ops.js",
+        "./manager-provider-state.js",
+        "./manager-registry.js",
+        "./manager-reindex-state.js",
+        "./manager-retrieval-read.js",
+        "openclaw/plugin-sdk/agent-scope-runtime",
+        "openclaw/plugin-sdk/error-runtime",
+        "openclaw/plugin-sdk/memory-core-host-embedding-registry",
+        "openclaw/plugin-sdk/memory-core-host-engine-embeddings",
+        "openclaw/plugin-sdk/memory-core-host-engine-foundation",
+        "openclaw/plugin-sdk/memory-core-host-engine-storage",
+        "openclaw/plugin-sdk/routing",
+        "openclaw/plugin-sdk/security-runtime"
+      ],
+      "exportedDeclarations": [
+        "MemoryEmbeddingBootstrapDebug",
+        "MemoryEmbeddingProviderRequirement",
+        "resolveEffectiveMemorySearchSettings",
+        "resolveMemoryEmbeddingProviderRequirement"
+      ]
+    },
+    {
+      "path": "extensions/memory-core/src/memory/manager-source-index-kernel.ts",
+      "sha256": "b0bf466a54ee67705f5b7327a31c0013e9ee44a57117181ca5860c5ef90e30b5",
+      "sourceImports": [
+        "./manager-chunk-writer.js",
+        "./manager-vector-rebuild-state.js",
+        "./manager-vector-write.js",
+        "node:sqlite",
+        "openclaw/plugin-sdk/memory-core-host-engine-indexing",
+        "openclaw/plugin-sdk/memory-core-host-engine-schema",
+        "openclaw/plugin-sdk/sqlite-worker-runtime"
+      ],
+      "exportedDeclarations": [
+        "MemorySourceIndexHeader",
+        "MemorySourceIndexKernel",
+        "MemorySourceIndexReplacement",
+        "MemorySourceIndexRow",
+        "readMemorySourceHash"
+      ]
+    },
+    {
+      "path": "extensions/memory-core/src/memory/manager-publication.worker.ts",
+      "sha256": "4bbc2de8a1e50ea089a5de337fbb2eaa5c0352fef5e85bf532557698d8b59b86",
+      "sourceImports": [
+        "../memory-session-tombstones.js",
+        "./manager-db-kernel.js",
+        "./manager-publication-task.js",
+        "./manager-shadow-task.js",
+        "./manager-source-index-kernel.js",
+        "node:sqlite",
+        "openclaw/plugin-sdk/memory-core-host-engine-schema",
+        "openclaw/plugin-sdk/sqlite-worker-runtime"
+      ],
+      "exportedDeclarations": [
+        "bindSqliteWorkerBackend",
+        "openExistingSqliteWorkerBackend"
+      ]
+    },
+    {
+      "path": "extensions/memory-core/src/memory/manager-cpu-worker-runtime.ts",
+      "sha256": "060ebff91bcc60a819551cb44e055597e778a0792bf041da18f4749afebe686c",
+      "sourceImports": [
+        "./manager-cpu-entrypoints.js",
+        "./manager-index-preparation.js",
+        "./manager-search.worker.js",
+        "openclaw/plugin-sdk/memory-core-host-engine-knn",
+        "openclaw/plugin-sdk/process-runtime"
+      ],
+      "exportedDeclarations": [
+        "MemoryIndexTask",
+        "MemoryIndexTaskResult",
+        "prepareMemoryIndexInWorker",
+        "prewarmMemorySearchWorker",
+        "runMemoryCuratedCandidates",
+        "runMemoryIndexState",
+        "runMemoryKeywordSearch",
+        "runMemoryPresenceInspection",
+        "runMemoryRecallMetadata",
+        "runMemoryVectorFallback"
+      ]
+    },
+    {
+      "path": "extensions/memory-core/src/memory/manager-search.worker.ts",
+      "sha256": "b477fa182008d9aef544e0fa95d85cf5c731248ee492b60b15886f8b1b88931d",
+      "sourceImports": [
+        "./keyword-query.js",
+        "./manager-retrieval-read.js",
+        "./manager-search-vector.js",
+        "./manager-search.js",
+        "./manager-status-presence.js",
+        "openclaw/plugin-sdk/error-runtime",
+        "openclaw/plugin-sdk/memory-core-host-engine-knn",
+        "openclaw/plugin-sdk/memory-core-host-engine-storage",
+        "openclaw/plugin-sdk/sqlite-runtime",
+        "openclaw/plugin-sdk/worker-task-server"
+      ],
+      "exportedDeclarations": [
+        "MemoryKeywordWorkerQuery",
+        "MemoryKeywordWorkerResult",
+        "MemorySearchWorkerInput",
+        "MemorySearchWorkerOutput",
+        "MemoryVectorWorkerQuery"
+      ]
+    },
+    {
+      "path": "extensions/memory-core/src/memory/manager-index.worker.ts",
+      "sha256": "f68ee277284e834688a38993724a2844be65d581a05abd6455720f61d20452a7",
+      "sourceImports": [
+        "./manager-cpu-worker-runtime.js",
+        "./manager-index-preparation.js",
+        "openclaw/plugin-sdk/worker-task-server"
+      ],
+      "exportedDeclarations": []
+    },
+    {
+      "path": "extensions/memory-core/src/memory/manager-index-generation-lease.ts",
+      "sha256": "0e41d89b8be1e702abbe8481520911ea9560b3b14fd9919cc3d4ea4ed07becc8",
+      "sourceImports": [
+        "./manager-sqlite-lease.js",
+        "openclaw/plugin-sdk/memory-core-host-engine-fs",
+        "openclaw/plugin-sdk/runtime-env"
+      ],
+      "exportedDeclarations": [
+        "acquireMemoryIndexReadGeneration",
+        "withMemoryIndexPublishGeneration"
+      ]
+    },
+    {
+      "path": "src/plugin-sdk/memory-core-host-engine-storage.ts",
+      "sha256": "77459d8b9de13ebc1aa1974313807e9575f35300663e6f6a392a131a794c478a",
+      "sourceImports": [
+        "../../packages/memory-host-sdk/src/engine-storage.js",
+        "../../packages/memory-host-sdk/src/memory-entry-origins.js",
+        "../state/openclaw-agent-db-readonly.js"
+      ],
+      "exportedDeclarations": [
+        "MemoryEmbeddingProbeResult"
+      ]
+    },
+    {
+      "path": "packages/memory-host-sdk/src/engine-storage.ts",
+      "sha256": "8c9e64c08acf587dd3312f4df3a874b423bdc52ea85ff6fabdd1377e2ac12a2a",
+      "sourceImports": [
+        "./host/backend-config.js",
+        "./host/fs-utils.js",
+        "./host/internal.js",
+        "./host/memory-recall-metadata.js",
+        "./host/memory-schema.js",
+        "./host/read-file-shared.js",
+        "./host/read-file.js",
+        "./host/read-retry.js",
+        "./host/search-deadline-control.js",
+        "./host/sqlite-vec.js",
+        "./host/sqlite.js",
+        "./host/types.js",
+        "./host/workspace-files.js"
+      ],
+      "exportedDeclarations": []
+    },
+    {
+      "path": "packages/memory-host-sdk/src/host/types.ts",
+      "sha256": "737b555fc517671b927bcbab30334ffbd20c3690e02fa72595eeaacbddf06e4a",
+      "sourceImports": [
+        "./search-deadline-control.js",
+        "@openclaw/normalization-core/record-coerce"
+      ],
+      "exportedDeclarations": [
+        "LegacyMemoryReadResult",
+        "MemoryEmbeddingProbeResult",
+        "MemoryEntryProvenance",
+        "MemoryExtraPath",
+        "MemoryIndexIdentityDiagnostic",
+        "MemoryIndexIdentityState",
+        "MemoryOriginClass",
+        "MemoryProviderStatus",
+        "MemoryReadResult",
+        "MemorySearchManager",
+        "MemorySearchResult",
+        "MemorySearchRuntimeDebug",
+        "MemorySessionKind",
+        "MemorySessionSyncTarget",
+        "MemorySource",
+        "MemorySyncParams",
+        "MemorySyncProgressUpdate",
+        "MemoryVectorIndexState",
+        "formatMemoryIndexRebuildGuidance",
+        "isAutomaticMemoryEntryEligible",
+        "isMemoryOriginEligibleForAutomaticInjection",
+        "resolveMemoryIndexIdentityDiagnostic",
+        "resolveMemoryIndexIdentityReason",
+        "resolveMemoryIndexSearchDiagnostic",
+        "resolveMemorySearchStaleness"
       ]
     }
   ]

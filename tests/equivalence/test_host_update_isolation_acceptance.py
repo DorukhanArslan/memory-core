@@ -8,7 +8,7 @@ import pytest
 from equivalence.cases import build_cases as build_catalog
 from equivalence.harness import HarnessError, _host_update_isolation_family_complete, _validate_scope
 from equivalence.host_update_isolation import (
-    CASE_HASHES, FAULTS, OPERATION, POINTS, REQUIREMENT, build_cases, validate_case, validate_registration,
+    CASE_HASHES, FAULTS, MANIFEST, OPERATION, POINTS, REQUIREMENT, build_cases, validate_case, validate_registration,
 )
 
 
@@ -146,3 +146,52 @@ def test_restart_rows_cannot_complete_the_update_family_or_the_reverse():
     assert _host_update_isolation_family_complete(restart) is False
     assert _host_restart_session_family_complete(_complete_rows()) is False
     assert _host_update_isolation_family_complete(restart + _complete_rows()) is True
+
+
+@pytest.mark.parametrize("change", ["extra-key", "another-kind", "self-awarded-credit", "reordered", "missing-member",
+                                    "repeated-member", "changed-literal", "expected-result-added"])
+def test_literal_manifest_is_admitted_only_in_its_exact_frozen_form(tmp_path, change):
+    manifest = json.loads(MANIFEST.read_text(encoding="utf8"))
+    if change == "extra-key":
+        manifest["expected"] = {}
+    elif change == "another-kind":
+        manifest["kind"] = "host-restart-session-acceptance-literals"
+    elif change == "self-awarded-credit":
+        manifest["acceptancePointsAwarded"] = 2
+    elif change == "reordered":
+        manifest["cases"].reverse()
+    elif change == "missing-member":
+        del manifest["cases"][-1]
+    elif change == "repeated-member":
+        manifest["cases"].append(deepcopy(manifest["cases"][0]))
+    elif change == "changed-literal":
+        manifest["cases"][0]["input"]["phases"][1]["update"]["new"] += " An undeclared fact."
+    else:
+        manifest["cases"][0]["expected"] = {"committed": True}
+    altered = tmp_path / "literals.json"
+    altered.write_text(json.dumps(manifest, ensure_ascii=False), encoding="utf8")
+    with pytest.raises(ValueError, match="independently frozen"):
+        build_cases(altered)
+    assert build_cases() == build_cases(MANIFEST)
+
+
+def test_another_operation_cannot_claim_or_complete_an_update_condition():
+    foreign = {"id": "labelled-foreign-claim", "operation": "index-lifecycle-runtime", "requirement": REQUIREMENT,
+               "covers": [POINTS[0]], "input": {"provider": "none"}}
+    with pytest.raises(ValueError, match="complete four-case family atomically"):
+        validate_registration([foreign])
+    with pytest.raises(ValueError, match="complete four-case family atomically"):
+        validate_registration([*build_cases(), foreign])
+    rows = [*_complete_rows(), {**foreign, "status": "matched", "runtimeEvidenceValidated": True}]
+    assert _host_update_isolation_family_complete(rows) is False
+    # The same row without a claim on either condition is simply not part of the family.
+    rows[-1]["covers"] = ["indexing.lifecycle"]
+    assert _host_update_isolation_family_complete(rows) is True
+
+
+def test_every_literal_declares_the_positive_control_for_its_superseded_query():
+    for case in build_cases():
+        produce, update = case["input"]["phases"]
+        assert produce["supersededRecall"] == update["recalls"]["superseded"]
+        assert produce["supersededRecall"]["query"] in update["update"]["old"]
+        assert produce["supersededRecall"]["query"] not in update["update"]["new"]

@@ -659,6 +659,28 @@ def _host_update_isolation_family_complete(rows: list[dict]) -> bool:
     return True
 
 
+def _retain_failed_host_update_capture(report: dict, case: dict, directory: Path | None) -> None:
+    """Keep the SDK host's own streams when it failed before any capture was admitted.
+
+    The coordinator writes its complete record even when a host child fails. It is
+    attached as rejected evidence: it earns nothing and is never used for comparison.
+    """
+    if directory is None or any(item.get("side") == "python" and item.get("id") == case["id"]
+                                for item in report["runtimeDiagnostics"]):
+        return
+    evidence = directory / "python-raw.json"
+    try:
+        info = evidence.lstat()
+        if not stat.S_ISREG(info.st_mode) or info.st_nlink != 1 or info.st_size > 16 * 1024 * 1024:
+            return
+        raw = evidence.read_bytes()
+        snapshots = _json(raw.decode("utf-8"))
+    except (OSError, ValueError):
+        return
+    report["runtimeDiagnostics"].append({"id": case["id"], "side": "python", "sha256": hashlib.sha256(raw).hexdigest(),
+                                         "rawSnapshots": snapshots, "validationStatus": "rejected"})
+
+
 def run_suite(*, checkout: Path, node: Path, smoke: bool = False,
               reference_path: Path = ROOT / "equivalence/reference.json",
               scope_path: Path = ROOT / "equivalence/scope.json",
@@ -1331,6 +1353,9 @@ def run_suite(*, checkout: Path, node: Path, smoke: bool = False,
                     if case["operation"] in {"promotion-apply-family-runtime", "host-restart-session-runtime",
                                              "host-update-isolation-runtime"}:
                         row["evidenceError"] = {"name": type(error).__name__, "message": str(error)}
+                    if case["operation"] == "host-update-isolation-runtime" and python_diagnostics is not None:
+                        _retain_failed_host_update_capture(
+                            report, case, python_diagnostics / hashlib.sha256(case["id"].encode()).hexdigest())
             report["cases"].append(row)
         after_implementation = _implementation_identity()
         if after_implementation["sourceSha256"] != report["implementation"]["sourceSha256"]:

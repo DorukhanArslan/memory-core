@@ -29,7 +29,7 @@ FAULTS = ("source-hard-link-during-update", "index-publication-sidecar-symlink")
 POLICY = {"configuredSources": ["memory"], "rememberAcrossConversations": False, "configuredSessionMemory": False,
           "producerPublication": {"operation": "force-rebuild-after-source-metadata"},
           "indexLifecycle": "session-managed", "runtimeIdentity": "openclaw-compatible"}
-MAIN_SESSIONS = ("writer", "before", "updater", "stale", "current", "superseded", "unrelated")
+MAIN_SESSIONS = ("writer", "before", "supersededBefore", "updater", "stale", "current", "superseded", "unrelated")
 ISOLATED_SESSIONS = ("isolatedWriter", "isolatedBefore", "isolated")
 MODEL = {"provider": "host-update-offline-model", "model": "actual-result-reader"}
 
@@ -44,7 +44,7 @@ def _validate_policy(policy):
 def _validate_phase(phase):
     label = phase.get("label") if isinstance(phase, dict) else None
     if label == "produce":
-        valid = set(phase) == {"label", "save", "isolatedSave", "recall"}
+        valid = set(phase) == {"label", "save", "isolatedSave", "recall", "supersededRecall"}
     elif label == "update":
         valid = set(phase) in ({"label", "update", "recalls"}, {"label", "update", "recalls", "fault"})
         valid = valid and (("fault" not in phase) or (set(phase["fault"]) == {"operation"}
@@ -318,7 +318,9 @@ async def _run_phase(request):
         if any(item["failed"] for item in publications):
             raise RuntimeError("The producer publication failed; the complete result is retained")
         snapshot("after-real-writes-and-explicit-publication")
-        reads += [await recall("before", phase["recall"]), await recall("isolatedBefore", phase["recall"])]
+        # Positive control: the query that must find nothing after a committed update finds the entry now.
+        reads += [await recall("before", phase["recall"]), await recall("supersededBefore", phase["supersededRecall"]),
+                  await recall("isolatedBefore", phase["recall"])]
     else:
         index = locations(main)["index"]
         sidecar = index.with_name(index.name + "-journal")

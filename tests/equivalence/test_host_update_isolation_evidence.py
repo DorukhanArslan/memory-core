@@ -77,9 +77,10 @@ def test_every_host_keeps_the_other_agents_source_and_reads_unchanged(captures):
     for case, _, result in captures:
         first, second = result["phases"]
         assert second["isolatedSource"] == first["isolatedSource"]
-        assert _read(result, "isolated") == first["reads"][1] | {"session": "isolated"}
+        assert [read["session"] for read in first["reads"]] == ["before", "supersededBefore", "isolatedBefore"]
+        assert _read(result, "isolated") == first["reads"][2] | {"session": "isolated"}
         own = case["input"]["phases"][0]["save"]["entries"][0]["text"]
-        assert own not in json.dumps(first["reads"][1], ensure_ascii=False)
+        assert own not in json.dumps(first["reads"][2], ensure_ascii=False)
 
 
 def _empty(read):

@@ -67,6 +67,9 @@ def prepare_host_update_isolation_bindings(checkout: Path, runtime_root: Path) -
         "sourceBuildReproduced": False, "sourceFallbackAllowed": False,
         "sourceExecutionPermitted": False, "covers": [], "acceptancePointsAwarded": 0,
         "requiredLoadedArtifacts": list(ADDITIONAL_REQUIRED_HOST_ARTIFACTS),
+        "requiredLoadedArtifactsMeaning": "Authenticated import presence in the main thread of each host process. "
+            "It does not show that a particular owner executed; execution rests on the original worker routes "
+            "and on the capture custody of each tool dispatch and publication.",
         "producerEntrypoints": [{"path": "dist/agent-tools-HIqp3eTk.mjs", "export": "t", "tool": "write"},
                                 {"path": "dist/agent-tools-HIqp3eTk.mjs", "export": "t", "tool": "edit"}],
         "writeToolEquivalenceClaimed": False,
@@ -78,9 +81,24 @@ def prepare_host_update_isolation_bindings(checkout: Path, runtime_root: Path) -
                 "update tool runs; both engines' real write guards observe the same filesystem state.",
             "index-publication-sidecar-symlink": "Before the update, the path the engine's index publication must "
                 "open is a dangling symbolic link (original: <agent db>.reindex-lock.sqlite; SDK: <index>-journal). "
-                "The compared failure is the explicit forced publication after the committed update; the link is "
-                "removed after the first read that follows it. A refresh that the update tool itself triggers is "
-                "engine-specific and is not compared.",
+                "On both engines the explicit forced publication after the committed update fails, the next search "
+                "reports the stale index, and the link is removed after that read. On the SDK the update tool's own "
+                "refresh has already failed with the same error, so the compared payload does not show which "
+                "record produced the report; custody receipts bind the forced publication's failure.",
         },
+        "notCompared": [
+            "Call shapes, results and refusal texts of the original write/edit tools and of the SDK "
+            "add_memory_entry/replace_memory_entry tools, including the SDK-only afterWriteError.",
+            "The producer source bytes as evidence of write-tool behavior: the original writes the literal content "
+            "and the SDK must reproduce the same bytes before any comparison.",
+            "SDK turn outcomes and the cause recorded for a refused write; they are engine-specific custody.",
+            "Automatic synchronization. The pinned original always resolves session-start, on-search and watch "
+            "synchronization as enabled, and the SDK publishes around its turns. An explicit forced publication "
+            "precedes every compared read, so the natural refresh after an update is not observed here.",
+            "Agent scope resolution. The original resolves each agent's workspace from its configuration; on the "
+            "SDK the host adapter opens one owner per agent on separate workspace and index paths.",
+            "A change of the source timestamp: it is set to the same instant before and after the update.",
+            "SubjectMemory routing, consolidateMemory, the sessions corpus and any embedding provider.",
+        ],
         "consolidateMemoryExecuted": False,
     }

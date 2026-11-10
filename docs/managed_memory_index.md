@@ -58,8 +58,17 @@ index that needs a full reindex) are not retained, and sessions-only
 publications neither set nor settle it. Unlike a failed whole reindex, it does
 not pause automatic preparation. `lifecycle_snapshot()` keeps `lastSyncError`
 for whole reindexes and adds `memoryScopeSyncFailure` (`error`, `paths`) only
-while such a failure is retained. This report is Python behavior covered by
-unit tests; no differential comparison with OpenClaw reaches it.
+while such a failure is retained. A path-limited failure that selected both
+corpora is retained for the whole memory corpus.
+
+Both retained failures live in the store instance. They are not persisted, so
+a reopened store starts without them even if the index is still behind; the
+managed session's durable `needsMemoryIndex` then repairs it at that session's
+next admission. A refused selected publication is not retained either. One
+such case is an index last published for another workspace root: the write
+result's `afterWriteError` and the managed turn outcome report it, and search
+does not. This report is Python behavior covered by unit tests; no differential
+comparison with OpenClaw establishes it.
 
 `status()` reads actual published SQL state. `lifecycle_snapshot()` returns
 bounded operation/repair journals, totals, truncation indicators and close

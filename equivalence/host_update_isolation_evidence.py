@@ -60,6 +60,14 @@ def _validate_read(read, session, query):
     return search
 
 
+def _clean_empty(search):
+    """An empty result of a search that really ran: nothing found and nothing withheld, disabled or failed."""
+    debug = search.get("debug")
+    return (set(search) == {"results", "provider", "citations", "debug"} and search["results"] == []
+            and isinstance(debug, dict) and debug.get("hits") == 0 and debug.get("candidateHits") == 0
+            and debug.get("withheldHits") == 0)
+
+
 def validate_result(case, result):
     """Engine-independent invariants of one public result; equality between engines is the harness's job."""
     validate_case(case)
@@ -90,11 +98,18 @@ def validate_result(case, result):
             "answer": update["update"]["ack"] if committed else update["update"]["failureAck"]},
             "The update report differs from the actual outcome")
     reads = first["reads"]
-    require(len(reads) == 2, "The producer host must return its two declared reads")
-    for read, session in zip(reads, ("before", "isolatedBefore")):
-        search = _validate_read(read, session, produce["recall"]["query"])
-        require("stale" not in search and len(search["results"]) >= 1, "A producer read was stale or empty")
-    require(update["update"]["old"] in reads[0]["answer"] and produce["isolatedSave"]["entries"][0]["text"] in reads[1]["answer"],
+    require(len(reads) == 3, "The producer host must return its three declared reads")
+    declared = (("before", produce["recall"]), ("supersededBefore", produce["supersededRecall"]),
+                ("isolatedBefore", produce["recall"]))
+    require(produce["supersededRecall"] == update["recalls"]["superseded"],
+            "The positive control must use the query that is later required to find nothing")
+    for read, (session, instruction) in zip(reads, declared):
+        search = _validate_read(read, session, instruction["query"])
+        require("stale" not in search and "warning" not in search and len(search["results"]) >= 1,
+                "A producer read was stale or empty")
+    require(update["update"]["old"] in reads[0]["answer"] and update["update"]["old"] in reads[1]["answer"]
+            and update["update"]["old"] in reads[1]["search"]["results"][0]["snippet"]
+            and produce["isolatedSave"]["entries"][0]["text"] in reads[2]["answer"],
             "The producer reads did not return each agent's own saved preference")
     reads = second["reads"]
     names = (["stale"] if fault == SIDECAR else []) + ["current", "superseded", "unrelated", "isolated"]
@@ -116,11 +131,14 @@ def validate_result(case, result):
             require(current_text in read["answer"] and (not committed or update["update"]["old"] not in read["answer"]),
                     "The current answer differs from the committed source")
         elif session == "superseded":
-            require((search["results"] == []) is committed, "The superseded entry's retrievability differs from the committed source")
+            # The producer host showed that this query finds the entry. After a committed update it must
+            # find nothing in a search that really ran; after a refused update it must still be served.
+            require(_clean_empty(search) if committed else update["update"]["old"] in read["answer"],
+                    "The superseded entry's retrievability differs from the committed source")
         elif session == "unrelated":
             require(produce["save"]["entries"][1]["text"] in read["answer"], "The unrelated fact was not retained")
         else:
-            require(read == first["reads"][1] | {"session": "isolated"},
+            require(read == first["reads"][2] | {"session": "isolated"},
                     "The independent agent's read changed after the other agent's update")
     return True
 

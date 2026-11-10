@@ -24,6 +24,10 @@
             "sessionKey": "agent:main:update-1-before",
             "sessionId": "host-update-1-before"
           },
+          "supersededBefore": {
+            "sessionKey": "agent:main:update-1-superseded-before",
+            "sessionId": "host-update-1-superseded-before"
+          },
           "updater": {
             "sessionKey": "agent:main:update-1-updater",
             "sessionId": "host-update-1-updater"
@@ -86,6 +90,10 @@
             "recall": {
               "prompt": "What drink preference did I ask you to remember?",
               "query": "drink preference"
+            },
+            "supersededRecall": {
+              "prompt": "Is aurorakumquat-739 tea still my drink preference?",
+              "query": "aurorakumquat-739 tea"
             }
           },
           {
@@ -154,6 +162,10 @@
             "sessionKey": "agent:main:update-2-before",
             "sessionId": "host-update-2-before"
           },
+          "supersededBefore": {
+            "sessionKey": "agent:main:update-2-superseded-before",
+            "sessionId": "host-update-2-superseded-before"
+          },
           "updater": {
             "sessionKey": "agent:main:update-2-updater",
             "sessionId": "host-update-2-updater"
@@ -216,6 +228,10 @@
             "recall": {
               "prompt": "What drink preference did I ask you to remember?",
               "query": "drink preference"
+            },
+            "supersededRecall": {
+              "prompt": "Is Ihlamur-ğüşİ-482 ☕ still my drink preference?",
+              "query": "Ihlamur-ğüşİ-482"
             }
           },
           {
@@ -284,6 +300,10 @@
             "sessionKey": "agent:main:update-3-before",
             "sessionId": "host-update-3-before"
           },
+          "supersededBefore": {
+            "sessionKey": "agent:main:update-3-superseded-before",
+            "sessionId": "host-update-3-superseded-before"
+          },
           "updater": {
             "sessionKey": "agent:main:update-3-updater",
             "sessionId": "host-update-3-updater"
@@ -346,6 +366,10 @@
             "recall": {
               "prompt": "What drink preference did I ask you to remember?",
               "query": "drink preference"
+            },
+            "supersededRecall": {
+              "prompt": "Is cedarquince-913 tea still my drink preference?",
+              "query": "cedarquince-913 tea"
             }
           },
           {
@@ -417,6 +441,10 @@
             "sessionKey": "agent:main:update-4-before",
             "sessionId": "host-update-4-before"
           },
+          "supersededBefore": {
+            "sessionKey": "agent:main:update-4-superseded-before",
+            "sessionId": "host-update-4-superseded-before"
+          },
           "updater": {
             "sessionKey": "agent:main:update-4-updater",
             "sessionId": "host-update-4-updater"
@@ -483,6 +511,10 @@
             "recall": {
               "prompt": "What drink preference did I ask you to remember?",
               "query": "drink preference"
+            },
+            "supersededRecall": {
+              "prompt": "Is junipermelon-605 tea still my drink preference?",
+              "query": "junipermelon-605 tea"
             }
           },
           {

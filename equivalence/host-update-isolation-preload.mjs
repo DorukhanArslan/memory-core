@@ -13,10 +13,10 @@ const profile = context.hostUpdateIsolationProfile;
 const own = fileURLToPath(import.meta.url);
 const ownHash = crypto.createHash("sha256").update(fs.readFileSync(own)).digest("hex");
 const approved = {
-  "host-update-isolation-ascii": "f2baee25788e38724908c1bab506906b246875926d98d1235e585cb6c8005393",
-  "host-update-isolation-unicode": "48a300945ad635e1e129f85c02729527ae300def9c46d75f0c2004258ec8ae01",
-  "host-update-isolation-write-refusal": "658b4988acd0fc3efe3710275476f4345ddc06c4ef8b2f4349de63ff30dbb320",
-  "host-update-isolation-publication-failure": "ea32fd43d2f13f760b889513f1e228b5272390fdab080bb3ee45fa59fdc04bd2"
+  "host-update-isolation-ascii": "03bea4c1977b6bddd1095fff2e348f65481e8dbf31585f40e7ff0acd02d4b290",
+  "host-update-isolation-unicode": "94c6f266e48c7cedee5447e19790a3dbe4ad08435453a0a0bfff7676cb1aae63",
+  "host-update-isolation-write-refusal": "e9d7c0bc7447242718a736bbcdc62cf027caa77ce4cced3be9d809962c6fddf8",
+  "host-update-isolation-publication-failure": "35885ea502411889777c9c76e4f3b0ea043f0baf67a00e4cf0805ae8c3d774fc"
 };
 const contextKeys = ["schemaVersion", "kind", "runtime", "providerMode", "fetchPolicy", "approvedNodeRuntime",
   "hostUpdateIsolationProfile", "allowedLocal", "traceDirectory", "evidenceDirectory", "stateDirectory",

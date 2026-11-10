@@ -107,8 +107,10 @@ the host kit. 0.1.0 is `main` at `b829bad` (2026-09-27), which had no build syst
   sessions-only publications do not set it; session-scope failures keep their
   controller receipt. `lifecycle_snapshot()["lastSyncError"]` still records whole
   reindexes only, and the scoped failure appears there as `memoryScopeSyncFailure`
-  while it is retained. This is unit-tested Python behavior: the host update
-  comparison does not reach it, and it adds no equivalence credit.
+  while it is retained. The retained failure lives in the store instance and is
+  not persisted across close or restart. This is unit-tested Python behavior: the
+  host update comparison cannot attribute its stale report to it, and it adds no
+  equivalence credit.
 - Host search dispatch (2026-11-09): `HostKit` uses the registered search factory
   with its existing host clock, source policy and session visibility. Acquisition
   timing and store ownership checks now run at the real tool boundary; disabled

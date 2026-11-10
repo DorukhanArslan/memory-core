@@ -116,7 +116,7 @@ export async function runHostUpdateIsolationPhase(request, stdin = JSON.stringif
     throw Error("A bounded host phase requires owned locations and its own literal input");
   }
   const phaseKeys = Object.keys(phase).sort().join(",");
-  if (phase.label === "produce" ? phaseKeys !== "isolatedSave,label,recall,save"
+  if (phase.label === "produce" ? phaseKeys !== "isolatedSave,label,recall,save,supersededRecall"
     : !["label,recalls,update", "fault,label,recalls,update"].includes(phaseKeys)) {
     throw Error("A host phase accepts only its own declared instructions");
   }
@@ -409,6 +409,8 @@ export async function runHostUpdateIsolationPhase(request, stdin = JSON.stringif
       if (publications.some(item => item.failed)) throw Error("The producer publication failed; complete original result is retained");
       await snapshot("after-real-writes-and-explicit-publication");
       reads.push(await recall("before", identity.agentId, phase.recall));
+      // Positive control: the query that must find nothing after a committed update finds the entry now.
+      reads.push(await recall("supersededBefore", identity.agentId, phase.supersededRecall));
       reads.push(await recall("isolatedBefore", identity.isolatedAgentId, phase.recall));
     } else {
       const sidecar = path.join(directory, "state", "agents", identity.agentId, "agent", "openclaw-agent.sqlite.reindex-lock.sqlite");

@@ -255,7 +255,8 @@ class ManagedSQLiteMemoryStore(SQLiteMemoryStore):
                                                      paths=selection.paths, force_sources=force_sources)
                 except MemoryIndexRequiresFullReindexError:
                     raise
-                except Exception as error:
+                except BaseException as error:
+                    # As in ``reindex``: an interrupted publication also leaves the index behind.
                     self._settle_memory_scope(selection.sources, selection.paths, error)
                     raise
                 self._settle_memory_scope(selection.sources, selection.paths, None)
@@ -263,7 +264,7 @@ class ManagedSQLiteMemoryStore(SQLiteMemoryStore):
             return result
 
     def _settle_memory_scope(self, sources: frozenset[str], paths: frozenset[str] | None,
-                             error: Exception | None) -> None:
+                             error: BaseException | None) -> None:
         """Retain or settle a failed memory selection; the caller holds the index guard."""
         if "memory" not in sources:
             return
@@ -271,7 +272,10 @@ class ManagedSQLiteMemoryStore(SQLiteMemoryStore):
         if error is not None:
             if paths is not None and not paths:
                 return  # An empty selection had nothing to publish.
-            whole = paths is None or retained is not None and retained[1] is None
+            # Paths of a selection across both corpora do not say which are memory
+            # files; a sessions-only publication could then never settle them.
+            whole = (paths is None or "sessions" in sources
+                     or retained is not None and retained[1] is None)
             failed = None if whole else paths | (retained[1] if retained is not None else frozenset())
             self._memory_scope_failure = (format_error_message(error), failed)
         elif retained is not None:

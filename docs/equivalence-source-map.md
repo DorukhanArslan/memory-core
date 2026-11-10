@@ -193,7 +193,7 @@ no manager substitute. This grants no new index-worker, manager startup, live pr
 transcript visibility, or OS scheduling credit. Source and official release provenance remain
 separate; the release build is not independently reproduced.
 
-The developing index-identity boundary map now includes the original manager
+The verified bounded index-identity boundary map now includes the original manager
 factory, constructor and published status, provider initialization, actual query
 read generation, publication and public diagnostic finalization. Its
 [index-identity bindings](../equivalence/index_identity_boundaries_bindings.py)
@@ -206,16 +206,19 @@ The SDK counterpart includes the protected strict
 managed pre-query status and actual search/preparation admission. Plain managed
 status retains unknown provider-key knowledge until an actual nonempty query or
 accepted publication establishes it. The public base identity check, retrieval
-and write readiness remain strict. Empty, cancelled and refused requests leave
+and write readiness remain strict. Empty or refused requests and cancellation before admission leave
 that phase unchanged; admitted source-read or storage failures retain established
 knowledge. This provider-none counterpart remains classified `partial` because
 semantic-provider initialization and extraPaths configuration are still broader
 source gaps.
 
-The sixteen independently frozen development pairs match complete pre-query
-identity diagnostics and first-query results. These development runs and this
-inventory add **zero conditions**: the verified baseline remains **70/128**, with
-**58 remaining**. The fresh **1,437-case full catalog is pending**. Both complete
+The sixteen independently frozen pairs match complete pre-query identity
+diagnostics and first-query results in the fresh complete catalog on clean
+`5856b4e`: **1,437 cases, 1,423 matches, 14 mismatch cases, zero blocked/errors**.
+The [boundary closeout](index_identity_boundaries_closeout.md) verifies only the
+original `indexing.identity.boundaries` condition, reaching **71/128**, with
+**57 remaining**. The source counterpart remains `partial` for the broader
+provider/configuration limits above; inventory itself still adds **zero conditions**. Both complete
 raw manager statuses and physical SQL layouts remain engine-specific custody;
 this is not a claim that those APIs are identical. No disabled-sync behavior,
 semantic-provider latency, or absence of speculative internal FTS queries is

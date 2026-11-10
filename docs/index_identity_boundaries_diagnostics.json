@@ -1,0 +1,2911 @@
+{
+  "schemaVersion": 1,
+  "kind": "index-identity-boundaries-closeout",
+  "executionVerifiedIncrease": 1,
+  "auditAdditionalCredit": 0,
+  "independentFullAudit": {
+    "kind": "independent-identity-boundaries-local-full-catalog-audit",
+    "status": "passed",
+    "acceptancePointsAwardedByAudit": 0,
+    "auditedAt": "2026-11-10T18:39:29.925127+00:00",
+    "report": {
+      "path": "work/index-identity-boundaries/full-001.json",
+      "bytes": 628814528,
+      "sha256": "42c0c03efc92bec06f30f86fd781abda6a69d7471609b790cd4083449c52f08a"
+    },
+    "implementation": {
+      "gitCommit": "5856b4eff699fe8760d28a8b67d323702da1aa94",
+      "trackedWorkingTreeDirty": false,
+      "sourceSha256": "a5972f3e37bcf97bce7f7cda82ef52b99226882b7a14bd87f094a9ba1219b70d",
+      "sourceFiles": 160
+    },
+    "seal": {
+      "path": "work/index-identity-boundaries/full-001-seal.json",
+      "bytes": 30282,
+      "sha256": "36665609d614ae5db6fb14094f88d2388eaafc4e1ebb3236506f250a02cff9e6"
+    },
+    "baseline": {
+      "path": "work/turn-barrier-boundaries/full-002.json",
+      "bytes": 572006983,
+      "sha256": "020501557c411e9cf561f8463478701dadc959115d9acb9a224d3c8106bb4fd0"
+    },
+    "baselineProjection": {
+      "path": "work/index-identity-boundaries/audit/baseline-1421-projection.json",
+      "bytes": 5895016,
+      "sha256": "68735ad10ce2adfa7237c948e30e6ab4408c156bb0ede981de906ffc900b1797"
+    },
+    "baselineOriginalIndependentAudit": {
+      "path": "work/turn-barrier-boundaries/independent-audit-full-002.json",
+      "bytes": 21514,
+      "sha256": "52d342b48f1b849b0658ca18bddaa01cdd8dfaaad628b35f8ee928c5c4f58426"
+    },
+    "baselineLaterStrongerReplay": {
+      "path": "work/turn-barrier-boundaries/stronger-guard-review/replay-001.json",
+      "bytes": 17960,
+      "sha256": "59ede855bade43c951d09b86d37bb03b0362b2a36d4c3f8aa6312182148c8ace"
+    },
+    "historicalBaselineIdentityPreservedNotRetagged": true,
+    "completeFreshPublicResultsExtract": {
+      "path": "work/index-identity-boundaries/audit/full-001-public-results-002.json",
+      "bytes": 195176,
+      "sha256": "ffa7e53cbb41955957bab3c087d2c5107fcb94f78d49c98a75e4d9bc71b1e3fc"
+    },
+    "mode": "full",
+    "gateStatus": "mismatched",
+    "fullScopePassed": false,
+    "caseCount": 1437,
+    "caseStatusCounts": {
+      "matched": 1423,
+      "mismatched": 14,
+      "blocked": 0
+    },
+    "errors": [],
+    "fixedScopeSha256": "a8e066e63970dd0be734485d62a5932640894b8c0a42f47ac3eb67f784cbc7b9",
+    "reference": {
+      "tag": "v2026.9.9",
+      "commit": "bcfc88812a35243893585dbeca87ca41b48272ca",
+      "tree": "702b8f6a50264e8de42f105992aff6406b073275",
+      "nodeVersion": "v24.16.0",
+      "packageVersion": "2026.9.9",
+      "packageSha256": "09f313df5a3b93723c7f408bba1887e9978156bbcfd4fa0b3c3bccb61c4779c8"
+    },
+    "node": {
+      "execPath": "/workspace/memory-core/work/node-v24.16.0-linux-x64/bin/node",
+      "nodeVersion": "v24.16.0",
+      "icuVersion": "78.3",
+      "unicodeVersion": "17.0",
+      "sha256": "b2959781cc5a74c357ffa02367efa8a0330cbb1c9cb347732fdfaaaca381cbcd"
+    },
+    "verifiedBefore": 70,
+    "verifiedAfter": 71,
+    "totalConditions": 128,
+    "remaining": 57,
+    "uncoveredConditions": 55,
+    "registeredUnresolvedConditions": 2,
+    "contractStates": {
+      "complete": 33,
+      "pending": 26,
+      "partial": 5
+    },
+    "newVerifiedOriginalPoint": "indexing.identity.boundaries",
+    "newlyVerifiedConditions": 1,
+    "overallCreditIs70To71Not71To72": true,
+    "priorCaseDefinitionsStatusesAndFlagsUnchanged": 1421,
+    "priorEvidenceFlagCountsUnchanged": {
+      "runtimeEvidenceValidated": 18
+    },
+    "completeCurrentBuilderAnnotationsIndependentlyRechecked": true,
+    "completeOldBuilderCanonicalSha256": "a57e238c1d6cc127744fe82408678faf4471d20c7e8cfd87dcdb06200e8f7444",
+    "historicalNativeDiagnosticVariation": {
+      "exactDelta": {
+        "path": "work/index-identity-boundaries/audit/old14-payload-delta-001.json",
+        "bytes": 4468,
+        "sha256": "0d3ad40058f13a3594dd86487e641675435638821e27d36b2e329fde535c9c34"
+      },
+      "changedCaseId": "flush-execution-warm-index-first-recall",
+      "changedNativeArrayPaths": [
+        "/openclaw/snapshots/0/firstRecall/obsoletekiwi/results",
+        "/openclaw/snapshots/0/firstRecall/freshmangosteen/results"
+      ],
+      "completeOldSdkPayloadUnchanged": true,
+      "otherCompleteHistoricalMismatchPayloadsUnchanged": 13,
+      "existingDefinitionAndDeviationUnchanged": true,
+      "actualComparisonStatus": "mismatched",
+      "covers": [],
+      "acceptanceCredit": 0,
+      "completeHistoricalPayloadEqualityClaimed": false
+    },
+    "otherOriginalPointRecordsUnchanged": 127,
+    "onlyAddedMatchedValidatedCases": [
+      "index-identity-boundaries-matching",
+      "index-identity-boundaries-missing-metadata",
+      "index-identity-boundaries-malformed-metadata",
+      "index-identity-boundaries-older-provenance",
+      "index-identity-boundaries-older-chunker-only",
+      "index-identity-boundaries-newer-provenance-older-chunker",
+      "index-identity-boundaries-newer-chunker-older-provenance",
+      "index-identity-boundaries-provider-key-only",
+      "index-identity-boundaries-model-only",
+      "index-identity-boundaries-provider-only",
+      "index-identity-boundaries-sources-only",
+      "index-identity-boundaries-scope-only",
+      "index-identity-boundaries-chunk-tokens-only",
+      "index-identity-boundaries-chunk-overlap-only",
+      "index-identity-boundaries-tokenizer-only",
+      "index-identity-boundaries-older-chunker-scope-incompatible"
+    ],
+    "intentionalIdentityRegisteredCasesTransition": {
+      "before": 79,
+      "after": 95
+    },
+    "protectedAdapterFilesVerified": 280,
+    "sdkRawWriter": {
+      "owner": {
+        "path": "equivalence/index_identity_boundaries_sdk.py",
+        "bytes": 26511,
+        "sha256": "4f8ccdb45dd35a7d5cc6024a18c7545927cd4aca53dd937abf3908bc5aafd8f9"
+      },
+      "ensureAscii": false,
+      "allowNan": false,
+      "separators": [
+        ",",
+        ":"
+      ],
+      "trailingNewline": true,
+      "evidence": "The sealed run_index_identity_boundaries_case writes _serialized([dispatch]) plus newline."
+    },
+    "verifiedOriginalAndArtifacts": {
+      "uniqueLoadedOriginalFiles": 3026,
+      "actualTraceFiles": 96,
+      "pristineCommittedSourcePins": 37,
+      "officialCompiledPins": 23,
+      "physicalNativeRawFiles": 16,
+      "embeddedSdkOriginalCaptures": 16,
+      "physicalSdkRawFiles": 16,
+      "physicalSdkChildRawFiles": 16,
+      "physicalSdkEarlyPublicEnvelopes": 32,
+      "physicalNativeFinalDatabasesRechecked": 16,
+      "physicalSdkFinalDatabasesRechecked": 16,
+      "sourceBuildReproduced": false
+    },
+    "cases": [
+      {
+        "id": "index-identity-boundaries-matching",
+        "caseWireSha256": "05498bb4b7f614baaa8c26aa6ee41ee5d168f847fd1e05d852d19911baeaf8fd",
+        "matched": true,
+        "nativeCustody": true,
+        "sdkCustody": true,
+        "completePublicEquality": true,
+        "nativeRawPhysicallyRetained": {
+          "path": ".equivalence-results/index-identity-boundaries/attempt-1nogx1xo/case/evidence/native-raw.json",
+          "bytes": 458134,
+          "sha256": "e229f405b924db9477618736aa17adec4b1b01129f1918c6b1fd89af19216d97"
+        },
+        "sdkRawEmbeddedOriginalSha256": "d86dd5b6eff16aadc4bcb4bbfd9e096a4d6fb63596352e5f3009207d99d1fb59",
+        "sdkRawOriginalWriterSerializationVerified": true,
+        "sdkRawPhysicalRetentionVerified": {
+          "dispatch": {
+            "path": ".equivalence-results/index-identity-boundaries/sdk-attempt-l354oc3c/python-raw.json",
+            "bytes": 803483,
+            "sha256": "d86dd5b6eff16aadc4bcb4bbfd9e096a4d6fb63596352e5f3009207d99d1fb59"
+          },
+          "childRaw": {
+            "path": ".equivalence-results/index-identity-boundaries/sdk-attempt-l354oc3c/sdk-identity-boundary-87abkkbi/sdk-host-raw.json",
+            "bytes": 367034,
+            "sha256": "28b0d197a9d5cd35ed2879658de1ebd02adf93640b9b51bf8c7872f15b6164be"
+          },
+          "earlyPublicEnvelopes": [
+            {
+              "path": ".equivalence-results/index-identity-boundaries/sdk-attempt-l354oc3c/sdk-identity-boundary-87abkkbi/tool-seed-envelope.json",
+              "bytes": 1424,
+              "sha256": "d9d7286a886f59e29c74b5375009f4ac77d723643bee45fc652b2e011194ec7e"
+            },
+            {
+              "path": ".equivalence-results/index-identity-boundaries/sdk-attempt-l354oc3c/sdk-identity-boundary-87abkkbi/tool-query-envelope.json",
+              "bytes": 1424,
+              "sha256": "d9d7286a886f59e29c74b5375009f4ac77d723643bee45fc652b2e011194ec7e"
+            }
+          ],
+          "embeddedAndPhysicalBytesExactlyEqual": true
+        },
+        "traceCount": 6,
+        "actualNativeLoadedOriginalCount": 3026,
+        "physicalNative": {
+          "source": {
+            "path": ".equivalence-results/index-identity-boundaries/attempt-1nogx1xo/case/state/workspace/MEMORY.md",
+            "bytes": 63,
+            "sha256": "3a57f533c8fb0c4892afde4d3e2d5851b171a4dd6a1d1cc979ab552e35dc886c"
+          },
+          "closedPhysicalDatabase": {
+            "path": ".equivalence-results/index-identity-boundaries/attempt-1nogx1xo/case/state/agents/main/agent/openclaw-agent.sqlite",
+            "bytes": 708608,
+            "sha256": "9052181ab0fabcea6baa8c19a85f1170a94c67b7dfb481da9e55ed5f0d2c1171"
+          },
+          "completeFinalSchemaAndTablesRechecked": true,
+          "tableCount": 18,
+          "connection": {
+            "mode": "ro",
+            "begin": true,
+            "rollback": true,
+            "closed": true
+          }
+        },
+        "physicalSdk": {
+          "source": {
+            "path": ".equivalence-results/index-identity-boundaries/sdk-attempt-l354oc3c/sdk-identity-boundary-87abkkbi/workspace/MEMORY.md",
+            "bytes": 63,
+            "sha256": "3a57f533c8fb0c4892afde4d3e2d5851b171a4dd6a1d1cc979ab552e35dc886c"
+          },
+          "closedPhysicalDatabase": {
+            "path": ".equivalence-results/index-identity-boundaries/sdk-attempt-l354oc3c/sdk-identity-boundary-87abkkbi/index.sqlite",
+            "bytes": 118784,
+            "sha256": "4180035c32fd0e2ebc1e3d84460e24d3ac510bf8cbb974ddabdc4d7e28164092"
+          },
+          "completeFinalSchemaAndTablesRechecked": true,
+          "tableCount": 20,
+          "connection": {
+            "mode": "ro",
+            "begin": true,
+            "rollback": true,
+            "closed": true
+          }
+        },
+        "nativeSqlSnapshotsValidated": 16,
+        "sdkEmbeddedSqlSnapshotsValidated": 16,
+        "typedSdkPrivateMarkersValidatedOnlyInPrivateFields": 10,
+        "currentSdkInterpreter": {
+          "path": "/opt/codex/runtimes/codex-primary-runtime/dependencies/python/bin/python3.12",
+          "bytes": 30894944,
+          "sha256": "fa67443527ed9647f760d807e2a38f26340757123e643c4639cf273ed15d5ea7"
+        },
+        "currentInterpreterOriginalPreExecutionBinaryHashClaimed": false,
+        "firstQueryHitCount": 1
+      },
+      {
+        "id": "index-identity-boundaries-missing-metadata",
+        "caseWireSha256": "f3a4e74f0d1a72fd89fd697a02bdef50222ab9c30a2209773829b8e7033938f2",
+        "matched": true,
+        "nativeCustody": true,
+        "sdkCustody": true,
+        "completePublicEquality": true,
+        "nativeRawPhysicallyRetained": {
+          "path": ".equivalence-results/index-identity-boundaries/attempt-zvo1_6oa/case/evidence/native-raw.json",
+          "bytes": 449722,
+          "sha256": "6ff12ee81b824567d6f88f44aceb8d935de4061128aaed224f886e82601a04d6"
+        },
+        "sdkRawEmbeddedOriginalSha256": "032155456739e583bab5771c83f5d08e5befe687cf18fa4573d9ac791e8743f9",
+        "sdkRawOriginalWriterSerializationVerified": true,
+        "sdkRawPhysicalRetentionVerified": {
+          "dispatch": {
+            "path": ".equivalence-results/index-identity-boundaries/sdk-attempt-a05l37ni/python-raw.json",
+            "bytes": 797849,
+            "sha256": "032155456739e583bab5771c83f5d08e5befe687cf18fa4573d9ac791e8743f9"
+          },
+          "childRaw": {
+            "path": ".equivalence-results/index-identity-boundaries/sdk-attempt-a05l37ni/sdk-identity-boundary-m02hszof/sdk-host-raw.json",
+            "bytes": 364284,
+            "sha256": "8b3cdcf84e6e38099df687d14ddc4fc21250da756aee4524d3e58f46505eb292"
+          },
+          "earlyPublicEnvelopes": [
+            {
+              "path": ".equivalence-results/index-identity-boundaries/sdk-attempt-a05l37ni/sdk-identity-boundary-m02hszof/tool-seed-envelope.json",
+              "bytes": 1424,
+              "sha256": "d9d7286a886f59e29c74b5375009f4ac77d723643bee45fc652b2e011194ec7e"
+            },
+            {
+              "path": ".equivalence-results/index-identity-boundaries/sdk-attempt-a05l37ni/sdk-identity-boundary-m02hszof/tool-query-envelope.json",
+              "bytes": 1880,
+              "sha256": "1a8d31cad47afb52c70985921e7149ec5e6b4bec08b72fb8bc8155d79b5fd9a5"
+            }
+          ],
+          "embeddedAndPhysicalBytesExactlyEqual": true
+        },
+        "traceCount": 6,
+        "actualNativeLoadedOriginalCount": 3026,
+        "physicalNative": {
+          "source": {
+            "path": ".equivalence-results/index-identity-boundaries/attempt-zvo1_6oa/case/state/workspace/MEMORY.md",
+            "bytes": 63,
+            "sha256": "3a57f533c8fb0c4892afde4d3e2d5851b171a4dd6a1d1cc979ab552e35dc886c"
+          },
+          "closedPhysicalDatabase": {
+            "path": ".equivalence-results/index-identity-boundaries/attempt-zvo1_6oa/case/state/agents/main/agent/openclaw-agent.sqlite",
+            "bytes": 708608,
+            "sha256": "ee942d7934bde7826d0eaf2aa12aaf660272b4b9af71206ac8dd75e3158f8011"
+          },
+          "completeFinalSchemaAndTablesRechecked": true,
+          "tableCount": 18,
+          "connection": {
+            "mode": "ro",
+            "begin": true,
+            "rollback": true,
+            "closed": true
+          }
+        },
+        "physicalSdk": {
+          "source": {
+            "path": ".equivalence-results/index-identity-boundaries/sdk-attempt-a05l37ni/sdk-identity-boundary-m02hszof/workspace/MEMORY.md",
+            "bytes": 63,
+            "sha256": "3a57f533c8fb0c4892afde4d3e2d5851b171a4dd6a1d1cc979ab552e35dc886c"
+          },
+          "closedPhysicalDatabase": {
+            "path": ".equivalence-results/index-identity-boundaries/sdk-attempt-a05l37ni/sdk-identity-boundary-m02hszof/index.sqlite",
+            "bytes": 118784,
+            "sha256": "401257438e2316c5ed6a2235af1da598eb7e07c485000f0a1c0f23695c2e663b"
+          },
+          "completeFinalSchemaAndTablesRechecked": true,
+          "tableCount": 20,
+          "connection": {
+            "mode": "ro",
+            "begin": true,
+            "rollback": true,
+            "closed": true
+          }
+        },
+        "nativeSqlSnapshotsValidated": 16,
+        "sdkEmbeddedSqlSnapshotsValidated": 16,
+        "typedSdkPrivateMarkersValidatedOnlyInPrivateFields": 10,
+        "currentSdkInterpreter": {
+          "path": "/opt/codex/runtimes/codex-primary-runtime/dependencies/python/bin/python3.12",
+          "bytes": 30894944,
+          "sha256": "fa67443527ed9647f760d807e2a38f26340757123e643c4639cf273ed15d5ea7"
+        },
+        "currentInterpreterOriginalPreExecutionBinaryHashClaimed": false,
+        "firstQueryHitCount": 1
+      },
+      {
+        "id": "index-identity-boundaries-malformed-metadata",
+        "caseWireSha256": "603fff54ff3d6eac7a728f0f604bb39817a980207e7c44d92d2c844d5aacf94a",
+        "matched": true,
+        "nativeCustody": true,
+        "sdkCustody": true,
+        "completePublicEquality": true,
+        "nativeRawPhysicallyRetained": {
+          "path": ".equivalence-results/index-identity-boundaries/attempt-x8qy8bkr/case/evidence/native-raw.json",
+          "bytes": 451049,
+          "sha256": "b101014cd7da5785c2340b60c7205f932eaa74b3886ae82b2830ce19efff50f2"
+        },
+        "sdkRawEmbeddedOriginalSha256": "981a2fd4addcfcdbdce7910db5595674793046596ac01818ebcc575755461b41",
+        "sdkRawOriginalWriterSerializationVerified": true,
+        "sdkRawPhysicalRetentionVerified": {
+          "dispatch": {
+            "path": ".equivalence-results/index-identity-boundaries/sdk-attempt-92so76t8/python-raw.json",
+            "bytes": 800997,
+            "sha256": "981a2fd4addcfcdbdce7910db5595674793046596ac01818ebcc575755461b41"
+          },
+          "childRaw": {
+            "path": ".equivalence-results/index-identity-boundaries/sdk-attempt-92so76t8/sdk-identity-boundary-ja3rc8qn/sdk-host-raw.json",
+            "bytes": 365591,
+            "sha256": "9a47c861e323415c8a52d8046d71a494279a51c05b6cbe21018910f89093f9cf"
+          },
+          "earlyPublicEnvelopes": [
+            {
+              "path": ".equivalence-results/index-identity-boundaries/sdk-attempt-92so76t8/sdk-identity-boundary-ja3rc8qn/tool-seed-envelope.json",
+              "bytes": 1424,
+              "sha256": "d9d7286a886f59e29c74b5375009f4ac77d723643bee45fc652b2e011194ec7e"
+            },
+            {
+              "path": ".equivalence-results/index-identity-boundaries/sdk-attempt-92so76t8/sdk-identity-boundary-ja3rc8qn/tool-query-envelope.json",
+              "bytes": 1880,
+              "sha256": "1a8d31cad47afb52c70985921e7149ec5e6b4bec08b72fb8bc8155d79b5fd9a5"
+            }
+          ],
+          "embeddedAndPhysicalBytesExactlyEqual": true
+        },
+        "traceCount": 6,
+        "actualNativeLoadedOriginalCount": 3026,
+        "physicalNative": {
+          "source": {
+            "path": ".equivalence-results/index-identity-boundaries/attempt-x8qy8bkr/case/state/workspace/MEMORY.md",
+            "bytes": 63,
+            "sha256": "3a57f533c8fb0c4892afde4d3e2d5851b171a4dd6a1d1cc979ab552e35dc886c"
+          },
+          "closedPhysicalDatabase": {
+            "path": ".equivalence-results/index-identity-boundaries/attempt-x8qy8bkr/case/state/agents/main/agent/openclaw-agent.sqlite",
+            "bytes": 708608,
+            "sha256": "ee942d7934bde7826d0eaf2aa12aaf660272b4b9af71206ac8dd75e3158f8011"
+          },
+          "completeFinalSchemaAndTablesRechecked": true,
+          "tableCount": 18,
+          "connection": {
+            "mode": "ro",
+            "begin": true,
+            "rollback": true,
+            "closed": true
+          }
+        },
+        "physicalSdk": {
+          "source": {
+            "path": ".equivalence-results/index-identity-boundaries/sdk-attempt-92so76t8/sdk-identity-boundary-ja3rc8qn/workspace/MEMORY.md",
+            "bytes": 63,
+            "sha256": "3a57f533c8fb0c4892afde4d3e2d5851b171a4dd6a1d1cc979ab552e35dc886c"
+          },
+          "closedPhysicalDatabase": {
+            "path": ".equivalence-results/index-identity-boundaries/sdk-attempt-92so76t8/sdk-identity-boundary-ja3rc8qn/index.sqlite",
+            "bytes": 118784,
+            "sha256": "5a2ce18019b576aa126163f6369c9f20472277bf0540503ab2b84ef3b935d3c0"
+          },
+          "completeFinalSchemaAndTablesRechecked": true,
+          "tableCount": 20,
+          "connection": {
+            "mode": "ro",
+            "begin": true,
+            "rollback": true,
+            "closed": true
+          }
+        },
+        "nativeSqlSnapshotsValidated": 16,
+        "sdkEmbeddedSqlSnapshotsValidated": 16,
+        "typedSdkPrivateMarkersValidatedOnlyInPrivateFields": 10,
+        "currentSdkInterpreter": {
+          "path": "/opt/codex/runtimes/codex-primary-runtime/dependencies/python/bin/python3.12",
+          "bytes": 30894944,
+          "sha256": "fa67443527ed9647f760d807e2a38f26340757123e643c4639cf273ed15d5ea7"
+        },
+        "currentInterpreterOriginalPreExecutionBinaryHashClaimed": false,
+        "firstQueryHitCount": 1
+      },
+      {
+        "id": "index-identity-boundaries-older-provenance",
+        "caseWireSha256": "7c67bdd74ff31a22d01c03e5620b4dd91a29500b5b8525b4aae87cfb9a3dc04c",
+        "matched": true,
+        "nativeCustody": true,
+        "sdkCustody": true,
+        "completePublicEquality": true,
+        "nativeRawPhysicallyRetained": {
+          "path": ".equivalence-results/index-identity-boundaries/attempt-sn21l6ur/case/evidence/native-raw.json",
+          "bytes": 459806,
+          "sha256": "b73a1bcfa0c7772dffeed07bfa677b6f6f22d177e29646f597195c4db135987a"
+        },
+        "sdkRawEmbeddedOriginalSha256": "dda5c5bd3fdfaaad95cd4d0f478d92acaffa2a1970cdb961009782257a42b691",
+        "sdkRawOriginalWriterSerializationVerified": true,
+        "sdkRawPhysicalRetentionVerified": {
+          "dispatch": {
+            "path": ".equivalence-results/index-identity-boundaries/sdk-attempt-s6z1i1ng/python-raw.json",
+            "bytes": 820999,
+            "sha256": "dda5c5bd3fdfaaad95cd4d0f478d92acaffa2a1970cdb961009782257a42b691"
+          },
+          "childRaw": {
+            "path": ".equivalence-results/index-identity-boundaries/sdk-attempt-s6z1i1ng/sdk-identity-boundary-eihc8f2u/sdk-host-raw.json",
+            "bytes": 374426,
+            "sha256": "eca360eae712c1e56a9c302641afcefbfa47228dfcbfdd2612ce4ffef21290f0"
+          },
+          "earlyPublicEnvelopes": [
+            {
+              "path": ".equivalence-results/index-identity-boundaries/sdk-attempt-s6z1i1ng/sdk-identity-boundary-eihc8f2u/tool-seed-envelope.json",
+              "bytes": 1424,
+              "sha256": "d9d7286a886f59e29c74b5375009f4ac77d723643bee45fc652b2e011194ec7e"
+            },
+            {
+              "path": ".equivalence-results/index-identity-boundaries/sdk-attempt-s6z1i1ng/sdk-identity-boundary-eihc8f2u/tool-query-envelope.json",
+              "bytes": 1880,
+              "sha256": "1a8d31cad47afb52c70985921e7149ec5e6b4bec08b72fb8bc8155d79b5fd9a5"
+            }
+          ],
+          "embeddedAndPhysicalBytesExactlyEqual": true
+        },
+        "traceCount": 6,
+        "actualNativeLoadedOriginalCount": 3026,
+        "physicalNative": {
+          "source": {
+            "path": ".equivalence-results/index-identity-boundaries/attempt-sn21l6ur/case/state/workspace/MEMORY.md",
+            "bytes": 63,
+            "sha256": "3a57f533c8fb0c4892afde4d3e2d5851b171a4dd6a1d1cc979ab552e35dc886c"
+          },
+          "closedPhysicalDatabase": {
+            "path": ".equivalence-results/index-identity-boundaries/attempt-sn21l6ur/case/state/agents/main/agent/openclaw-agent.sqlite",
+            "bytes": 708608,
+            "sha256": "ee942d7934bde7826d0eaf2aa12aaf660272b4b9af71206ac8dd75e3158f8011"
+          },
+          "completeFinalSchemaAndTablesRechecked": true,
+          "tableCount": 18,
+          "connection": {
+            "mode": "ro",
+            "begin": true,
+            "rollback": true,
+            "closed": true
+          }
+        },
+        "physicalSdk": {
+          "source": {
+            "path": ".equivalence-results/index-identity-boundaries/sdk-attempt-s6z1i1ng/sdk-identity-boundary-eihc8f2u/workspace/MEMORY.md",
+            "bytes": 63,
+            "sha256": "3a57f533c8fb0c4892afde4d3e2d5851b171a4dd6a1d1cc979ab552e35dc886c"
+          },
+          "closedPhysicalDatabase": {
+            "path": ".equivalence-results/index-identity-boundaries/sdk-attempt-s6z1i1ng/sdk-identity-boundary-eihc8f2u/index.sqlite",
+            "bytes": 118784,
+            "sha256": "106eec63b3d2e8804cf57531ee0bccba7aaa0398921b32af31878dd5ac6684e7"
+          },
+          "completeFinalSchemaAndTablesRechecked": true,
+          "tableCount": 20,
+          "connection": {
+            "mode": "ro",
+            "begin": true,
+            "rollback": true,
+            "closed": true
+          }
+        },
+        "nativeSqlSnapshotsValidated": 16,
+        "sdkEmbeddedSqlSnapshotsValidated": 16,
+        "typedSdkPrivateMarkersValidatedOnlyInPrivateFields": 10,
+        "currentSdkInterpreter": {
+          "path": "/opt/codex/runtimes/codex-primary-runtime/dependencies/python/bin/python3.12",
+          "bytes": 30894944,
+          "sha256": "fa67443527ed9647f760d807e2a38f26340757123e643c4639cf273ed15d5ea7"
+        },
+        "currentInterpreterOriginalPreExecutionBinaryHashClaimed": false,
+        "firstQueryHitCount": 1
+      },
+      {
+        "id": "index-identity-boundaries-older-chunker-only",
+        "caseWireSha256": "73ddd55444e799b016e5dde588685964a551de57d3297c86257f9ec9259078ec",
+        "matched": true,
+        "nativeCustody": true,
+        "sdkCustody": true,
+        "completePublicEquality": true,
+        "nativeRawPhysicallyRetained": {
+          "path": ".equivalence-results/index-identity-boundaries/attempt-3d_kueod/case/evidence/native-raw.json",
+          "bytes": 460045,
+          "sha256": "96b2ec5204d265ce8580854d2383ab4ce2e4bf57c55049a626fb88252b87e74c"
+        },
+        "sdkRawEmbeddedOriginalSha256": "d392f3fec998b8955349bd7ff936732d97118971d68bc0232ea07eba2c501725",
+        "sdkRawOriginalWriterSerializationVerified": true,
+        "sdkRawPhysicalRetentionVerified": {
+          "dispatch": {
+            "path": ".equivalence-results/index-identity-boundaries/sdk-attempt-_nn2uim_/python-raw.json",
+            "bytes": 821855,
+            "sha256": "d392f3fec998b8955349bd7ff936732d97118971d68bc0232ea07eba2c501725"
+          },
+          "childRaw": {
+            "path": ".equivalence-results/index-identity-boundaries/sdk-attempt-_nn2uim_/sdk-identity-boundary-m6tv2u7l/sdk-host-raw.json",
+            "bytes": 374719,
+            "sha256": "60edee487fe3f679e82ec965a687f3a803cf1168e730ee6fca633e8d8fe62f7b"
+          },
+          "earlyPublicEnvelopes": [
+            {
+              "path": ".equivalence-results/index-identity-boundaries/sdk-attempt-_nn2uim_/sdk-identity-boundary-m6tv2u7l/tool-seed-envelope.json",
+              "bytes": 1424,
+              "sha256": "d9d7286a886f59e29c74b5375009f4ac77d723643bee45fc652b2e011194ec7e"
+            },
+            {
+              "path": ".equivalence-results/index-identity-boundaries/sdk-attempt-_nn2uim_/sdk-identity-boundary-m6tv2u7l/tool-query-envelope.json",
+              "bytes": 1880,
+              "sha256": "1a8d31cad47afb52c70985921e7149ec5e6b4bec08b72fb8bc8155d79b5fd9a5"
+            }
+          ],
+          "embeddedAndPhysicalBytesExactlyEqual": true
+        },
+        "traceCount": 6,
+        "actualNativeLoadedOriginalCount": 3026,
+        "physicalNative": {
+          "source": {
+            "path": ".equivalence-results/index-identity-boundaries/attempt-3d_kueod/case/state/workspace/MEMORY.md",
+            "bytes": 63,
+            "sha256": "3a57f533c8fb0c4892afde4d3e2d5851b171a4dd6a1d1cc979ab552e35dc886c"
+          },
+          "closedPhysicalDatabase": {
+            "path": ".equivalence-results/index-identity-boundaries/attempt-3d_kueod/case/state/agents/main/agent/openclaw-agent.sqlite",
+            "bytes": 708608,
+            "sha256": "ee942d7934bde7826d0eaf2aa12aaf660272b4b9af71206ac8dd75e3158f8011"
+          },
+          "completeFinalSchemaAndTablesRechecked": true,
+          "tableCount": 18,
+          "connection": {
+            "mode": "ro",
+            "begin": true,
+            "rollback": true,
+            "closed": true
+          }
+        },
+        "physicalSdk": {
+          "source": {
+            "path": ".equivalence-results/index-identity-boundaries/sdk-attempt-_nn2uim_/sdk-identity-boundary-m6tv2u7l/workspace/MEMORY.md",
+            "bytes": 63,
+            "sha256": "3a57f533c8fb0c4892afde4d3e2d5851b171a4dd6a1d1cc979ab552e35dc886c"
+          },
+          "closedPhysicalDatabase": {
+            "path": ".equivalence-results/index-identity-boundaries/sdk-attempt-_nn2uim_/sdk-identity-boundary-m6tv2u7l/index.sqlite",
+            "bytes": 118784,
+            "sha256": "2c96588d1a07abc0948c738a919e1eec9699687523bc814f7ffb5136c2b0717e"
+          },
+          "completeFinalSchemaAndTablesRechecked": true,
+          "tableCount": 20,
+          "connection": {
+            "mode": "ro",
+            "begin": true,
+            "rollback": true,
+            "closed": true
+          }
+        },
+        "nativeSqlSnapshotsValidated": 16,
+        "sdkEmbeddedSqlSnapshotsValidated": 16,
+        "typedSdkPrivateMarkersValidatedOnlyInPrivateFields": 10,
+        "currentSdkInterpreter": {
+          "path": "/opt/codex/runtimes/codex-primary-runtime/dependencies/python/bin/python3.12",
+          "bytes": 30894944,
+          "sha256": "fa67443527ed9647f760d807e2a38f26340757123e643c4639cf273ed15d5ea7"
+        },
+        "currentInterpreterOriginalPreExecutionBinaryHashClaimed": false,
+        "firstQueryHitCount": 1
+      },
+      {
+        "id": "index-identity-boundaries-newer-provenance-older-chunker",
+        "caseWireSha256": "ff614f006a7befc1f01c912d5c83eb31d3660106252e9a0d5505c4a77185a1a7",
+        "matched": true,
+        "nativeCustody": true,
+        "sdkCustody": true,
+        "completePublicEquality": true,
+        "nativeRawPhysicallyRetained": {
+          "path": ".equivalence-results/index-identity-boundaries/attempt-vo90bv4e/case/evidence/native-raw.json",
+          "bytes": 460481,
+          "sha256": "bcb68ec494b730152f4fb6ac739de2f84ebb4ba44489e8fb8e8d036289f28e85"
+        },
+        "sdkRawEmbeddedOriginalSha256": "4439948e8e2dc7830213b65faf26cb63bc72757853426a75041b224c37fd82ca",
+        "sdkRawOriginalWriterSerializationVerified": true,
+        "sdkRawPhysicalRetentionVerified": {
+          "dispatch": {
+            "path": ".equivalence-results/index-identity-boundaries/sdk-attempt-kl27f7j7/python-raw.json",
+            "bytes": 812122,
+            "sha256": "4439948e8e2dc7830213b65faf26cb63bc72757853426a75041b224c37fd82ca"
+          },
+          "childRaw": {
+            "path": ".equivalence-results/index-identity-boundaries/sdk-attempt-kl27f7j7/sdk-identity-boundary-iqsjscng/sdk-host-raw.json",
+            "bytes": 369953,
+            "sha256": "c3eb465f3352d2faa55bce260e6495a3f0a4e9a77e83506b3e955d169ddfc7b0"
+          },
+          "earlyPublicEnvelopes": [
+            {
+              "path": ".equivalence-results/index-identity-boundaries/sdk-attempt-kl27f7j7/sdk-identity-boundary-iqsjscng/tool-seed-envelope.json",
+              "bytes": 1424,
+              "sha256": "d9d7286a886f59e29c74b5375009f4ac77d723643bee45fc652b2e011194ec7e"
+            },
+            {
+              "path": ".equivalence-results/index-identity-boundaries/sdk-attempt-kl27f7j7/sdk-identity-boundary-iqsjscng/tool-query-envelope.json",
+              "bytes": 2031,
+              "sha256": "8dd5fcb703c7f844099027c4261ff335770dfc08203f78346a85fb645c5b8cc7"
+            }
+          ],
+          "embeddedAndPhysicalBytesExactlyEqual": true
+        },
+        "traceCount": 6,
+        "actualNativeLoadedOriginalCount": 3026,
+        "physicalNative": {
+          "source": {
+            "path": ".equivalence-results/index-identity-boundaries/attempt-vo90bv4e/case/state/workspace/MEMORY.md",
+            "bytes": 63,
+            "sha256": "3a57f533c8fb0c4892afde4d3e2d5851b171a4dd6a1d1cc979ab552e35dc886c"
+          },
+          "closedPhysicalDatabase": {
+            "path": ".equivalence-results/index-identity-boundaries/attempt-vo90bv4e/case/state/agents/main/agent/openclaw-agent.sqlite",
+            "bytes": 708608,
+            "sha256": "a60fd4acddfe9807ba20d86b00c7399d619a22f2efbb938a64e1c5255102d3c7"
+          },
+          "completeFinalSchemaAndTablesRechecked": true,
+          "tableCount": 18,
+          "connection": {
+            "mode": "ro",
+            "begin": true,
+            "rollback": true,
+            "closed": true
+          }
+        },
+        "physicalSdk": {
+          "source": {
+            "path": ".equivalence-results/index-identity-boundaries/sdk-attempt-kl27f7j7/sdk-identity-boundary-iqsjscng/workspace/MEMORY.md",
+            "bytes": 63,
+            "sha256": "3a57f533c8fb0c4892afde4d3e2d5851b171a4dd6a1d1cc979ab552e35dc886c"
+          },
+          "closedPhysicalDatabase": {
+            "path": ".equivalence-results/index-identity-boundaries/sdk-attempt-kl27f7j7/sdk-identity-boundary-iqsjscng/index.sqlite",
+            "bytes": 118784,
+            "sha256": "c95b61facce7a4380c8d98ab90f7c7c1aa72c1da0603f9fe2974b80e3ab3a45c"
+          },
+          "completeFinalSchemaAndTablesRechecked": true,
+          "tableCount": 20,
+          "connection": {
+            "mode": "ro",
+            "begin": true,
+            "rollback": true,
+            "closed": true
+          }
+        },
+        "nativeSqlSnapshotsValidated": 16,
+        "sdkEmbeddedSqlSnapshotsValidated": 16,
+        "typedSdkPrivateMarkersValidatedOnlyInPrivateFields": 5,
+        "currentSdkInterpreter": {
+          "path": "/opt/codex/runtimes/codex-primary-runtime/dependencies/python/bin/python3.12",
+          "bytes": 30894944,
+          "sha256": "fa67443527ed9647f760d807e2a38f26340757123e643c4639cf273ed15d5ea7"
+        },
+        "currentInterpreterOriginalPreExecutionBinaryHashClaimed": false,
+        "firstQueryHitCount": 0
+      },
+      {
+        "id": "index-identity-boundaries-newer-chunker-older-provenance",
+        "caseWireSha256": "f4f67768ee188f9ab0936ac525dc8ef139e0b442992fcba1914e842a010df1ce",
+        "matched": true,
+        "nativeCustody": true,
+        "sdkCustody": true,
+        "completePublicEquality": true,
+        "nativeRawPhysicallyRetained": {
+          "path": ".equivalence-results/index-identity-boundaries/attempt-rpsdptlo/case/evidence/native-raw.json",
+          "bytes": 460457,
+          "sha256": "ae6ff7f951f892a69f798c4dc7dddc50c6c52fb6b93d99f845593b13d9518f81"
+        },
+        "sdkRawEmbeddedOriginalSha256": "561bf1876ab07baefce4dc43b43da610d9f2cdd7d73695263ab441d3fc770779",
+        "sdkRawOriginalWriterSerializationVerified": true,
+        "sdkRawPhysicalRetentionVerified": {
+          "dispatch": {
+            "path": ".equivalence-results/index-identity-boundaries/sdk-attempt-q_rj1zo7/python-raw.json",
+            "bytes": 812050,
+            "sha256": "561bf1876ab07baefce4dc43b43da610d9f2cdd7d73695263ab441d3fc770779"
+          },
+          "childRaw": {
+            "path": ".equivalence-results/index-identity-boundaries/sdk-attempt-q_rj1zo7/sdk-identity-boundary-4n321obj/sdk-host-raw.json",
+            "bytes": 369927,
+            "sha256": "ff4c71cd8068714dc5f852d8e06b144e49699f8a792979d53e3c2a25c9c51641"
+          },
+          "earlyPublicEnvelopes": [
+            {
+              "path": ".equivalence-results/index-identity-boundaries/sdk-attempt-q_rj1zo7/sdk-identity-boundary-4n321obj/tool-seed-envelope.json",
+              "bytes": 1424,
+              "sha256": "d9d7286a886f59e29c74b5375009f4ac77d723643bee45fc652b2e011194ec7e"
+            },
+            {
+              "path": ".equivalence-results/index-identity-boundaries/sdk-attempt-q_rj1zo7/sdk-identity-boundary-4n321obj/tool-query-envelope.json",
+              "bytes": 2031,
+              "sha256": "8dd5fcb703c7f844099027c4261ff335770dfc08203f78346a85fb645c5b8cc7"
+            }
+          ],
+          "embeddedAndPhysicalBytesExactlyEqual": true
+        },
+        "traceCount": 6,
+        "actualNativeLoadedOriginalCount": 3026,
+        "physicalNative": {
+          "source": {
+            "path": ".equivalence-results/index-identity-boundaries/attempt-rpsdptlo/case/state/workspace/MEMORY.md",
+            "bytes": 63,
+            "sha256": "3a57f533c8fb0c4892afde4d3e2d5851b171a4dd6a1d1cc979ab552e35dc886c"
+          },
+          "closedPhysicalDatabase": {
+            "path": ".equivalence-results/index-identity-boundaries/attempt-rpsdptlo/case/state/agents/main/agent/openclaw-agent.sqlite",
+            "bytes": 708608,
+            "sha256": "e9526b19440fc0552608f058fca720644feae3efba6e54cd71d42922ab48d4e7"
+          },
+          "completeFinalSchemaAndTablesRechecked": true,
+          "tableCount": 18,
+          "connection": {
+            "mode": "ro",
+            "begin": true,
+            "rollback": true,
+            "closed": true
+          }
+        },
+        "physicalSdk": {
+          "source": {
+            "path": ".equivalence-results/index-identity-boundaries/sdk-attempt-q_rj1zo7/sdk-identity-boundary-4n321obj/workspace/MEMORY.md",
+            "bytes": 63,
+            "sha256": "3a57f533c8fb0c4892afde4d3e2d5851b171a4dd6a1d1cc979ab552e35dc886c"
+          },
+          "closedPhysicalDatabase": {
+            "path": ".equivalence-results/index-identity-boundaries/sdk-attempt-q_rj1zo7/sdk-identity-boundary-4n321obj/index.sqlite",
+            "bytes": 118784,
+            "sha256": "13fb6fa0d8e5618c97ddafec68d67097e2857c0ad20c8f556e7440f75e4d5549"
+          },
+          "completeFinalSchemaAndTablesRechecked": true,
+          "tableCount": 20,
+          "connection": {
+            "mode": "ro",
+            "begin": true,
+            "rollback": true,
+            "closed": true
+          }
+        },
+        "nativeSqlSnapshotsValidated": 16,
+        "sdkEmbeddedSqlSnapshotsValidated": 16,
+        "typedSdkPrivateMarkersValidatedOnlyInPrivateFields": 5,
+        "currentSdkInterpreter": {
+          "path": "/opt/codex/runtimes/codex-primary-runtime/dependencies/python/bin/python3.12",
+          "bytes": 30894944,
+          "sha256": "fa67443527ed9647f760d807e2a38f26340757123e643c4639cf273ed15d5ea7"
+        },
+        "currentInterpreterOriginalPreExecutionBinaryHashClaimed": false,
+        "firstQueryHitCount": 0
+      },
+      {
+        "id": "index-identity-boundaries-provider-key-only",
+        "caseWireSha256": "f850dc2426885f6b2c3977eb3da50e243af3dd6123d1b829fe2749e29cee9753",
+        "matched": true,
+        "nativeCustody": true,
+        "sdkCustody": true,
+        "completePublicEquality": true,
+        "nativeRawPhysicallyRetained": {
+          "path": ".equivalence-results/index-identity-boundaries/attempt-7bqejz65/case/evidence/native-raw.json",
+          "bytes": 457892,
+          "sha256": "eb03c4ef455443ec63dffabd66d82b51403d1cbb180f34984dd57d796fb89635"
+        },
+        "sdkRawEmbeddedOriginalSha256": "1efdc6ed84ae98e6d5edd6218f3a61d21b967e3ad33bdb10ff074ad0c34a0fec",
+        "sdkRawOriginalWriterSerializationVerified": true,
+        "sdkRawPhysicalRetentionVerified": {
+          "dispatch": {
+            "path": ".equivalence-results/index-identity-boundaries/sdk-attempt-yw17_hwv/python-raw.json",
+            "bytes": 805345,
+            "sha256": "1efdc6ed84ae98e6d5edd6218f3a61d21b967e3ad33bdb10ff074ad0c34a0fec"
+          },
+          "childRaw": {
+            "path": ".equivalence-results/index-identity-boundaries/sdk-attempt-yw17_hwv/sdk-identity-boundary-cp_qhry2/sdk-host-raw.json",
+            "bytes": 367637,
+            "sha256": "527ef9887ba3957f7313d30880f4cda498f26801b9657c7a3d58172a388b3963"
+          },
+          "earlyPublicEnvelopes": [
+            {
+              "path": ".equivalence-results/index-identity-boundaries/sdk-attempt-yw17_hwv/sdk-identity-boundary-cp_qhry2/tool-seed-envelope.json",
+              "bytes": 1424,
+              "sha256": "d9d7286a886f59e29c74b5375009f4ac77d723643bee45fc652b2e011194ec7e"
+            },
+            {
+              "path": ".equivalence-results/index-identity-boundaries/sdk-attempt-yw17_hwv/sdk-identity-boundary-cp_qhry2/tool-query-envelope.json",
+              "bytes": 1679,
+              "sha256": "75f7f8e7ad3206caa5d8e7171f4f88c9d329d95032ec2a526a26e4f7e387e682"
+            }
+          ],
+          "embeddedAndPhysicalBytesExactlyEqual": true
+        },
+        "traceCount": 6,
+        "actualNativeLoadedOriginalCount": 3026,
+        "physicalNative": {
+          "source": {
+            "path": ".equivalence-results/index-identity-boundaries/attempt-7bqejz65/case/state/workspace/MEMORY.md",
+            "bytes": 63,
+            "sha256": "3a57f533c8fb0c4892afde4d3e2d5851b171a4dd6a1d1cc979ab552e35dc886c"
+          },
+          "closedPhysicalDatabase": {
+            "path": ".equivalence-results/index-identity-boundaries/attempt-7bqejz65/case/state/agents/main/agent/openclaw-agent.sqlite",
+            "bytes": 708608,
+            "sha256": "7074c708c44aab5ac37409a3991b60f02c5ffe84faf382eccf96772c38a2ea86"
+          },
+          "completeFinalSchemaAndTablesRechecked": true,
+          "tableCount": 18,
+          "connection": {
+            "mode": "ro",
+            "begin": true,
+            "rollback": true,
+            "closed": true
+          }
+        },
+        "physicalSdk": {
+          "source": {
+            "path": ".equivalence-results/index-identity-boundaries/sdk-attempt-yw17_hwv/sdk-identity-boundary-cp_qhry2/workspace/MEMORY.md",
+            "bytes": 63,
+            "sha256": "3a57f533c8fb0c4892afde4d3e2d5851b171a4dd6a1d1cc979ab552e35dc886c"
+          },
+          "closedPhysicalDatabase": {
+            "path": ".equivalence-results/index-identity-boundaries/sdk-attempt-yw17_hwv/sdk-identity-boundary-cp_qhry2/index.sqlite",
+            "bytes": 118784,
+            "sha256": "96a2a232955336c0f0ba168e72ac77f12dd9102ffa07eb0d0f1b199df112bdba"
+          },
+          "completeFinalSchemaAndTablesRechecked": true,
+          "tableCount": 20,
+          "connection": {
+            "mode": "ro",
+            "begin": true,
+            "rollback": true,
+            "closed": true
+          }
+        },
+        "nativeSqlSnapshotsValidated": 16,
+        "sdkEmbeddedSqlSnapshotsValidated": 16,
+        "typedSdkPrivateMarkersValidatedOnlyInPrivateFields": 5,
+        "currentSdkInterpreter": {
+          "path": "/opt/codex/runtimes/codex-primary-runtime/dependencies/python/bin/python3.12",
+          "bytes": 30894944,
+          "sha256": "fa67443527ed9647f760d807e2a38f26340757123e643c4639cf273ed15d5ea7"
+        },
+        "currentInterpreterOriginalPreExecutionBinaryHashClaimed": false,
+        "firstQueryHitCount": 0
+      },
+      {
+        "id": "index-identity-boundaries-model-only",
+        "caseWireSha256": "48723ca0cdcb8de719288f792a3833486bd253d51f277afc8198762d2ac7bb17",
+        "matched": true,
+        "nativeCustody": true,
+        "sdkCustody": true,
+        "completePublicEquality": true,
+        "nativeRawPhysicallyRetained": {
+          "path": ".equivalence-results/index-identity-boundaries/attempt-qe4_9ijl/case/evidence/native-raw.json",
+          "bytes": 460368,
+          "sha256": "b9cd3da49b42e6d631fb6200bfefd34150df6e46b711148a1d5be5b84d64bf28"
+        },
+        "sdkRawEmbeddedOriginalSha256": "3678477c26efb5a3e7d586565f94fad8f3a453f160b56fa997721831e4d19502",
+        "sdkRawOriginalWriterSerializationVerified": true,
+        "sdkRawPhysicalRetentionVerified": {
+          "dispatch": {
+            "path": ".equivalence-results/index-identity-boundaries/sdk-attempt-jyib42gs/python-raw.json",
+            "bytes": 811225,
+            "sha256": "3678477c26efb5a3e7d586565f94fad8f3a453f160b56fa997721831e4d19502"
+          },
+          "childRaw": {
+            "path": ".equivalence-results/index-identity-boundaries/sdk-attempt-jyib42gs/sdk-identity-boundary-z4slwkvk/sdk-host-raw.json",
+            "bytes": 369809,
+            "sha256": "08837065b2689abc4b1f615319c3785adb4f2520fad0a004305c93710558bde9"
+          },
+          "earlyPublicEnvelopes": [
+            {
+              "path": ".equivalence-results/index-identity-boundaries/sdk-attempt-jyib42gs/sdk-identity-boundary-z4slwkvk/tool-seed-envelope.json",
+              "bytes": 1424,
+              "sha256": "d9d7286a886f59e29c74b5375009f4ac77d723643bee45fc652b2e011194ec7e"
+            },
+            {
+              "path": ".equivalence-results/index-identity-boundaries/sdk-attempt-jyib42gs/sdk-identity-boundary-z4slwkvk/tool-query-envelope.json",
+              "bytes": 2015,
+              "sha256": "a7386b1871b28f8763ce9b2b787f1e0c791c10a1864a6b97054a97075a6fdb9f"
+            }
+          ],
+          "embeddedAndPhysicalBytesExactlyEqual": true
+        },
+        "traceCount": 6,
+        "actualNativeLoadedOriginalCount": 3026,
+        "physicalNative": {
+          "source": {
+            "path": ".equivalence-results/index-identity-boundaries/attempt-qe4_9ijl/case/state/workspace/MEMORY.md",
+            "bytes": 63,
+            "sha256": "3a57f533c8fb0c4892afde4d3e2d5851b171a4dd6a1d1cc979ab552e35dc886c"
+          },
+          "closedPhysicalDatabase": {
+            "path": ".equivalence-results/index-identity-boundaries/attempt-qe4_9ijl/case/state/agents/main/agent/openclaw-agent.sqlite",
+            "bytes": 708608,
+            "sha256": "5b215408d109fd688080fdfe39605a053dafc8ed3414f02af08443cb190d0b60"
+          },
+          "completeFinalSchemaAndTablesRechecked": true,
+          "tableCount": 18,
+          "connection": {
+            "mode": "ro",
+            "begin": true,
+            "rollback": true,
+            "closed": true
+          }
+        },
+        "physicalSdk": {
+          "source": {
+            "path": ".equivalence-results/index-identity-boundaries/sdk-attempt-jyib42gs/sdk-identity-boundary-z4slwkvk/workspace/MEMORY.md",
+            "bytes": 63,
+            "sha256": "3a57f533c8fb0c4892afde4d3e2d5851b171a4dd6a1d1cc979ab552e35dc886c"
+          },
+          "closedPhysicalDatabase": {
+            "path": ".equivalence-results/index-identity-boundaries/sdk-attempt-jyib42gs/sdk-identity-boundary-z4slwkvk/index.sqlite",
+            "bytes": 118784,
+            "sha256": "767c10d7824509107fe29856c4cdefeae47fd31e413b75ba7ca52cdb05cc68d8"
+          },
+          "completeFinalSchemaAndTablesRechecked": true,
+          "tableCount": 20,
+          "connection": {
+            "mode": "ro",
+            "begin": true,
+            "rollback": true,
+            "closed": true
+          }
+        },
+        "nativeSqlSnapshotsValidated": 16,
+        "sdkEmbeddedSqlSnapshotsValidated": 16,
+        "typedSdkPrivateMarkersValidatedOnlyInPrivateFields": 5,
+        "currentSdkInterpreter": {
+          "path": "/opt/codex/runtimes/codex-primary-runtime/dependencies/python/bin/python3.12",
+          "bytes": 30894944,
+          "sha256": "fa67443527ed9647f760d807e2a38f26340757123e643c4639cf273ed15d5ea7"
+        },
+        "currentInterpreterOriginalPreExecutionBinaryHashClaimed": false,
+        "firstQueryHitCount": 0
+      },
+      {
+        "id": "index-identity-boundaries-provider-only",
+        "caseWireSha256": "8c12fc66a405085de36a7729be46d88a7378771beaee2732d95ab461926eaa83",
+        "matched": true,
+        "nativeCustody": true,
+        "sdkCustody": true,
+        "completePublicEquality": true,
+        "nativeRawPhysicallyRetained": {
+          "path": ".equivalence-results/index-identity-boundaries/attempt-84evyf4u/case/evidence/native-raw.json",
+          "bytes": 460122,
+          "sha256": "edfe2f848e45a6c35aa9ac9f9c8c00fd4edf079a019b7e6a04da7d1f3ec6e2fe"
+        },
+        "sdkRawEmbeddedOriginalSha256": "697dc966e8a37e8c048f6fdb864dc7224283f3b42348e0b9d96079f8aafa7bf7",
+        "sdkRawOriginalWriterSerializationVerified": true,
+        "sdkRawPhysicalRetentionVerified": {
+          "dispatch": {
+            "path": ".equivalence-results/index-identity-boundaries/sdk-attempt-azis05uv/python-raw.json",
+            "bytes": 810732,
+            "sha256": "697dc966e8a37e8c048f6fdb864dc7224283f3b42348e0b9d96079f8aafa7bf7"
+          },
+          "childRaw": {
+            "path": ".equivalence-results/index-identity-boundaries/sdk-attempt-azis05uv/sdk-identity-boundary-kfmy9pxl/sdk-host-raw.json",
+            "bytes": 369615,
+            "sha256": "7ef704ee9817f03973dcb417b72c862ccb71408e61a7de717d62396cdeabbebe"
+          },
+          "earlyPublicEnvelopes": [
+            {
+              "path": ".equivalence-results/index-identity-boundaries/sdk-attempt-azis05uv/sdk-identity-boundary-kfmy9pxl/tool-seed-envelope.json",
+              "bytes": 1424,
+              "sha256": "d9d7286a886f59e29c74b5375009f4ac77d723643bee45fc652b2e011194ec7e"
+            },
+            {
+              "path": ".equivalence-results/index-identity-boundaries/sdk-attempt-azis05uv/sdk-identity-boundary-kfmy9pxl/tool-query-envelope.json",
+              "bytes": 1959,
+              "sha256": "15a4943255c4efaa74079a0494100a03a20354e384f60f80c1ef33102db03f1b"
+            }
+          ],
+          "embeddedAndPhysicalBytesExactlyEqual": true
+        },
+        "traceCount": 6,
+        "actualNativeLoadedOriginalCount": 3026,
+        "physicalNative": {
+          "source": {
+            "path": ".equivalence-results/index-identity-boundaries/attempt-84evyf4u/case/state/workspace/MEMORY.md",
+            "bytes": 63,
+            "sha256": "3a57f533c8fb0c4892afde4d3e2d5851b171a4dd6a1d1cc979ab552e35dc886c"
+          },
+          "closedPhysicalDatabase": {
+            "path": ".equivalence-results/index-identity-boundaries/attempt-84evyf4u/case/state/agents/main/agent/openclaw-agent.sqlite",
+            "bytes": 708608,
+            "sha256": "7392be1c190ffe06210a91c9c0970938d559627f9be696c0b09605889aa756a2"
+          },
+          "completeFinalSchemaAndTablesRechecked": true,
+          "tableCount": 18,
+          "connection": {
+            "mode": "ro",
+            "begin": true,
+            "rollback": true,
+            "closed": true
+          }
+        },
+        "physicalSdk": {
+          "source": {
+            "path": ".equivalence-results/index-identity-boundaries/sdk-attempt-azis05uv/sdk-identity-boundary-kfmy9pxl/workspace/MEMORY.md",
+            "bytes": 63,
+            "sha256": "3a57f533c8fb0c4892afde4d3e2d5851b171a4dd6a1d1cc979ab552e35dc886c"
+          },
+          "closedPhysicalDatabase": {
+            "path": ".equivalence-results/index-identity-boundaries/sdk-attempt-azis05uv/sdk-identity-boundary-kfmy9pxl/index.sqlite",
+            "bytes": 118784,
+            "sha256": "6783923bbe1c41bf4012fccc19a16ce8ed2ec4c37d75c1bdb15db77492514ed0"
+          },
+          "completeFinalSchemaAndTablesRechecked": true,
+          "tableCount": 20,
+          "connection": {
+            "mode": "ro",
+            "begin": true,
+            "rollback": true,
+            "closed": true
+          }
+        },
+        "nativeSqlSnapshotsValidated": 16,
+        "sdkEmbeddedSqlSnapshotsValidated": 16,
+        "typedSdkPrivateMarkersValidatedOnlyInPrivateFields": 5,
+        "currentSdkInterpreter": {
+          "path": "/opt/codex/runtimes/codex-primary-runtime/dependencies/python/bin/python3.12",
+          "bytes": 30894944,
+          "sha256": "fa67443527ed9647f760d807e2a38f26340757123e643c4639cf273ed15d5ea7"
+        },
+        "currentInterpreterOriginalPreExecutionBinaryHashClaimed": false,
+        "firstQueryHitCount": 0
+      },
+      {
+        "id": "index-identity-boundaries-sources-only",
+        "caseWireSha256": "c8f3acec301946d34ae2534fb48aa9c7c649aee7198711dfea160897b7327377",
+        "matched": true,
+        "nativeCustody": true,
+        "sdkCustody": true,
+        "completePublicEquality": true,
+        "nativeRawPhysicallyRetained": {
+          "path": ".equivalence-results/index-identity-boundaries/attempt-ha7uiq7w/case/evidence/native-raw.json",
+          "bytes": 457770,
+          "sha256": "be3888b1d1564becfaaeaeab7facdab6ed79dbc3434478d942d88479f2a890b2"
+        },
+        "sdkRawEmbeddedOriginalSha256": "815a0221d2d4a32f59aab8be7a5a97ea651a355aefb765fd97d3e7b81ea2ef4a",
+        "sdkRawOriginalWriterSerializationVerified": true,
+        "sdkRawPhysicalRetentionVerified": {
+          "dispatch": {
+            "path": ".equivalence-results/index-identity-boundaries/sdk-attempt-qms9lrf8/python-raw.json",
+            "bytes": 805639,
+            "sha256": "815a0221d2d4a32f59aab8be7a5a97ea651a355aefb765fd97d3e7b81ea2ef4a"
+          },
+          "childRaw": {
+            "path": ".equivalence-results/index-identity-boundaries/sdk-attempt-qms9lrf8/sdk-identity-boundary-b3fwm146/sdk-host-raw.json",
+            "bytes": 367577,
+            "sha256": "1769a1bea9ca56e9001d0d5ba7843b5d175be9380c8969e379dba678994a863f"
+          },
+          "earlyPublicEnvelopes": [
+            {
+              "path": ".equivalence-results/index-identity-boundaries/sdk-attempt-qms9lrf8/sdk-identity-boundary-b3fwm146/tool-seed-envelope.json",
+              "bytes": 1424,
+              "sha256": "d9d7286a886f59e29c74b5375009f4ac77d723643bee45fc652b2e011194ec7e"
+            },
+            {
+              "path": ".equivalence-results/index-identity-boundaries/sdk-attempt-qms9lrf8/sdk-identity-boundary-b3fwm146/tool-query-envelope.json",
+              "bytes": 1599,
+              "sha256": "374d6d5ce31111bb3c08d6a6b5a61b9a9052f56d5fd7cd0e47a5a64e5a325de5"
+            }
+          ],
+          "embeddedAndPhysicalBytesExactlyEqual": true
+        },
+        "traceCount": 6,
+        "actualNativeLoadedOriginalCount": 3026,
+        "physicalNative": {
+          "source": {
+            "path": ".equivalence-results/index-identity-boundaries/attempt-ha7uiq7w/case/state/workspace/MEMORY.md",
+            "bytes": 63,
+            "sha256": "3a57f533c8fb0c4892afde4d3e2d5851b171a4dd6a1d1cc979ab552e35dc886c"
+          },
+          "closedPhysicalDatabase": {
+            "path": ".equivalence-results/index-identity-boundaries/attempt-ha7uiq7w/case/state/agents/main/agent/openclaw-agent.sqlite",
+            "bytes": 708608,
+            "sha256": "f7021cb28e63139f7c3e77e055f1925806a70bcca63cc9b378f838336630842a"
+          },
+          "completeFinalSchemaAndTablesRechecked": true,
+          "tableCount": 18,
+          "connection": {
+            "mode": "ro",
+            "begin": true,
+            "rollback": true,
+            "closed": true
+          }
+        },
+        "physicalSdk": {
+          "source": {
+            "path": ".equivalence-results/index-identity-boundaries/sdk-attempt-qms9lrf8/sdk-identity-boundary-b3fwm146/workspace/MEMORY.md",
+            "bytes": 63,
+            "sha256": "3a57f533c8fb0c4892afde4d3e2d5851b171a4dd6a1d1cc979ab552e35dc886c"
+          },
+          "closedPhysicalDatabase": {
+            "path": ".equivalence-results/index-identity-boundaries/sdk-attempt-qms9lrf8/sdk-identity-boundary-b3fwm146/index.sqlite",
+            "bytes": 118784,
+            "sha256": "063e382b4643fd9087f341bf90501d3542a83bda72c8c5ba1f7c6c0e6b02877c"
+          },
+          "completeFinalSchemaAndTablesRechecked": true,
+          "tableCount": 20,
+          "connection": {
+            "mode": "ro",
+            "begin": true,
+            "rollback": true,
+            "closed": true
+          }
+        },
+        "nativeSqlSnapshotsValidated": 16,
+        "sdkEmbeddedSqlSnapshotsValidated": 16,
+        "typedSdkPrivateMarkersValidatedOnlyInPrivateFields": 5,
+        "currentSdkInterpreter": {
+          "path": "/opt/codex/runtimes/codex-primary-runtime/dependencies/python/bin/python3.12",
+          "bytes": 30894944,
+          "sha256": "fa67443527ed9647f760d807e2a38f26340757123e643c4639cf273ed15d5ea7"
+        },
+        "currentInterpreterOriginalPreExecutionBinaryHashClaimed": false,
+        "firstQueryHitCount": 0
+      },
+      {
+        "id": "index-identity-boundaries-scope-only",
+        "caseWireSha256": "7dd0d5dd9329b26d7550cdedf46a76fcf4530fa14732499fe7dd757a14428321",
+        "matched": true,
+        "nativeCustody": true,
+        "sdkCustody": true,
+        "completePublicEquality": true,
+        "nativeRawPhysicallyRetained": {
+          "path": ".equivalence-results/index-identity-boundaries/attempt-ulte89kg/case/evidence/native-raw.json",
+          "bytes": 458240,
+          "sha256": "f75db5b72ef5a3bb23e10a61ff6e1d26ccc013d17980e2b02bcff87f2ad344db"
+        },
+        "sdkRawEmbeddedOriginalSha256": "345fae19e8b26d1972cfe12e87ba9639b14a3e4b8f2d5f57acadfdf678d13063",
+        "sdkRawOriginalWriterSerializationVerified": true,
+        "sdkRawPhysicalRetentionVerified": {
+          "dispatch": {
+            "path": ".equivalence-results/index-identity-boundaries/sdk-attempt-nmu5hiso/python-raw.json",
+            "bytes": 806873,
+            "sha256": "345fae19e8b26d1972cfe12e87ba9639b14a3e4b8f2d5f57acadfdf678d13063"
+          },
+          "childRaw": {
+            "path": ".equivalence-results/index-identity-boundaries/sdk-attempt-nmu5hiso/sdk-identity-boundary-_x_jgdnz/sdk-host-raw.json",
+            "bytes": 368059,
+            "sha256": "c47443810a9be788db27422930ce9e954c7837cd6ee3230005cdd2870a4f282b"
+          },
+          "earlyPublicEnvelopes": [
+            {
+              "path": ".equivalence-results/index-identity-boundaries/sdk-attempt-nmu5hiso/sdk-identity-boundary-_x_jgdnz/tool-seed-envelope.json",
+              "bytes": 1424,
+              "sha256": "d9d7286a886f59e29c74b5375009f4ac77d723643bee45fc652b2e011194ec7e"
+            },
+            {
+              "path": ".equivalence-results/index-identity-boundaries/sdk-attempt-nmu5hiso/sdk-identity-boundary-_x_jgdnz/tool-query-envelope.json",
+              "bytes": 1583,
+              "sha256": "1cb65528f04e6ad8b2c1ce63542a0c3cdb4b7ab92bdb3c6d38ffc0d25b917776"
+            }
+          ],
+          "embeddedAndPhysicalBytesExactlyEqual": true
+        },
+        "traceCount": 6,
+        "actualNativeLoadedOriginalCount": 3026,
+        "physicalNative": {
+          "source": {
+            "path": ".equivalence-results/index-identity-boundaries/attempt-ulte89kg/case/state/workspace/MEMORY.md",
+            "bytes": 63,
+            "sha256": "3a57f533c8fb0c4892afde4d3e2d5851b171a4dd6a1d1cc979ab552e35dc886c"
+          },
+          "closedPhysicalDatabase": {
+            "path": ".equivalence-results/index-identity-boundaries/attempt-ulte89kg/case/state/agents/main/agent/openclaw-agent.sqlite",
+            "bytes": 708608,
+            "sha256": "b96bed36676bfc331b42d1b957490bce80c6cb89aea347468d8ec01a625cdb40"
+          },
+          "completeFinalSchemaAndTablesRechecked": true,
+          "tableCount": 18,
+          "connection": {
+            "mode": "ro",
+            "begin": true,
+            "rollback": true,
+            "closed": true
+          }
+        },
+        "physicalSdk": {
+          "source": {
+            "path": ".equivalence-results/index-identity-boundaries/sdk-attempt-nmu5hiso/sdk-identity-boundary-_x_jgdnz/workspace/MEMORY.md",
+            "bytes": 63,
+            "sha256": "3a57f533c8fb0c4892afde4d3e2d5851b171a4dd6a1d1cc979ab552e35dc886c"
+          },
+          "closedPhysicalDatabase": {
+            "path": ".equivalence-results/index-identity-boundaries/sdk-attempt-nmu5hiso/sdk-identity-boundary-_x_jgdnz/index.sqlite",
+            "bytes": 118784,
+            "sha256": "12b27b80c7abd7dc4cc18f2ccd3dc8b786c6e1631396de9525087a6d92c1f2ad"
+          },
+          "completeFinalSchemaAndTablesRechecked": true,
+          "tableCount": 20,
+          "connection": {
+            "mode": "ro",
+            "begin": true,
+            "rollback": true,
+            "closed": true
+          }
+        },
+        "nativeSqlSnapshotsValidated": 16,
+        "sdkEmbeddedSqlSnapshotsValidated": 16,
+        "typedSdkPrivateMarkersValidatedOnlyInPrivateFields": 5,
+        "currentSdkInterpreter": {
+          "path": "/opt/codex/runtimes/codex-primary-runtime/dependencies/python/bin/python3.12",
+          "bytes": 30894944,
+          "sha256": "fa67443527ed9647f760d807e2a38f26340757123e643c4639cf273ed15d5ea7"
+        },
+        "currentInterpreterOriginalPreExecutionBinaryHashClaimed": false,
+        "firstQueryHitCount": 0
+      },
+      {
+        "id": "index-identity-boundaries-chunk-tokens-only",
+        "caseWireSha256": "32cc40a04bd3f7cba6267df6c916eb517bcf0c42662f795e812bc1b0c3640101",
+        "matched": true,
+        "nativeCustody": true,
+        "sdkCustody": true,
+        "completePublicEquality": true,
+        "nativeRawPhysicallyRetained": {
+          "path": ".equivalence-results/index-identity-boundaries/attempt-4lcq8kud/case/evidence/native-raw.json",
+          "bytes": 458196,
+          "sha256": "b0f1c016baef56cbdf049c57f69d20495afc9daf8bcdc29805a689364548733e"
+        },
+        "sdkRawEmbeddedOriginalSha256": "8dfc13d662c2f63d8121de44cbcfff1df54ab7a99e34960b12fde530e450f06b",
+        "sdkRawOriginalWriterSerializationVerified": true,
+        "sdkRawPhysicalRetentionVerified": {
+          "dispatch": {
+            "path": ".equivalence-results/index-identity-boundaries/sdk-attempt-1ysbm0jb/python-raw.json",
+            "bytes": 806642,
+            "sha256": "8dfc13d662c2f63d8121de44cbcfff1df54ab7a99e34960b12fde530e450f06b"
+          },
+          "childRaw": {
+            "path": ".equivalence-results/index-identity-boundaries/sdk-attempt-1ysbm0jb/sdk-identity-boundary-ignil232/sdk-host-raw.json",
+            "bytes": 367997,
+            "sha256": "129e35bcb6d1ed8d42046836bf67fa58c468c285812fefa53c771032bf901ae5"
+          },
+          "earlyPublicEnvelopes": [
+            {
+              "path": ".equivalence-results/index-identity-boundaries/sdk-attempt-1ysbm0jb/sdk-identity-boundary-ignil232/tool-seed-envelope.json",
+              "bytes": 1424,
+              "sha256": "d9d7286a886f59e29c74b5375009f4ac77d723643bee45fc652b2e011194ec7e"
+            },
+            {
+              "path": ".equivalence-results/index-identity-boundaries/sdk-attempt-1ysbm0jb/sdk-identity-boundary-ignil232/tool-query-envelope.json",
+              "bytes": 1607,
+              "sha256": "b4cb534ea16ec7a055fc6560c9c005878e03abfc891261725acb36653b2c59fb"
+            }
+          ],
+          "embeddedAndPhysicalBytesExactlyEqual": true
+        },
+        "traceCount": 6,
+        "actualNativeLoadedOriginalCount": 3026,
+        "physicalNative": {
+          "source": {
+            "path": ".equivalence-results/index-identity-boundaries/attempt-4lcq8kud/case/state/workspace/MEMORY.md",
+            "bytes": 63,
+            "sha256": "3a57f533c8fb0c4892afde4d3e2d5851b171a4dd6a1d1cc979ab552e35dc886c"
+          },
+          "closedPhysicalDatabase": {
+            "path": ".equivalence-results/index-identity-boundaries/attempt-4lcq8kud/case/state/agents/main/agent/openclaw-agent.sqlite",
+            "bytes": 708608,
+            "sha256": "351a3d174917b77f8cf7d6d97cb57148c4d78e402236abdff05b411dea681387"
+          },
+          "completeFinalSchemaAndTablesRechecked": true,
+          "tableCount": 18,
+          "connection": {
+            "mode": "ro",
+            "begin": true,
+            "rollback": true,
+            "closed": true
+          }
+        },
+        "physicalSdk": {
+          "source": {
+            "path": ".equivalence-results/index-identity-boundaries/sdk-attempt-1ysbm0jb/sdk-identity-boundary-ignil232/workspace/MEMORY.md",
+            "bytes": 63,
+            "sha256": "3a57f533c8fb0c4892afde4d3e2d5851b171a4dd6a1d1cc979ab552e35dc886c"
+          },
+          "closedPhysicalDatabase": {
+            "path": ".equivalence-results/index-identity-boundaries/sdk-attempt-1ysbm0jb/sdk-identity-boundary-ignil232/index.sqlite",
+            "bytes": 118784,
+            "sha256": "0ebfa3a0ef06029045f6d50b3f5870770ff1775de4e0ef6d8988b1ab5e9d3008"
+          },
+          "completeFinalSchemaAndTablesRechecked": true,
+          "tableCount": 20,
+          "connection": {
+            "mode": "ro",
+            "begin": true,
+            "rollback": true,
+            "closed": true
+          }
+        },
+        "nativeSqlSnapshotsValidated": 16,
+        "sdkEmbeddedSqlSnapshotsValidated": 16,
+        "typedSdkPrivateMarkersValidatedOnlyInPrivateFields": 5,
+        "currentSdkInterpreter": {
+          "path": "/opt/codex/runtimes/codex-primary-runtime/dependencies/python/bin/python3.12",
+          "bytes": 30894944,
+          "sha256": "fa67443527ed9647f760d807e2a38f26340757123e643c4639cf273ed15d5ea7"
+        },
+        "currentInterpreterOriginalPreExecutionBinaryHashClaimed": false,
+        "firstQueryHitCount": 0
+      },
+      {
+        "id": "index-identity-boundaries-chunk-overlap-only",
+        "caseWireSha256": "5a31baccf4c598658ae03a41330344ea394aeb8121dc82f1b7d1abd193baa788",
+        "matched": true,
+        "nativeCustody": true,
+        "sdkCustody": true,
+        "completePublicEquality": true,
+        "nativeRawPhysicallyRetained": {
+          "path": ".equivalence-results/index-identity-boundaries/attempt-np4gfxl9/case/evidence/native-raw.json",
+          "bytes": 458197,
+          "sha256": "ac2bb2d2915fa40d7c4fac9234fa50254e6a8785159ad52ffe84253f40431c27"
+        },
+        "sdkRawEmbeddedOriginalSha256": "226da1f8330a9216928a0e25cd35184ea7b04278d2d3b91f38939d2d2975287a",
+        "sdkRawOriginalWriterSerializationVerified": true,
+        "sdkRawPhysicalRetentionVerified": {
+          "dispatch": {
+            "path": ".equivalence-results/index-identity-boundaries/sdk-attempt-lv4iuklz/python-raw.json",
+            "bytes": 806644,
+            "sha256": "226da1f8330a9216928a0e25cd35184ea7b04278d2d3b91f38939d2d2975287a"
+          },
+          "childRaw": {
+            "path": ".equivalence-results/index-identity-boundaries/sdk-attempt-lv4iuklz/sdk-identity-boundary-9gzjp29y/sdk-host-raw.json",
+            "bytes": 367998,
+            "sha256": "1bebb17b70433c3a47ed5e07c122b731da56d99e5e76da286444708a2f76e137"
+          },
+          "earlyPublicEnvelopes": [
+            {
+              "path": ".equivalence-results/index-identity-boundaries/sdk-attempt-lv4iuklz/sdk-identity-boundary-9gzjp29y/tool-seed-envelope.json",
+              "bytes": 1424,
+              "sha256": "d9d7286a886f59e29c74b5375009f4ac77d723643bee45fc652b2e011194ec7e"
+            },
+            {
+              "path": ".equivalence-results/index-identity-boundaries/sdk-attempt-lv4iuklz/sdk-identity-boundary-9gzjp29y/tool-query-envelope.json",
+              "bytes": 1607,
+              "sha256": "b4cb534ea16ec7a055fc6560c9c005878e03abfc891261725acb36653b2c59fb"
+            }
+          ],
+          "embeddedAndPhysicalBytesExactlyEqual": true
+        },
+        "traceCount": 6,
+        "actualNativeLoadedOriginalCount": 3026,
+        "physicalNative": {
+          "source": {
+            "path": ".equivalence-results/index-identity-boundaries/attempt-np4gfxl9/case/state/workspace/MEMORY.md",
+            "bytes": 63,
+            "sha256": "3a57f533c8fb0c4892afde4d3e2d5851b171a4dd6a1d1cc979ab552e35dc886c"
+          },
+          "closedPhysicalDatabase": {
+            "path": ".equivalence-results/index-identity-boundaries/attempt-np4gfxl9/case/state/agents/main/agent/openclaw-agent.sqlite",
+            "bytes": 708608,
+            "sha256": "afc202d7fc024402e4ebc239b768b66eef6821ab53508c543f9c5b19bed27d13"
+          },
+          "completeFinalSchemaAndTablesRechecked": true,
+          "tableCount": 18,
+          "connection": {
+            "mode": "ro",
+            "begin": true,
+            "rollback": true,
+            "closed": true
+          }
+        },
+        "physicalSdk": {
+          "source": {
+            "path": ".equivalence-results/index-identity-boundaries/sdk-attempt-lv4iuklz/sdk-identity-boundary-9gzjp29y/workspace/MEMORY.md",
+            "bytes": 63,
+            "sha256": "3a57f533c8fb0c4892afde4d3e2d5851b171a4dd6a1d1cc979ab552e35dc886c"
+          },
+          "closedPhysicalDatabase": {
+            "path": ".equivalence-results/index-identity-boundaries/sdk-attempt-lv4iuklz/sdk-identity-boundary-9gzjp29y/index.sqlite",
+            "bytes": 118784,
+            "sha256": "08f22c743a0f3f1ea4d2c09cc201fe062af7812eca3c25ac32b06d83642b9721"
+          },
+          "completeFinalSchemaAndTablesRechecked": true,
+          "tableCount": 20,
+          "connection": {
+            "mode": "ro",
+            "begin": true,
+            "rollback": true,
+            "closed": true
+          }
+        },
+        "nativeSqlSnapshotsValidated": 16,
+        "sdkEmbeddedSqlSnapshotsValidated": 16,
+        "typedSdkPrivateMarkersValidatedOnlyInPrivateFields": 5,
+        "currentSdkInterpreter": {
+          "path": "/opt/codex/runtimes/codex-primary-runtime/dependencies/python/bin/python3.12",
+          "bytes": 30894944,
+          "sha256": "fa67443527ed9647f760d807e2a38f26340757123e643c4639cf273ed15d5ea7"
+        },
+        "currentInterpreterOriginalPreExecutionBinaryHashClaimed": false,
+        "firstQueryHitCount": 0
+      },
+      {
+        "id": "index-identity-boundaries-tokenizer-only",
+        "caseWireSha256": "399f8c4d532bbae72982c9ac982af7bbfe41be1fca256e34781a9c94f161a3a2",
+        "matched": true,
+        "nativeCustody": true,
+        "sdkCustody": true,
+        "completePublicEquality": true,
+        "nativeRawPhysicallyRetained": {
+          "path": ".equivalence-results/index-identity-boundaries/attempt-7j7mab6t/case/evidence/native-raw.json",
+          "bytes": 458353,
+          "sha256": "7f1ba5af0751ea6e167d6a1109e6af0de093c77a7f3b1af46415e1b353cc6c7d"
+        },
+        "sdkRawEmbeddedOriginalSha256": "4ca8a1db3fb0ec83b434c57906b894896cd08c5898d8cd74877a2af9687e5591",
+        "sdkRawOriginalWriterSerializationVerified": true,
+        "sdkRawPhysicalRetentionVerified": {
+          "dispatch": {
+            "path": ".equivalence-results/index-identity-boundaries/sdk-attempt-zk5f8i2b/python-raw.json",
+            "bytes": 807062,
+            "sha256": "4ca8a1db3fb0ec83b434c57906b894896cd08c5898d8cd74877a2af9687e5591"
+          },
+          "childRaw": {
+            "path": ".equivalence-results/index-identity-boundaries/sdk-attempt-zk5f8i2b/sdk-identity-boundary-yukuy0bp/sdk-host-raw.json",
+            "bytes": 368124,
+            "sha256": "0144e89b19f2e37f55ad0a4455124d04430311327b65104c464f984e26b31d06"
+          },
+          "earlyPublicEnvelopes": [
+            {
+              "path": ".equivalence-results/index-identity-boundaries/sdk-attempt-zk5f8i2b/sdk-identity-boundary-yukuy0bp/tool-seed-envelope.json",
+              "bytes": 1424,
+              "sha256": "d9d7286a886f59e29c74b5375009f4ac77d723643bee45fc652b2e011194ec7e"
+            },
+            {
+              "path": ".equivalence-results/index-identity-boundaries/sdk-attempt-zk5f8i2b/sdk-identity-boundary-yukuy0bp/tool-query-envelope.json",
+              "bytes": 1647,
+              "sha256": "e3fa961703d9f704da650ff8d6f17a67e91f3c0dca2efdf1af7b595492380976"
+            }
+          ],
+          "embeddedAndPhysicalBytesExactlyEqual": true
+        },
+        "traceCount": 6,
+        "actualNativeLoadedOriginalCount": 3026,
+        "physicalNative": {
+          "source": {
+            "path": ".equivalence-results/index-identity-boundaries/attempt-7j7mab6t/case/state/workspace/MEMORY.md",
+            "bytes": 63,
+            "sha256": "3a57f533c8fb0c4892afde4d3e2d5851b171a4dd6a1d1cc979ab552e35dc886c"
+          },
+          "closedPhysicalDatabase": {
+            "path": ".equivalence-results/index-identity-boundaries/attempt-7j7mab6t/case/state/agents/main/agent/openclaw-agent.sqlite",
+            "bytes": 708608,
+            "sha256": "58b99f634229ffed68283a782266d63014c2a25cad14e0d5dcc85b4a183e4c54"
+          },
+          "completeFinalSchemaAndTablesRechecked": true,
+          "tableCount": 18,
+          "connection": {
+            "mode": "ro",
+            "begin": true,
+            "rollback": true,
+            "closed": true
+          }
+        },
+        "physicalSdk": {
+          "source": {
+            "path": ".equivalence-results/index-identity-boundaries/sdk-attempt-zk5f8i2b/sdk-identity-boundary-yukuy0bp/workspace/MEMORY.md",
+            "bytes": 63,
+            "sha256": "3a57f533c8fb0c4892afde4d3e2d5851b171a4dd6a1d1cc979ab552e35dc886c"
+          },
+          "closedPhysicalDatabase": {
+            "path": ".equivalence-results/index-identity-boundaries/sdk-attempt-zk5f8i2b/sdk-identity-boundary-yukuy0bp/index.sqlite",
+            "bytes": 118784,
+            "sha256": "a71e599cae3d4f90060e085822c20b0de4cbc4c03763e03e9da8e1e8c24b65b6"
+          },
+          "completeFinalSchemaAndTablesRechecked": true,
+          "tableCount": 20,
+          "connection": {
+            "mode": "ro",
+            "begin": true,
+            "rollback": true,
+            "closed": true
+          }
+        },
+        "nativeSqlSnapshotsValidated": 16,
+        "sdkEmbeddedSqlSnapshotsValidated": 16,
+        "typedSdkPrivateMarkersValidatedOnlyInPrivateFields": 5,
+        "currentSdkInterpreter": {
+          "path": "/opt/codex/runtimes/codex-primary-runtime/dependencies/python/bin/python3.12",
+          "bytes": 30894944,
+          "sha256": "fa67443527ed9647f760d807e2a38f26340757123e643c4639cf273ed15d5ea7"
+        },
+        "currentInterpreterOriginalPreExecutionBinaryHashClaimed": false,
+        "firstQueryHitCount": 0
+      },
+      {
+        "id": "index-identity-boundaries-older-chunker-scope-incompatible",
+        "caseWireSha256": "b92cf95556dcd40a9f49382690dcdd5904527dffa6b272cba22fcfec436d701a",
+        "matched": true,
+        "nativeCustody": true,
+        "sdkCustody": true,
+        "completePublicEquality": true,
+        "nativeRawPhysicallyRetained": {
+          "path": ".equivalence-results/index-identity-boundaries/attempt-sqyvi4mu/case/evidence/native-raw.json",
+          "bytes": 460053,
+          "sha256": "13eb1f508bb6dded0e8e253a81e8705a3eadb74a1d46317cfba5f24a65b25c60"
+        },
+        "sdkRawEmbeddedOriginalSha256": "ea52058f30aca9f0a708b4e33141a89a407ff969309d7bccf4fc6736b9e98232",
+        "sdkRawOriginalWriterSerializationVerified": true,
+        "sdkRawPhysicalRetentionVerified": {
+          "dispatch": {
+            "path": ".equivalence-results/index-identity-boundaries/sdk-attempt-n2q1zv7r/python-raw.json",
+            "bytes": 821746,
+            "sha256": "ea52058f30aca9f0a708b4e33141a89a407ff969309d7bccf4fc6736b9e98232"
+          },
+          "childRaw": {
+            "path": ".equivalence-results/index-identity-boundaries/sdk-attempt-n2q1zv7r/sdk-identity-boundary-o5ho9ol8/sdk-host-raw.json",
+            "bytes": 374673,
+            "sha256": "83f9e728cfe9799e4e25f3434b844416b35b7d3f32a3329aebc0a524b7275635"
+          },
+          "earlyPublicEnvelopes": [
+            {
+              "path": ".equivalence-results/index-identity-boundaries/sdk-attempt-n2q1zv7r/sdk-identity-boundary-o5ho9ol8/tool-seed-envelope.json",
+              "bytes": 1424,
+              "sha256": "d9d7286a886f59e29c74b5375009f4ac77d723643bee45fc652b2e011194ec7e"
+            },
+            {
+              "path": ".equivalence-results/index-identity-boundaries/sdk-attempt-n2q1zv7r/sdk-identity-boundary-o5ho9ol8/tool-query-envelope.json",
+              "bytes": 1880,
+              "sha256": "1a8d31cad47afb52c70985921e7149ec5e6b4bec08b72fb8bc8155d79b5fd9a5"
+            }
+          ],
+          "embeddedAndPhysicalBytesExactlyEqual": true
+        },
+        "traceCount": 6,
+        "actualNativeLoadedOriginalCount": 3026,
+        "physicalNative": {
+          "source": {
+            "path": ".equivalence-results/index-identity-boundaries/attempt-sqyvi4mu/case/state/workspace/MEMORY.md",
+            "bytes": 63,
+            "sha256": "3a57f533c8fb0c4892afde4d3e2d5851b171a4dd6a1d1cc979ab552e35dc886c"
+          },
+          "closedPhysicalDatabase": {
+            "path": ".equivalence-results/index-identity-boundaries/attempt-sqyvi4mu/case/state/agents/main/agent/openclaw-agent.sqlite",
+            "bytes": 708608,
+            "sha256": "ee942d7934bde7826d0eaf2aa12aaf660272b4b9af71206ac8dd75e3158f8011"
+          },
+          "completeFinalSchemaAndTablesRechecked": true,
+          "tableCount": 18,
+          "connection": {
+            "mode": "ro",
+            "begin": true,
+            "rollback": true,
+            "closed": true
+          }
+        },
+        "physicalSdk": {
+          "source": {
+            "path": ".equivalence-results/index-identity-boundaries/sdk-attempt-n2q1zv7r/sdk-identity-boundary-o5ho9ol8/workspace/MEMORY.md",
+            "bytes": 63,
+            "sha256": "3a57f533c8fb0c4892afde4d3e2d5851b171a4dd6a1d1cc979ab552e35dc886c"
+          },
+          "closedPhysicalDatabase": {
+            "path": ".equivalence-results/index-identity-boundaries/sdk-attempt-n2q1zv7r/sdk-identity-boundary-o5ho9ol8/index.sqlite",
+            "bytes": 118784,
+            "sha256": "12eb82f44d7c0dc302399a8c70b8bb27658f155f71322e2fade8a5f328db6ba6"
+          },
+          "completeFinalSchemaAndTablesRechecked": true,
+          "tableCount": 20,
+          "connection": {
+            "mode": "ro",
+            "begin": true,
+            "rollback": true,
+            "closed": true
+          }
+        },
+        "nativeSqlSnapshotsValidated": 16,
+        "sdkEmbeddedSqlSnapshotsValidated": 16,
+        "typedSdkPrivateMarkersValidatedOnlyInPrivateFields": 10,
+        "currentSdkInterpreter": {
+          "path": "/opt/codex/runtimes/codex-primary-runtime/dependencies/python/bin/python3.12",
+          "bytes": 30894944,
+          "sha256": "fa67443527ed9647f760d807e2a38f26340757123e643c4639cf273ed15d5ea7"
+        },
+        "currentInterpreterOriginalPreExecutionBinaryHashClaimed": false,
+        "firstQueryHitCount": 1
+      }
+    ],
+    "durationSeconds": 1934.122782,
+    "auditor": {
+      "path": "work/index-identity-boundaries/audit/audit_full.py",
+      "bytes": 50475,
+      "sha256": "dc62863fe0c2676098743fa8fd050a50eee45b8ef666555b94dbc13ea0f267ed"
+    },
+    "streamReader": {
+      "path": "work/index-identity-boundaries/audit/stream_reader.py",
+      "bytes": 7414,
+      "sha256": "adf493396ff9060c306503f37d35075248d014679e2e0d42284a94dacab7b6d4"
+    },
+    "liveOriginalCoordinatorObservation": {
+      "path": "work/index-identity-boundaries/full-001-live-coordinator-observation.json",
+      "bytes": 1005,
+      "sha256": "f688a0ecc08729e72afff8f76fe920addc3bb74add7003c4becef30e497df8c1"
+    },
+    "actualOriginalCollectorPidBoundToEveryNewPair": 950974,
+    "cliExitStatusObserved": false,
+    "comparisonRerunForLostSessionHandle": false,
+    "hostOrNativeExecutionPerformedByAudit": false,
+    "testsRunByAudit": false,
+    "priorHosted18IsSeparateNotRelabelledLocal14": true,
+    "limits": [
+      "The audit is retained-evidence validation, not new host execution or new credit.",
+      "SDK originals are authenticated from both physical retained bytes and the exact compact serializer.",
+      "Complete raw statuses and binary SQL formats remain engine-specific custody.",
+      "The original release is authenticated separately from tracked source; no reproduced build is claimed.",
+      "The exec registry was lost while the original collector continued; no CLI exit code is claimed.",
+      "One already uncredited Native first-recall diagnostic changed two arrays under its original declaration; complete historical mismatch-payload equality is not claimed.",
+      "Original report/code identities remain exact; the historical LOCAL baseline is not replaced by hosted18."
+    ]
+  },
+  "independentFullAuditRecord": {
+    "path": "work/index-identity-boundaries/audit/full-001-audit-002.json",
+    "bytes": 74845,
+    "sha256": "fd50328929a068b6986aa34f7decf9ac30e572b14195a8db75543951daf28d75"
+  },
+  "freshFullSemanticReplay": {
+    "passed": 981,
+    "failed": 0,
+    "skipped": 0,
+    "seconds": 13.56,
+    "log": "work/index-identity-boundaries/evidence-semantic-004-fresh-full.log",
+    "credits": 0
+  },
+  "wholeRegressions": {
+    "status": "passed",
+    "sourceCommit": "5856b4eff699fe8760d28a8b67d323702da1aa94",
+    "sdkSourceSha256": "a5972f3e37bcf97bce7f7cda82ef52b99226882b7a14bd87f094a9ba1219b70d",
+    "passed": 9757,
+    "failed": 0,
+    "skipped": 1648,
+    "seconds": 467.39,
+    "log": {
+      "path": "work/index-identity-boundaries/regressions-001.log",
+      "bytes": 12767,
+      "sha256": "a01942fa2d03163aac9f9ca1fa2715a2e90f34ff0718bf0ed49ba67761c056b6"
+    },
+    "skipsGrantCredit": false
+  },
+  "installedArtifacts": {
+    "status": "passed",
+    "log": {
+      "path": "work/index-identity-boundaries/distribution-002.log",
+      "bytes": 4782,
+      "sha256": "2a502dd48ea8607325e6fa4b0497bac21aeec9fb881b56a78f15482035ad3c9f"
+    },
+    "sdkSourceSha256": "a5972f3e37bcf97bce7f7cda82ef52b99226882b7a14bd87f094a9ba1219b70d",
+    "sdkSourceFiles": 160,
+    "artifacts": 2,
+    "invalidTypedCallsPerArtifact": 27,
+    "offline": true,
+    "priorFailure": {
+      "log": {
+        "path": "work/index-identity-boundaries/distribution-001.log",
+        "bytes": 1772,
+        "sha256": "2361c06d311fcbb8872b1696b007ddb53f4a5576639b2e9f315b5010b6578ed1"
+      },
+      "reason": "incomplete wrong UV cache; no dependency available offline; SDK unchanged"
+    }
+  },
+  "codeHostedOffline": {
+    "run": 42870788810,
+    "head": "5856b4eff699fe8760d28a8b67d323702da1aa94",
+    "status": "success",
+    "jobs": [
+      {
+        "job": 130021200619,
+        "python": "3.11.18",
+        "passed": 7794,
+        "skipped": 3611,
+        "seconds": 477.25
+      },
+      {
+        "job": 130021200182,
+        "python": "3.12.16",
+        "passed": 7794,
+        "skipped": 3611,
+        "seconds": 387.93
+      }
+    ],
+    "wheelAndSdistPerVersion": "passed",
+    "invalidTypedCallsPerArtifact": 27,
+    "skipsGrantCredit": false
+  },
+  "hostedOriginalAtDocumentationPreparation": {
+    "run": 42870788794,
+    "head": "5856b4eff699fe8760d28a8b67d323702da1aa94",
+    "status": "in_progress",
+    "observedAt": "2026-11-10T18:44:02Z"
+  },
+  "separatePriorHostedFollowup": {
+    "run": 42836813923,
+    "job": 129901102159,
+    "status": "mismatched",
+    "mode": "smoke",
+    "matched": 1403,
+    "mismatched": 18,
+    "blocked": 0,
+    "errors": [],
+    "localPreviousMismatches": 14,
+    "unexplainedExtraMismatches": 4,
+    "artifactId": 13775644210,
+    "artifactZipSha256": "267603853e86330aaaee251f6a795cbd0f12b8db7b16f57e1c5db711699f61bd",
+    "artifactAccess": "File Service download host blocked by enforced network policy; investigation ended blocked, with no original hosted case IDs extracted."
+  },
+  "targetedChecks": {
+    "nativeCapabilityPassed": 34,
+    "harnessPassed": 74,
+    "privateCodecPassed": 7,
+    "phaseNewTestsPassed": 20,
+    "selectedRegressionPassed": 290,
+    "selectedRegressionIncludesOriginal17PhaseTests": true
+  },
+  "retainedDevelopmentAttempts": {
+    "nativeFirst": {
+      "report": "work/index-identity-boundaries/native/attempt-001-frozen-primary/report.json",
+      "bytes": 96972,
+      "sha256": "b809699d8a4458b07ec75ff7b97df5d1c35898e4c9a5c8bc3e44a2d7d5e68347",
+      "cases": 16,
+      "completed": 16,
+      "failed": 0,
+      "errors": [],
+      "durationSeconds": 127.12592127401149,
+      "finalAuthenticationPassed": true,
+      "sdkExecuted": false,
+      "credits": 0
+    },
+    "nativeObservedClosure": {
+      "path": "work/index-identity-boundaries/native/attempt-002-observed-closure-primary/report.json",
+      "bytes": 96972,
+      "sha256": "2dd629211d76b669b2317b2a783ebcb4ce4a8bbae6bdbd2692556494bb38a437",
+      "cases": 16,
+      "failed": 0,
+      "summary": {
+        "kind": "index-identity-boundaries-native-first-baseline",
+        "acceptancePointsAwarded": 0,
+        "sdkExecuted": false,
+        "errors": [],
+        "node": {
+          "execPath": "/workspace/memory-core/work/node-v24.16.0-linux-x64/bin/node",
+          "nodeVersion": "v24.16.0",
+          "icuVersion": "78.3",
+          "unicodeVersion": "17.0",
+          "sha256": "b2959781cc5a74c357ffa02367efa8a0330cbb1c9cb347732fdfaaaca381cbcd"
+        },
+        "bindings": {
+          "kind": "official-release-index-identity-boundary-owner",
+          "referenceCommit": "bcfc88812a35243893585dbeca87ca41b48272ca",
+          "sourceBuildReproduced": false,
+          "constructorSkipped": false,
+          "fullManagerExecutionVerified": false,
+          "fullHostOrchestrationVerified": false,
+          "sourceBindings": [
+            {
+              "path": "extensions/memory-core/src/tools.ts",
+              "sha256": "bc3fc7cbfa743fcfe57200a0c66ee6ca53191e928a20f4195c29ca0122980e66",
+              "anchors": [
+                {
+                  "anchor": "export function createMemorySearchTool(options: MemoryToolOptions) {",
+                  "line": 226
+                },
+                {
+                  "anchor": "function readCorpusParam<T extends string>(",
+                  "line": 86
+                }
+              ]
+            },
+            {
+              "path": "extensions/memory-core/src/memory-tool-contract.ts",
+              "sha256": "6d1649776d4a73729b36facd8ef5cdc6d77e443b719c736ecedd9c9ea6f48191",
+              "anchors": [
+                {
+                  "anchor": "export const MEMORY_SEARCH_TOOL_CONTRACT = {",
+                  "line": 90
+                },
+                {
+                  "anchor": "export function resolveMemoryToolContext(options: MemoryToolOptions) {",
+                  "line": 68
+                }
+              ]
+            },
+            {
+              "path": "extensions/memory-core/src/tools.shared.ts",
+              "sha256": "f111a96bd8f19e2e7b295133531a1ac240ae9938ef2c0c4cd477a8b914b0d9be",
+              "anchors": [
+                {
+                  "anchor": "export function buildMemorySearchUnavailableResult(",
+                  "line": 93
+                },
+                {
+                  "anchor": "export function createMemoryTool(params: {",
+                  "line": 62
+                }
+              ]
+            },
+            {
+              "path": "extensions/memory-core/src/tools.citations.ts",
+              "sha256": "10ac036c279a1d18ea20e0731b3aee126aebd89f3d3a4fff09b965db5ef80669",
+              "anchors": [
+                {
+                  "anchor": "export function buildMemorySearchPresentation(",
+                  "line": 21
+                },
+                {
+                  "anchor": "export function shouldIncludeCitations(params: {",
+                  "line": 49
+                }
+              ]
+            },
+            {
+              "path": "extensions/memory-core/src/memory-search-tool-query.ts",
+              "sha256": "48168070d098e7540f82e83a2ab5e12cda338af8bded9d1a0b65e22514c93bdb",
+              "anchors": [
+                {
+                  "anchor": "export async function executeMemorySearchToolQuery(params: {",
+                  "line": 72
+                }
+              ]
+            },
+            {
+              "path": "extensions/memory-core/src/memory-corpus.ts",
+              "sha256": "f37d07ba508c47256dfa5b60f71caad06569ca8e3e195bbfc2363c7cc098bca3",
+              "anchors": [
+                {
+                  "anchor": "export function composeMemoryCorpusMetadata(",
+                  "line": 191
+                },
+                {
+                  "anchor": "export async function searchMemoryCorpusSupplements(params: {",
+                  "line": 275
+                }
+              ]
+            },
+            {
+              "path": "extensions/memory-core/src/session-search-visibility.ts",
+              "sha256": "81027cda9baa0a97809f4ecaa1f39425c1e9029d048830d2c0f1ed5960e98e41",
+              "anchors": [
+                {
+                  "anchor": "export async function filterMemorySearchHitsBySessionVisibility(params: {",
+                  "line": 164
+                }
+              ]
+            },
+            {
+              "path": "src/agents/tools/tool-results.ts",
+              "sha256": "36a3500e0cc46b1615daf70636c651f7f35ff6c6ed5273a2c63a3e9182bc14f7",
+              "anchors": [
+                {
+                  "anchor": "export function jsonResult<TDetails>(payload: TDetails): AgentToolResult<TDetails> {",
+                  "line": 10
+                }
+              ]
+            },
+            {
+              "path": "src/agents/tools/common.ts",
+              "sha256": "3140b2be2998afbd24d2ab68e1d206e86c7dd8ed8147a2b4ff77304419f7c7dc",
+              "anchors": [
+                {
+                  "anchor": "export function readPositiveIntegerParam(",
+                  "line": 199
+                },
+                {
+                  "anchor": "export function readFiniteNumberParam(",
+                  "line": 247
+                }
+              ]
+            },
+            {
+              "path": "extensions/memory-core/src/memory/manager-runtime.ts",
+              "sha256": "0aa26fecd02844613b2e671b00e417ade5f0354df30e36afb9dcc2b559178c6b",
+              "anchors": [
+                {
+                  "anchor": "export { MemoryIndexManager };",
+                  "line": 3
+                }
+              ]
+            },
+            {
+              "path": "extensions/memory-core/src/memory/manager.ts",
+              "sha256": "c4995b1e83db3e9aa4fbc6bdcffe4ddb36d9a5769396a0b1fd4ee2934c5c8173",
+              "anchors": [
+                {
+                  "anchor": "export class MemoryIndexManager extends MemorySearchOrchestration implements MemorySearchManager {",
+                  "line": 65
+                },
+                {
+                  "anchor": "  static async get(params: {",
+                  "line": 106
+                },
+                {
+                  "anchor": "  private constructor(params: {",
+                  "line": 211
+                },
+                {
+                  "anchor": "  status(): MemoryProviderStatus {",
+                  "line": 513
+                },
+                {
+                  "anchor": "  private publishedStatus(): MemoryProviderStatus {",
+                  "line": 520
+                }
+              ]
+            },
+            {
+              "path": "src/plugins/memory-state.ts",
+              "sha256": "b334c9eed9bbb43c54560515a62511b6ff5ea77a044c584d0ea029670ad37229",
+              "anchors": [
+                {
+                  "anchor": "export function registerMemoryCorpusSupplement(",
+                  "line": 98
+                }
+              ]
+            },
+            {
+              "path": "extensions/memory-core/runtime-api.ts",
+              "sha256": "9b7bbd261019d84c40ab9826b14020ac40d18e92010e1b21757d9383145a98f8",
+              "anchors": [
+                {
+                  "anchor": "export { getMemorySearchManager } from \"./src/memory/index.js\";",
+                  "line": 2
+                }
+              ]
+            },
+            {
+              "path": "extensions/memory-core/src/tools.runtime.ts",
+              "sha256": "db0cca56eef6ad7b7cd6d56429d42529442a541ca0597f87be0603583e730fc5",
+              "anchors": [
+                {
+                  "anchor": "export { getMemorySearchManager } from \"./memory/index.js\";",
+                  "line": 5
+                }
+              ]
+            },
+            {
+              "path": "extensions/memory-core/src/memory/index.ts",
+              "sha256": "efea33108241b8558b13082bf9742b86dee93c7d143ed8bd1cb097b11607136d",
+              "anchors": [
+                {
+                  "anchor": "  getMemorySearchManager,",
+                  "line": 5
+                }
+              ]
+            },
+            {
+              "path": "extensions/memory-core/src/memory/search-manager.ts",
+              "sha256": "c416ce10a435f0eaa8b3dbeae9158ea989b33de2aedf9a8816e52472bb2b1c23",
+              "anchors": [
+                {
+                  "anchor": "export async function getMemorySearchManager(",
+                  "line": 35
+                }
+              ]
+            },
+            {
+              "path": "src/plugin-sdk/memory-core-host-engine-foundation.ts",
+              "sha256": "5ec673cb42dc14662c6be1b4e405d4242f9a24cfa933e8200b98cb329227fb8c",
+              "anchors": [
+                {
+                  "anchor": "  resolveMemorySearchConfig,",
+                  "line": 12
+                }
+              ]
+            },
+            {
+              "path": "src/agents/memory-search.ts",
+              "sha256": "a1edad1e59255c5657af97d636be2517a3704f2ca3950e4a06f06892647092b2",
+              "anchors": [
+                {
+                  "anchor": "export function resolveMemorySearchIndexConfig(",
+                  "line": 97
+                },
+                {
+                  "anchor": "export function resolveMemorySearchConfig(",
+                  "line": 273
+                },
+                {
+                  "anchor": "function resolveSyncConfig() {",
+                  "line": 280
+                }
+              ]
+            },
+            {
+              "path": "extensions/memory-core/src/memory/manager-registry.ts",
+              "sha256": "54f25cee8827b40510d34da84d6316481df1d6cf686264235ed45338a8dafb4f",
+              "anchors": [
+                {
+                  "anchor": "export class MemoryManagerRegistry<T extends ClosableMemoryManager> {",
+                  "line": 89
+                }
+              ]
+            },
+            {
+              "path": "extensions/memory-core/src/memory/manager-database-context.ts",
+              "sha256": "bf2006808241b2ed7c07636b49f447e44d1d2fcf1141a4c9d60744738d194bf8",
+              "anchors": [
+                {
+                  "anchor": "export class MemoryIndexDatabase {",
+                  "line": 45
+                }
+              ]
+            },
+            {
+              "path": "extensions/memory-core/src/memory/manager-sync-base.ts",
+              "sha256": "882b622e142cd05f06607f8e10162adb40731a8f797dba36f7f300383ddf6062",
+              "anchors": [
+                {
+                  "anchor": "  protected resolveCurrentIndexIdentityState(params?: {",
+                  "line": 354
+                },
+                {
+                  "anchor": "  protected readMeta(): MemoryIndexMeta | null {",
+                  "line": 621
+                }
+              ]
+            },
+            {
+              "path": "extensions/memory-core/src/memory/manager-reindex-state.ts",
+              "sha256": "920dfbd46b3ac3f08ffa892642a4bb8474c779f22872107ccbf536a47f926044",
+              "anchors": [
+                {
+                  "anchor": "export const MEMORY_INDEX_PROVENANCE_VERSION = 1;",
+                  "line": 30
+                },
+                {
+                  "anchor": "export function resolveMemoryIndexIdentityState(",
+                  "line": 222
+                }
+              ]
+            },
+            {
+              "path": "extensions/memory-core/src/memory/manager-retrieval-read.ts",
+              "sha256": "48076bc9ad42b4ba20daa0583f8a1160eaafa9b3ab575b8542666b2c80765f16",
+              "anchors": [
+                {
+                  "anchor": "export function readMemoryIndexMetadata(db: DatabaseSync): {",
+                  "line": 18
+                },
+                {
+                  "anchor": "export function readMemoryRetrievalIndexState(db: DatabaseSync): MemoryRetrievalIndexState {",
+                  "line": 43
+                }
+              ]
+            },
+            {
+              "path": "extensions/memory-core/src/memory/manager-provider-lifecycle.ts",
+              "sha256": "128250bef2657f587c891ed833c32abd9ae66d387a9d40b2b9c89fa0cdd1df79",
+              "anchors": [
+                {
+                  "anchor": "  protected async ensureProviderInitialized(): Promise<void> {",
+                  "line": 321
+                },
+                {
+                  "anchor": "  protected async ensureEmbeddingProviderForSearch(",
+                  "line": 181
+                }
+              ]
+            },
+            {
+              "path": "extensions/memory-core/src/memory/manager-search-orchestration.ts",
+              "sha256": "04f4189be68e7cf1118348dd2f22c9cbdfe4a80496a783922d095283c3986c55",
+              "anchors": [
+                {
+                  "anchor": "  async search(query: string, opts?: MemoryIndexSearchOptions): Promise<MemorySearchResult[]> {",
+                  "line": 61
+                },
+                {
+                  "anchor": "      const shouldRepairIdentity =",
+                  "line": 279
+                }
+              ]
+            },
+            {
+              "path": "extensions/memory-core/src/memory/manager-sync-ops.ts",
+              "sha256": "5e2732c67f5e07cbb545ec9aad4f7e40ac391561b0c645f68f5ce6e865dcbf18",
+              "anchors": [
+                {
+                  "anchor": "export abstract class MemoryManagerSyncOps extends MemoryManagerSourceSyncOps {",
+                  "line": 78
+                }
+              ]
+            },
+            {
+              "path": "extensions/memory-core/src/memory/manager-db-kernel.ts",
+              "sha256": "4973db0580dc6dd7ac032a983efffa79ccb14fc4206f046b94c4250c7b5597ca",
+              "anchors": [
+                {
+                  "anchor": "export function publishMemoryDatabaseTables(params: MemoryDatabasePublication): void {",
+                  "line": 108
+                }
+              ]
+            },
+            {
+              "path": "extensions/memory-core/src/memory/manager-source-index-kernel.ts",
+              "sha256": "b0bf466a54ee67705f5b7327a31c0013e9ee44a57117181ca5860c5ef90e30b5",
+              "anchors": [
+                {
+                  "anchor": "export class MemorySourceIndexKernel {",
+                  "line": 65
+                }
+              ]
+            },
+            {
+              "path": "extensions/memory-core/src/memory/manager-publication.worker.ts",
+              "sha256": "4bbc2de8a1e50ea089a5de337fbb2eaa5c0352fef5e85bf532557698d8b59b86",
+              "anchors": [
+                {
+                  "anchor": "export function bindSqliteWorkerBackend(",
+                  "line": 57
+                }
+              ]
+            },
+            {
+              "path": "extensions/memory-core/src/memory/manager-index-preparation.ts",
+              "sha256": "208e5c367e6f5dd79f1837050404fe67a9f05ac8fa5e5ad1860c12f4a259e041",
+              "anchors": [
+                {
+                  "anchor": "export function prepareMemoryIndexChunks({",
+                  "line": 42
+                }
+              ]
+            },
+            {
+              "path": "extensions/memory-core/src/memory/manager-cpu-worker-runtime.ts",
+              "sha256": "060ebff91bcc60a819551cb44e055597e778a0792bf041da18f4749afebe686c",
+              "anchors": [
+                {
+                  "anchor": "export async function runMemoryIndexState(",
+                  "line": 42
+                },
+                {
+                  "anchor": "export async function runMemoryKeywordSearch(",
+                  "line": 106
+                },
+                {
+                  "anchor": "export async function prepareMemoryIndexInWorker(",
+                  "line": 150
+                }
+              ]
+            },
+            {
+              "path": "extensions/memory-core/src/memory/manager-search.worker.ts",
+              "sha256": "b477fa182008d9aef544e0fa95d85cf5c731248ee492b60b15886f8b1b88931d",
+              "anchors": [
+                {
+                  "anchor": "serveWorkerTasks(async (input): Promise<MemorySearchWorkerOutput> => {",
+                  "line": 73
+                }
+              ]
+            },
+            {
+              "path": "extensions/memory-core/src/memory/manager-index.worker.ts",
+              "sha256": "f68ee277284e834688a38993724a2844be65d581a05abd6455720f61d20452a7",
+              "anchors": [
+                {
+                  "anchor": "serveWorkerTasks<MemoryIndexTaskResult>((input) => {",
+                  "line": 5
+                }
+              ]
+            },
+            {
+              "path": "extensions/memory-core/src/memory/manager-index-generation-lease.ts",
+              "sha256": "0e41d89b8be1e702abbe8481520911ea9560b3b14fd9919cc3d4ea4ed07becc8",
+              "anchors": [
+                {
+                  "anchor": "export async function acquireMemoryIndexReadGeneration(",
+                  "line": 227
+                }
+              ]
+            },
+            {
+              "path": "src/plugin-sdk/memory-core-host-engine-storage.ts",
+              "sha256": "77459d8b9de13ebc1aa1974313807e9575f35300663e6f6a392a131a794c478a",
+              "anchors": [
+                {
+                  "anchor": "  resolveMemoryIndexIdentityDiagnostic,",
+                  "line": 68
+                }
+              ]
+            },
+            {
+              "path": "packages/memory-host-sdk/src/engine-storage.ts",
+              "sha256": "8c9e64c08acf587dd3312f4df3a874b423bdc52ea85ff6fabdd1377e2ac12a2a",
+              "anchors": [
+                {
+                  "anchor": "  resolveMemoryIndexIdentityDiagnostic,",
+                  "line": 47
+                }
+              ]
+            },
+            {
+              "path": "packages/memory-host-sdk/src/host/types.ts",
+              "sha256": "737b555fc517671b927bcbab30334ffbd20c3690e02fa72595eeaacbddf06e4a",
+              "anchors": [
+                {
+                  "anchor": "export function resolveMemoryIndexIdentityDiagnostic(",
+                  "line": 250
+                },
+                {
+                  "anchor": "export function resolveMemoryIndexSearchDiagnostic(",
+                  "line": 313
+                }
+              ]
+            }
+          ],
+          "sourceImportLinks": [
+            {
+              "path": "extensions/memory-core/src/tools.ts",
+              "kind": "import",
+              "specifier": "./memory-tool-contract.js",
+              "bindings": [
+                "MEMORY_GET_TOOL_CONTRACT",
+                "MEMORY_SEARCH_TOOL_CONTRACT"
+              ],
+              "line": 32,
+              "declarationSha256": "dc5ffce336d264dfc12c56f321301d10c815cdebc750d21a363eb50676f6ce8d"
+            },
+            {
+              "path": "extensions/memory-core/src/tools.ts",
+              "kind": "import",
+              "specifier": "./tools.citations.js",
+              "bindings": [
+                "buildMemorySearchPresentation",
+                "resolveMemoryCitationsMode",
+                "shouldIncludeCitations"
+              ],
+              "line": 42,
+              "declarationSha256": "6799afeb856bde0c13cc51965344878824ab4e47adf94da4f616e78c8ce12011"
+            },
+            {
+              "path": "extensions/memory-core/src/tools.ts",
+              "kind": "import",
+              "specifier": "./tools.shared.js",
+              "bindings": [
+                "buildMemorySearchUnavailableResult",
+                "createMemoryTool",
+                "getMemoryManagerContextWithPurpose",
+                "loadMemoryToolRuntime"
+              ],
+              "line": 48,
+              "declarationSha256": "f408a776724dca991a6f48ccd4bd23352444a9d34c2d4cdbc8fa3bfe9cfb96e3"
+            },
+            {
+              "path": "extensions/memory-core/src/memory/manager-runtime.ts",
+              "kind": "import",
+              "specifier": "./manager.js",
+              "bindings": [
+                "getMemoryIndexManagerRegistry",
+                "MemoryIndexManager"
+              ],
+              "line": 1,
+              "declarationSha256": "4b872f482b895c7f69a1eb36d5f75eaf69ba52f010f3bc4aceea9e26293a6790"
+            },
+            {
+              "path": "extensions/memory-core/runtime-api.ts",
+              "kind": "export",
+              "specifier": "./src/memory/index.js",
+              "bindings": [
+                "getMemorySearchManager"
+              ],
+              "line": 2,
+              "declarationSha256": "c174225b73a27884ec7226170329ada942023a04d6e08740a3fbdb7d677c3f67"
+            },
+            {
+              "path": "extensions/memory-core/src/tools.runtime.ts",
+              "kind": "export",
+              "specifier": "./memory/index.js",
+              "bindings": [
+                "getMemorySearchManager"
+              ],
+              "line": 5,
+              "declarationSha256": "db3410b190e2552988df04667337635a32e4780aceb1a4b2e7f24dbde7d653d1"
+            },
+            {
+              "path": "extensions/memory-core/src/memory/index.ts",
+              "kind": "export",
+              "specifier": "./search-manager.js",
+              "bindings": [
+                "closeAllMemorySearchManagers",
+                "closeMemorySearchManager",
+                "getMemorySearchManager"
+              ],
+              "line": 2,
+              "declarationSha256": "838074dd454b9fc850d98c1c8b61a45f5825a3161ec7e5f2c637a52aef7e3a37"
+            },
+            {
+              "path": "extensions/memory-core/src/memory/search-manager.ts",
+              "kind": "import",
+              "specifier": "openclaw/plugin-sdk/memory-core-host-engine-foundation",
+              "bindings": [
+                "resolveAgentWorkspaceDir",
+                "resolveMemorySearchConfig"
+              ],
+              "line": 5,
+              "declarationSha256": "192c730704fb95c1eea0b16300486298548025dc9aa5342fafc84937e9b6a5f5"
+            },
+            {
+              "path": "src/plugin-sdk/memory-core-host-engine-foundation.ts",
+              "kind": "export",
+              "specifier": "../agents/memory-search.js",
+              "bindings": [
+                "resolveMemorySearchConfig",
+                "resolveMemorySearchSyncConfig"
+              ],
+              "line": 11,
+              "declarationSha256": "e3ab8d546754f6fa2ba9027a5961caf24e20c158ae69da0004750e812865ba88"
+            },
+            {
+              "path": "extensions/memory-core/src/memory/manager-sync-base.ts",
+              "kind": "import",
+              "specifier": "./manager-reindex-state.js",
+              "bindings": [
+                "resolveMemoryIndexIdentityState"
+              ],
+              "line": 32,
+              "declarationSha256": "1774980e010f4093dbe4d8b4a065948823372f1faab4e94901fc66b580502be4"
+            },
+            {
+              "path": "extensions/memory-core/src/memory/manager-sync-base.ts",
+              "kind": "import",
+              "specifier": "./manager-retrieval-read.js",
+              "bindings": [
+                "MEMORY_INDEX_META_KEY",
+                "readMemoryIndexMetadata"
+              ],
+              "line": 41,
+              "declarationSha256": "460fa870b65b1e5e7f4b4e897a37686d105c033759b72d32aa8bc103a23720d8"
+            },
+            {
+              "path": "extensions/memory-core/src/memory/manager-search-orchestration.ts",
+              "kind": "import",
+              "specifier": "./manager-index-generation-lease.js",
+              "bindings": [
+                "acquireMemoryIndexReadGeneration"
+              ],
+              "line": 23,
+              "declarationSha256": "68d7578ab11cf3e234588bbd903bd1be5dee83ef2984b0de8b0c02eca4f9d010"
+            },
+            {
+              "path": "extensions/memory-core/src/memory/manager-search.worker.ts",
+              "kind": "import",
+              "specifier": "./manager-retrieval-read.js",
+              "bindings": [
+                "readMemoryRetrievalIndexState",
+                "readMemoryRecallData"
+              ],
+              "line": 14,
+              "declarationSha256": "f88aa42cf565974691008e0d75b9c22b846f5388a2172c770897f6cc5cf65087"
+            },
+            {
+              "path": "extensions/memory-core/src/memory/manager-index.worker.ts",
+              "kind": "import",
+              "specifier": "./manager-index-preparation.js",
+              "bindings": [
+                "prepareMemoryIndexChunks"
+              ],
+              "line": 3,
+              "declarationSha256": "c487850ff0bb7902268bf2828d788954633eee9325750c5dd51fb499756d1bd3"
+            },
+            {
+              "path": "extensions/memory-core/src/memory/manager-publication.worker.ts",
+              "kind": "import",
+              "specifier": "./manager-db-kernel.js",
+              "bindings": [
+                "publishMemoryDatabaseTables",
+                "readMemoryDatabaseRevision"
+              ],
+              "line": 13,
+              "declarationSha256": "744229355e60abc7668bc0745bf9353e1c715ea7a9d20b2b6a27f4b3e1322d99"
+            },
+            {
+              "path": "extensions/memory-core/src/memory-search-tool-query.ts",
+              "kind": "import",
+              "specifier": "openclaw/plugin-sdk/memory-core-host-engine-storage",
+              "bindings": [
+                "resolveMemoryIndexIdentityDiagnostic",
+                "resolveMemoryIndexSearchDiagnostic"
+              ],
+              "line": 3,
+              "declarationSha256": "92942a5b3e81d3f050e3046486ad4661571225702e6a38cb5b6e7f3f3fb38bad"
+            },
+            {
+              "path": "src/plugin-sdk/memory-core-host-engine-storage.ts",
+              "kind": "export",
+              "specifier": "../../packages/memory-host-sdk/src/engine-storage.js",
+              "bindings": [
+                "resolveMemoryIndexIdentityDiagnostic",
+                "resolveMemoryIndexSearchDiagnostic"
+              ],
+              "line": 11,
+              "declarationSha256": "8e2e64cdcdb915a363a51670f1373303afd6718ef56266f051be8e3c312c24d0"
+            },
+            {
+              "path": "packages/memory-host-sdk/src/engine-storage.ts",
+              "kind": "export",
+              "specifier": "./host/types.js",
+              "bindings": [
+                "resolveMemoryIndexIdentityDiagnostic",
+                "resolveMemoryIndexSearchDiagnostic"
+              ],
+              "line": 43,
+              "declarationSha256": "3925a17efdaee70ad67dc4bb07e0f5adee4d5a4fbbfc9fee230c59c6d71cab16"
+            }
+          ],
+          "compiledBindings": [
+            {
+              "path": "dist/tools-DotaQGXh.mjs",
+              "sha256": "c31b10a5ed25a1e02e5e7ac5be034b78906558c39350fd72be3f4c9edecc766e",
+              "anchors": [
+                {
+                  "anchor": "function createMemorySearchTool(options) {",
+                  "line": 697
+                },
+                {
+                  "anchor": "function executeMemorySearchToolQuery(params) {",
+                  "line": 452
+                },
+                {
+                  "anchor": "function composeMemoryCorpusMetadata(attempts, extraWarnings = []) {",
+                  "line": 202
+                },
+                {
+                  "anchor": "export { createMemoryGetTool, createMemorySearchTool, testing };",
+                  "line": 994
+                }
+              ]
+            },
+            {
+              "path": "dist/memory-tool-contract-DOz26L8b.mjs",
+              "sha256": "caa1cf11748ff19c561d94a321ffff564fdfbd357bc8954e09f50ed6844bb063",
+              "anchors": [
+                {
+                  "anchor": "const MEMORY_SEARCH_TOOL_CONTRACT = {",
+                  "line": 78
+                },
+                {
+                  "anchor": "function resolveMemoryToolContext(options) {",
+                  "line": 60
+                },
+                {
+                  "anchor": "export { resolveMemoryToolContext as i, MEMORY_SEARCH_TOOL_CONTRACT as n, buildMemoryPromptSection as r, MEMORY_GET_TOOL_CONTRACT as t };",
+                  "line": 118
+                }
+              ]
+            },
+            {
+              "path": "dist/common-CnSoEQyp.mjs",
+              "sha256": "7528a47a2ba0ad07e678c6efdd308b858bc2587abf85bfc3f1a6c20e2a50cf57",
+              "anchors": [
+                {
+                  "anchor": "function readPositiveIntegerParam(params, key, options = {}) {",
+                  "line": 70
+                },
+                {
+                  "anchor": "function readFiniteNumberParam(params, key, options = {}) {",
+                  "line": 94
+                }
+              ]
+            },
+            {
+              "path": "dist/tool-results-BCM3fdVS.mjs",
+              "sha256": "ac69dc5bf2dac8d90d319e1fa58ee8684101987f8522ae80a5b0ba5de49239a1",
+              "anchors": [
+                {
+                  "anchor": "function jsonResult(payload) {",
+                  "line": 11
+                }
+              ]
+            },
+            {
+              "path": "dist/types-DTVBdCzw.mjs",
+              "sha256": "14598f9947a85bf691d345dc54c32899c8931afc580e45f143918afe8b54db50",
+              "anchors": [
+                {
+                  "anchor": "function resolveMemorySearchStaleness(status, agentId) {",
+                  "line": 74
+                },
+                {
+                  "anchor": "function resolveMemoryIndexIdentityDiagnostic(status) {",
+                  "line": 15
+                },
+                {
+                  "anchor": "function resolveMemoryIndexSearchDiagnostic(diagnostic, status, agentId) {",
+                  "line": 43
+                }
+              ]
+            },
+            {
+              "path": "dist/session-search-visibility-BSOBplEm.mjs",
+              "sha256": "d7ab86815684e09c631ddc06062dbf62a6063be42c08d595b9f2050d24f63675",
+              "anchors": [
+                {
+                  "anchor": "async function filterMemorySearchHitsBySessionVisibility(params) {",
+                  "line": 70
+                }
+              ]
+            },
+            {
+              "path": "dist/memory-state-BmtUbXjH.mjs",
+              "sha256": "ed71931d904089353576180357a71c99a6a976b6e300b381b0be943298c9bc4f",
+              "anchors": [
+                {
+                  "anchor": "function registerMemoryCorpusSupplement(requestedPluginId, supplement) {",
+                  "line": 47
+                },
+                {
+                  "anchor": "function listMemoryCorpusSupplements() {",
+                  "line": 74
+                }
+              ]
+            },
+            {
+              "path": "dist/extensions/memory-core/manager-runtime.js",
+              "sha256": "6ae8f02e229a5422d88dde59a6c070cce03e1ac9ffe5fa87172db8512f0eea0e",
+              "anchors": [
+                {
+                  "anchor": "var MemoryIndexManager = class MemoryIndexManager extends MemorySearchOrchestration {",
+                  "line": 5344
+                },
+                {
+                  "anchor": "export { MemoryIndexManager, closeAllMemoryIndexManagers, closeMemoryIndexManagersForAgent };",
+                  "line": 5777
+                },
+                {
+                  "anchor": "function resolveMemoryIndexIdentityState(params) {",
+                  "line": 911
+                },
+                {
+                  "anchor": "resolveCurrentIndexIdentityState(params) {",
+                  "line": 1310
+                },
+                {
+                  "anchor": "publishedStatus() {",
+                  "line": 5621
+                }
+              ]
+            },
+            {
+              "path": "dist/extensions/memory-core/runtime-api.js",
+              "sha256": "520c6cc05e74399c910425488cacd52867bb587434a36d33c8b90d11326d75ec",
+              "anchors": [
+                {
+                  "anchor": "getMemorySearchManager,",
+                  "line": 11
+                }
+              ]
+            },
+            {
+              "path": "dist/memory-CO0OCfyl.mjs",
+              "sha256": "428531446f314cd1d2a5214f78e849a1ae9f7fbd042d66b71505416e7fda9702",
+              "anchors": [
+                {
+                  "anchor": "async function getMemorySearchManager(params) {",
+                  "line": 13
+                },
+                {
+                  "anchor": "getMemorySearchManager as r",
+                  "line": 49
+                }
+              ]
+            },
+            {
+              "path": "dist/memory-search-CIhUURbE.mjs",
+              "sha256": "e015aeaa8d8e062eb792ae58d2e4537e5b0f665ea97b946979e644444304a148",
+              "anchors": [
+                {
+                  "anchor": "function resolveMemorySearchConfig(cfg, agentId) {",
+                  "line": 164
+                },
+                {
+                  "anchor": "function resolveSyncConfig() {",
+                  "line": 167
+                }
+              ]
+            },
+            {
+              "path": "dist/tools.runtime.js",
+              "sha256": "453b5423b3b47e05cf06608162ae184186d332c2042792bde427580cc73d5661",
+              "anchors": [
+                {
+                  "anchor": "export * from \"./tools.runtime-m4sffzql.mjs\";",
+                  "line": 1
+                }
+              ]
+            },
+            {
+              "path": "dist/tools.runtime-m4sffzql.mjs",
+              "sha256": "0e3cca44ae9922d28e02779723a91f99889e6322a77daa4d9700bdcb4f816983",
+              "anchors": [
+                {
+                  "anchor": "export { getMemorySearchManager, readAgentMemoryFile, resolveMemoryBackendConfig };",
+                  "line": 5
+                }
+              ]
+            },
+            {
+              "path": "dist/manager-search-DgMs3pkc.mjs",
+              "sha256": "f97d896dac1037bc8aa96b3b8631cb3efba3ee361f4a8c02039bebc18f6184a0",
+              "anchors": [
+                {
+                  "anchor": "function readMemoryIndexMetadata(db) {",
+                  "line": 83
+                },
+                {
+                  "anchor": "function readMemoryRetrievalIndexState(db) {",
+                  "line": 101
+                }
+              ]
+            },
+            {
+              "path": "dist/manager-cpu-worker-runtime-CAWQOyFu.mjs",
+              "sha256": "9225fc056eb1db62970511129ce9843ffd467eb2d6f2b08500b63fd7854fbc45",
+              "anchors": [
+                {
+                  "anchor": "async function runMemoryIndexState(",
+                  "line": 24
+                },
+                {
+                  "anchor": "async function runMemoryKeywordSearch(",
+                  "line": 65
+                }
+              ]
+            },
+            {
+              "path": "dist/manager-cpu-entrypoints-bJosRUx9.mjs",
+              "sha256": "6685d974f0ba1ca6e8aa0349658cfb5c427678230396dca00b4549c340ca7f1a",
+              "anchors": [
+                {
+                  "anchor": "const memoryCpuProcessEntrypoints = {",
+                  "line": 2
+                }
+              ]
+            },
+            {
+              "path": "dist/extensions/memory-core/memory-publication.worker.js",
+              "sha256": "1567321ec23f591b1d10c8d3291a60353af608658e769b7a6a427bad4f56378f",
+              "anchors": [
+                {
+                  "anchor": "export { bindSqliteWorkerBackend, openExistingSqliteWorkerBackend };",
+                  "line": 2
+                }
+              ]
+            },
+            {
+              "path": "dist/manager-publication.worker-x9zokjMA.mjs",
+              "sha256": "d2b8540a1b29cd70cb21561b577382c9f73d353303f0795a9ba1c39e6f8c3b25",
+              "anchors": [
+                {
+                  "anchor": "function bindSqliteWorkerBackend(input, context) {",
+                  "line": 30
+                }
+              ]
+            },
+            {
+              "path": "dist/manager-db-kernel-DyJADqYu.mjs",
+              "sha256": "b2af8c64d1450a503cecb97a96d37b3597340c6a68cc7c0231f98befc964bd99",
+              "anchors": [
+                {
+                  "anchor": "function publishMemoryDatabaseTables(params) {",
+                  "line": 55
+                }
+              ]
+            },
+            {
+              "path": "dist/manager-source-index-kernel-D-njga00.mjs",
+              "sha256": "762c8cecb4b1eae8ea90d96eb6ed2759f07fd970c9ef4b12344f5e14ef0745fc",
+              "anchors": [
+                {
+                  "anchor": "var MemorySourceIndexKernel = class {",
+                  "line": 94
+                }
+              ]
+            },
+            {
+              "path": "dist/manager-index-preparation-wXpJtJiU.mjs",
+              "sha256": "6f9e0930cb49dfe7ba14ea851dde17a56ebebe66e3dabdab525854f90f179867",
+              "anchors": [
+                {
+                  "anchor": "function prepareMemoryIndexChunks(",
+                  "line": 23
+                }
+              ]
+            },
+            {
+              "path": "dist/manager-index.worker-CinEDBkE.mjs",
+              "sha256": "bf8a8a6d0185434fa48f31f82c27010deb8a3b96edf665c2e5d395a68e1b5b61",
+              "anchors": [
+                {
+                  "anchor": "serveWorkerTasks((input) => {",
+                  "line": 5
+                }
+              ]
+            },
+            {
+              "path": "dist/manager-search.worker-BWRvo8WR.mjs",
+              "sha256": "234abd2dd01f7ed01e2e94aa0f25f6cba402676fe7a6b308cfb6729b6c058e4f",
+              "anchors": [
+                {
+                  "anchor": "serveWorkerTasks(async (input) => {",
+                  "line": 53
+                }
+              ]
+            }
+          ],
+          "entrypoints": {
+            "publicManagerFacade": {
+              "path": "dist/extensions/memory-core/runtime-api.js",
+              "export": "getMemorySearchManager"
+            },
+            "manager": {
+              "path": "dist/extensions/memory-core/manager-runtime.js",
+              "export": "MemoryIndexManager",
+              "methods": [
+                "get",
+                "status",
+                "sync",
+                "search",
+                "close"
+              ]
+            },
+            "tool": {
+              "path": "dist/tools-DotaQGXh.mjs",
+              "export": "createMemorySearchTool"
+            }
+          },
+          "requiredLoadedArtifactsByProfile": {
+            "index-identity-boundaries-runtime": [
+              "dist/tools-DotaQGXh.mjs",
+              "dist/memory-tool-contract-DOz26L8b.mjs",
+              "dist/common-CnSoEQyp.mjs",
+              "dist/tool-results-BCM3fdVS.mjs",
+              "dist/types-DTVBdCzw.mjs",
+              "dist/session-search-visibility-BSOBplEm.mjs",
+              "dist/memory-state-BmtUbXjH.mjs",
+              "dist/extensions/memory-core/manager-runtime.js",
+              "dist/extensions/memory-core/runtime-api.js",
+              "dist/memory-CO0OCfyl.mjs",
+              "dist/memory-search-CIhUURbE.mjs",
+              "dist/tools.runtime.js",
+              "dist/tools.runtime-m4sffzql.mjs",
+              "dist/manager-search-DgMs3pkc.mjs",
+              "dist/manager-cpu-worker-runtime-CAWQOyFu.mjs",
+              "dist/manager-cpu-entrypoints-bJosRUx9.mjs",
+              "dist/manager-db-kernel-DyJADqYu.mjs",
+              "dist/manager-source-index-kernel-D-njga00.mjs",
+              "dist/manager-index-preparation-wXpJtJiU.mjs",
+              "dist/extensions/memory-core/memory-publication.worker.js",
+              "dist/manager-publication.worker-x9zokjMA.mjs",
+              "dist/manager-index.worker-CinEDBkE.mjs",
+              "dist/manager-search.worker-BWRvo8WR.mjs"
+            ]
+          },
+          "requiredMainArtifacts": [
+            "dist/tools-DotaQGXh.mjs",
+            "dist/memory-tool-contract-DOz26L8b.mjs",
+            "dist/common-CnSoEQyp.mjs",
+            "dist/tool-results-BCM3fdVS.mjs",
+            "dist/types-DTVBdCzw.mjs",
+            "dist/session-search-visibility-BSOBplEm.mjs",
+            "dist/memory-state-BmtUbXjH.mjs",
+            "dist/extensions/memory-core/manager-runtime.js",
+            "dist/extensions/memory-core/runtime-api.js",
+            "dist/memory-CO0OCfyl.mjs",
+            "dist/memory-search-CIhUURbE.mjs",
+            "dist/tools.runtime.js",
+            "dist/tools.runtime-m4sffzql.mjs",
+            "dist/manager-search-DgMs3pkc.mjs",
+            "dist/manager-cpu-worker-runtime-CAWQOyFu.mjs",
+            "dist/manager-cpu-entrypoints-bJosRUx9.mjs",
+            "dist/manager-db-kernel-DyJADqYu.mjs",
+            "dist/manager-source-index-kernel-D-njga00.mjs",
+            "dist/manager-index-preparation-wXpJtJiU.mjs"
+          ],
+          "requiredWorkerArtifacts": [
+            "dist/extensions/memory-core/memory-publication.worker.js",
+            "dist/manager-publication.worker-x9zokjMA.mjs",
+            "dist/manager-db-kernel-DyJADqYu.mjs",
+            "dist/manager-source-index-kernel-D-njga00.mjs",
+            "dist/manager-index-preparation-wXpJtJiU.mjs",
+            "dist/manager-index.worker-CinEDBkE.mjs",
+            "dist/manager-search.worker-BWRvo8WR.mjs",
+            "dist/manager-search-DgMs3pkc.mjs"
+          ],
+          "workerRequiredByProfile": {
+            "index-identity-boundaries-runtime": true
+          },
+          "fixtureBoundary": "The real CLI producer publishes before a declared metadata fixture. Original status and default-manager/facade owners then expose complete identity diagnostics before the caller's first public memory_search. The genuine public tool retains every result, warning/action and debug field; full engine-specific statuses and physical SQL snapshots stay in custody. Actual resolved sync/watch policies are retained rather than replaced by ignored input knobs. The source, official compiled artifact and runtime capture authorities remain distinct.",
+          "limits": [
+            "Declaration and import authentication alone proves neither execution nor acceptance.",
+            "Worker artifacts can load during producer setup; loading them alone proves no query admission.",
+            "A paused public result does not imply zero manager dispatch: valid formal queries still call the original manager and can read before paused-result finalization.",
+            "Pre-caller-query diagnostics do not claim that no speculative internal SQL query occurred.",
+            "Provider-none metadata cases do not establish semantic provider or endpoint discovery parity.",
+            "Physical SQLite encodings and complete host lifecycle parity are not claimed."
+          ]
+        },
+        "manifestSha256": "2c10c8eaced6bbeb7fd96d57d7c5480b0cf6254bbde5112c043dae7a69de1cbc",
+        "finalAuthenticationPassed": true,
+        "durationSeconds": 122.81622844398953,
+        "nativeCompleted": 16,
+        "nativeFailed": 0
+      },
+      "credits": 0
+    },
+    "sdkFirstFailed": {
+      "report": "work/index-identity-boundaries/sdk/attempt-001/report.json",
+      "sha256": "2b7b0ef13cd34ddc6c17dde36f96f4d94035e94800d6db26325b73057b117fd1",
+      "blocked": 16,
+      "reason": "private HybridResult missing-annotation sentinel was not JSON-encoded; no successful public capture claimed",
+      "fix": "SDK private custody tag codec preserves all fields and distinguishes missing from null; public envelope unchanged; early physical tool envelopes retained"
+    },
+    "sdkSecond": {
+      "report": "work/index-identity-boundaries/sdk/attempt-002/report.json",
+      "bytes": 67009,
+      "sha256": "20b489b64ac1d8d23b71376621752d47e91c25f10384f68ef3ef0311b464f34c",
+      "actualSdkExecutions": 16,
+      "completeCommonMatches": 16,
+      "differences": 0,
+      "errors": 0,
+      "credits": 0,
+      "sourceSha256": "a5972f3e37bcf97bce7f7cda82ef52b99226882b7a14bd87f094a9ba1219b70d",
+      "durationSeconds": 6.681419
+    }
+  },
+  "preservedInitialAuditFailure": {
+    "path": "work/index-identity-boundaries/audit/full-001-audit.json",
+    "bytes": 554,
+    "sha256": "2cfe48b45c8d6286425681b0c8b99ea5bd1db574a66d80cef44a86cae0edd303"
+  },
+  "declaredNativeDiagnosticDelta": {
+    "path": "work/index-identity-boundaries/audit/old14-payload-delta-001.json",
+    "bytes": 4468,
+    "sha256": "0d3ad40058f13a3594dd86487e641675435638821e27d36b2e329fde535c9c34"
+  },
+  "literalManifest": {
+    "path": "docs/index_identity_boundaries_literals.json",
+    "bytes": 74353,
+    "sha256": "2c10c8eaced6bbeb7fd96d57d7c5480b0cf6254bbde5112c043dae7a69de1cbc"
+  },
+  "sourceInventory": {
+    "upstreamModules": 225,
+    "present": 18,
+    "partial": 46,
+    "behavioralCredit": 0
+  },
+  "evidenceAvailability": "Metadata is committed; large original reports, complete public extracts and raw local packets remain at their recorded ignored local paths. CI retains its own distinct run artifacts. A Git commit does not upload these local packets."
+}

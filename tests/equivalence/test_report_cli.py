@@ -14,7 +14,8 @@ def test_report_retains_literal_surrogates_and_full_mismatch_without_changing_st
     report = {
         "mode": "full", "status": "mismatched", "summary": {"mismatched": 1},
         "errors": [], "fullScopePassed": False,
-        "cases": [{"input": fixture["input"], "native": "\ud800 left \udfff",
+        "cases": [{"id": fixture["id"], "status": "mismatched",
+                   "input": fixture["input"], "native": "\ud800 left \udfff",
                    "python": "İstanbul 😀", "differences": ["actual retained mismatch"]}],
     }
     monkeypatch.setattr(check_equivalence, "run_suite", lambda **kwargs: (report, 1))
@@ -28,4 +29,8 @@ def test_report_retains_literal_surrogates_and_full_mismatch_without_changing_st
     assert json.loads(destination.read_text(encoding="utf-8")) == report
     output = capsys.readouterr()
     assert not output.err
-    assert json.loads(output.out)["fullScopePassed"] is False
+    summary = json.loads(output.out)
+    assert summary["fullScopePassed"] is False
+    assert summary["mismatchedCaseIds"] == [fixture["id"]]
+    assert summary["blockedCaseIds"] == []
+    assert "İstanbul" not in output.out and "actual retained mismatch" not in output.out

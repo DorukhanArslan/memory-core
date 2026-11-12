@@ -63,6 +63,13 @@ jobs:
           --reference .reference/openclaw --node "$(command -v node)"
           --release-runtime .reference/release-runtime
           --smoke --report .equivalence-results/subset.json
+      - name: Compare the zero-credit cold retry development packet
+        if: always()
+        run: >-
+          uv run --frozen python scripts/check_query_sync_cold_retry.py
+          --reference .reference/openclaw --node "$(command -v node)"
+          --release-runtime .reference/release-runtime
+          --output .equivalence-results/query-sync-cold-retry
       - name: Require the complete contract on manual acceptance runs
         if: always() && github.event_name == 'workflow_dispatch'
         run: >-
@@ -83,6 +90,12 @@ jobs:
       - name: Replay both retained query-sync outcome engines
         if: always()
         run: MEMORY_EQ_NODE="$(command -v node)" uv run --frozen pytest -q tests/equivalence/test_query_sync_outcomes_evidence.py
+      - name: Replay the zero-credit cold retry development captures
+        if: always()
+        run: >-
+          MEMORY_EQ_NODE="$(command -v node)"
+          MEMORY_QUERY_SYNC_COLD_RETRY_CAPTURE_ROOT=.equivalence-results/query-sync-cold-retry
+          uv run --frozen pytest -q tests/equivalence/test_query_sync_cold_retry_evidence.py
       - name: Retain results, including failed acceptance runs
         if: always()
         uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
@@ -118,6 +131,7 @@ jobs:
             .equivalence-results/query-sync-outcomes/sdk-attempt-*/python-raw.json
             .equivalence-results/query-sync-outcomes/sdk-attempt-*/sdk-query-sync-*/sdk-host-raw.json
             .equivalence-results/query-sync-outcomes/sdk-attempt-*/sdk-query-sync-*/tool-*-envelope.json
+            .equivalence-results/query-sync-cold-retry/**
           # The reports live in a dot-directory, which this action skips unless told otherwise.
           include-hidden-files: true
           if-no-files-found: ignore

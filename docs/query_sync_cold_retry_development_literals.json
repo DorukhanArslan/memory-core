@@ -1,0 +1,236 @@
+{
+  "kind": "query-sync-cold-retry-development-literals",
+  "version": 1,
+  "acceptancePointsAwarded": 0,
+  "registered": false,
+  "scopeSha256": "a8e066e63970dd0be734485d62a5932640894b8c0a42f47ac3eb67f784cbc7b9",
+  "status": "frozen-input-only-development-packet-before-first-host-execution",
+  "cases": [
+    {
+      "id": "query-sync-boundary-development-cold-clean-control",
+      "operation": "query-sync-boundary-development-runtime",
+      "requirement": "indexing.query-sync",
+      "covers": [],
+      "input": {
+        "profile": "provider-none-query-sync-boundary-development",
+        "nowMs": 1794268800000,
+        "initialSourceMtimeMs": 1794268800000,
+        "identity": {
+          "agentId": "main"
+        },
+        "config": {
+          "memory": {
+            "citations": "off",
+            "search": {
+              "enabled": true,
+              "provider": "none",
+              "fallback": "none",
+              "sources": [
+                "memory"
+              ],
+              "rememberAcrossConversations": false,
+              "experimental": {
+                "sessionMemory": false
+              },
+              "extraPaths": [],
+              "store": {
+                "vector": {
+                  "enabled": false
+                }
+              },
+              "query": {
+                "maxResults": 5,
+                "minScore": 0
+              }
+            }
+          }
+        },
+        "toolOptions": {
+          "agentId": "main",
+          "oneShotCliRun": false
+        },
+        "timers": "Date-only paired wall clock; actual monotonic timers/watch debounce remain unmodified; no timer drain",
+        "ownerPolicy": "acquire real original default owner; all labelled same-owner queries and explicit sync calls retain exact object/workspace/index identity",
+        "sourceDating": "memory/topics paths are undated evergreen input files",
+        "comparisonPolicy": {
+          "completePublicQueryJSON": true,
+          "keepFullNativeAndSdkRawCarriers": true,
+          "rawSyncReturnApiIdentityClaimed": false,
+          "internalWorkerCountIdentityClaimed": false,
+          "numericTolerance": null
+        },
+        "closePolicy": "call original owner.close only after prescribed calls return; retain all already-admitted actual settlements and physical SQL/source state; no implicit repair or comparison retry",
+        "scenario": "cold-clean-repeated-same-owner",
+        "initialFiles": {
+          "memory/topics/control.md": "# Control\n\nThe recovery control marker is boundarycedar271.\n"
+        },
+        "queries": {
+          "first": {
+            "query": "boundarycedar271",
+            "maxResults": 5,
+            "minScore": 0,
+            "corpus": "memory"
+          },
+          "second": {
+            "query": "boundarycedar271",
+            "maxResults": 5,
+            "minScore": 0,
+            "corpus": "memory"
+          }
+        },
+        "steps": [
+          {
+            "operation": "prepare-real-source-files"
+          },
+          {
+            "operation": "acquire-original-default-owner"
+          },
+          {
+            "operation": "public-memory-search",
+            "label": "first"
+          },
+          {
+            "operation": "public-memory-search",
+            "label": "second",
+            "trigger": "actual-first-public-tool-return",
+            "owner": "same-exact-owner"
+          },
+          {
+            "operation": "original-owner-close"
+          },
+          {
+            "operation": "read-physical-sql-and-source-state"
+          }
+        ]
+      }
+    },
+    {
+      "id": "query-sync-boundary-development-cold-refusal-recovery",
+      "operation": "query-sync-boundary-development-runtime",
+      "requirement": "indexing.query-sync",
+      "covers": [],
+      "input": {
+        "profile": "provider-none-query-sync-boundary-development",
+        "nowMs": 1794268800000,
+        "initialSourceMtimeMs": 1794268800000,
+        "identity": {
+          "agentId": "main"
+        },
+        "config": {
+          "memory": {
+            "citations": "off",
+            "search": {
+              "enabled": true,
+              "provider": "none",
+              "fallback": "none",
+              "sources": [
+                "memory"
+              ],
+              "rememberAcrossConversations": false,
+              "experimental": {
+                "sessionMemory": false
+              },
+              "extraPaths": [],
+              "store": {
+                "vector": {
+                  "enabled": false
+                }
+              },
+              "query": {
+                "maxResults": 5,
+                "minScore": 0
+              }
+            }
+          }
+        },
+        "toolOptions": {
+          "agentId": "main",
+          "oneShotCliRun": false
+        },
+        "timers": "Date-only paired wall clock; actual monotonic timers/watch debounce remain unmodified; no timer drain",
+        "ownerPolicy": "acquire real original default owner; all labelled same-owner queries and explicit sync calls retain exact object/workspace/index identity",
+        "sourceDating": "memory/topics paths are undated evergreen input files",
+        "comparisonPolicy": {
+          "completePublicQueryJSON": true,
+          "keepFullNativeAndSdkRawCarriers": true,
+          "rawSyncReturnApiIdentityClaimed": false,
+          "internalWorkerCountIdentityClaimed": false,
+          "numericTolerance": null
+        },
+        "closePolicy": "call original owner.close only after prescribed calls return; retain all already-admitted actual settlements and physical SQL/source state; no implicit repair or comparison retry",
+        "scenario": "cold-publication-refusal-remove-and-repeat-same-owner",
+        "initialFiles": {
+          "memory/topics/recovery.md": "# Recovery\n\nThe recovery marker is boundaryhazel382.\n"
+        },
+        "queries": {
+          "faulted": {
+            "query": "boundaryhazel382",
+            "maxResults": 5,
+            "minScore": 0,
+            "corpus": "memory"
+          },
+          "afterRemoval": {
+            "query": "boundaryhazel382",
+            "maxResults": 5,
+            "minScore": 0,
+            "corpus": "memory"
+          }
+        },
+        "steps": [
+          {
+            "operation": "prepare-real-source-files"
+          },
+          {
+            "operation": "acquire-original-default-owner"
+          },
+          {
+            "operation": "arm-real-publication-sidecar-refusal"
+          },
+          {
+            "operation": "public-memory-search",
+            "label": "faulted"
+          },
+          {
+            "operation": "remove-only-owned-fault",
+            "trigger": "actual-faulted-public-tool-return"
+          },
+          {
+            "operation": "public-memory-search",
+            "label": "afterRemoval",
+            "trigger": "immediately-after-real-fault-removal",
+            "owner": "same-exact-owner"
+          },
+          {
+            "operation": "original-owner-close"
+          },
+          {
+            "operation": "read-physical-sql-and-source-state"
+          }
+        ],
+        "fault": {
+          "kind": "actual-owned-publication-sidecar-dangling-symlink",
+          "nativeTarget": "actual-resolved-agent-database.reindex-lock.sqlite",
+          "sdkTarget": "actual-resolved-index-journal",
+          "target": "owned-missing-sidecar-parent/journal",
+          "arm": "after-real-owner-acquisition-before-first-public-query",
+          "remove": "after-first-public-query-returns-before-second-query",
+          "initialSidecar": "record actual existence; if regular owned file, rename aside and restore after unlink; no following aliases",
+          "sourceContentMutation": false
+        },
+        "recoveryConstraints": {
+          "reuseExactOwner": true,
+          "reopenAllowedBeforeSecondQuery": false,
+          "explicitSyncAllowedBeforeSecondQuery": false,
+          "privateWaitAllowedBeforeSecondQuery": false
+        }
+      }
+    }
+  ],
+  "comparisonPolicy": {
+    "completePublicResults": "Compare every actually returned public memory_search details field for both labelled calls; retain complete original text/envelopes separately with exact text/details carrier consistency.",
+    "dispatches": "Compare actual original managed search dispatches and search-bootstrap publication attempts per labelled call; internal worker, SQL and task totals remain full engine-specific custody.",
+    "normalization": "No numeric tolerance, result omission, fabricated error or dynamic output repair.",
+    "acceptancePointsAwarded": 0,
+    "originalBoundaryPointStillUnverified": true
+  }
+}

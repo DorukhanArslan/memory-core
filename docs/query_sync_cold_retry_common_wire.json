@@ -1,0 +1,16 @@
+{
+  "kind": "cold-retry-development-shared-wire-before-execution",
+  "acceptancePointsAwarded": 0,
+  "registeredAcceptanceCatalogChanged": false,
+  "resultKeys": ["provider", "searches", "dispatches", "sources"],
+  "provider": "actual selected provider; this profile is none",
+  "searches": "Object keyed by exact input.queries labels in declaration order. Each value is every actually returned original public memory_search.details field, retaining complete results, warning, error, unavailable, action, debug and any extra fields; no synthesis/omission.",
+  "dispatches": "Object keyed by the same query labels; each value has exactly managerSearches and bootstrapAttempts. Native managerSearches counts original exact-owner search method entries within this actual public tool call. Native bootstrapAttempts counts original exact-owner syncAdmitted entries whose actual args.reason is search-bootstrap. SDK managerSearches counts original exact-owner search entries in this actual public tool call. SDK bootstrapAttempts counts actual Managed search repair request journals reason=search-bootstrap within this call, cross-checked against original reindex entries. Counts are not expected literals and are derived from real events, never tool result shape.",
+  "sources": "Object with initial and afterClose arrays. Each array is sorted actual union of declared and discovered workspace source paths. Each file has exact path,kind=file,text,hex,sha256,size,mtimeMs. Missing sources have path,kind=missing. Real independent source bytes/stat carriers remain raw.",
+  "publicCarriers": "Retain complete actual original tool envelopes and serialized text before any private codec; assert parsing original text equals original details independently. Raw envelope APIs are not claimed identical.",
+  "rawOnly": "All other original engine-specific read-generation leases, physical SQL tables, owner/acquisition/status/lifecycle records, real errors, worker requests/replies and internal counters remain complete custody. No internal worker/task count equality, binary SQL identity, source-to-release reproduction or whole-boundary acceptance is claimed.",
+  "normalization": "None. Preserve every common result field and numeric value exactly.",
+  "failureRetention": "Original first actual execution is retained even if it fails or differs. A transport failure or missing capture is not a match; no automatic host retries. An actual tool returning an unavailable envelope is a real result, not a fabricated fallback.",
+  "completion": "After second public call returns, original owner.close joins only already-admitted operations, then capture physical SQL and source state. No intervening query, manual sync, reopen, adapter completion wait or timer drain. Record real close errors, closeAll and final owner state.",
+  "oldHostedInvestigation": "Paused at user request; no artifact access."
+}

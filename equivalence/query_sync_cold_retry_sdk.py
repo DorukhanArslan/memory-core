@@ -47,6 +47,15 @@ def _literal(value):
     raise ValueError("The SDK cold-retry process requires an exact frozen zero-credit input")
 
 
+def _query_labels(value):
+    """The ordered steps own execution; JSON object key order is immaterial."""
+    labels = [step["label"] for step in value["steps"]
+              if step["operation"] == "public-memory-search"]
+    if len(labels) != len(set(labels)) or set(labels) != set(value["queries"]):
+        raise ValueError("Every declared query requires exactly one ordered public search step")
+    return labels
+
+
 def _original_error(error):
     result = {**_error(error), "module": type(error).__module__,
               "arguments": _search_result_custody(error.args),
@@ -415,9 +424,10 @@ def run_query_sync_cold_retry_sdk_host(request):
             fault.arm()
             fault.receipt["armReturnSeq"] = event("physical-fault-arm-return")["sequence"]
         searches = {}
-        for number, (label, params) in enumerate(value["queries"].items()):
+        query_labels = _query_labels(value)
+        for number, label in enumerate(query_labels):
             phase = f"query-{label}"
-            searches[label] = tool_call(label, params)
+            searches[label] = tool_call(label, value["queries"][label])
             if number == 0 and fault is not None:
                 phase = "fault-removal"
                 fault.receipt["removeEnterSeq"] = event("physical-fault-remove-enter")["sequence"]
@@ -445,7 +455,7 @@ def run_query_sync_cold_retry_sdk_host(request):
         if len(providers) != 1:
             raise RuntimeError("Actual public manager statuses did not identify one selected provider")
         raw["result"] = {"provider": providers.pop(), "searches": searches,
-            "dispatches": _derive_dispatches(raw, value["queries"]),
+            "dispatches": _derive_dispatches(raw, query_labels),
             "sources": {label: raw["sourceStages"][label]["common"] for label in ("initial", "afterClose")}}
         raw["completed"] = True
         return {"result": raw["result"], "raw": raw}

@@ -14,6 +14,7 @@ from equivalence.query_sync_cold_retry_sdk import (
     _literal,
     _original_error,
     _persist_tool_envelope,
+    _query_labels,
     _search_return_custody,
 )
 from memory_core.config import MemoryConfig
@@ -131,3 +132,29 @@ def test_changed_literal_is_rejected_before_child_acquisition(tmp_path):
     value["queries"]["afterRemoval"]["query"] = "changed"
     with pytest.raises(ValueError, match="exact frozen"):
         _literal(value)
+
+
+@pytest.mark.parametrize("case", build_cases(), ids=lambda case: case["id"])
+def test_sorted_transport_object_cannot_reorder_frozen_public_search_steps(case):
+    original = case["input"]
+    transported = json.loads(json.dumps(original, sort_keys=True))
+    expected = [step["label"] for step in original["steps"]
+                if step["operation"] == "public-memory-search"]
+
+    assert _literal(transported)["id"] == case["id"]
+    assert _query_labels(transported) == expected
+    if "fault" in transported:
+        assert list(transported["queries"]) == ["afterRemoval", "faulted"]
+        assert _query_labels(transported) == ["faulted", "afterRemoval"]
+
+
+@pytest.mark.parametrize("mutation", ["missing", "duplicate"])
+def test_query_schedule_requires_each_declared_label_exactly_once(mutation):
+    value = deepcopy(build_cases()[0]["input"])
+    step = next(row for row in value["steps"] if row["operation"] == "public-memory-search")
+    if mutation == "missing":
+        value["steps"].remove(step)
+    else:
+        value["steps"].append(deepcopy(step))
+    with pytest.raises(ValueError, match="exactly one ordered"):
+        _query_labels(value)

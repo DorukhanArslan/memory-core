@@ -53,8 +53,10 @@ class ManagedSQLiteMemoryStore(SQLiteMemoryStore):
     ``close`` refuses new managed search/reindex/status operations and joins
     those already admitted, including a publication whose caller stopped waiting.
     Inherited raw SQL inspection APIs remain outside this managed admission lane.
-    A failed whole publication requires an explicit successful ``reindex`` before
-    automatic preparation resumes; search does not retry a failed producer.
+    After a failed whole publication, an on-search owner with an empty index
+    attempts one bootstrap on its next nonempty search. Warm-index failures and
+    the default on-write policy require an explicit successful ``reindex`` before
+    automatic preparation resumes. Identity restrictions remain in force.
     A failed memory-scope ``reindex_sources`` publication is retained separately:
     ``status`` reports it (when no whole publication failure is retained) until
     the failed selection publishes or a whole ``reindex`` succeeds. It does not
@@ -557,7 +559,9 @@ class ManagedSQLiteMemoryStore(SQLiteMemoryStore):
                     self._provider_initialized = True
                 identity = state["identity"]
                 repair = self._automatic_repair_allowed(identity)
-                if self._last_sync_error is None and (repair or not state["hasContent"] and identity["status"] == "valid"):
+                retry_empty_bootstrap = self._memory_publication == "on-search" and not state["hasContent"]
+                if (self._last_sync_error is None or retry_empty_bootstrap) and (
+                        repair or not state["hasContent"] and identity["status"] == "valid"):
                     request = {"searchOperationId": operation["id"],
                         "reason": "search-bootstrap" if not state["hasContent"] else "search-identity",
                         "force": repair, "before": state,

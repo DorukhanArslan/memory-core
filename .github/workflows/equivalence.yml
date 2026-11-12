@@ -94,7 +94,7 @@ jobs:
         if: always()
         run: >-
           MEMORY_EQ_NODE="$(command -v node)"
-          MEMORY_EQ_COLD_RETRY_CAPTURE_ROOT=.equivalence-results/query-sync-cold-retry
+          MEMORY_QUERY_SYNC_COLD_RETRY_CAPTURE_ROOT=.equivalence-results/query-sync-cold-retry
           uv run --frozen pytest -q tests/equivalence/test_query_sync_cold_retry_evidence.py
       - name: Retain results, including failed acceptance runs
         if: always()

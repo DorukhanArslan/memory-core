@@ -1049,25 +1049,25 @@
           "path": "memory_core/host/managed_index.py",
           "symbol": "ManagedSQLiteMemoryStore._read_state",
           "anchor": "    def _read_state(",
-          "line": 162
+          "line": 164
         },
         {
           "path": "memory_core/host/managed_index.py",
           "symbol": "ManagedSQLiteMemoryStore.status",
           "anchor": "    def status(",
-          "line": 281
+          "line": 283
         },
         {
           "path": "memory_core/host/managed_index.py",
           "symbol": "ManagedSQLiteMemoryStore.search",
           "anchor": "    def search(",
-          "line": 527
+          "line": 529
         },
         {
           "path": "memory_core/host/managed_index.py",
           "symbol": "ManagedSQLiteMemoryStore._on_index_preparation_admitted",
           "anchor": "    def _on_index_preparation_admitted(",
-          "line": 495
+          "line": 497
         },
         {
           "path": "memory_core/tools/memory_search.py",
@@ -2008,6 +2008,12 @@
           "symbol": "database.exec(\"ROLLBACK\");",
           "anchor": "          database.exec(\"ROLLBACK\");",
           "line": 42
+        },
+        {
+          "path": "extensions/memory-core/src/memory/manager-reindex-lock.ts",
+          "symbol": "waitForMemoryReindexLock",
+          "anchor": "export async function waitForMemoryReindexLock(",
+          "line": 18
         }
       ],
       "python": [
@@ -2039,49 +2045,49 @@
           "path": "memory_core/host/managed_index.py",
           "symbol": "ManagedSQLiteMemoryStore.search",
           "anchor": "    def search(",
-          "line": 527
+          "line": 529
         },
         {
           "path": "memory_core/host/managed_index.py",
           "symbol": "ManagedSQLiteMemoryStore._refresh_memory_dirty",
           "anchor": "    def _refresh_memory_dirty(",
-          "line": 189
+          "line": 191
         },
         {
           "path": "memory_core/host/managed_index.py",
           "symbol": "ManagedSQLiteMemoryStore._on_search_snapshot",
           "anchor": "    def _on_search_snapshot(",
-          "line": 322
+          "line": 324
         },
         {
           "path": "memory_core/host/managed_index.py",
           "symbol": "ManagedSQLiteMemoryStore._submit_memory_publication",
           "anchor": "    def _submit_memory_publication(",
-          "line": 222
+          "line": 224
         },
         {
           "path": "memory_core/host/managed_index.py",
           "symbol": "ManagedSQLiteMemoryStore._run_memory_publication",
           "anchor": "    def _run_memory_publication(",
-          "line": 246
+          "line": 248
         },
         {
           "path": "memory_core/host/managed_index.py",
           "symbol": "ManagedSQLiteMemoryStore.status",
           "anchor": "    def status(",
-          "line": 281
+          "line": 283
         },
         {
           "path": "memory_core/host/managed_index.py",
           "symbol": "ManagedSQLiteMemoryStore.close",
           "anchor": "    def close(",
-          "line": 650
+          "line": 654
         },
         {
           "path": "memory_core/host/managed_index.py",
           "symbol": "ManagedSQLiteMemoryStore._record_rebuild_request",
           "anchor": "    def _record_rebuild_request(",
-          "line": 502
+          "line": 504
         },
         {
           "path": "memory_core/tools/search_factory.py",
@@ -2100,11 +2106,12 @@
       "notes": [
         "The base SQLiteMemoryStore retains strict identity validation and coherent candidate reads. Automatic query preparation belongs to the explicitly selected provider-none ManagedSQLiteMemoryStore memory_publication=on-search profile; ordinary eager/base stores are not silently given that policy.",
         "The actual managed source paths include search-time bootstrap and eligible identity repair, source hash/mtime/size dirty detection, a pinned SQLite read generation, admitted scoped background memory publication, retained original status/rebuild/stale notices, and original close ownership of admitted operations and workers. The seven frozen outcome schedules now have authenticated paired/full evidence and independent review; broader boundary policy remains uncovered.",
-        "The public SDK create_memory_search_tool factory calls the exact managed owner and preserves complete public text/details, warnings, action guidance and per-reader status. The current SDK production implementation is unchanged by the query-sync fixture/authority work; these are existing source anchors, not newly implemented behavior.",
+        "The public SDK create_memory_search_tool factory calls the exact managed owner and preserves complete public text/details, warnings, action guidance and per-reader status. The original outcome fixture/authority package changed no production SDK bytes. The later zero-credit cold retry packet permits a new bootstrap only for an actually empty on-search index after a retained repair failure; it changes no warm-index, default on-write or identity refusal policy.",
         "The original Native facade and public memory_search resolve the default manager. Its source reads a real index generation before admitting search maintenance; original dirty notification, maintenance acquisition/sync/status/close, publication workers and watcher resources are explicitly mapped. Native resolveSyncConfig fixes onSessionStart/onSearch/watch true, watchDebounceMs=1500 and intervalMinutes=0; false configuration overrides do not disable them.",
         "The bounded outcome family has seven independently frozen source schedules: cold existing source/no index, empty then add, warm unchanged, edit, delete, rename and identical-byte mtime change. It compares actual seed(nullable), first and reopened public results with original close and complete source/SQL custody. No fresh warm-first-query guarantee, expected final indexed mtime, dispatch-count agreement or OS watcher timing parity is inferred.",
         "The fresh complete local comparison on clean aa99a933 (1444 cases, 1430 matched, 14 mismatched, zero blocked/errors) and independent full audit verify only original indexing.query-sync.outcomes: 71 to 72/128, with 56 remaining. All 1437 earlier definitions and the other 127 point records remain unchanged; the full gate remains mismatched. This source inventory itself awards zero conditions. Original indexing.query-sync.boundaries remains uncovered for forced-sync/retry, unavailable outcomes and dispatch counts.",
-        "The source and official compiled declarations remain separate authorities; compiled artifacts are not counted as tracked upstream modules and an independently reproduced source-to-release build is not claimed. Semantic/vector provider transport and broader failure/retry scheduling remain outside this bounded provider-none outcome claim."
+        "The source and official compiled declarations remain separate authorities; compiled artifacts are not counted as tracked upstream modules and an independently reproduced source-to-release build is not claimed. Semantic/vector provider transport and broader failure/retry scheduling remain outside this bounded provider-none outcome claim.",
+        "The two standalone cold retry development schedules have empty coverage and are not added to the unchanged 1444-case catalog. They retain a genuine owned storage refusal, its removal and the next same-owner public query, with complete results and actual search/bootstrap dispatches. Original indexing.query-sync.boundaries remains unverified; forced-sync, revision-conflict retry, closed-owner and the remaining count policies need their separate complete proof. Authentication declares 55 original source owners, 29 official compiled owners and 37 import links; inventory grants no behavioral credit."
       ]
     },
     {
@@ -6320,7 +6327,7 @@
           "path": "memory_core/host/managed_index.py",
           "symbol": "ManagedSQLiteMemoryStore.search",
           "anchor": "    def search(",
-          "line": 527
+          "line": 529
         },
         {
           "path": "memory_core/host/managed_maintenance.py",
@@ -6505,7 +6512,7 @@
           "path": "memory_core/host/managed_index.py",
           "symbol": "ManagedSQLiteMemoryStore.reindex",
           "anchor": "    def reindex(",
-          "line": 359
+          "line": 361
         },
         {
           "path": "memory_core/tools/memory_search.py",
@@ -12090,6 +12097,17 @@
         "../utils/shell-argv.js"
       ],
       "exportedDeclarations": []
+    },
+    {
+      "path": "extensions/memory-core/src/memory/manager-reindex-lock.ts",
+      "sha256": "3ad6e120af56a740d278eda3b5fc4cb2b83509bccd3f12591c413de626870ad1",
+      "sourceImports": [
+        "./manager-sqlite-lease.js"
+      ],
+      "exportedDeclarations": [
+        "MemoryReindexLockHandle",
+        "waitForMemoryReindexLock"
+      ]
     }
   ]
 }

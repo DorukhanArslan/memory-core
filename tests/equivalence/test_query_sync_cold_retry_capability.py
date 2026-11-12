@@ -284,3 +284,28 @@ def test_real_preload_refuses_context_alias_before_bootstrap(node, context, tmp_
         "ppid": os.getpid(), "returncode": process.returncode}))
     assert process.returncode != 0 and not stdout
     assert not list((tmp_path / "traces").glob("*.jsonl"))
+
+
+@pytest.mark.parametrize(("case_index", "expected"), [
+    (0, ["first", "second"]),
+    (1, ["faulted", "afterRemoval"]),
+])
+def test_actor_preserves_frozen_step_order_after_sorted_wire_transport(node, case_index, expected, tmp_path):
+    """Exercise only the pure order selector; never open an original manager/host."""
+    wire = case_wire(build_cases()[case_index])
+    transported = json.loads(wire)
+    assert list(transported["input"]["queries"]) == sorted(expected)
+    if case_index == 1:
+        assert list(transported["input"]["queries"]) != expected
+    actor = (ROOT / "equivalence" / ACTOR).as_uri()
+    code = ("import fs from 'node:fs';"
+            f"import {{orderedPublicQueryLabels}} from {json.dumps(actor)};"
+            "const input=JSON.parse(fs.readFileSync(0,'utf8')).input;"
+            "process.stdout.write(JSON.stringify(orderedPublicQueryLabels(input)));")
+    env = {"PATH": str(node.parent) + os.pathsep + os.defpath, "LANG": "C.UTF-8", "TZ": "UTC"}
+    result = subprocess.run([str(node), "--input-type=module", "--eval", code],
+                            input=wire, env=env, cwd=ROOT, capture_output=True, timeout=15)
+    (tmp_path / "pure-order-stdout.txt").write_bytes(result.stdout)
+    (tmp_path / "pure-order-stderr.txt").write_bytes(result.stderr)
+    assert result.returncode == 0, result.stderr
+    assert json.loads(result.stdout) == expected

@@ -15,6 +15,13 @@ const errorValue=error=>({name:error.name,message:error.message,code:error.code?
 const sqlValue=value=>typeof value==='bigint'?{sqliteInt64:value.toString()}:
   value instanceof Uint8Array?{sqliteBlobHex:Buffer.from(value).toString('hex')}:value;
 
+export function orderedPublicQueryLabels(input){
+  const labels=input.steps.filter(step=>step.operation==='public-memory-search').map(step=>step.label);
+  if(labels.length!==2||new Set(labels).size!==2||Object.keys(input.queries).length!==2||
+    labels.some(label=>!Object.hasOwn(input.queries,label)))throw Error('Cold retry requires two exact ordered public query steps');
+  return labels;
+}
+
 export async function runQuerySyncColdRetryRuntime(input,config){
   const base=config.stateDirectory,workspace=path.join(base,'workspace');
   const raw={kind:'query-sync-cold-retry',engine:'native',caseId:config.caseId,input:plain(input),
@@ -353,8 +360,7 @@ export async function runQuerySyncColdRetryRuntime(input,config){
     raw.initialStatus=carrier(initialStatus);raw.foregroundOwnerId=ref(foreground);
     physical('after-owner-open');
     if(input.fault){phase='fault-arm';armFault();}
-    const tool=makeTool(),searches={},dispatches={},labels=Object.keys(input.queries);
-    if(labels.length!==2)throw Error('Cold retry requires exactly two labelled queries');
+    const tool=makeTool(),searches={},dispatches={},labels=orderedPublicQueryLabels(input);
     for(let index=0;index<labels.length;index++){
       const label=labels[index];phase=label;
       searches[label]=await toolCall(tool,label,input.queries[label]);

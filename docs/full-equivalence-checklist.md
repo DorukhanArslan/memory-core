@@ -52,50 +52,69 @@ Comparisons must not normalize away behavior. A platform-specific path, generate
 Entries remain pending until their complete acceptance conditions are verified against `v2026.9.9`. Their detailed acceptance points and stable identifiers are in [scope.json](../equivalence/scope.json). A helper that already exists in Python still needs the new differential evidence. A known difference must stay visible until its implementation and tests agree. Bounded passing subsets are recorded below without closing the containing contract.
 
 <!-- CURRENT-VERIFICATION-START -->
-The latest locally verified bounded baseline has **72/128 acceptance conditions
-(56.25%)**, with **56 conditions** remaining. This counts unweighted verified
-conditions, not engineering effort or a time estimate. The fixed scope stays
-64 contracts and 128 conditions. The query-sync outcome package verifies **+1**,
-from **71 to 72/128**; contract #15 has **one original condition verified, 1/2**.
+The latest complete local assessment has **71/128 verified conditions (55.5%)**,
+with **57 conditions remaining**. The fixed scope remains 64 contracts and 128
+conditions. This measures verified conditions, not effort or elapsed work.
+The cold retry development package fixes genuine recovery behavior and adds
+**zero acceptance points**. Its fresh full run loses one previously verified
+condition; the earlier 72/128 report retains its historical identity.
 
-The fresh complete report on clean `aa99a933` executes **1,444 cases: 1,430 matches,
-14 existing mismatch cases and zero blocked**, with no runner errors. All seven
-new cold/bootstrap and warm unchanged/edit/delete/rename/mtime-only schedules
-match complete public first/reopened search results with authenticated actual
-tools, owners, read generations, source files and physical SQL. All 1,437 earlier
-definitions/statuses/annotations, 34 prior evidence flags and the other 127
-original point records remain unchanged. One already-declared zero-credit Native
-warm-index diagnostic returns the old generation in its two first-result arrays;
-the complete raw results remain retained and mismatched. The other 13 historical
-Native and all 14 historical SDK mismatch payloads are unchanged. Complete
-historical mismatch-payload equality is not claimed.
+On clean `e148d0b`, the changed SDK executes the unchanged **1,444-case** catalog:
+**1,429 matches, 15 mismatches, zero blocked and no runner errors**. All original
+1,444 complete builder definitions, 80 builder-only annotations, 41 evidence flags
+and 127 of 128 original point records remain unchanged. All original fourteen
+complete Native and SDK mismatch payloads remain unchanged. The new fifteenth
+case, `host-turn-barrier-cold-unicode`, differs only because its actual Native
+result omits the previous `warning` and `corpora` fields. Its SDK result is exactly
+equal to the prior local result; source, hits, ranking, get and reply are unchanged.
+The strict four-member family therefore no longer verifies
+`host.turn-barrier.outcomes`; #62 is **partial, 1/2**. No warning is removed from
+comparison and no historical variation allowance or passing rerun is substituted.
 
-The independent full audit passes. The unchanged production SDK passes **9,969
-general tests**, zero failures and **1,658 uncredited skips** on clean `69a4e976`;
-the first run's stale exact-requirement-list assertion and its one-entry test-only
-correction remain recorded separately. Fresh full-run custody replay passes
-**137 tests with 10 inapplicable attacks skipped and zero missing-capture skips**.
-GitHub package checks on `69a4e976` pass on Python 3.11 and 3.12, including both
-installed artifacts and **27 invalid typed-call checks each**. The original full
-execution remains attributed to `aa99a933`; the later test/documentation commits
-change no production SDK or protected adapter bytes.
+The report is independently authenticated with its failed gate retained. The
+actual Native notice-counter timing was not recorded by that older profile, so
+the precise scheduling cause remains unproved. All 23 current query/identity
+pairs replay successfully with their complete public results equal to the prior
+local baseline. The production SDK has 160 files, source SHA-256
+`20abf913ac4d7d394aacbcad73e63ad14968c4f2d485ea2a3c0684413d40237d`;
+only `memory_core/host/managed_index.py` changes from the prior SDK.
 
-The previous hosted 18-versus-local-14 discrepancy is separate and remains
-unresolved; its report investigation is paused at the user's request. It is not
-relabeled as the local known fourteen. The local full gate remains `mismatched`:
-**54 uncovered conditions plus two registered unresolved conditions** remain.
+The genuine cold-retry packet first measures one control match and 23 recovery
+differences. The narrow fix permits one later bootstrap only for an actually
+empty opt-in on-search index after a retained publication error. Its corrected
+two pairs match in full, with zero differences/blocked/errors; their adversarial
+replay passes **119 tests with zero skips**. These standalone cases have
+`covers=[]` and are not registered as boundary acceptance. Original
+`indexing.query-sync.boundaries` remains unverified.
+
+The current SDK passes **10,159 general tests**, zero failures and **1,658
+uncredited skips** on the same clean `e148d0b`; SDK and all 298 adapter bytes stay
+unchanged through both original full and regression commands. Code-head GitHub
+package checks pass on Python 3.11 and 3.12: **7,850 tests passed and 3,967
+uncredited skips per version**, with wheel/sdist consumers and 27 invalid typed
+calls rejected per installed artifact. The separate Native workflow is still
+running at documentation preparation; no completed hosted acceptance is inferred.
+
+The complete local gate remains `mismatched`: **54 uncovered conditions plus
+three registered unresolved conditions** remain. The earlier hosted18/local14
+discrepancy is separate; investigation/download of those older reports remains
+paused at the user's request. It is not relabeled as the fresh local fifteenth.
 Complete OpenClaw equivalence is not established.
 
-See the [query-sync outcome closeout](query_sync_outcomes_closeout.md) for exact
-execution identities, full-result evidence, preserved failures and profile limits.
-The proposed next condition is `indexing.query-sync.boundaries`: check what a
-search returns when reading or refreshing a file fails, when it retries, and
-whether only the required refresh work is admitted. For example, a temporarily
-unreadable edited file must not produce an invented fresh answer or hide an error.
-Forced synchronization, failure/retry policy, dispatch counts and OS watcher
-timing receive no credit from the outcome package. The preceding
+See the [cold retry closeout](query_sync_cold_retry_development_closeout.md) for
+exact identities, preserved first failures, current gate loss and measured limits.
+The next priority is the local next-turn notice discrepancy: observe actual
+original notice/status/publication calls to establish when the first search gets
+its renewal warning. For example, both systems find the saved note but must also
+agree on the warning shown with that answer. Forced-sync/joining, revision-conflict
+retry, other unavailable outcomes and remaining dispatch counts still need their
+original query-sync boundary proof.
+
+The preceding [query-sync outcome closeout](query_sync_outcomes_closeout.md)
+historically verified **71 → 72/128** on clean `aa99a933`; its original capture and
+SDK identities remain unchanged. The preceding
 [index-identity boundary closeout](index_identity_boundaries_closeout.md) verified
-**70 → 71/128** on clean `5856b4e`; its original captures retain that identity.
+**70 → 71/128** on clean `5856b4e`; that earlier 71 refers to its own verified set.
 
 See the [boundary closeout](host_turn_barrier_boundaries_closeout.md) for exact identities,
 complete public results, retained failures and measured limits. See the original
@@ -143,10 +162,10 @@ reaching 66/128 before the update/isolation and natural next-turn packages.
 
 | Contract status | Contracts | Verified conditions | Remaining conditions |
 | --- | ---: | ---: | ---: |
-| Complete | 33 | 66 | 0 |
-| Partial | 6 | 6 | 6 |
+| Complete | 32 | 64 | 0 |
+| Partial | 7 | 7 | 7 |
 | Pending verification | 25 | 0 | 50 |
-| Total | 64 | 72 | 56 |
+| Total | 64 | 71 | 57 |
 
 Pending verification can include existing implementation. Partial contracts retain one open
 condition. Infrastructure sections 1–3 remain **20/22 tasks completed**; infrastructure and
@@ -218,7 +237,7 @@ Current status of all 64 contracts:
 | 59 | `engine.numeric-boundaries` | Pending verification | 0/2 |
 | 60 | `engine.unicode-collation` | Pending verification | 0/2 |
 | 61 | `engine.datetime-regex` | Pending verification | 0/2 |
-| 62 | `host.turn-barrier` | Complete | 2/2 |
+| 62 | `host.turn-barrier` | Partial | 1/2 |
 | 63 | `host.restart-recall` | Complete | 2/2 |
 | 64 | `host.update-isolation` | Complete | 2/2 |
 
@@ -340,7 +359,7 @@ pre-open race authority, full raw filesystem evidence and broader SDK-only limit
 
 ### Host lifecycle acceptance
 
-- [x] **`host.turn-barrier` — Finalize memory before the next turn.** The separate four-case outcome and six-case full-channel boundary families verify both original conditions under declared profiles: committed/searchable memory, real optional maintenance, delivery and visible failure before the next admission. No in-flight append or universal scheduling guarantee is claimed.
+- [ ] **`host.turn-barrier` — Finalize memory before the next turn.** Partial: the separate full-channel boundary remains verified, but the current four-case outcome family fails its cold Unicode notice comparison. Saved source, search hits and reply agree; the actual Native warning/corpora fields differ. Complete public output remains required; original outcomes are currently unverified. No in-flight append or universal scheduling guarantee is claimed.
 - [x] **`host.restart-recall` — Recall across fresh chats and process restart.** Use the same saved corpus with a fresh session and then a fresh host process. Compare source-backed retrieval and state continuity with facts omitted from the new prompt.
 - [x] **`host.update-isolation` — Update current facts while preserving isolation.** Replace a prior preference, retain unrelated facts and query from independent user/workspace scopes. Compare current versus superseded answers and honest write/index failure reporting.
 

@@ -260,6 +260,15 @@ are not registered in the unchanged 1,444-case catalog, and award **zero conditi
 Original query-sync boundaries remain unverified. The source counterpart remains
 `partial`; the original outcome report and its SDK identity remain historical.
 
+The fresh complete local catalog after the cold retry fix runs on clean
+`e148d0b`: **1,429 matches, 15 mismatches, zero blocked/errors**, with **71/128
+verified and 57 remaining**. The new actual Native next-turn Unicode result omits
+the previous warning/corpora fields while that case's SDK output is unchanged;
+`host.turn-barrier.outcomes` therefore loses credit. No field or scope allowance
+is added. The earlier 72/128 outcome report remains historical. Numeric notice
+counters were not captured by that older profile, so its precise timing cause
+remains unproved. See the [cold retry closeout](query_sync_cold_retry_development_closeout.md).
+
 The historical maintenance baseline has **62/128 conditions**, with **66 remaining**:
 28 contracts complete, 6 partial and 30 pending. These are unweighted verification
 counts, not engineering-effort percentages. The fresh integrated catalog records

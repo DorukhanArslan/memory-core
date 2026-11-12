@@ -1,12 +1,13 @@
 # Promotion and heartbeat maintenance integration
 
-The latest [query-sync outcome closeout](query_sync_outcomes_closeout.md)
-verifies **72/128 conditions**, with **56 remaining**, in the complete local catalog
-on clean `aa99a933`: 1,444 cases, 1,430 matches, 14 mismatch cases and zero
-blocked/errors. Only the original query-sync outcome adds one condition;
-its failure/retry boundary remains open. Earlier identity, maintenance, promotion,
-restart and full-channel packages retain their own historical identities.
-This maintenance package still awards zero; none of its captures is relabeled.
+The latest [cold retry development closeout](query_sync_cold_retry_development_closeout.md)
+records **71/128 verified conditions, 57 remaining**, in the complete current
+local catalog on clean `e148d0b`: 1,444 cases, 1,429 matches, 15 mismatches and
+zero blocked/errors. Its recovery fix adds zero conditions. The fresh Native
+cold Unicode notice differs from its previous local output, so original
+`host.turn-barrier.outcomes` loses credit; the SDK output in that case is unchanged.
+The prior 72/128 and all maintenance/promotion/restart captures retain their
+historical identities. This maintenance package still awards zero.
 
 This is the historical zero-credit maintenance closeout. Subsequent work is
 recorded separately in the [promotion apply/reconciliation closeout](promotion_apply_reconcile_closeout.md):

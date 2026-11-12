@@ -14,7 +14,10 @@ from pathlib import Path
 
 from equivalence.host_turn_barrier_evidence import _same, require
 from equivalence.query_sync_cold_retry import query_labels, validate_case
-from equivalence.release_runtime import validate_release_sources
+from equivalence.query_sync_cold_retry_bindings import (
+    COMPILED_HASHES, REQUIRED_MAIN_ARTIFACTS, REQUIRED_WORKER_ARTIFACTS,
+)
+from equivalence.release_runtime import MANIFEST_SHA256, REFERENCE_COMMIT, VERSION, validate_release_sources
 from equivalence.query_sync_outcomes_evidence import (
     NATIVE_METHODS, _decode_v8, _finite, _implementation_bindings, _interval,
     _one, _physical_sql, _private_markers, _published_sources, _returned_hits,
@@ -136,7 +139,10 @@ def _generation(case, row, output, raw, *, native):
         _published_sources(row, _expected(case), native=native)
     else:
         require(not tables[chunk_table] and not tables["memory_index_chunk_provenance"]
-                and not tables["memory_index_chunk_recall_metadata"],
+                and not tables["memory_index_chunk_recall_metadata"]
+                and not tables["memory_index_chunks_fts" if native else "chunks_fts"]
+                and not tables["memory_index_paths_fts" if native else "paths_fts"]
+                and (native or not tables["memory_index_chunk_details"]),
                 "cold-retry an empty actual source generation retains unrelated chunks")
     if output is None:
         return
@@ -418,6 +424,25 @@ def _sdk_calls(case, raw, result, events, owner_id, tools):
                 and end < raw["owners"][owner_id]["close"]["returnSeq"]
                 and call["method"] in {"reindex", "reindex_sources", "_submit_memory_publication", "_run_memory_publication", "_on_search_snapshot"},
                 "cold-retry SDK original receiver/method/settlement was substituted")
+        if call["method"] == "reindex":
+            search = _one(raw["originalSearchCalls"], lambda row: call["parentOperationId"] in row["managedSearchOperationIds"],
+                          "SDK reindex was manually dispatched outside an original search")
+            require(search["enterSeq"] < start < end < search["returnSeq"]
+                    and call["activeTool"] == search["activeTool"],
+                    "cold-retry SDK explicit reindex escaped its original query bootstrap")
+        elif call["method"] == "_submit_memory_publication":
+            read = _one(raw["readAdmissions"], lambda row: row["enterSeq"] < start < end < row["returnSeq"],
+                        "SDK background admission lacked an actual original reader")
+            require(call["readRevision"] == read["readRevision"],
+                    "cold-retry SDK publication admission borrowed another generation")
+        elif call["method"] == "_run_memory_publication":
+            require(call["actualWorkerTokenMatches"] is True and bool(call["workerTokenId"])
+                    and call["jobAtReturn"]["state"] in {"completed", "failed"},
+                    "cold-retry SDK publisher was not an actual admitted original worker")
+        elif call["method"] == "reindex_sources":
+            _one(raw["backgroundCalls"], lambda row: row["method"] == "_run_memory_publication"
+                 and row["enterSeq"] < start < end < row["returnSeq"],
+                 "SDK source publication was manually dispatched outside an admitted worker")
     for label, tool in tools.items():
         searches = [row for row in raw["originalSearchCalls"] if row["activeTool"] == label]
         operation_ids = {number for row in searches for number in row["managedSearchOperationIds"]}
@@ -459,6 +484,16 @@ def _sdk_calls(case, raw, result, events, owner_id, tools):
                     and [row for row in pinned["databases"] if row[1] == "main"] == [[0, "main", pinned["dbPath"]]],
                     "cold-retry SDK read generation was borrowed from another owner/connection")
             _generation(case, pinned, result["searches"][label], raw, native=False)
+            require(pinned["dbPath"] == raw["owners"][owner_id]["indexPath"],
+                    "cold-retry SDK pinned SQL borrowed another actual index path")
+            admission = _one(read["lifecycleAfter"]["sessionReadAdmissions"],
+                             lambda row: row["operationId"] == read["parentOperationId"],
+                             "SDK pinned reader lacked its actual lifecycle admission")
+            operation = _one(lifecycle["operations"], lambda row: row["id"] == read["parentOperationId"],
+                             "SDK pinned reader lacked its actual original search operation")
+            require(admission["revision"] == read["readRevision"] and admission["threadId"] == read["threadId"]
+                    and read["parentOperationId"] in operation_ids and operation["threadId"] == read["threadId"],
+                    "cold-retry SDK physical reader generation lost its actual operation/thread custody")
             require(pinned["tables"]["memory_core_index_sync"][0]["revision"] == read["readRevision"],
                     "cold-retry SDK pinned generation revision differs from actual SQL")
         if result["searches"][label]["results"]:
@@ -468,7 +503,7 @@ def _sdk_calls(case, raw, result, events, owner_id, tools):
         failed = [row for row in raw["methodCalls"] if row["method"] == "reindex"
                   and row["activeTool"] == first and "error" in row]
         require(failed and all(row["error"].get("sqlite_errorcode") == 14
-                              or "open" in row["error"].get("message", "").lower() for row in failed)
+                              and row["error"].get("sqlite_errorname") == "SQLITE_CANTOPEN" for row in failed)
                 and result["searches"][first].get("unavailable") is True
                 and not result["searches"][first]["results"],
                 "cold-retry SDK physical refusal never affected original bootstrap/public unavailability")
@@ -505,6 +540,13 @@ def _native_process(case, raw, *, approved_node=None):
                 "query-sync Native protected actor bytes changed after actual execution")
     expected = {(package["location"], file["path"]): file["sha256"]
                 for package in context["runtime"]["packages"] for file in package["files"]}
+    runtime = context["runtime"]
+    require(runtime["reference"] == {"tag": "v" + VERSION, "commit": REFERENCE_COMMIT}
+            and runtime["manifestSha256"] == MANIFEST_SHA256
+            and all(expected.get(("node_modules/openclaw", path)) == digest for path, digest in COMPILED_HASHES.items()),
+            "cold-retry Native context does not bind the independently pinned original compiled owners")
+    runtime_root = Path(runtime["runtimeRoot"])
+    package_root = runtime_root.parent.parent
     threads, main, worker, oracle = set(), set(), set(), set()
     for path in sorted(Path(context["traceDirectory"]).glob("*.jsonl")):
         rows = [json.loads(line) for line in path.read_text().splitlines()]
@@ -536,11 +578,23 @@ def _native_process(case, raw, *, approved_node=None):
             else:
                 require(row.get("kind") == "release" and expected.get((row["package"], row["path"])) == row["sha256"],
                         "query-sync Native actual imported engine source bytes changed")
+                relative = Path(row["path"])
+                package = Path(row["package"])
+                require(not relative.is_absolute() and ".." not in relative.parts
+                        and not package.is_absolute() and ".." not in package.parts,
+                        "cold-retry actual imported artifact escaped its approved package")
+                loaded_path = package_root / package / relative
+                require(loaded_path.is_file() and not loaded_path.is_symlink()
+                        and loaded_path.resolve() == loaded_path
+                        and hashlib.sha256(loaded_path.read_bytes()).hexdigest() == row["sha256"],
+                        "cold-retry actually imported original compiled bytes changed on disk")
                 (main if first["isMainThread"] else worker).add(row["path"])
     require(0 in threads and len(threads) > 1 and set(local) - {str(Path(process["cwd"]) / "equivalence/query-sync-cold-retry-preload.mjs")} <= oracle
             and {"dist/extensions/memory-core/manager-runtime.js", "dist/tools-DotaQGXh.mjs"} <= main
             and "dist/sqlite-worker-store-D6Kl0iv0.mjs" in worker,
             "query-sync Native actual public manager/tool/read/publication workers did not execute")
+    require(set(REQUIRED_MAIN_ARTIFACTS) <= main and set(REQUIRED_WORKER_ARTIFACTS) <= worker,
+            "cold-retry omitted independently declared actual original main/worker owners")
     loaded = [{"package": package, "path": path, "sha256": digest}
               for (package, path), digest in expected.items() if path in main | worker]
     validate_release_sources(context["runtime"], loaded)
@@ -617,6 +671,14 @@ def _native_calls(case, raw, result, events, owner_id, tools):
         require(call["ownerId"] == owner_id and call["receiverIsExactObservedOwner"] is True
                 and events[start]["ownerId"] == events[end]["ownerId"] == owner_id,
                 "cold-retry original Native method was borrowed from another receiver")
+        if call["method"] in {"sync", "syncAdmitted"}:
+            require(any(row["enterSeq"] < start < end < row["returnSeq"]
+                        for row in raw["originalSearchCalls"] + raw["backgroundCalls"]),
+                    "cold-retry Native sync was explicitly dispatched outside an original query/background admission")
+        elif call["method"] == "awaitManagerIdle":
+            require(any(row["method"] == "close" and row["enterSeq"] < start < end < row["returnSeq"]
+                        for row in raw["methodCalls"]),
+                    "cold-retry Native private idle wait was inserted outside original close")
     for label, tool in tools.items():
         during = [row for row in raw["methodCalls"] if row["activeTool"] == label
                   and tool["enterSeq"] < row["enterSeq"] < tool["returnSeq"]]
@@ -673,7 +735,11 @@ def _native_calls(case, raw, result, events, owner_id, tools):
         failures = [row for row in raw["methodCalls"] if row["activeTool"] == first and row["method"] == "syncAdmitted"
                     and row["args"][0].get("reason") == "search-bootstrap" and "error" in row]
         require(failures and raw["fault"]["actualBootstrapFailures"] == [row["id"] for row in failures]
-                and all("open" in row["error"]["message"].lower() for row in failures)
+                and all(row["error"]["code"] == "ERR_SQLITE_ERROR"
+                        and row["error"]["message"] == "unable to open database file"
+                        and all(name in row["error"]["stack"] for name in
+                                ("openMemoryLeaseDatabase", "acquireMemorySqliteWriterLease", "waitForMemoryReindexLock"))
+                        for row in failures)
                 and result["searches"][first].get("unavailable") is True
                 and not result["searches"][first]["results"],
                 "cold-retry physical refusal never affected actual Native bootstrap/public result")
@@ -721,6 +787,10 @@ def _raw(case, raw, result, *, native, approved_node=None):
     for snapshot in snapshots:
         _interval(snapshot, events, "physical-sql-read-enter", "physical-sql-read-return", "physical SQL interval detached")
         _sql(snapshot, raw, native=native, missing=snapshot["label"].startswith("before-"))
+        owner = raw["owners"][owner_id]
+        expected_path = owner["settings"]["store"]["databasePath"] if native else owner["indexPath"]
+        require(snapshot["dbPath"] == expected_path,
+                "cold-retry physical SQL snapshot borrowed another original owner's database")
     final = _one(snapshots, lambda row: row["label"] == "after-close", "actual after-close physical SQL omitted")
     require(close["returnSeq"] < final["enterSeq"] < final["returnSeq"]
             < raw["sourceStages"]["afterClose"]["enterSeq"]
@@ -730,6 +800,7 @@ def _raw(case, raw, result, *, native, approved_node=None):
     if native:
         authority = _native_process(case, raw, approved_node=approved_node)
         _native_wires(raw, events, authority)
+        _native_publication_commands(case, raw)
     return True
 
 
@@ -797,3 +868,86 @@ def replay_case(case, directory, *, approved_node=None):
     return {"validated": True, "publicMatch": _same(native, sdk), "nativeSnapshots": 1,
             "sdkSnapshots": 1, "acceptancePointsAwarded": 0}
 
+
+
+def _native_publication_commands(case, raw):
+    commands = []
+    for dispatch in raw["workerDispatches"]:
+        message = dispatch["message"]
+        if not dispatch["decodedSerialized"]:
+            continue
+        data = dispatch["decodedSerialized"].get("input", {}).get("value")
+        if not isinstance(data, dict) or "type" not in data:
+            require(message.get("type") == "open", "query-sync Native actual execute command type was removed")
+            continue
+        require(data["type"] in {"database.domain.bind", "database.domain.close", "database.domain.execute",
+                "database.prepareWrite", "database.publish", "pluginState.appendJournal", "pluginState.compareDelete",
+                "pluginState.compareUpdate", "pluginState.lookup", "pluginState.observe", "source.delete", "source.replace",
+                "stage.append", "stage.start"}, "query-sync Native decoded original command type is unreviewed")
+        replies = [row for row in raw["workerMessages"] if row["workerId"] == dispatch["workerId"]
+                   and row["message"].get("id") == message.get("id")]
+        if not replies:
+            # The actual recall-event journal is fire-and-forget, outside the
+            # original manager's index publication ownership. Its full bytes
+            # remain custody; it supplies no publication-completion credit.
+            require(data["type"] == "pluginState.appendJournal",
+                    "query-sync Native serialized publication request lost original reply")
+            continue
+        require(len(replies) == 1 and dispatch["returnSeq"] < replies[0]["sequence"]
+                and replies[0]["message"].get("ok") is True,
+                "query-sync Native actual SQL worker rejected or lost a dispatched operation")
+        reply = replies[0]
+        command = data["input"]["command"] if data["type"] == "database.domain.execute" else data
+        require(command["type"] in {"database.domain.bind", "database.domain.close", "database.prepareWrite", "database.publish",
+                "pluginState.appendJournal", "pluginState.compareDelete", "pluginState.compareUpdate", "pluginState.lookup",
+                "pluginState.observe", "source.delete", "source.replace", "stage.append", "stage.start"},
+                "query-sync Native actual publication command type bypassed reviewed dataflow")
+        commands.append((dispatch, command, reply))
+    stages = {}
+    before = after = _expected(case)
+    for dispatch, command, reply in commands:
+        typ, value = command["type"], command.get("input")
+        if typ == "stage.start":
+            header, entry = value["header"], value["header"]["entry"]
+            sources = before
+            require(entry["path"] in sources and entry["hash"] == hashlib.sha256(sources[entry["path"]][0].encode()).hexdigest()
+                    and entry["size"] == len(sources[entry["path"]][0].encode())
+                    and entry["mtimeMs"] == sources[entry["path"]][1] and header["source"] == "memory"
+                    and header["model"] == "fts-only" and value["rows"] == 1,
+                    "query-sync Native actual publication source parameters differ from real observed source")
+            require(value["operation"] not in stages, "query-sync Native duplicated staged original publication operation")
+            stages[value["operation"]] = {"start": dispatch, "header": header, "fragments": [], "replace": None}
+        elif typ == "stage.append":
+            stage = stages[value["operation"]]
+            require(stage["start"]["returnSeq"] < dispatch["enterSeq"]
+                    and len(value["fragments"]) == 1 and value["fragments"][0]["row"] == 0
+                    and value["fragments"][0]["part"] == 0 and value["fragments"][0]["last"] is True,
+                    "query-sync Native actual staged chunk fragments were removed or reordered")
+            fragment = json.loads(value["fragments"][0]["json"])
+            chunk, entry = fragment["chunk"], stage["header"]["entry"]
+            require(fragment["embedding"] == [] and chunk["hash"] == entry["hash"]
+                    and chunk["hash"] == hashlib.sha256(chunk["text"].encode()).hexdigest()
+                    and len(chunk["text"].encode()) == entry["size"]
+                    and chunk["provenance"] == {"originClass": "agent", "sessionKind": "unknown", "observedAt": entry["mtimeMs"]},
+                    "query-sync Native actual publication chunk parameters lost source bytes/provenance")
+            stage["fragments"].append((dispatch, fragment))
+        elif typ == "source.replace":
+            stage = stages[value["operation"]]
+            require(len(stage["fragments"]) == 1 and stage["fragments"][0][0]["returnSeq"] < dispatch["enterSeq"]
+                    and stage["replace"] is None, "query-sync Native original replace omitted its actual staged bytes")
+            stage["replace"] = dispatch
+        elif typ == "database.publish":
+            index_path = raw["owners"][raw["ownerNames"]["foreground"]]["settings"]["store"]["databasePath"]
+            require(value["sourcePath"].startswith(index_path + ".memory-reindex-")
+                    and value["metaKey"] == "memory_index_meta_v1"
+                    and type(value["expectedRevision"]) is int and value["expectedRevision"] >= 0
+                    and value["sourceHasVectors"] is False and value["vectorIndexComplete"] is True
+                    and value["sourceIdentity"]["device"].isdigit() and value["sourceIdentity"]["inode"].isdigit(),
+                    "query-sync Native original full publication parameters changed staged identity/profile")
+        elif typ == "source.delete":
+            require(value["source"] == "memory" and value["path"] in before
+                    and (value["path"] not in after or before[value["path"]] != after[value["path"]])
+                    and value["expectedHash"] == hashlib.sha256(before[value["path"]][0].encode()).hexdigest(),
+                    "query-sync Native actual delete parameters targeted a different source/hash")
+    require(all(stage["replace"] is not None for stage in stages.values()),
+            "query-sync Native actual prepared source never reached original publication replace")

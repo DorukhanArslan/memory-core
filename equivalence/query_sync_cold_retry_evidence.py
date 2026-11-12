@@ -13,7 +13,7 @@ import shutil
 from pathlib import Path
 
 from equivalence.host_turn_barrier_evidence import _same, require
-from equivalence.query_sync_cold_retry import validate_case
+from equivalence.query_sync_cold_retry import query_labels, validate_case
 from equivalence.release_runtime import validate_release_sources
 from equivalence.query_sync_outcomes_evidence import (
     NATIVE_METHODS, _decode_v8, _finite, _implementation_bindings, _interval,
@@ -23,6 +23,11 @@ from equivalence.query_sync_outcomes_evidence import (
 
 ROOT = Path(__file__).resolve().parents[1]
 STAGES = ("initial", "afterClose")
+
+
+def _query_labels(case):
+    """JSON object key order cannot supply a scenario's execution schedule."""
+    return query_labels(case["input"])
 
 
 def _expected(case):
@@ -40,10 +45,10 @@ def _owned_file(filename, root):
 
 def _validate_result(case, result):
     validate_case(case)
-    labels = list(case["input"]["queries"])
+    labels = _query_labels(case)
     require(isinstance(result, dict) and set(result) == {"provider", "searches", "dispatches", "sources"}
             and result["provider"] == "none" and _finite(result)
-            and list(result["searches"]) == list(result["dispatches"]) == labels
+            and set(result["searches"]) == set(result["dispatches"]) == set(labels)
             and set(result["sources"]) == set(STAGES),
             "cold-retry complete common public wire is missing or was extended")
     for label in labels:
@@ -202,11 +207,15 @@ def _owners(case, raw, events, *, native):
 
 
 def _tools(case, raw, result, events, owner_id, close, *, native):
-    labels = list(case["input"]["queries"])
-    require(list(raw["toolCalls"]) == labels
+    labels = _query_labels(case)
+    require(set(raw["toolCalls"]) == set(labels)
             and sum(row["event"] == "actual-tool-enter" for row in events.values()) == len(labels)
             and sum(row["event"] == "actual-tool-return" for row in events.values()) == len(labels),
             "cold-retry prescribed original public calls were omitted or added")
+    require(all(row["activeTool"] in labels for row in raw["originalSearchCalls"])
+            and len(raw["originalSearchCalls"]) == sum(row["event"] == "original-search-enter" for row in events.values())
+            == sum(row["event"] == "original-search-return" for row in events.values()),
+            "cold-retry an original manager search was hidden outside the prescribed public calls")
     for label in labels:
         tool = raw["toolCalls"][label]
         start, end = _interval(tool, events, "actual-tool-enter", "actual-tool-return", "public tool interval detached")
@@ -250,6 +259,12 @@ def _tools(case, raw, result, events, owner_id, close, *, native):
                     and start < call["enterSeq"] < call["returnSeq"] < end
                     and call["query"] == case["input"]["queries"][label]["query"],
                     "cold-retry manager dispatch was borrowed from another receiver/query/interval")
+            options = call["options"]
+            params = case["input"]["queries"][label]
+            require(_same(options["maxResults" if native else "max_results"], params["maxResults"])
+                    and _same(options["minScore" if native else "min_score"], params["minScore"])
+                    and _same(options["sources"], ["memory"] if native else {"setValues": ["memory"]}),
+                    "cold-retry actual original manager options changed the public limit/source policy")
         if "error" not in calls[-1]:
             _returned_hits(calls[-1], result["searches"][label], native=native)
         else:
@@ -264,7 +279,7 @@ def _tools(case, raw, result, events, owner_id, close, *, native):
                     if native else {"physical-fault-remove-enter", "physical-fault-remove-return"})
     require(all(row["event"] in allowed for row in gap),
             "cold-retry inserted a sync, read, status, wait, query or reopen between actual returns")
-    return raw["toolCalls"]
+    return {label: raw["toolCalls"][label] for label in labels}
 
 
 def _entry_identity(entry, *, native):
@@ -273,6 +288,41 @@ def _entry_identity(entry, *, native):
         return identity["device"], identity["inode"], identity["nlink"], identity["mode"]
     info = entry["stat"]
     return info["st_dev"], info["st_ino"], info["st_nlink"], info["st_mode"]
+
+
+def _fault_syscall_entries(fault, calls):
+    """Bind independent path receipts to every original lstat/readlink result."""
+    keys = ("initial", "targetBefore", "targetParentBefore", "backupBefore", "backupAfterRename", "armed", "targetAfterArm",
+            "beforeRemoval", "targetBeforeRemoval", "afterUnlink", "backupBeforeRestore", "restored", "backupAfterRestore")
+    entries = [fault[key] for key in keys if key in fault]
+    lstats = [call for call in calls if call["method"] == "lstatSync"]
+    require(len(lstats) == len(entries), "cold-retry real fault path lstat receipts were omitted or added")
+    for number, (entry, call) in enumerate(zip(entries, lstats, strict=True)):
+        require(call["args"] == [entry["path"]], "cold-retry fault path receipt was borrowed from another actual lstat")
+        if entry["kind"] == "missing":
+            require(call.get("error", {}).get("code") == "ENOENT" and _same(call["error"], entry["error"]),
+                    "cold-retry missing fault path lost its original OS failure")
+            continue
+        require("error" not in call and _same(call["result"], entry["stat"]),
+                "cold-retry fault path stat differs from its actual original syscall result")
+        info = call["result"]
+        require(_same(entry["identity"], {"device": info["dev"]["value"], "inode": info["ino"]["value"],
+                    **{key: int(info[source]["value"]) for key, source in
+                       (("nlink", "nlink"), ("mode", "mode"), ("uid", "uid"), ("size", "size"))}}),
+                "cold-retry claimed fault identity was detached from actual stat bytes")
+        limit = lstats[number + 1]["enterSeq"] if number + 1 < len(lstats) else fault["removeReturnSeq"]
+        own = [row for row in calls if call["returnSeq"] < row["enterSeq"] < limit]
+        if entry["kind"] == "symlink":
+            read = _one(own, lambda row: row["method"] == "readlinkSync", "actual fault readlink result omitted")
+            require(read["args"] == [entry["path"]] and read.get("result") == entry["target"],
+                    "cold-retry claimed dangling target differs from actual readlink")
+        elif entry["kind"] == "file":
+            read = _one(own, lambda row: row["method"] == "readFileSync", "actual preserved sidecar bytes omitted")
+            real = _one(own, lambda row: row["method"] == "realpathSync", "actual preserved sidecar path omitted")
+            require(real["args"] == read["args"] == [entry["path"]] and real.get("result") == entry["path"]
+                    and read["result"]["hex"] == entry["hex"]
+                    and hashlib.sha256(bytes.fromhex(entry["hex"])).hexdigest() == entry["sha256"],
+                    "cold-retry restored sidecar bytes/path differ from actual syscall results")
 
 
 def _fault(case, raw, events, owner_id, tools, *, native):
@@ -327,16 +377,18 @@ def _fault(case, raw, events, owner_id, tools, *, native):
                 and len(calls) == sum(row["event"] == "fault-syscall-enter" for row in events.values())
                 == sum(row["event"] == "fault-syscall-return" for row in events.values()),
                 "cold-retry physical syscall receipts were dropped or invented")
+        _fault_syscall_entries(fault, calls)
     else:
         require(fault["actualFollowError"]["name"] == "FileNotFoundError"
                 and fault["actualFollowError"]["errno"] == 2
+                and fault["actualFollowError"]["filename"] == sidecar
                 and fault["savedAfterRemoval"]["kind"] == "missing"
                 and not fault.get("removedDuringTeardown"),
                 "cold-retry SDK symlink did not physically refuse access or lacked natural removal")
         names = ("physical-fault-arm-enter", "physical-fault-arm-return", "physical-fault-remove-enter", "physical-fault-remove-return")
     _interval({"enterSeq": fault["armEnterSeq"], "returnSeq": fault["armReturnSeq"]}, events, *names[:2], "fault arm interval detached")
     _interval({"enterSeq": fault["removeEnterSeq"], "returnSeq": fault["removeReturnSeq"]}, events, *names[2:], "fault removal interval detached")
-    first, second = (tools[label] for label in case["input"]["queries"])
+    first, second = (tools[label] for label in _query_labels(case))
     require(fault["armEnterSeq"] < fault["armReturnSeq"] < first["enterSeq"]
             < first["returnSeq"] < fault["removeEnterSeq"] < fault["removeReturnSeq"] < second["enterSeq"],
             "cold-retry fault did not surround exactly the first actual public call")
@@ -573,13 +625,14 @@ def _native_calls(case, raw, result, events, owner_id, tools):
                     "bootstrapAttempts": sum(row["method"] == "syncAdmitted" and row["args"][0].get("reason") == "search-bootstrap" for row in during)}),
                 "cold-retry Native public counters differ from actual original method admissions")
         preparations = [row for row in during if row["method"] == "prepareKeywordSearch" and "error" not in row]
-        for preparation in preparations:
+        for number, preparation in enumerate(preparations):
             snapshot = _one(raw["snapshots"], lambda row: row.get("methodCallId") == preparation["id"],
                             "actual Native read generation SQL missing")
             require(preparation["returnSeq"] < snapshot["enterSeq"] < snapshot["returnSeq"] < tool["returnSeq"]
                     and snapshot["ownerId"] == owner_id,
                     "cold-retry actual read-generation SQL was moved after public return")
-            _generation(case, snapshot, result["searches"][label], raw, native=True)
+            _generation(case, snapshot, result["searches"][label] if number == len(preparations) - 1 else None,
+                        raw, native=True)
             leases = [row for row in snapshot["coordinationLeases"] if row["open"] is True
                       and row["transactionActive"] is True and row["location"] == snapshot["dbPath"] + ".generation-lock.sqlite"]
             require(len(leases) == 1, "cold-retry Native reader lacked its actual held generation lease")

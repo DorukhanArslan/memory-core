@@ -46,3 +46,12 @@ def build_cases():
             or [case.get("id") for case in manifest["cases"]] != list(CASE_HASHES)):
         raise ValueError("Cold retry development requires its complete two-input packet")
     return [validate_case(case) for case in manifest["cases"]]
+
+
+def query_labels(value):
+    """Use the ordered steps; JSON object member order does not schedule work."""
+    labels = [step["label"] for step in value["steps"]
+              if step["operation"] == "public-memory-search"]
+    if len(labels) != len(set(labels)) or set(labels) != set(value["queries"]):
+        raise ValueError("Each frozen public query must occur once in the ordered steps")
+    return labels

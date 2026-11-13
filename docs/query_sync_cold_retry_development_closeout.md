@@ -223,7 +223,9 @@ source-to-release build reproduction is claimed. Source inventory adds no score.
 Raw captures, physical databases and logs under ignored
 `work/query-sync-boundaries/` are retained locally; a git push does not upload
 them. CI is configured to create its own fresh evidence and retain a separate artifact.
-The current Native job is still running; artifact availability is not yet claimed. This
+The Native job was still running at this closeout's preparation. The later
+[notice observation closeout](next_turn_notice_observation_closeout.md) records
+the subsequent work without relabeling this package's captures. This
 tracked closeout and diagnostics cite completed evidence without presenting
 local ignored files as already downloadable GitHub artifacts.
 

@@ -269,6 +269,16 @@ is added. The earlier 72/128 outcome report remains historical. Numeric notice
 counters were not captured by that older profile, so its precise timing cause
 remains unproved. See the [cold retry closeout](query_sync_cold_retry_development_closeout.md).
 
+The subsequent [passive notice observation](next_turn_notice_observation_closeout.md)
+executes each of the four unchanged host inputs once and records four complete
+matches with zero blocked/errors. It observes the actual live notice objects,
+counter writers and publication calls without changing production SDK code.
+Native capture is source-bound; SDK records its exact original closure and
+actual reader invocation. The older missing warning does not recur, so this
+standalone measurement does not explain that historical cause or restore its
+lost point. The last complete assessment remains **71/128**, with 57 remaining.
+Source inventory and counterpart classifications are unchanged.
+
 The historical maintenance baseline has **62/128 conditions**, with **66 remaining**:
 28 contracts complete, 6 partial and 30 pending. These are unweighted verification
 counts, not engineering-effort percentages. The fresh integrated catalog records

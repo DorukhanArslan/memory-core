@@ -1,0 +1,549 @@
+"""Authenticate notice observations without prescribing a warning or a match.
+
+The registered four-case inputs and whole public carriers retain their original
+guards.  This zero-credit observer distinguishes Native's source-bound capture
+edge from the SDK's directly inspected closure and actual reader invocations.
+It executes no program, executable or expression supplied by captured data.
+"""
+from __future__ import annotations
+
+import hashlib
+import json
+import os
+from pathlib import Path
+
+from equivalence.host_turn_barrier import CASE_HASHES, validate_case
+from equivalence.host_turn_barrier_evidence import (
+    _native as _original_native, _same, _sdk as _original_sdk, require,
+    validate_result,
+)
+
+ROOT = Path(__file__).resolve().parents[1]
+CONTRACT = ROOT / "docs/next_turn_notice_observation_contract.json"
+CONTRACT_SHA256 = "bceed5c96344270816f676d27fa02117370b714d69c6b1cc492aab7b5cb98585"
+
+
+def _one(rows, predicate, message):
+    matches = [row for row in rows if predicate(row)]
+    require(len(matches) == 1, "notice " + message)
+    return matches[0]
+
+
+def _index(rows, key, message):
+    require(isinstance(rows, list) and all(isinstance(row, dict) and row.get(key) is not None for row in rows),
+            "notice " + message)
+    result = {row[key]: row for row in rows}
+    require(len(result) == len(rows), "notice duplicated " + message)
+    return result
+
+
+def _scalar(value):
+    require(isinstance(value, dict) and type(value.get("sequencePresent")) is bool
+            and type(value.get("warningPresent")) is bool,
+            "notice primitive scalar observation is absent")
+    if value["sequencePresent"]:
+        require(type(value.get("sequence")) is int and value["sequence"] >= 0,
+                "notice actual sequence is not a nonnegative original integer")
+    if value["warningPresent"]:
+        require(isinstance(value.get("warning"), str), "notice original warning is not a string")
+    return value
+
+
+def _sample(call, phase, *, native):
+    value = call[phase + "Notice"]
+    return None if value is None else _scalar(value if native else value["noticeScalar"])
+
+
+def _header(case, raw, *, native, approved_reference=None, approved_runtime=None):
+    validate_case(case)
+    require(hashlib.sha256(CONTRACT.read_bytes()).hexdigest() == CONTRACT_SHA256,
+            "notice independently frozen observation contract changed")
+    contract = json.loads(CONTRACT.read_text())
+    observed = raw["noticeObservations"]
+    require(observed["version"] == 1 and observed["contractSha256"] == CONTRACT_SHA256
+            and observed["caseWireSha256"] == CASE_HASHES[case["id"]]
+            and observed["pid"] == raw["pid"] and observed["ppid"] == raw["ppid"]
+            and type(observed["installSequence"]) is int and observed["installSequence"] >= 0
+            and str(observed["installAtNs"]).isdigit()
+            and not observed.get("observerFailures"),
+            "notice observer contract/input/process/install authority is detached")
+    actor = ROOT / ("equivalence/host-turn-barrier-runtime.mjs" if native else "equivalence/host_turn_barrier_sdk.py")
+    require(hashlib.sha256(actor.read_bytes()).hexdigest() == observed["instrumentedActorSha256"],
+            "notice capture belongs to another instrumented caller generation")
+    pinned = {row["path"]: row["sha256"] for row in contract["sourceAuthority"]}
+    for group in ("originalSourceBindings", "compiledBindings"):
+        rows = observed[group]
+        require(isinstance(rows, list) and (rows or not native and group == "compiledBindings"),
+                "notice original source authority is missing")
+        if native:
+            prefix = ("work/openclaw-v2026.9.9/" if group == "originalSourceBindings"
+                      else ".reference/release-runtime/node_modules/openclaw/")
+            expected = {name[len(prefix):]: digest for name, digest in pinned.items() if name.startswith(prefix)}
+            actual = {row["path"][len(prefix):] if row["path"].startswith(prefix) else row["path"]: row["sha256"]
+                      for row in rows}
+            require(len(actual) == len(rows) and _same(actual, expected),
+                    "notice complete independently pinned original source group was omitted or extended")
+        elif group == "originalSourceBindings":
+            required_modules = {"memory_core.host.managed_index", "memory_core.host.managed_session",
+                                "memory_core.host.kit", "memory_core.host.lifecycle", "memory_core.tools.memory_search"}
+            require(len(rows) == len(required_modules) and {row["module"] for row in rows} == required_modules,
+                    "notice complete SDK original module authority was omitted or extended")
+        else:
+            require(rows == [], "notice SDK cannot claim compiled Native module custody")
+        for row in rows:
+            path = Path(row["path"])
+            if native:
+                logical = row["path"][len(prefix):] if row["path"].startswith(prefix) else row["path"]
+                require(not path.is_absolute() and ".." not in Path(logical).parts
+                        and pinned.get(prefix + logical) == row["sha256"],
+                        "notice original Native source/compiled authority is not independently pinned")
+                if group == "originalSourceBindings":
+                    selected = approved_reference or os.environ.get("MEMORY_NEXT_TURN_NOTICE_REFERENCE_ROOT")
+                    base = Path(selected) if selected else ROOT / "work/openclaw-v2026.9.9"
+                    path = base.resolve(strict=True) / logical
+                else:
+                    selected = approved_runtime or os.environ.get("MEMORY_NEXT_TURN_NOTICE_RUNTIME_ROOT")
+                    base = Path(selected) if selected else ROOT / ".reference/release-runtime/node_modules/openclaw"
+                    path = base.resolve(strict=True) / logical
+            else:
+                require(path.is_absolute() and path.is_relative_to(ROOT / "memory_core")
+                        and path.suffix == ".py", "notice SDK imported a source outside the current production tree")
+            require(path.is_file() and path.resolve() == path and not path.is_symlink()
+                    and hashlib.sha256(path.read_bytes()).hexdigest() == row["sha256"],
+                    "notice actual original source bytes changed")
+    return observed
+
+
+def _clock(raw, observed, *, native):
+    events = _index(observed["events"], "sequence", "original observation event sequence")
+    require(events, "notice original observation events missing")
+    rows = sorted(events.values(), key=lambda row: row["sequence"])
+    require(all(type(row["sequence"]) is int and str(row["atNs"]).isdigit()
+                and row["sequence"] >= observed["installSequence"]
+                and int(row["atNs"]) >= int(observed["installAtNs"]) for row in rows),
+            "notice observed event precedes actual installation or lost monotonic time")
+    # Existing synchronous snapshots allocate real sequence numbers too.  Neither
+    # namespace is required to be contiguous and no artificial yield is inferred.
+    original = _index(raw["events"], "sequence", "whole-host event sequence")
+    for seq in set(events) & set(original):
+        require(_same(events[seq], original[seq]), "notice shared event clock reused a sequence for another event")
+    threads = {row.get("threadId", 0) for row in rows}
+    for thread in threads:
+        times = [int(row["atNs"]) for row in rows if row.get("threadId", 0) == thread]
+        require(times == sorted(times), "notice per-thread original observations were reordered")
+    return events
+
+
+def _calls(observed, events, *, native):
+    calls = _index(observed["calls"], "callId", "actual original calls")
+    require(calls, "notice actual original calls missing")
+    for call in calls.values():
+        start, end = call["enterSequence"], call["returnSequence"]
+        require(type(start) is type(end) is int and start < end and start in events and end in events
+                and events[start]["callId"] == events[end]["callId"] == call["callId"]
+                and events[start]["method"] == events[end]["method"] == call["method"]
+                and events[start]["phase"] == "enter" and events[end]["phase"] in {"return", "error"}
+                and call["originalInvocations"] == 1 and type(call["originalInvocations"]) is int,
+                "notice original call interval/delegate count changed")
+        if call["method"] not in {"_capture_rebuild_notice", "notice-reader"}:
+            require(call["originalReceiverIsExactOwner"] is True,
+                    "notice forwarding substituted the original receiver")
+        before, after = _sample(call, "before", native=native), _sample(call, "after", native=native)
+        if before is not None and after is not None:
+            require(after["sequence"] >= before["sequence"], "notice original sequence moved backwards")
+        parent = call.get("parentSynchronousCallId")
+        if parent is not None:
+            require(parent in calls and calls[parent]["enterSequence"] < start < end < calls[parent]["returnSequence"],
+                    "notice synchronous call parent does not enclose the original invocation")
+        if "errorRef" in call:
+            require(events[end].get("errorRef") == call["errorRef"], "notice original thrown error identity changed")
+        if not native:
+            require(_same(call["beforeNotice"], {key: events[start][key] for key in ("noticeRef", "noticeScalar")})
+                    and _same(call["afterNotice"], {key: events[end][key] for key in ("noticeRef", "noticeScalar")}),
+                    "notice SDK primitive snapshots detached from actual invocation events")
+            for field in ("returnRef", "returnPrimitive"):
+                if field in call:
+                    require(field in events[end] and _same(events[end][field], call[field]),
+                            "notice SDK actual original return changed between call and return event")
+    entered = [row for row in events.values() if row.get("phase") == "enter" and row.get("callId")]
+    finished = [row for row in events.values() if row.get("phase") in {"return", "error"} and row.get("callId")]
+    require(len(entered) == len(finished) == len(calls), "notice original invocation events were dropped")
+    return calls
+
+
+def _native_checkpoints(observed, calls, notices, increments, raw):
+    checkpoints = _index(observed["checkpoints"], "sequence", "actual Native retained-object checkpoints")
+    actor = _index(raw["events"], "sequence", "original Native actor checkpoints")
+    observed_events = _index(observed["events"], "sequence", "original Native method clock")
+    require(set(checkpoints).isdisjoint(actor) and set(checkpoints).isdisjoint(observed_events),
+            "notice retained-object checkpoint reused another original clock tick")
+    normal = [row for row in checkpoints.values() if "actorSequence" in row]
+    covered_actor = {seq for seq in actor if seq > observed["installSequence"]}
+    require(len(normal) == len(covered_actor) and {row["actorSequence"] for row in normal} == covered_actor,
+            "notice existing host events lost their passive checkpoints")
+    for row in normal:
+        original = actor[row["actorSequence"]]
+        require(row["event"] == original["event"] and row["turn"] == original.get("turn")
+                and row["sequence"] == original["sequence"] + 1
+                and int(row["atNs"]) >= int(original["atNs"]),
+                "notice retained snapshot detached from the existing synchronous host event")
+    for row in checkpoints.values():
+        require(type(row["sequence"]) is int and str(row["atNs"]).isdigit(),
+                "notice actual retained-object checkpoint lost its original time")
+    samples = {ref: [] for ref in notices}
+    for call in calls.values():
+        if call["kind"] == "manager":
+            for point, field in (("enterSequence", "before"), ("returnSequence", "after"), ("settleSeq", "afterSettlement")):
+                if point in call and call[field].get("noticeRef"):
+                    samples[call[field]["noticeRef"]].append((call[point], _scalar(call[field]["notice"])))
+        owner = call.get("acquiredOwner")
+        if owner and owner.get("noticeRef"):
+            samples[owner["noticeRef"]].append((call["settleSeq"], _scalar(owner["notice"])))
+    first = {ref: min(point for point, _ in rows) for ref, rows in samples.items() if rows}
+    require(set(first) == set(notices), "notice retained original object has no actual first owner observation")
+    maps = {}
+    for row in checkpoints.values():
+        values = _index(row["notices"], "noticeRef", "same live notice checkpoint identities")
+        expected_refs = {ref for ref, point in first.items() if point < row["sequence"]}
+        require(set(values) == expected_refs, "notice retained checkpoint omitted or copied an actual live notice object")
+        maps[row["sequence"]] = values
+        for ref, value in values.items():
+            samples[ref].append((row["sequence"], _scalar(value)))
+    # Native's pinned source writes these fields only in recordAutomaticRebuild.
+    # Compare all passive samples with the actual original writer transitions,
+    # rather than accepting mutually detached scalar/identity assertions.
+    for ref, rows in samples.items():
+        rows.sort(key=lambda pair: pair[0])
+        initial = rows[0][1]
+        require(initial["sequence"] == notices[ref]["firstSeenSequence"],
+                "notice first observed original sequence was relabelled")
+        writers = sorted((call for call in increments if call["noticeRef"] == ref),
+                         key=lambda call: call["returnSequence"])
+        for point, value in rows:
+            prior = [call for call in writers if call["returnSequence"] <= point]
+            expected = prior[-1]["afterNotice"] if prior else initial
+            require(value["sequence"] == expected["sequence"] and value["warning"] == expected["warning"],
+                    "notice passive live-object scalar differs from its actual original writer history")
+    results = [row for row in checkpoints.values() if row["event"] == "actual-memory-search-result"]
+    recalls = [turn for turn in raw["turns"] if turn["kind"] == "recall"]
+    require(len(results) == len(recalls), "notice actual model-consumed search checkpoint was omitted")
+    by_turn = {}
+    for row in results:
+        turn = _one(recalls, lambda value: value["label"] == row["turn"], "tool checkpoint belongs to another host turn")
+        require(row["turn"] not in by_turn and row["modelCall"] == 1
+                and _same(row["actualToolResult"], turn["searchCarrier"])
+                and _same(row["publicSearch"], turn["search"]),
+                "notice checkpoint changed the actual complete tool carrier or model consumption")
+        by_turn[row["turn"]] = row
+    combined = [*actor.values(), *observed_events.values(), *checkpoints.values()]
+    times = [int(row["atNs"]) for row in sorted(combined, key=lambda row: row["sequence"])]
+    require(times == sorted(times), "notice Native shared clock/time was reordered across namespaces")
+    return checkpoints, maps, by_turn
+
+
+def _native(observed, calls, events, raw):
+    managers = _index(observed["managers"], "managerRef", "actual Native managers")
+    notices = _index(observed["notices"], "noticeRef", "actual Native notice objects")
+    contexts = _index(observed["databaseContexts"], "databaseContextRef", "actual publication contexts")
+    hooks = {(row["declaringPrototypeRef"], row["method"]): row for row in observed["hookDescriptors"]}
+    require(len(hooks) == len(observed["hookDescriptors"])
+            and {"status", "search", "syncAdmitted", "runSync", "recordAutomaticRebuild"}
+            <= {row["method"] for row in hooks.values()}, "notice original Native prototype hooks missing")
+    receipts = {(row["declaringPrototypeRef"], row["method"]): row for row in observed["restoreReceipts"]}
+    require(set(receipts) == set(hooks) and all(row["restoredExactDescriptor"] is True for row in receipts.values()),
+            "notice original Native descriptors were not restored")
+    for key, hook in hooks.items():
+        require(hook["originalFunctionRef"] != hook["observedFunctionRef"]
+                and receipts[key]["originalFunctionRef"] == hook["originalFunctionRef"],
+                "notice Native observer/original function identity was reassigned")
+    for ref, manager in managers.items():
+        require(manager["noticeRef"] in notices and ref in notices[manager["noticeRef"]]["managerRefs"]
+                and manager["databaseContextRef"] in contexts
+                and ref in contexts[manager["databaseContextRef"]]["managerRefs"],
+                "notice Native owner-sharing identities were inferred from values instead of original references")
+    increments = []
+    for call in calls.values():
+        key = call["declaringPrototypeRef"], call["method"]
+        require(key in hooks and call["originalFunctionRef"] == hooks[key]["originalFunctionRef"],
+                "notice Native invocation did not forward its declared original function")
+        kind = call["kind"]
+        if kind == "manager":
+            require(call["managerRef"] in managers and call["receiverRef"] == call["managerRef"]
+                    and call["noticeRef"] == managers[call["managerRef"]]["noticeRef"]
+                    and call["noticeRef"] in notices,
+                    "notice Native manager/live notice identity is detached")
+        elif kind == "publication":
+            require(call["databaseContextRef"] in contexts and call["receiverRef"] == call["databaseContextRef"],
+                    "notice publication used another original database context")
+        else:
+            require(kind == "static" and call["receiverRef"] == call["declaringPrototypeRef"],
+                    "notice original static manager acquisition receiver changed")
+        if call.get("returnKind") == "promise":
+            require(call["returnedExactOriginalPromise"] is True
+                    and call["returnValue"] == {"privateType": "Promise", "ref": call["originalReturnRef"]}
+                    and call["returnRef"] == call["originalReturnRef"]
+                    and call["settlement"] in {"fulfilled", "rejected"}
+                    and call["returnSequence"] < call["settleSeq"]
+                    and events[call["settleSeq"]]["callId"] == call["callId"],
+                    "notice original Native Promise was replaced or settlement omitted")
+            if call["settlement"] == "rejected":
+                require(call.get("settledErrorRef") and isinstance(call["settledError"], dict),
+                        "notice original Native rejection was hidden")
+        if call["method"] == "recordAutomaticRebuild":
+            before, after = _sample(call, "before", native=True), _sample(call, "after", native=True)
+            require(after["sequence"] == before["sequence"] + 1 and isinstance(call["callerStack"], str),
+                    "notice real original rebuild increment is absent or detached")
+            open_runs = [row["callId"] for row in calls.values() if row["method"] == "runSync"
+                         and row["managerRef"] == call["managerRef"]
+                         and row["enterSequence"] < call["enterSequence"] < row["settleSeq"]]
+            require(call["openRunSyncCallIds"] == open_runs,
+                    "notice increment borrowed or invented an original running sync owner")
+            increments.append(call)
+    statuses = _index(observed["statuses"], "callId", "actual original Native status returns")
+    require(set(statuses) == {key for key, row in calls.items() if row["method"] == "status"},
+            "notice original Native status return was omitted")
+    for key, status in statuses.items():
+        call = calls[key]
+        require(status["statusRef"] == call["originalReturnRef"] and status["managerRef"] == call["managerRef"]
+                and status["noticeRef"] == call["noticeRef"] and status["returnSeq"] == call["returnSequence"]
+                and _same(status["notice"], call["afterNotice"]),
+                "notice status copy was substituted for its actual original live notice")
+    checkpoints, checkpoint_maps, tool_results = _native_checkpoints(observed, calls, notices, increments, raw)
+    facts = []
+    for edge in observed["captureEdges"]:
+        status, search = statuses[edge["statusCallId"]], calls[edge["searchCallId"]]
+        require(edge["kind"] == "source-bound-synchronous-edge" and edge["noDirectReaderClaim"] is True
+                and search["method"] == "search" and status["managerRef"] == search["managerRef"]
+                and edge["noticeRef"] == status["noticeRef"] == search["noticeRef"]
+                and edge["capturedSequence"] == status["notice"]["sequence"]
+                and edge["statusReturnSeq"] == status["returnSeq"] < edge["searchEnterSeq"] == search["enterSequence"]
+                and "searchOnce" in status["callerStack"],
+                "notice Native source-bound capture edge was relabelled or borrowed")
+        between = [row for row in calls.values() if edge["statusReturnSeq"] < row["enterSequence"] < edge["searchEnterSeq"]]
+        require(not between, "notice Native capture edge contains an intervening original invocation")
+        changes = [row for row in increments if row["noticeRef"] == edge["noticeRef"]
+                   and edge["searchEnterSeq"] < row["enterSequence"] < search.get("settleSeq", search["returnSequence"])]
+        turn = events[search["enterSequence"]]["turn"]
+        delivery = tool_results[turn]
+        require(search["settleSeq"] < delivery["sequence"],
+                "notice live delivery snapshot precedes the actual original search settlement")
+        delivered = checkpoint_maps[delivery["sequence"]][edge["noticeRef"]]
+        late = [row for row in increments if row["noticeRef"] == edge["noticeRef"]
+                and search["settleSeq"] < row["enterSequence"] < delivery["sequence"]]
+        public = delivery["publicSearch"]
+        expected_warning = delivered["warning"] if delivered["sequence"] != edge["capturedSequence"] else None
+        agrees = _same(public.get("warning"), expected_warning)
+        status = ("inconclusive-unobserved-lexical-read-window" if late or not agrees else
+                  "current-run-new-notice-during-search" if changes else "current-run-no-new-notice-before-tool-result")
+        prior_returns = [row for row in checkpoints.values() if row["event"] == "actual-host-return"
+                         and row["sequence"] < edge["statusReturnSeq"]]
+        prior_return = max(prior_returns, key=lambda row: row["sequence"]) if prior_returns else None
+        facts.append({"searchCallId": search["callId"], "noticeRef": edge["noticeRef"],
+                      "capturedSequence": edge["capturedSequence"], "incrementCallIdsBeforeSearchSettlement": [row["callId"] for row in changes],
+                      "captureKind": "source-bound-synchronous-edge", "lexicalReaderObserved": False,
+                      "toolResultCheckpointSequence": delivery["sequence"], "deliveredSequence": delivered["sequence"],
+                      "actualPublicWarningPresent": "warning" in public, "actualPublicWarning": public.get("warning"),
+                      "actualCorporaPresent": "corpora" in public, "actualCorpora": public.get("corpora"),
+                      "sourceRuleConsistentWithActualPublic": agrees, "incrementCallIdsInUnobservedReadWindow": [row["callId"] for row in late],
+                      "previousActualHostReturnSequence": prior_return["actorSequence"] if prior_return else None,
+                      "captureNoticeObservedAtPreviousReturn": bool(prior_return and edge["noticeRef"] in checkpoint_maps[prior_return["sequence"]]),
+                      "causeStatus": status, "historicalMissingWarningExplained": False})
+    require(facts, "notice Native actual public capture edge missing")
+    return {"validated": True, "captureFacts": facts, "incrementCalls": len(increments),
+            "warningPolicyChanged": False, "acceptancePointsAwarded": 0}
+
+
+def _writer_overlap_ids(call, writers):
+    return [other["callId"] for other in writers if other["callId"] != call["callId"]
+            and other["beforeNotice"]["noticeRef"] == call["beforeNotice"]["noticeRef"]
+            and call["enterSequence"] < other["returnSequence"]
+            and other["enterSequence"] < call["returnSequence"]]
+
+
+def _sdk_notice_chain(observed, calls, refs, raw):
+    events = _index(observed["events"], "sequence", "SDK live notice event clock")
+    installed = events[observed["installSequence"]]
+    manager, notice = observed["managerRef"], installed["noticeRef"]
+    require(installed["method"] == "observer" and installed["phase"] == "installed"
+            and manager in refs and notice in refs and refs[manager]["kind"] == "manager",
+            "notice SDK actual manager/live notice installation is detached")
+    initial = _scalar(installed["noticeScalar"])
+    for event in events.values():
+        require(event["managerRef"] == manager and event["noticeRef"] == notice,
+                "notice SDK live owner was replaced or inferred from equal scalar values")
+    writers, failed_writers, overlaps = [], [], []
+    writer_calls = [call for call in calls.values() if call["method"] == "_record_rebuild_request"]
+    producers = {}
+    for call in calls.values():
+        require(call["managerRef"] == manager
+                and call["beforeNotice"]["noticeRef"] == call["afterNotice"]["noticeRef"] == notice,
+                "notice SDK original call used another actual manager/live notice")
+        if call["method"] == "_record_rebuild_request":
+            if "errorRef" in call:
+                failed_writers.append(call["callId"])
+            else:
+                concurrent = _writer_overlap_ids(call, writer_calls)
+                if concurrent:
+                    overlaps.append({"callId": call["callId"], "otherCallIds": concurrent,
+                                     "causeStatus": "inconclusive-overlapping-writer-observers"})
+                else:
+                    require(call["afterNotice"]["noticeScalar"]["sequence"]
+                            == call["beforeNotice"]["noticeScalar"]["sequence"] + 1,
+                            "notice SDK original rebuild writer did not advance its same live notice exactly once")
+                writers.append(call)
+        if call["method"] == "status" and "errorRef" not in call:
+            returned = call["statusReturn"]
+            value = _scalar(returned["noticeScalar"])
+            require(returned["statusRef"] == call["returnRef"] and returned["statusRef"] in refs
+                    and returned["customRef"] in refs and returned["noticeRef"] in refs
+                    and type(returned["noticeIsOwnerObject"]) is bool
+                    and returned["noticeIsOwnerObject"] is (returned["noticeRef"] == notice),
+                    "notice SDK original status return/notice identity is detached")
+            if returned["noticeIsOwnerObject"]:
+                require(call["beforeNotice"]["noticeScalar"]["sequence"] <= value["sequence"]
+                        <= call["afterNotice"]["noticeScalar"]["sequence"],
+                        "notice SDK status live scalar contradicts its original same-thread read order")
+            require(returned["statusRef"] not in producers,
+                    "notice SDK status identity was reused for distinct original returns")
+            producers[returned["statusRef"]] = call
+    final = _one(events.values(), lambda row: row.get("hostEvent") == "close-return",
+                 "SDK actual post-close notice checkpoint is missing")
+    original_close = _one(raw["events"], lambda row: row["sequence"] == final["hostEventSequence"],
+                          "SDK post-close notice lacks its actual original host event")
+    require(original_close["event"] == "close-return"
+            and final["sequence"] > original_close["sequence"],
+            "notice SDK final live counter was sampled before original close returned")
+    final_scalar = _scalar(final["noticeScalar"])
+    require(all(initial["sequence"] <= _scalar(event["noticeScalar"])["sequence"] <= final_scalar["sequence"]
+                for event in events.values()),
+            "notice SDK live counter history contradicts original installation/post-close state")
+    # Check conservation only at actual post-close, after already-admitted work
+    # settles. Intermediate lock-free scalar reads can straddle a real writer.
+    if not failed_writers:
+        require(final_scalar["sequence"] == initial["sequence"] + len(writers),
+                "notice SDK live counter changed without a retained original rebuild writer")
+    publication_methods = {"reindex", "reindex_sources", "publish_prepared_index", "_run_memory_publication"}
+    failures = [call["callId"] for call in calls.values()
+                if call.get("publicationErrorRef") or call["method"] in publication_methods and call.get("errorRef")]
+    return producers, {"managerRef": manager, "liveNoticeRef": notice,
+        "writerCallIds": [call["callId"] for call in writers], "failedWriterCallIds": failed_writers,
+        "overlappingWriterIntervals": overlaps,
+        "counterConservation": "inconclusive-original-writer-error" if failed_writers else "verified-at-original-close",
+        "publicationFailureCallIds": failures,
+        "publicationCauseStatus": "inconclusive-real-publication-failure" if failures or failed_writers else "no-recorded-publication-failure"}
+
+
+def _sdk(observed, calls, raw):
+    refs = _index(observed["references"], "ref", "SDK actual object references")
+    require(len({row["objectId"] for row in refs.values()}) == len(refs),
+            "notice SDK gave a shared actual object multiple identities")
+    hooks = {(row["targetRef"], row["name"]): row for row in observed["hookDescriptors"]}
+    receipts = {(row["targetRef"], row["name"]): row for row in observed["restoration"]}
+    require(len(hooks) == len(observed["hookDescriptors"]) and set(hooks) == set(receipts)
+            and all(row["restoredExactOwnDescriptor"] is True
+                    and (not row["inherited"] or row["observerInstanceAttributeAbsent"] is True)
+                    for row in receipts.values()), "notice SDK observer descriptors were not restored")
+    producers, live_chain = _sdk_notice_chain(observed, calls, refs, raw)
+    captures = _index(observed["captures"], "captureCallId", "SDK exact original closure captures")
+    require(captures, "notice SDK original closure captures missing")
+    facts = []
+    for key, capture in captures.items():
+        call = calls[key]
+        original, exposed = capture["originalReaderRef"], capture["observedReaderRef"]
+        require(call["method"] == "_capture_rebuild_notice" and original != exposed
+                and original in refs and exposed in refs and capture["noticeRef"] in refs
+                and capture["closureFreevars"] == ["notice", "sequence"]
+                and set(capture["closureCellRefs"]) == {"notice", "sequence"}
+                and capture["closureCellRefs"]["notice"] == capture["noticeRef"]
+                and _same(refs[capture["closureCellRefs"]["sequence"]]["primitiveValue"], capture["capturedSequence"])
+                and call["returnRef"] == original and call["originalReaderRef"] == original
+                and call["observedReaderRef"] == exposed and call["args"]["statusRef"] == capture["statusRef"],
+                "notice SDK exact closure/exposed forwarding identity was substituted")
+        _scalar(capture["noticeScalar"])
+        producer = producers.get(capture["statusRef"])
+        require(producer is not None and producer["returnSequence"] < call["enterSequence"]
+                and producer["statusReturn"]["noticeRef"] == capture["noticeRef"]
+                and producer["statusReturn"]["noticeIsOwnerObject"] is capture["noticeIsOwnerObject"]
+                and type(capture["noticeIsOwnerObject"]) is bool,
+                "notice SDK exact closure capture did not consume its actual original status/notice return")
+        readers = [row for row in calls.values() if row["method"] == "notice-reader" and row["captureCallId"] == key]
+        require(readers, "notice SDK original warning reader was never actually invoked")
+        for reading in readers:
+            require(reading["originalReaderRef"] == reading["originalFunctionRef"] == original
+                    and reading["observedReaderRef"] == exposed
+                    and reading["capturedSequence"] == capture["capturedSequence"]
+                    and call["returnSequence"] < reading["enterSequence"]
+                    and reading["capturedNoticeBefore"]["noticeRef"] == reading["capturedNoticeAfter"]["noticeRef"] == capture["noticeRef"],
+                    "notice SDK reader invoked another closure or was eagerly evaluated")
+            before = _scalar(reading["capturedNoticeBefore"]["noticeScalar"])
+            after = _scalar(reading["capturedNoticeAfter"]["noticeScalar"])
+            stable = _same(before, after)
+            if "errorRef" in reading:
+                require(reading["errorRef"] in refs and "error" in refs[reading["errorRef"]],
+                        "notice SDK original reader exception was replaced or omitted")
+            elif stable:
+                expected = before.get("warning") if before.get("sequence") != capture["capturedSequence"] else None
+                require(_same(reading.get("returnPrimitive"), expected),
+                        "notice SDK original reader return differs from its actual stable closure cells")
+            facts.append({"captureCallId": key, "readerCallId": reading["callId"],
+                          "noticeRef": capture["noticeRef"], "capturedSequence": capture["capturedSequence"],
+                          "noticeIsOwnerObject": capture["noticeIsOwnerObject"],
+                          "producerStatusCallId": producer["callId"],
+                          "publicationCauseStatus": live_chain["publicationCauseStatus"],
+                          "returnPrimitive": reading.get("returnPrimitive"),
+                          "causeStatus": "exact-stable-original-reader-rule" if stable else "inconclusive-concurrent-notice-write"})
+    for call in calls.values():
+        if call["method"] == "notice-reader":
+            require(call["captureCallId"] in captures, "notice SDK reader lacks an original capture")
+        else:
+            hook = _one(hooks.values(), lambda row: row["name"] == call["method"],
+                        "SDK call did not name a unique declared original method")
+            require(call["originalFunctionRef"] == hook["originalFunctionRef"],
+                    "notice SDK invocation did not forward a declared original function")
+    return {"validated": True, "captureFacts": facts, "liveNoticeChain": live_chain,
+            "warningPolicyChanged": False, "acceptancePointsAwarded": 0}
+
+
+def validate_observations(case, raw, *, native, approved_reference=None, approved_runtime=None):
+    try:
+        observed = _header(case, raw, native=native, approved_reference=approved_reference,
+                           approved_runtime=approved_runtime)
+        events = _clock(raw, observed, native=native)
+        calls = _calls(observed, events, native=native)
+        return _native(observed, calls, events, raw) if native else _sdk(observed, calls, raw)
+    except (KeyError, IndexError, TypeError, AttributeError, json.JSONDecodeError, OSError) as error:
+        raise ValueError("notice original observation custody is structurally incomplete") from error
+
+
+def validate_capture(case, capture, result, *, native, approved_node=None, approved_reference=None, approved_runtime=None):
+    # No V8 operation is required here.  In particular approved_node is never
+    # selected from raw and no captured program/path is executed by this guard.
+    validate_result(case, result)
+    if native:
+        _original_native(case, capture, result)
+        raw = capture
+    else:
+        _original_sdk(case, capture, result)
+        raw = capture["observation"]["raw"]
+    return validate_observations(case, raw, native=native, approved_reference=approved_reference,
+                                 approved_runtime=approved_runtime)
+
+
+def validate_pair(case, native_raw, sdk_raw, native_result, sdk_result, *, approved_node=None,
+                  approved_reference=None, approved_runtime=None):
+    return {"validated": True,
+            "native": validate_capture(case, native_raw, native_result, native=True, approved_node=approved_node,
+                                       approved_reference=approved_reference, approved_runtime=approved_runtime),
+            "sdk": validate_capture(case, sdk_raw, sdk_result, native=False),
+            "acceptancePointsAwarded": 0}
+
+
+def replay_case(case, directory, *, approved_node=None, approved_reference=None, approved_runtime=None):
+    directory = Path(directory)
+    original = json.loads((directory / "stdout.json").read_text())["result"]
+    sdk = json.loads((directory / "sdk-output.json").read_text())
+    natives = json.loads((directory / "evidence/native-raw.json").read_text())
+    copies = json.loads((directory / "evidence/python-raw.json").read_text())
+    require(len(natives) == len(copies) == 1, "notice replay requires exactly one original capture per engine")
+    return validate_pair(case, natives[0], copies[0], original, sdk, approved_node=approved_node,
+                         approved_reference=approved_reference, approved_runtime=approved_runtime)

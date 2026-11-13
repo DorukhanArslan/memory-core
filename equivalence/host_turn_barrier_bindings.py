@@ -147,6 +147,96 @@ COMPILED_ANCHORS = {'dist/agent-runner.runtime-BinSrYfK.mjs': ('async function r
  'dist/runtime-snapshot-BFi3jxlO.mjs': ('function setRuntimeConfigSnapshot(config, sourceConfig) {',),
  'dist/transcript-header-CP-ow2Zr.mjs': ('function createSessionTranscriptHeader(params = {}) {',)}
 
+# Raw-only notice observations bind the original writer, live-object consumer
+# and publication method. These declarations add no operation or result policy.
+SOURCE_HASHES.update({
+    "extensions/memory-core/src/memory/manager-sync-ops.ts":
+        "5e2732c67f5e07cbb545ec9aad4f7e40ac391561b0c645f68f5ce6e865dcbf18",
+    "extensions/memory-core/src/memory/manager.ts":
+        "c4995b1e83db3e9aa4fbc6bdcffe4ddb36d9a5769396a0b1fd4ee2934c5c8173",
+    "extensions/memory-core/src/memory/manager-search-orchestration.ts":
+        "04f4189be68e7cf1118348dd2f22c9cbdfe4a80496a783922d095283c3986c55",
+    "extensions/memory-core/src/memory/manager-database-context.ts":
+        "bf2006808241b2ed7c07636b49f447e44d1d2fcf1141a4c9d60744738d194bf8",
+    "extensions/memory-core/src/memory-rebuild-notice.ts":
+        "0abad588fa8a1aad9040d85a16249780592202e651f287446eb55ad3821fe519",
+    "extensions/memory-core/src/memory-search-tool-query.ts":
+        "48168070d098e7540f82e83a2ab5e12cda338af8bded9d1a0b65e22514c93bdb",
+    "extensions/memory-core/src/tools.ts":
+        "bc3fc7cbfa743fcfe57200a0c66ee6ca53191e928a20f4195c29ca0122980e66",
+})
+SOURCE_ANCHORS.update({
+    "extensions/memory-core/src/memory/manager-sync-ops.ts": (
+        "export abstract class MemoryManagerSyncOps extends MemoryManagerSourceSyncOps {",
+        '    this.automaticRebuildNotice = notice ?? { sequence: 0, warning: "" };',
+        "  protected recordAutomaticRebuild(): void {",
+        "    this.automaticRebuildNotice.sequence += 1;",
+        "  protected async runSync(params?: MemorySyncParams) {",
+    ),
+    "extensions/memory-core/src/memory/manager.ts": (
+        "  status(): MemoryProviderStatus {",
+        "  protected async syncAdmitted(",
+        "    super(params.maintenanceSource?.automaticRebuildNotice);",
+        "        automaticRebuildNotice: this.automaticRebuildNotice,",
+    ),
+    "extensions/memory-core/src/memory/manager-search-orchestration.ts": (
+        "export abstract class MemorySearchOrchestration extends MemoryKeywordRetrieval {",
+        "  async search(query: string, opts?: MemoryIndexSearchOptions): Promise<MemorySearchResult[]> {",
+        "        this.recordAutomaticRebuild();",
+    ),
+    "extensions/memory-core/src/memory/manager-database-context.ts": (
+        "export class MemoryIndexDatabase {",
+        "  async publishShadow(",
+        '            type: "database.publish",',
+    ),
+    "extensions/memory-core/src/memory-rebuild-notice.ts": (
+        "export function captureMemoryRebuildNotice(status: MemoryProviderStatus): () => string | undefined {",
+        "  const sequence = notice?.sequence;",
+        '    notice?.sequence !== sequence && typeof notice?.warning === "string"',
+    ),
+    "extensions/memory-core/src/memory-search-tool-query.ts": (
+        "    params.onRebuildNotice?.(captureMemoryRebuildNotice(active.manager.status()));",
+        "    const candidates = await active.manager.search(query.text, {",
+    ),
+    "extensions/memory-core/src/tools.ts": (
+        "                onRebuildNotice: (read) => rebuildNotices.push(read),",
+        "              automaticRebuildWarning: readRebuildWarning(),",
+    ),
+})
+COMPILED_HASHES.update({
+    "dist/extensions/memory-core/manager-runtime.js":
+        "6ae8f02e229a5422d88dde59a6c070cce03e1ac9ffe5fa87172db8512f0eea0e",
+    "dist/memory-rebuild-notice-9mxFMQoD.mjs":
+        "cbbccbfb7f15644ca228606b8683e7ffe15fc0444d5bf422c164d326f4237e8f",
+    "dist/tools-DotaQGXh.mjs":
+        "c31b10a5ed25a1e02e5e7ac5be034b78906558c39350fd72be3f4c9edecc766e",
+})
+COMPILED_ANCHORS.update({
+    "dist/extensions/memory-core/manager-runtime.js": (
+        "var MemoryManagerSyncOps = class extends MemoryManagerSourceSyncOps {",
+        "\trecordAutomaticRebuild() {",
+        "\t\tthis.automaticRebuildNotice.sequence += 1;",
+        "\tasync runSync(params) {",
+        "var MemorySearchOrchestration = class extends MemoryKeywordRetrieval {",
+        "var MemoryIndexManager = class MemoryIndexManager extends MemorySearchOrchestration {",
+        "\t\tsuper(params.maintenanceSource?.automaticRebuildNotice);",
+        "\tasync syncAdmitted(params, options) {",
+        "\tasync publishShadow(input, assertCurrent) {",
+        "export { MemoryIndexManager, closeAllMemoryIndexManagers, closeMemoryIndexManagersForAgent };",
+    ),
+    "dist/memory-rebuild-notice-9mxFMQoD.mjs": (
+        "function captureMemoryRebuildNotice(status) {",
+        "\tconst sequence = notice?.sequence;",
+        '\treturn () => notice?.sequence !== sequence && typeof notice?.warning === "string" ? notice.warning : void 0;',
+        "export { captureMemoryRebuildNotice as t };",
+    ),
+    "dist/tools-DotaQGXh.mjs": (
+        'import { t as captureMemoryRebuildNotice } from "./memory-rebuild-notice-9mxFMQoD.mjs";',
+        "\t\tparams.onRebuildNotice?.(captureMemoryRebuildNotice(active.manager.status()));",
+        "\t\t\t\tcandidates: await active.manager.search(query.text, {",
+    ),
+})
+
 ADDITIONAL_REQUIRED_HOST_ARTIFACTS = tuple(COMPILED_HASHES)
 
 

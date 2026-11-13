@@ -1,0 +1,292 @@
+{
+  "kind": "next-turn-notice-observation-contract",
+  "version": 1,
+  "preparedAt": "2026-11-13T12:46:23.697950+00:00",
+  "status": "frozen-before-first-instrumented-host-execution",
+  "decision": {
+    "preferred": "Augment existing registered Native host-turn-barrier actor with raw-only original-method observations, then run the same frozen four inputs once each.",
+    "newProfileNeeded": false,
+    "why": "The live notice is a plain original instance data field; the original status call immediately precedes capture and search synchronously for memory-only queries. Original forwarding wrappers can observe it without supplying another engine operation.",
+    "fallback": "If those original data fields/methods cannot be observed without changing algorithms, stop and freeze a separate zero-credit observational profile before execution; do not silently patch lexical source or weaken current acceptance."
+  },
+  "acceptance": {
+    "existingVerified": 71,
+    "total": 128,
+    "addedByThisMeasurement": 0,
+    "scoreCanChangeFromThisPlan": false,
+    "existingPoint": "host.turn-barrier.outcomes",
+    "existingPointRemainsUnverifiedUntilNewFullGenuineProof": true,
+    "definitionsAndScopeChanged": false,
+    "newExpectedResultOrWarningPolicy": false
+  },
+  "inputs": {
+    "manifest": {
+      "path": "docs/host_turn_barrier_outcomes_literals.json",
+      "bytes": 14586,
+      "sha256": "d8fad3a3e747b9c8fbfab9613cb4c91e7b4dd2143089ee4b33cdf4934a6589b7"
+    },
+    "cases": [
+      {
+        "id": "host-turn-barrier-cold-ascii",
+        "operation": "host-turn-barrier-runtime",
+        "covers": [
+          "host.turn-barrier.outcomes"
+        ],
+        "caseWireSha256": "f15b6b765b7998301945a42e5028a30cbc759fb8251c7e814b35778a88a06e66",
+        "initialState": "cold"
+      },
+      {
+        "id": "host-turn-barrier-warm-ascii",
+        "operation": "host-turn-barrier-runtime",
+        "covers": [
+          "host.turn-barrier.outcomes"
+        ],
+        "caseWireSha256": "a66a8fd95c63ece444cfa50d4c575de504ae1d05b9a9d3dcd5367809b93d0da3",
+        "initialState": "warm"
+      },
+      {
+        "id": "host-turn-barrier-cold-unicode",
+        "operation": "host-turn-barrier-runtime",
+        "covers": [
+          "host.turn-barrier.outcomes"
+        ],
+        "caseWireSha256": "76f267e1c678d0ec7ffac28e309bea3360bd31f75230ebf59c6f8a6bdec06a65",
+        "initialState": "cold"
+      },
+      {
+        "id": "host-turn-barrier-warm-unicode",
+        "operation": "host-turn-barrier-runtime",
+        "covers": [
+          "host.turn-barrier.outcomes"
+        ],
+        "caseWireSha256": "cf7ce1144290e45d8bffa4fc230bbb5fcd26569787bccf149282a66455468750",
+        "initialState": "warm"
+      }
+    ],
+    "order": "original manifest order, one new independent process per original case",
+    "caseInputChanges": [],
+    "fixturePolicyChanges": [],
+    "existingWarmupsAndFullRunReplyAgentUnchanged": true,
+    "replacementReplyOperationOrDirectMemoryToolPathAllowed": false
+  },
+  "instrumentationBoundary": {
+    "file": "equivalence/host-turn-barrier-runtime.mjs",
+    "installation": "Immediately after the actor existing manager-runtime import at its current position, before first runReplyAgent; do not move imports or eagerly acquire a manager.",
+    "kind": "ordinary-function exact-receiver original forwarding observers; raw-only",
+    "exactlyOnce": "Reflect.apply(original,this,args) once; preserve exact original args, receiver, return object or same Promise, and thrown error.",
+    "returnPromise": "Return the identical original Promise immediately. Only nonthrowing settlement listeners may observe its actual completion; never await or replace it.",
+    "mutationAllowed": "Only declared reversible observer method descriptors and actor-private reference/event bookkeeping. Never alter original notice fields, source contents, manager state, results, original modules or scheduling policy.",
+    "noPerEventIO": true,
+    "finish": "Persist buffered observations with existing final raw write; restore exact original descriptors at original teardown.",
+    "ownerCoverage": "Prototype hooks cover original inherited calls on foreground and maintenance owners, including those created by the original engine. Static get may only forward calls the engine already makes.",
+    "firstSeenLimit": "If a notice first appears nonzero before any captured increment, label its earlier origin unobserved; do not claim complete constructor-to-capture causality."
+  },
+  "requiredMethods": {
+    "recordAutomaticRebuild": "Synchronous before/after live notice scalar snapshots, actual receiver/prototype/function IDs, exact original return/error and original caller stack. This is the only postconstruction sequence writer in the pinned source.",
+    "status": "Observe original entry/return; return original status unchanged. Bind original returned status.custom.automaticRebuildNotice by object identity to owner live notice, record primitive sequence/warning immediately at return and original caller stack. No observer-issued status call.",
+    "search": "Original entry plus original return-Promise identity and actual settlement; record args/query and live notice scalar snapshot.",
+    "syncAdmitted": "Actual reason/force/receiver/Promise and interval only for original calls.",
+    "runSync": "Actual reason/force/receiver/Promise and interval; use call IDs and observed unique open owner runSync only when attributing an increment.",
+    "takeSearchMaintenanceRequest": "Optional original call-through observer distinguishes real retry-generation notice requests; it must not be called by fixture.",
+    "publishedDatabase.publishShadow": "Observe original actual database-context method entry, exact original args/receiver/Promise and settlement; install only when that real owner/database context is naturally encountered. Label as original publication request/settlement, not a kernel/fsync/durability point."
+  },
+  "existingCheckpointsToExtend": [
+    "original actual-agent-event write/tool result notifications",
+    "existing actual-model-invocation callback consuming actual memory_search carrier",
+    "existing actual-host-return for save and followup",
+    "existing public-outcome-fixed and original teardown records"
+  ],
+  "noticeSampling": "At checkpoints read retained original notice objects via verified own data descriptors only, including the SAME object captured by the observed searchOnce status return; do not call any reader/status/lifecycle/search/acquisition API to sample.",
+  "schema": {
+    "namespace": "raw.noticeObservations only; original common result unchanged",
+    "header": [
+      "version",
+      "contractSha256",
+      "caseWireSha256",
+      "pid",
+      "ppid",
+      "installSequence",
+      "installAtNs",
+      "hookDescriptors",
+      "instrumentedActorSha256",
+      "originalSourceBindings",
+      "compiledBindings"
+    ],
+    "references": {
+      "manager": "actor WeakMap actual object ID plus purpose/agentId/databasePath from plain original fields",
+      "notice": "actual original object ID shared across owners when identity is equal; never identify by matching text/sequence",
+      "status": "original returned object ID plus nested notice object ID; copies get distinct IDs",
+      "promise": "actual object identity, not an invented common operation ID",
+      "databaseContext": "actual original owner.publishedDatabase identity; record all owners sharing it"
+    },
+    "event": [
+      "sequence shared with existing actor event clock",
+      "atNs from actual monotonic clock",
+      "turn label only as actor context, never causal proof",
+      "method/callId/parentSynchronousCallId",
+      "managerRef/noticeRef/statusRef/databaseContextRef where present",
+      "enter/return/settled phase",
+      "actual primitive args reason/force/query",
+      "original function declaring prototype and function identity",
+      "before/after notice {sequencePresent,sequence,warningPresent,warning}",
+      "exact original return reference or error identity+full error",
+      "actual original caller stack for status and notice increment"
+    ],
+    "captureEdge": {
+      "kind": "source-bound synchronous edge, not intercepted lexical reader",
+      "statusCallId": "actual searchOnce status return",
+      "searchCallId": "next actual same-owner search entry",
+      "noticeRef": "same original live object from status return",
+      "capturedSequence": "actual primitive value recorded at original status return",
+      "sourceProof": "Pinned searchOnce calls captureMemoryRebuildNotice(active.manager.status()) before manager.search, with no await between. Memory-only input avoids the extra sessions status branch.",
+      "noDirectReaderClaim": true
+    },
+    "toolBinding": {
+      "actualToolResult": "complete actual deferred memory_search carrier already consumed by original model callback",
+      "noticeAtDelivery": "snapshot the same retained captured notice object without invoking original warning reader",
+      "publicResult": "retain all public fields, text/details, warning/corpora presence and raw producing-tool/host carriers unchanged"
+    }
+  },
+  "causeCriteria": {
+    "strongPresentWarning": "Same original capture notice has a real observed recordAutomaticRebuild increment after capture and before warning assembly/tool carrier; actual public warning/corpora obey pinned original branch. Attribute the request only with original stack plus exact owner/runSync interval.",
+    "strongAbsentWarning": "Actual capture already sees the current sequence; no captured sequence increment occurs before tool result, and original public warning/corpora are absent. Earlier observed record increments identify actual prior work only if their interval/owner/notice identities are retained.",
+    "inconclusive": [
+      "No relevant sequence change occurs in this fresh case execution.",
+      "Notice origin/increment occurs before observer coverage, actual object identity is missing, or capture status call cannot be uniquely bound.",
+      "Multiple overlapping requests prevent unique request attribution.",
+      "Instrumentation changed timing so the earlier alternative outcome does not recur. Preserve the result; no repeated-until-desired witness."
+    ],
+    "publicationLimit": "publishShadow fulfillment bounds an original publication lifecycle only; it does not identify physical fsync or make all late owner cleanup part of host-return."
+  },
+  "forbidden": [
+    "extra manager get/acquisition",
+    "extra status/lifecycle/search/sync calls",
+    "explicit reindex/refresh/barrier/private idle wait",
+    "timer waits/drains/yields or artificial schedules",
+    "notice sequence/warning getters/setters replacements",
+    "patching original captureMemoryRebuildNotice closure/source",
+    "eager original reader invocation",
+    "replacement provider/model reply policy",
+    "input/source metadata fixture changes",
+    "public result projection/normalization/tolerances",
+    "retrying cases until a desired notice outcome appears"
+  ],
+  "guards": [
+    "All four exact case wires and source/compiled/actor hashes sealed before first execution.",
+    "No unforwarded original method call, receiver substitution or changed original return/Promise identity.",
+    "Actual notice sequence transitions bind same live object; mutation of any identity/scalar/phase independently rejected.",
+    "Status returned notice identity binds actual owner object and synchronous capture/search edge.",
+    "Complete public text/details/host reply fields remain intact; no dropping warning or corpora.",
+    "All real sync and publication errors retained; failed/inconclusive measurement cannot pass acceptance.",
+    "Owner-sharing checked using identity rather than numerically equal notice state.",
+    "Original model/save/followup order and no intervening host operation remain unchanged."
+  ],
+  "sealing": {
+    "beforeHosts": [
+      "Commit instrumentation and strict raw guard separately from any SDK behavior fix.",
+      "Freeze this contract byte hash, all four input hashes, current scope/full-catalog hashes, new actor/preload/bindings hashes, Node authority and original compiled/source bindings in a new execution seal.",
+      "No expected notice values or public warning-presence bits may be added after observing results."
+    ],
+    "afterHosts": [
+      "Retain first original four results and all raw error/notice/public carriers.",
+      "Independent replay determines source-bound cause or explicitly inconclusive result.",
+      "Any SDK behavior proposal requires its own concrete evidence and later genuine complete gate; this observation packet cannot restore the lost point by itself."
+    ]
+  },
+  "sourceAuthority": [
+    {
+      "path": "equivalence/host-turn-barrier-runtime.mjs",
+      "bytes": 17967,
+      "sha256": "fe24362115d666184688c24d640cb942e4a07fb192f13dee108895ed16231a04"
+    },
+    {
+      "path": "equivalence/host_turn_barrier.py",
+      "bytes": 2966,
+      "sha256": "cd35f13ae4ea64d010ff6ace3884903dc42c788f37c224c97b84ea791011f1e1"
+    },
+    {
+      "path": "equivalence/host_turn_barrier_native.py",
+      "bytes": 10634,
+      "sha256": "44c109a2cc7dd7702f88e93ef07424a1e1a5ef8b398b85e52ac762c4e9b8bf10"
+    },
+    {
+      "path": "equivalence/host_turn_barrier_bindings.py",
+      "bytes": 16655,
+      "sha256": "0f213915dec984758f70438b29f1c16419e7b8b1999093a0fc24ab4a62df9a36"
+    },
+    {
+      "path": "docs/host_turn_barrier_outcomes_literals.json",
+      "bytes": 14586,
+      "sha256": "d8fad3a3e747b9c8fbfab9613cb4c91e7b4dd2143089ee4b33cdf4934a6589b7"
+    },
+    {
+      "path": "work/openclaw-v2026.9.9/extensions/memory-core/src/memory-rebuild-notice.ts",
+      "bytes": 596,
+      "sha256": "0abad588fa8a1aad9040d85a16249780592202e651f287446eb55ad3821fe519"
+    },
+    {
+      "path": "work/openclaw-v2026.9.9/extensions/memory-core/src/memory-search-tool-query.ts",
+      "bytes": 10307,
+      "sha256": "48168070d098e7540f82e83a2ab5e12cda338af8bded9d1a0b65e22514c93bdb"
+    },
+    {
+      "path": "work/openclaw-v2026.9.9/extensions/memory-core/src/tools.ts",
+      "bytes": 24003,
+      "sha256": "bc3fc7cbfa743fcfe57200a0c66ee6ca53191e928a20f4195c29ca0122980e66"
+    },
+    {
+      "path": "work/openclaw-v2026.9.9/extensions/memory-core/src/memory/manager-sync-ops.ts",
+      "bytes": 25674,
+      "sha256": "5e2732c67f5e07cbb545ec9aad4f7e40ac391561b0c645f68f5ce6e865dcbf18"
+    },
+    {
+      "path": "work/openclaw-v2026.9.9/extensions/memory-core/src/memory/manager.ts",
+      "bytes": 27772,
+      "sha256": "c4995b1e83db3e9aa4fbc6bdcffe4ddb36d9a5769396a0b1fd4ee2934c5c8173"
+    },
+    {
+      "path": "work/openclaw-v2026.9.9/extensions/memory-core/src/memory/manager-search-orchestration.ts",
+      "bytes": 27786,
+      "sha256": "04f4189be68e7cf1118348dd2f22c9cbdfe4a80496a783922d095283c3986c55"
+    },
+    {
+      "path": "work/openclaw-v2026.9.9/extensions/memory-core/src/memory/manager-database-context.ts",
+      "bytes": 18466,
+      "sha256": "bf2006808241b2ed7c07636b49f447e44d1d2fcf1141a4c9d60744738d194bf8"
+    },
+    {
+      "path": ".reference/release-runtime/node_modules/openclaw/dist/memory-rebuild-notice-9mxFMQoD.mjs",
+      "bytes": 503,
+      "sha256": "cbbccbfb7f15644ca228606b8683e7ffe15fc0444d5bf422c164d326f4237e8f"
+    },
+    {
+      "path": ".reference/release-runtime/node_modules/openclaw/dist/tools-DotaQGXh.mjs",
+      "bytes": 41024,
+      "sha256": "c31b10a5ed25a1e02e5e7ac5be034b78906558c39350fd72be3f4c9edecc766e"
+    },
+    {
+      "path": ".reference/release-runtime/node_modules/openclaw/dist/extensions/memory-core/manager-runtime.js",
+      "bytes": 239987,
+      "sha256": "6ae8f02e229a5422d88dde59a6c070cce03e1ac9ffe5fa87172db8512f0eea0e"
+    }
+  ],
+  "priorAuthorizedAnalysis": {
+    "path": "work/query-sync-boundaries/independent-review/fresh-cold-unicode/native-only-notice-source-analysis.json",
+    "bytes": 5603,
+    "sha256": "1794a0348f10b78208d2c2b43a71cdaab40381cd0541e3b69d6e4eae625ce669"
+  },
+  "nonInterferenceLimit": "Read-only forwarding observers still consume CPU and can affect races. They show original behavior under the declared observer, not a reproduction guarantee for the earlier process schedule. No old hosted artifact access.",
+  "sdkObservation": {
+    "file": "equivalence/host_turn_barrier_sdk.py",
+    "productionBytesChanged": false,
+    "rawNamespace": "raw.noticeObservations",
+    "methods": "Forward existing actual store status/search/reindex/reindex_sources/record/publication methods exactly once; preserve receiver, args, original ordinary returns and exceptions; no extra method/API invocations.",
+    "capture": "Wrap only original module _capture_rebuild_notice. Call original once, inspect its exact original returned reader code co_freevars/closure cells to retain actual notice object and captured sequence; do not invoke eagerly.",
+    "readerObservationException": "Expose a declared reader forwarding wrapper solely to observe actual caller invocations. Record originalReaderRef and observedReaderRef as distinct. The wrapper calls the exact original reader once per actual invocation and returns its exact original string/None or raises the same exception. It does not change closure cells or notice Mapping. Reader function identity is not claimed preserved; this private observer exception adds no invocation, wait or scheduling primitive.",
+    "noPerEventIO": true,
+    "noAddedLocks": "No observer lock/yield/task/timer/IO or owner method call around/inside original forwarding. Buffer primitive snapshots; record direct object identity, thread and monotonic time. Restore original methods/module helper on teardown.",
+    "originalPolicy": "Same real ManagedHostSession/public factory/on-search/store/catalog/source policy, same fixed source metadata and exact original4 input order.",
+    "successObservation": "Record exact original reader return and actual complete public carrier when already produced; a later notice counter cannot retroactively rewrite the frozen warning.",
+    "concurrencyLimit": "Direct scalar reads can straddle real writes; retain original writer intervals and exact original closure captures/read returns, and label unresolved races inconclusive."
+  }
+}

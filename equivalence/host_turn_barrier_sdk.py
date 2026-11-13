@@ -9,13 +9,17 @@ from __future__ import annotations
 import asyncio
 from copy import deepcopy
 import hashlib
+import importlib
+import itertools
 import json
 import os
 from pathlib import Path
 import subprocess
 import sys
 import tempfile
+import threading
 import time
+import traceback
 
 from equivalence.host_restart_sdk import (
     _model_input, _observed_tool_result, _plain, _source, _source_metadata, _sqlite_snapshot,
@@ -24,6 +28,238 @@ from equivalence.host_restart_sdk import (
 ROOT = Path(__file__).resolve().parents[1]
 EMPTY_ANSWER = "No source-backed memory found."
 MODEL = {"provider": "host-turn-barrier-offline-model", "model": "actual-result-reader"}
+_ABSENT = object()
+
+
+def _caller_frames():
+    """Read frame metadata only; traceback/linecache source lookup performs I/O."""
+    frame = sys._getframe(1)
+    rows = []
+    try:
+        while frame is not None:
+            code = frame.f_code
+            rows.append({"path": code.co_filename, "line": frame.f_lineno,
+                         "name": code.co_name, "qualname": code.co_qualname})
+            frame = frame.f_back
+    finally:
+        del frame
+    return rows
+
+
+class _NoticeObservations:
+    """Reversible raw-only forwarding; no engine calls belong to this observer."""
+
+    METHODS = ("status", "search", "reindex", "reindex_sources", "_defer_memory_publication",
+               "_on_search_snapshot", "_submit_memory_publication", "_run_memory_publication",
+               "_record_rebuild_request", "_on_index_preparation_admitted",
+               "_on_index_publication_write", "publish_prepared_index")
+
+    def __init__(self, owner, stamp, context, *, header=None):
+        self.owner, self.stamp, self.context = owner, stamp, context
+        self._objects, self._restorations = {}, []
+        self._reference_sequence = itertools.count(1)
+        self._local = threading.local()
+        self.data = {"version": 1, **(header or {}), "references": [], "calls": [],
+                     "events": [], "captures": [], "hookDescriptors": []}
+        self.manager_ref = self.reference(owner, "manager")
+        self.data["managerRef"] = self.manager_ref
+
+    def reference(self, value, kind):
+        identifier = id(value)
+        if identifier not in self._objects:
+            ref = f"ref-{next(self._reference_sequence)}"
+            row = {"ref": ref, "kind": kind, "objectId": str(identifier),
+                   "module": type(value).__module__, "qualname": type(value).__qualname__}
+            if value is None or type(value) in (str, int, float, bool):
+                row["primitiveValue"] = value
+            candidate = (value, row)
+            if self._objects.setdefault(identifier, candidate) is candidate:
+                self.data["references"].append(row)
+        return self._objects[identifier][1]["ref"]
+
+    def notice(self, value=_ABSENT):
+        if value is _ABSENT:
+            value = vars(self.owner).get("_automatic_rebuild_notice")
+        scalar = {"sequencePresent": isinstance(value, dict) and dict.__contains__(value, "sequence"),
+                  "warningPresent": isinstance(value, dict) and dict.__contains__(value, "warning")}
+        if scalar["sequencePresent"]:
+            scalar["sequence"] = dict.__getitem__(value, "sequence")
+        if scalar["warningPresent"]:
+            scalar["warning"] = dict.__getitem__(value, "warning")
+        return {"noticeRef": self.reference(value, "notice"), "noticeScalar": scalar}
+
+    def emit(self, method, phase, **fields):
+        row = {**self.stamp(), "threadId": threading.get_ident(), **self.context(),
+               "method": method, "phase": phase, "managerRef": self.manager_ref, **fields}
+        self.data["events"].append(row)
+        return row
+
+    def _begin(self, method, original, args):
+        stack = getattr(self._local, "calls", ())
+        entered = self.emit(method, "enter", **self.notice())
+        call = {"callId": f"call-{entered['sequence']}", "method": method,
+                "managerRef": self.manager_ref, "originalFunctionRef": self.reference(original, "function"),
+                "parentSynchronousCallId": stack[-1] if stack else None,
+                "enterSequence": entered["sequence"], "args": args,
+                "beforeNotice": {key: entered[key] for key in ("noticeRef", "noticeScalar")},
+                "originalInvocations": 0}
+        entered.update(callId=call["callId"], originalFunctionRef=call["originalFunctionRef"],
+                       parentSynchronousCallId=call["parentSynchronousCallId"])
+        if method in {"status", "_record_rebuild_request"}:
+            entered["callerStack"] = _caller_frames()
+        self.data["calls"].append(call)
+        self._local.calls = (*stack, call["callId"])
+        return call
+
+    def _finish(self, call, *, returned=_ABSENT, error=None):
+        fields = {"callId": call["callId"], "originalFunctionRef": call["originalFunctionRef"],
+                  "parentSynchronousCallId": call["parentSynchronousCallId"], **self.notice()}
+        if error is not None:
+            fields["errorRef"] = call["errorRef"] = self.reference(error, "exception")
+        elif returned is None or isinstance(returned, (str, int, float, bool)):
+            fields["returnPrimitive"] = call["returnPrimitive"] = returned
+        else:
+            fields["returnRef"] = call["returnRef"] = self.reference(returned, "return")
+        finished = self.emit(call["method"], "error" if error is not None else "return", **fields)
+        call.update(returnSequence=finished["sequence"], afterNotice={key: fields[key]
+                    for key in ("noticeRef", "noticeScalar")})
+        self._local.calls = self._local.calls[:-1]
+
+    def _local_notice(self):
+        record = getattr(self.owner._local, "automatic_repair_notice", None)
+        return None if record is None else {"ref": self.reference(record, "local-repair-notice"),
+                                            "recorded": record.get("recorded"),
+                                            "unopened": record.get("unopened")}
+
+    def _method_wrapper(self, name, original):
+        def observed(*args, **kwargs):
+            primitives = {key: value for key, value in kwargs.items()
+                          if value is None or isinstance(value, (str, int, float, bool))}
+            if name == "search" and args:
+                primitives["query"] = args[0]
+            if name == "publish_prepared_index" and len(args) > 1:
+                primitives["expectedRevision"] = args[1]
+            call = self._begin(name, original, primitives)
+            call["originalReceiverIsExactOwner"] = getattr(original, "__self__", None) is self.owner
+            if name == "_on_index_publication_write":
+                call["localRepairNoticeBefore"] = self._local_notice()
+                if kwargs.get("error") is not None:
+                    call["publicationErrorRef"] = self.reference(kwargs["error"], "exception")
+            try:
+                call["originalInvocations"] += 1
+                result = original(*args, **kwargs)
+            except BaseException as error:
+                self._finish(call, error=error)
+                raise
+            else:
+                if name == "status":
+                    custom = result.get("custom")
+                    notice = custom.get("automaticRebuildNotice") if isinstance(custom, dict) else None
+                    call["statusReturn"] = {"statusRef": self.reference(result, "status"),
+                        "customRef": self.reference(custom, "status-custom"), **self.notice(notice),
+                        "noticeIsOwnerObject": notice is vars(self.owner).get("_automatic_rebuild_notice")}
+                if name == "_on_index_publication_write":
+                    call["localRepairNoticeAfter"] = self._local_notice()
+                self._finish(call, returned=result)
+                return result
+        return observed
+
+    def _capture_wrapper(self, original):
+        def capture(status):
+            call = self._begin("_capture_rebuild_notice", original,
+                               {"statusRef": self.reference(status, "status")})
+            try:
+                call["originalInvocations"] += 1
+                reader = original(status)
+            except BaseException as error:
+                self._finish(call, error=error)
+                raise
+            cells = dict(zip(reader.__code__.co_freevars,
+                             (cell.cell_contents for cell in reader.__closure__ or ()), strict=True))
+            notice, sequence = cells["notice"], cells["sequence"]
+            captured = {"captureCallId": call["callId"], "statusRef": self.reference(status, "status"),
+                **self.notice(notice), "capturedSequence": sequence,
+                "originalReaderRef": self.reference(reader, "original-reader"),
+                "closureFreevars": list(reader.__code__.co_freevars),
+                "closureCellRefs": {name: self.reference(value, "closure-cell") for name, value in cells.items()},
+                "noticeIsOwnerObject": notice is vars(self.owner).get("_automatic_rebuild_notice")}
+
+            def observed_reader():
+                reading = self._begin("notice-reader", reader, {})
+                reading.update(originalReaderRef=captured["originalReaderRef"],
+                    observedReaderRef=captured["observedReaderRef"], captureCallId=call["callId"],
+                    capturedSequence=sequence, capturedNoticeBefore=self.notice(notice))
+                try:
+                    reading["originalInvocations"] += 1
+                    result = reader()
+                except BaseException as error:
+                    reading["capturedNoticeAfter"] = self.notice(notice)
+                    self._finish(reading, error=error)
+                    raise
+                reading["capturedNoticeAfter"] = self.notice(notice)
+                self._finish(reading, returned=result)
+                return result
+
+            captured["observedReaderRef"] = self.reference(observed_reader, "observed-reader")
+            self.data["captures"].append(captured)
+            call.update(originalReaderRef=captured["originalReaderRef"],
+                        observedReaderRef=captured["observedReaderRef"])
+            self._finish(call, returned=reader)
+            return observed_reader
+        return capture
+
+    def _replace(self, target, name, replacement, original):
+        previous = vars(target).get(name, _ABSENT)
+        descriptor = {"name": name, "targetRef": self.reference(target, "hook-target"),
+            "originalFunctionRef": self.reference(original, "function"),
+            "inherited": previous is _ABSENT, "replacementRef": self.reference(replacement, "observer")}
+        function = getattr(original, "__func__", original)
+        descriptor["originalCodeFunctionRef"] = self.reference(function, "code-function")
+        if hasattr(function, "__code__"):
+            descriptor["originalCode"] = {"path": function.__code__.co_filename,
+                                          "line": function.__code__.co_firstlineno,
+                                          "qualname": function.__qualname__}
+        descriptor["declaringClass"] = next((f"{cls.__module__}.{cls.__qualname__}"
+            for cls in type(target).__mro__ if name in vars(cls)), None)
+        if previous is not _ABSENT:
+            descriptor["previousOwnRef"] = self.reference(previous, "own-descriptor")
+        self.data["hookDescriptors"].append(descriptor)
+        setattr(target, name, replacement)
+        self._restorations.append((target, name, previous, descriptor))
+
+    def install(self, module):
+        for name in self.METHODS:
+            original = getattr(self.owner, name)
+            self._replace(self.owner, name, self._method_wrapper(name, original), original)
+        original = module._capture_rebuild_notice
+        self._replace(module, "_capture_rebuild_notice", self._capture_wrapper(original), original)
+        installed = self.emit("observer", "installed", **self.notice())
+        self.data.update(installSequence=installed["sequence"], installAtNs=installed["atNs"])
+
+    def checkpoint(self, event):
+        self.emit("host-event", "existing-host-event", hostEventSequence=event["sequence"],
+                  hostEvent=event["event"], **self.notice())
+
+    def restore(self):
+        receipts = []
+        for target, name, previous, descriptor in reversed(self._restorations):
+            if previous is _ABSENT:
+                delattr(target, name)
+            else:
+                setattr(target, name, previous)
+            restored = vars(target).get(name, _ABSENT)
+            receipts.append({"name": name, "targetRef": descriptor["targetRef"],
+                "inherited": previous is _ABSENT, "restoredExactOwnDescriptor": restored is previous,
+                "observerInstanceAttributeAbsent": name not in vars(target)})
+        self.data["restoration"] = receipts
+        for value, row in self._objects.values():
+            if row["kind"] == "exception":
+                row["error"] = {"name": type(value).__name__, "message": str(value),
+                                "module": type(value).__module__, "arguments": _plain(value.args),
+                                "traceback": "".join(traceback.format_exception(value))}
+                for name in ("sqlite_errorcode", "sqlite_errorname", "errno", "filename", "filename2"):
+                    if hasattr(value, name):
+                        row["error"][name] = getattr(value, name)
 
 
 async def _run_host(request):
@@ -63,14 +299,43 @@ async def _run_host(request):
         "implementationRoot": str(Path(memory_core.__file__).resolve().parents[1]),
         "clock": {"owner": "public-host-clock", "nowMs": now, "monotonicAndTimers": "unmodified"},
         "ownerPolicy": "on-search", "turns": [], "events": [], "metadata": [], "snapshots": []}
-    sequence = 0
+    sequence = itertools.count(1)
+    observer = None
+    context = {"turnLabel": None, "toolCallId": None}
+
+    def stamp():
+        return {"sequence": next(sequence), "atNs": str(time.monotonic_ns())}
 
     def event(event_name, **fields):
-        nonlocal sequence
-        sequence += 1
-        row = {"event": event_name, "sequence": sequence, "atNs": str(time.monotonic_ns()), **fields}
+        if event_name == "host-call":
+            context.update(turnLabel=fields["label"], toolCallId=None)
+        elif event_name == "tool-dispatch":
+            context["toolCallId"] = fields["id"]
+        row = {"event": event_name, **stamp(), **fields}
         raw["events"].append(row)
+        if observer is not None:
+            observer.checkpoint(row)
+        if event_name in {"tool-result", "host-return"}:
+            context["toolCallId"] = None
         return row
+
+    from equivalence.host_turn_barrier import CASE_HASHES, build_cases, case_wire
+    case = next(case for case in build_cases() if case["input"] == value)
+    contract = ROOT / "docs/next_turn_notice_observation_contract.json"
+    observer = _NoticeObservations(owner.store, stamp, lambda: dict(context), header={
+        "contractSha256": hashlib.sha256(contract.read_bytes()).hexdigest(),
+        "caseWireSha256": hashlib.sha256(case_wire(case)).hexdigest(),
+        "pid": os.getpid(), "ppid": os.getppid(), "caseId": case["id"],
+        "instrumentedActorSha256": hashlib.sha256(Path(__file__).read_bytes()).hexdigest(),
+        "originalSourceBindings": [{"module": name, "path": str(Path(sys.modules[name].__file__).resolve()),
+            "sha256": hashlib.sha256(Path(sys.modules[name].__file__).read_bytes()).hexdigest()}
+            for name in ("memory_core.host.managed_index", "memory_core.host.managed_session",
+                         "memory_core.host.kit", "memory_core.host.lifecycle", "memory_core.tools.memory_search")],
+        "compiledBindings": []})
+    if observer.data["caseWireSha256"] != CASE_HASHES[case["id"]]:
+        raise RuntimeError("The notice observer requires an unchanged original host input")
+    observer.install(importlib.import_module("memory_core.tools.memory_search"))
+    raw["noticeObservations"] = observer.data
 
     def snapshot(label):
         row = {"label": label, "source": _source(workspace, value["source"]),
@@ -177,12 +442,15 @@ async def _run_host(request):
         return {"result": result, "raw": raw}
     finally:
         # Joining actual publishers at teardown does not supply a pre-read barrier.
-        event("close-call")
-        await owner.aclose()
-        event("close-return")
-        raw["closedLifecycle"] = owner.store.lifecycle_snapshot()
-        raw["closedStatus"] = owner.publication_status()
-        (directory / "sdk-host-raw.json").write_text(json.dumps(raw, ensure_ascii=False, allow_nan=False) + "\n")
+        try:
+            event("close-call")
+            await owner.aclose()
+            event("close-return")
+            raw["closedLifecycle"] = owner.store.lifecycle_snapshot()
+            raw["closedStatus"] = owner.publication_status()
+        finally:
+            observer.restore()
+            (directory / "sdk-host-raw.json").write_text(json.dumps(raw, ensure_ascii=False, allow_nan=False) + "\n")
 
 
 def run_host_turn_barrier_sdk_host(request):

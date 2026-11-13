@@ -716,6 +716,8 @@ def run_query_sync_boundaries_sdk_host(request):
             elif operation in {"await-real-publication-pending", "await-original-busy"}:
                 gate.wait(3)
             elif operation == "await-joined-requests":
+                if gate is None or gate.db is None:
+                    raise RuntimeError("The frozen concurrent request group lacks its actual held SQLite gate")
                 observations = []
                 for label in step["labels"]:
                     timeout = 3 if gate is None or gate.db is None else min(3, gate.remaining())
@@ -725,7 +727,11 @@ def run_query_sync_boundaries_sdk_host(request):
                         "observedSeq": event("independent-original-call-entered", label=label)["sequence"]})
                 schedule["actualRequestEntries"] = observations
                 schedule["coalescingAssertedByFixture"] = False
+                schedule["leaderStillPending"] = not call_futures[step["leader"]].done()
+                if not schedule["leaderStillPending"]:
+                    raise RuntimeError("The actual first producer settled before the declared concurrent request entries")
             elif operation == "release-sql-gate":
+                gate.remaining()
                 schedule["callCompletionBeforeRelease"] = {label: future.done() for label, future in call_futures.items()}
                 gate.release()
             elif operation == "arm-publication-fault":

@@ -51,6 +51,153 @@ function unwrapMemoryResult(message,expected){
  if(!isDeepStrictEqual(nested,value.result.details))throw Error('The actual memory carrier and details differ');
  return transported(value.result.details);
 }
+// Passive descriptor observers. The pure factory also supports forwarding tests
+// without importing or acquiring any original memory runtime.
+export function createNativeNoticeObserver(OriginalManager,{observations,stamp,header}){
+ const out=Object.assign(observations,header,{events:[],calls:[],managers:[],notices:[],statuses:[],promises:[],
+  databaseContexts:[],captureEdges:[],checkpoints:[],observerFailures:[],hookDescriptors:[],restoreReceipts:[]});
+ const refs=new WeakMap(),managerRows=new WeakMap(),noticeRows=new WeakMap(),databaseRows=new WeakMap(),
+  retainedNotices=new Map(),lastStatuses=new WeakMap(),hooked=new WeakMap(),stack=[],restorations=[],openRuns=new Map();
+ let nextRef=0,nextCall=0,restored=false;
+ const own=(value,key)=>value&&(typeof value==='object'||typeof value==='function')?Object.getOwnPropertyDescriptor(value,key):undefined;
+ const data=(value,key)=>{const descriptor=own(value,key);return descriptor&&Object.hasOwn(descriptor,'value')?descriptor.value:undefined;};
+ const ref=value=>{if(!value||(typeof value!=='object'&&typeof value!=='function'))return null;
+  if(!refs.has(value))refs.set(value,`notice-ref-${++nextRef}`);return refs.get(value);};
+ const fail=(stage,error)=>{try{out.observerFailures.push({stage,errorRef:ref(error),error:errorRecord(error)});}catch{out.observerFailures.push({stage,error:'observer failure could not be serialized'});}};
+ const safe=(stage,run)=>{try{return run();}catch(error){fail(stage,error);return undefined;}};
+ const emit=(event,fields={})=>safe(event,()=>{const row={...stamp(),event,...fields};out.events.push(row);return row;});
+ function scalarNotice(notice){
+  const sequence=own(notice,'sequence'),warning=own(notice,'warning');
+  return{sequencePresent:!!sequence&&Object.hasOwn(sequence,'value'),
+   sequence:sequence&&Object.hasOwn(sequence,'value')?sequence.value:null,
+   warningPresent:!!warning&&Object.hasOwn(warning,'value'),
+   warning:warning&&Object.hasOwn(warning,'value')?warning.value:null};
+ }
+ function retainNotice(notice){
+  if(!notice||typeof notice!=='object')return null;
+  if(!noticeRows.has(notice)){const sample=scalarNotice(notice),row={noticeRef:ref(notice),
+    firstSeenSequence:sample.sequence,firstSeenOrigin:sample.sequence===0?'zero-observed':'unobserved',managerRefs:[]};
+   noticeRows.set(notice,row);retainedNotices.set(row.noticeRef,notice);out.notices.push(row);}
+  return noticeRows.get(notice);
+ }
+ function codec(value,seen=new WeakSet(),depth=0){
+  if(value===undefined)return{privateType:'undefined'};
+  if(typeof value==='bigint')return{privateType:'bigint',value:value.toString()};
+  if(typeof value==='symbol')return{privateType:'symbol',description:value.description};
+  if(typeof value==='number'&&!Number.isFinite(value))return{privateType:'number',value:String(value)};
+  if(value===null||!['object','function'].includes(typeof value))return value;
+  if(typeof value==='function'||value instanceof Promise||depth>5||seen.has(value))return{privateType:typeof value==='function'?'function':'reference',ref:ref(value)};
+  seen.add(value);const descriptors=Object.getOwnPropertyDescriptors(value),result=Array.isArray(value)?[]:{};
+  for(const key of Reflect.ownKeys(descriptors)){if(Array.isArray(value)&&key==='length')continue;
+   const descriptor=descriptors[key],name=typeof key==='symbol'?`[symbol:${key.description}]`:key;
+   if(Object.hasOwn(descriptor,'value'))result[name]=codec(descriptor.value,seen,depth+1);
+   else result[name]={privateType:'accessor-not-invoked'};}
+  return result;
+ }
+ function managerSample(manager){
+  if(!manager||typeof manager!=='object')return{managerRef:null,noticeRef:null};
+  const notice=data(manager,'automaticRebuildNotice'),noticeRow=retainNotice(notice),database=data(manager,'publishedDatabase');
+  if(!managerRows.has(manager)){const settings=data(manager,'settings'),store=data(settings,'store');
+   const row={managerRef:ref(manager),purpose:data(manager,'purpose')??null,agentId:data(manager,'agentId')??null,
+    databasePath:data(store,'databasePath')??null,noticeRef:noticeRow?.noticeRef??null,databaseContextRef:ref(database)};
+   managerRows.set(manager,row);out.managers.push(row);}
+  const row=managerRows.get(manager);
+  if(noticeRow&&!noticeRow.managerRefs.includes(row.managerRef))noticeRow.managerRefs.push(row.managerRef);
+  if(database&&typeof database==='object'){
+   if(!databaseRows.has(database)){const databaseRow={databaseContextRef:ref(database),managerRefs:[]};
+    databaseRows.set(database,databaseRow);out.databaseContexts.push(databaseRow);hook(database,'publishShadow',false,'publication');}
+   const databaseRow=databaseRows.get(database);if(!databaseRow.managerRefs.includes(row.managerRef))databaseRow.managerRefs.push(row.managerRef);
+  }
+  return{managerRef:row.managerRef,noticeRef:noticeRow?.noticeRef??null,databaseContextRef:ref(database),
+   notice:scalarNotice(notice),purpose:data(manager,'purpose')??null,dirty:data(manager,'dirty')??null,
+   memoryFullRetryDirty:data(manager,'memoryFullRetryDirty')??null,memoryWatchGeneration:data(manager,'memoryWatchGeneration')??null,
+   syncingRef:ref(data(manager,'syncing')),closing:data(manager,'closing')??null,closed:data(manager,'closed')??null};
+ }
+ function hook(start,method,required=true,kind='manager'){
+  let target=start,descriptor;
+  while(target&&!(descriptor=own(target,method)))target=Object.getPrototypeOf(target);
+  if(!target||!Object.hasOwn(descriptor,'value')||typeof descriptor.value!=='function'){
+   if(required)fail(`install:${method}`,Error('Missing original function data descriptor'));return;}
+  let methods=hooked.get(target);if(!methods){methods=new Set();hooked.set(target,methods);}if(methods.has(method))return;
+  const original=descriptor.value,prototypeName=(kind==='static'?data(target,'name'):data(data(target,'constructor'),'name'))??null;
+  const hookRow={method,kind,declaringPrototypeRef:ref(target),declaringPrototypeName:prototypeName,
+   originalFunctionRef:ref(original),descriptor:{configurable:descriptor.configurable,enumerable:descriptor.enumerable,writable:descriptor.writable}};
+  function observed(...args){
+   const receiver=this,call={id:`notice-call-${++nextCall}`,method,kind,parentSynchronousCallId:stack.at(-1)??null,originalInvocations:0,
+    receiverRef:ref(receiver),originalFunctionRef:ref(original),declaringPrototypeRef:ref(target),declaringPrototypeName:prototypeName,
+    argsRef:ref(args),argumentRefs:args.map(ref),callerStack:safe('caller-stack',()=>new Error('Original notice method call-through').stack)};
+   safe(`enter:${method}`,()=>{
+    if(kind==='manager')Object.assign(call,managerSample(receiver));
+    if(kind==='publication')call.databaseContextRef=ref(receiver);
+    call.before=kind==='manager'?managerSample(receiver):{databaseContextRef:ref(receiver)};
+    call.args=kind==='static'?args.map(value=>({ref:ref(value),purpose:data(value,'purpose')??null,
+     agentId:data(value,'agentId')??null,maintenanceSourceRef:ref(data(value,'maintenanceSource'))})):codec(args);
+    call.reason=data(args[0],'reason')??null;call.force=data(args[0],'force')??null;
+    call.query=method==='search'?args[0]:null;
+    call.callId=call.id;call.beforeNotice=call.before.notice??null;
+    call.originalReceiverIsExactOwner=kind==='static'?receiver===OriginalManager:kind==='publication'?databaseRows.has(receiver):
+     Object.prototype.isPrototypeOf.call(OriginalManager.prototype,receiver);
+    if(method==='recordAutomaticRebuild')call.openRunSyncCallIds=[...(openRuns.get(call.managerRef)??[])];
+    const entered=emit('original-method-enter',{phase:'enter',method,callId:call.id,managerRef:call.managerRef??null,
+     noticeRef:call.noticeRef??null,databaseContextRef:call.databaseContextRef??null});call.enterSeq=entered?.sequence;call.enterSequence=call.enterSeq;
+    if(method==='runSync'){if(!openRuns.has(call.managerRef))openRuns.set(call.managerRef,new Set());openRuns.get(call.managerRef).add(call.id);}
+    if(method==='search'){const prior=lastStatuses.get(receiver);
+     if(prior&&/\bat (?:async )?searchOnce\b/.test(prior.callerStack??''))out.captureEdges.push({kind:'source-bound-synchronous-edge',
+      statusCallId:prior.callId,searchCallId:call.id,noticeRef:prior.noticeRef,capturedSequence:prior.notice.sequence,
+      statusReturnSeq:prior.returnSeq,searchEnterSeq:call.enterSeq,noDirectReaderClaim:true});}
+    out.calls.push(call);
+   });
+   stack.push(call.id);let returned;
+   try{call.originalInvocations+=1;returned=Reflect.apply(original,receiver,args);}
+   catch(error){safe(`throw:${method}`,()=>{call.errorRef=ref(error);call.error=errorRecord(error);
+     call.after=kind==='manager'?managerSample(receiver):{databaseContextRef:kind==='publication'?ref(receiver):null};
+     call.afterNotice=call.after.notice??null;
+     call.returnSeq=emit('original-method-throw',{phase:'error',method,callId:call.id,errorRef:call.errorRef})?.sequence;call.returnSequence=call.returnSeq;
+     if(method==='runSync')openRuns.get(call.managerRef)?.delete(call.id);});throw error;}
+   finally{stack.pop();}
+   safe(`return:${method}`,()=>{
+    call.originalReturnRef=ref(returned);call.returnKind=returned instanceof Promise?'promise':typeof returned;
+    if(call.originalReturnRef)call.returnRef=call.originalReturnRef;else call.returnPrimitive=codec(returned);
+    call.returnValue=returned instanceof Promise?{privateType:'Promise',ref:ref(returned)}:codec(returned);
+    call.after=kind==='manager'?managerSample(receiver):{databaseContextRef:kind==='publication'?ref(receiver):null};
+    call.afterNotice=call.after.notice??null;
+    call.returnSeq=emit('original-method-return',{phase:'return',method,callId:call.id,originalReturnRef:call.originalReturnRef})?.sequence;call.returnSequence=call.returnSeq;
+    if(method==='status'){
+     const notice=data(data(returned,'custom'),'automaticRebuildNotice'),row=retainNotice(notice);
+     const status={callId:call.id,statusRef:ref(returned),managerRef:call.managerRef,noticeRef:row?.noticeRef??null,
+      notice:scalarNotice(notice),returnSeq:call.returnSeq,callerStack:call.callerStack};out.statuses.push(status);lastStatuses.set(receiver,status);
+    }
+    if(returned instanceof Promise){out.promises.push({promiseRef:ref(returned),callId:call.id});call.returnedExactOriginalPromise=true;
+     Promise.prototype.then.call(returned,value=>safe(`fulfilled:${method}`,()=>settled(value,undefined,false)),error=>safe(`rejected:${method}`,()=>settled(undefined,error,true)));
+    }
+   });
+   function settled(value,error,rejected){
+    call.settlement=rejected?'rejected':'fulfilled';call.settledValue=rejected?null:kind==='static'?{privateType:'manager',ref:ref(value)}:codec(value);
+    if(rejected){call.settledErrorRef=ref(error);call.settledError=errorRecord(error);}
+    if(kind==='static'&&value)call.acquiredOwner=managerSample(value);
+    call.afterSettlement=kind==='manager'?managerSample(receiver):{databaseContextRef:kind==='publication'?ref(receiver):null};
+    call.settleSeq=emit('original-method-settled',{phase:'settled',method,callId:call.id,promiseRef:ref(returned),settlement:call.settlement})?.sequence;
+    if(method==='runSync')openRuns.get(call.managerRef)?.delete(call.id);
+   }
+   return returned;
+  }
+  Object.defineProperty(target,method,{...descriptor,value:observed});methods.add(method);
+  hookRow.observedFunctionRef=ref(observed);out.hookDescriptors.push(hookRow);restorations.push({target,method,descriptor,hookRow});
+ }
+ const installed=emit('observer-install-enter');out.installSequence=installed?.sequence;out.installAtNs=installed?.atNs;
+ for(const method of ['status','search','syncAdmitted','runSync','recordAutomaticRebuild'])safe(`install:${method}`,()=>hook(OriginalManager.prototype,method));
+ safe('install:takeSearchMaintenanceRequest',()=>hook(OriginalManager.prototype,'takeSearchMaintenanceRequest',false));
+ safe('install:get',()=>hook(OriginalManager,'get',false,'static'));
+ emit('observer-install-return');
+ return{
+  checkpoint(event,fields={}){safe(`checkpoint:${event}`,()=>{const row={...stamp(),event,...fields,
+    notices:[...retainedNotices].map(([noticeRef,notice])=>({noticeRef,...scalarNotice(notice)}))};out.checkpoints.push(row);});},
+  restore(){if(restored)return;restored=true;for(const item of restorations.reverse())safe(`restore:${item.method}`,()=>{
+    Object.defineProperty(item.target,item.method,item.descriptor);out.restoreReceipts.push({method:item.method,
+     declaringPrototypeRef:item.hookRow.declaringPrototypeRef,originalFunctionRef:item.hookRow.originalFunctionRef,
+     restoredExactDescriptor:Object.getOwnPropertyDescriptor(item.target,item.method).value===item.descriptor.value});});emit('observer-restored');},
+ };
+}
 export async function runHostTurnBarrierRuntime(input,runtimeConfig){
  if(!input||input.source!=='MEMORY.md'||input.nowMs!==1794268800000||Date.now()!==input.nowMs||
  !['cold','warm'].includes(input.initialState)||![runtimeConfig?.runtimeRoot,runtimeConfig?.evidenceDirectory,runtimeConfig?.stateDirectory].every(x=>typeof x==='string'&&path.isAbsolute(x)))
@@ -73,9 +220,9 @@ export async function runHostTurnBarrierRuntime(input,runtimeConfig){
  await fs.writeFile(runtimeConfig.configPath,JSON.stringify(cfg));
  const raw={kind:'host-turn-barrier-native',input:transported(input),request:transported(input),fixtureBase:directory,pid:process.pid,ppid:process.ppid,
  executable:process.execPath,execArgv:process.execArgv,config:cfg,turns:[],events:[],metadataOperations:[],snapshots:[],closeReceipts:[]};
- let activeTurn,sequence=0,scheduler,unsubscribe,closeManagers,closeAgentDatabases,disposeMcp,clearConfig,waitMaintenance;
+ let activeTurn,sequence=0,scheduler,unsubscribe,closeManagers,closeAgentDatabases,disposeMcp,clearConfig,waitMaintenance,noticeObserver;
  const watchedOwners=new WeakSet();
- const record=(event,extra={})=>{const value={sequence:sequence++,event,atMs:Date.now(),atNs:process.hrtime.bigint().toString(),turn:activeTurn?.label??null,owners:ownerSnapshot(),...extra};raw.events.push(value);return value;};
+ const record=(event,extra={})=>{const value={sequence:sequence++,event,atMs:Date.now(),atNs:process.hrtime.bigint().toString(),turn:activeTurn?.label??null,owners:ownerSnapshot(),...extra};raw.events.push(value);noticeObserver?.checkpoint(event,{actorSequence:value.sequence});return value;};
  function observeOwners(){const state=globalThis[Symbol.for('openclaw.sessionMaintenance')];for(const [,s]of state?.sessions??[])for(const owner of s.owners){
  if(watchedOwners.has(owner))continue;watchedOwners.add(owner);const ownerId=owner.sequence;
  owner.controller.signal.addEventListener('abort',()=>record('actual-maintenance-abort',{ownerId,reason:errorRecord(owner.controller.signal.reason)}),{once:true});
@@ -109,6 +256,7 @@ export async function runHostTurnBarrierRuntime(input,runtimeConfig){
     }
    }else if(index===1){
     const receipt=actualToolResult(context);turn.searchCarrier=transported(receipt);turn.search=unwrapMemoryResult(receipt,'memory_search');
+    noticeObserver?.checkpoint('actual-memory-search-result',{modelCall:index,actualToolResult:transported(receipt),publicSearch:turn.search});
     const hit=turn.search.results?.[0];if(hit){const args={path:hit.path,from:hit.startLine,lines:hit.endLine-hit.startLine+1};turn.selectedGetArguments=args;content=toolCall('tool_call',{id:'memory_get',args});stopReason='toolUse';}
     else{turn.get=null;content=[{type:'text',text:'No source-backed memory found.'}];}
    }else if(index===2){const receipt=actualToolResult(context);turn.getCarrier=transported(receipt);turn.get=unwrapMemoryResult(receipt,'memory_get');
@@ -130,6 +278,18 @@ export async function runHostTurnBarrierRuntime(input,runtimeConfig){
   const {runReplyAgent}=await imp('dist/agent-runner.runtime-BinSrYfK.mjs');
   const lifecycle=await imp('dist/openclaw-agent-db-lifecycle-B8sSLgPo.mjs');closeAgentDatabases=lifecycle.s;
   const memoryRuntime=await imp('dist/extensions/memory-core/manager-runtime.js');closeManagers=memoryRuntime.closeAllMemoryIndexManagers;
+  raw.noticeObservations={observerFailures:[]};
+  try{
+   const actorPath=fileURLToPath(import.meta.url),contractPath=path.resolve(path.dirname(actorPath),'../docs/next_turn_notice_observation_contract.json');
+   const contractBytes=fsSync.readFileSync(contractPath),contract=JSON.parse(contractBytes);
+   const executionContext=JSON.parse(fsSync.readFileSync(process.env.MEMORY_EQ_RELEASE_CONTEXT,'utf8'));
+   const header={version:1,contractSha256:hash(contractBytes),caseWireSha256:executionContext.hostTurnBarrierProfile.caseWireSha256,
+    pid:process.pid,ppid:process.ppid,instrumentedActorSha256:hash(fsSync.readFileSync(actorPath)),
+    originalSourceBindings:contract.sourceAuthority.filter(row=>row.path.startsWith('work/openclaw-v2026.9.9/')),
+    compiledBindings:contract.sourceAuthority.filter(row=>row.path.startsWith('.reference/release-runtime/'))};
+   noticeObserver=createNativeNoticeObserver(memoryRuntime.MemoryIndexManager,{observations:raw.noticeObservations,header,
+    stamp:()=>({sequence:sequence++,atNs:process.hrtime.bigint().toString(),turn:activeTurn?.label??null})});
+  }catch(error){raw.noticeObservations.observerFailures.push({stage:'setup',error:errorRecord(error)});}
   const coordinator=await imp('dist/coordinator-BinYGTDh.mjs');waitMaintenance=coordinator.r;
   const events=await imp('dist/agent-events-CwU5G442.mjs');unsubscribe=events.f(event=>{const row=transported(event);activeTurn?.toolEvents.push(row);record('actual-agent-event',{observation:row});});
   const {agentId,sessionKey,sessionId}=input.identity,storePath=path.join(directory,'sessions.json'),scope={agentId,sessionKey,storePath};
@@ -162,6 +322,7 @@ export async function runHostTurnBarrierRuntime(input,runtimeConfig){
    if(!close)continue;try{await close();raw.closeReceipts.push({label,ok:true});}catch(error){raw.closeReceipts.push({label,ok:false,error:errorRecord(error)});}}
   raw.closeOwners=ownerSnapshot();raw.closedSource=sourceObservation(workspace,input.source);
   raw.closedSqlite=readSqliteFiles(directory);
+  noticeObserver?.checkpoint('original-teardown-complete');noticeObserver?.restore();
   unsubscribe?.();clearConfig?.();delete globalThis[BRIDGE];await fs.writeFile(path.join(runtimeConfig.evidenceDirectory,'native-raw.json'),JSON.stringify([raw]));
  }
 }

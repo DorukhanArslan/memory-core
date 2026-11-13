@@ -409,49 +409,77 @@ class ManagedSQLiteMemoryStore(SQLiteMemoryStore):
             intent["refused"] = deepcopy(identity)
         return allowed
 
+    def _full_sync_result(self, generation, operation, intent, notice):
+        """Deliver the reserved generation without inventing another producer."""
+        if intent is not None and intent is not generation["intent"]:
+            intent.update(joined=True)
+            if generation.get("refused") is not None:
+                intent["refused"] = generation["refused"]
+        if notice is not None and notice is not generation["notice"]:
+            notice.update(joined=True, unopened=generation.get("unopened", False))
+        self._update(operation, producerOperationId=generation["operationId"],
+                     reservationOperationId=generation["reservationOperationId"])
+        if generation["error"] is not None:
+            raise generation["error"]
+        self._update(operation, returned=generation["result"])
+        return generation["result"]
+
     def reindex(self, workspace: MemoryWorkspace, *, force: bool = False) -> int:
-        """Publish the bound workspace or join its actual on-search generation."""
+        """Reserve a generation; its first workspace holder executes it once.
+
+        A real curated write can already own the reentrant workspace guard.
+        Waiting on a condition there would prevent the reserved caller from
+        ever acquiring that guard. Such a caller executes the unstarted work
+        with the first request's force/authority instead.
+        """
         with self._operation("reindex") as operation:
             self._assert_workspace(workspace)
             intent = getattr(self._local, "automatic_reindex", None)
+            notice = getattr(self._local, "automatic_repair_notice", None)
+            self._update(operation, request={"force": force})
             generation = None
             if self._memory_publication == "on-search":
                 with self._condition:
                     generation = self._full_sync
+                    if generation is None:
+                        self._full_sync_count += 1
+                        generation = {"id": self._full_sync_count,
+                            "reservationOperationId": operation["id"], "operationId": None,
+                            "reservationThreadId": threading.get_ident(), "threadId": None,
+                            "started": False, "settled": False, "force": force,
+                            "intent": intent, "notice": notice, "result": None, "error": None}
+                        self._update(operation, reservedFullSync=generation["id"])
+                        self._full_sync = generation
+                    else:
+                        self._update(operation, joinedFullSync=generation["id"],
+                                     reservationOperationId=generation["reservationOperationId"])
+            # Every unfinished request acquires the actual publisher guard.
+            # No condition wait can retain an external workspace RLock.
+            with workspace_index_lock(workspace.root):
+                if generation is not None:
+                    if generation["settled"]:
+                        return self._full_sync_result(generation, operation, intent, notice)
+                    if generation["started"]:
+                        raise RuntimeError("A full publication cannot join its own producer")
+                    generation.update(started=True, operationId=operation["id"],
+                                      threadId=threading.get_ident())
+                previous_phase = getattr(self._local, "full_sync_phase", None)
+                self._local.full_sync_phase = {"changes": 0}
+                if generation is not None:
+                    self._local.automatic_reindex = generation["intent"]
+                    self._local.automatic_repair_notice = generation["notice"]
+                producer_intent = getattr(self._local, "automatic_reindex", None)
+                producer_force = generation["force"] if generation is not None else force
+                result, failure = None, None
+                try:
                     if generation is not None:
-                        if generation["threadId"] == threading.get_ident():
-                            raise RuntimeError("A full publication cannot join its own producer")
-                        self._update(operation, request={"force": force},
-                                     joinedFullSync=generation["id"], producerOperationId=generation["operationId"])
-                        while not generation["settled"]:
-                            self._condition.wait()
-                        if intent is not None:
-                            intent.update(joined=True)
-                            if generation.get("refused") is not None:
-                                intent["refused"] = generation["refused"]
-                        notice = getattr(self._local, "automatic_repair_notice", None)
-                        if notice is not None:
-                            notice.update(joined=True, unopened=generation.get("unopened", False))
-                        if generation["error"] is not None:
-                            raise generation["error"]
-                        self._update(operation, returned=generation["result"])
-                        return generation["result"]
-                    self._full_sync_count += 1
-                    generation = {"id": self._full_sync_count, "operationId": operation["id"],
-                                  "threadId": threading.get_ident(), "settled": False,
-                                  "result": None, "error": None}
-                    self._full_sync = generation
-                    self._update(operation, fullSync=generation["id"])
-            previous_phase = getattr(self._local, "full_sync_phase", None)
-            phase = {"changes": 0}
-            self._local.full_sync_phase = phase
-            result, failure = None, None
-            try:
-                with workspace_index_lock(workspace.root):
+                        self._update(operation, fullSync=generation["id"],
+                            reservationOperationId=generation["reservationOperationId"],
+                            producerOperationId=operation["id"], producerRequest={"force": producer_force})
                     self._update(operation, request={"force": force}, before=self._read_state(),
                                  revisionBefore=self.read_published_index()["revision"])
-                    effective_force = force
-                    if intent is not None and not intent["fullRetry"]:
+                    effective_force = producer_force
+                    if producer_intent is not None and not producer_intent["fullRetry"]:
                         effective_force = self._automatic_repair_allowed(
                             self._read_state(provider_key_known=True)["identity"])
                     try:
@@ -459,20 +487,21 @@ class ManagedSQLiteMemoryStore(SQLiteMemoryStore):
                     except BaseException as error:
                         code = getattr(error, "sqlite_errorcode", None)
                         unopened = (isinstance(error, sqlite3.Error) and isinstance(code, int)
-                                    and code & 0xFF == sqlite3.SQLITE_CANTOPEN and phase["changes"] == 0)
+                                    and code & 0xFF == sqlite3.SQLITE_CANTOPEN
+                                    and self._local.full_sync_phase["changes"] == 0)
                         self._last_sync_error = format_error_message(error)
                         self._whole_failure_revision += 1
                         self._full_retry_required = self._memory_publication == "on-search" and not unopened
                         self._whole_failure_sources = frozenset(self._workspace.index_sources or ("memory", "sessions"))
                         if generation is not None:
                             generation["unopened"] = unopened
-                        notice = getattr(self._local, "automatic_repair_notice", None)
-                        if notice is not None:
-                            notice["unopened"] = unopened
+                        producer_notice = getattr(self._local, "automatic_repair_notice", None)
+                        if producer_notice is not None:
+                            producer_notice["unopened"] = unopened
                         if getattr(self._local, "memory_publisher", False):
                             self._memory_job_error = format_error_message(error)
                         raise
-                    refused = intent.get("refused") if intent is not None else None
+                    refused = producer_intent.get("refused") if producer_intent is not None else None
                     if generation is not None and refused is not None:
                         generation["refused"] = refused
                     if refused is None:
@@ -486,17 +515,26 @@ class ManagedSQLiteMemoryStore(SQLiteMemoryStore):
                                  revisionAfter=self.read_published_index()["revision"])
                     if refused is not None:
                         self._update(operation, automaticRefusal=refused)
-                    return result
-            except BaseException as error:
-                failure = error
-                raise
-            finally:
-                self._local.full_sync_phase = previous_phase
+                except BaseException as error:
+                    failure = error
+                finally:
+                    self._local.full_sync_phase = previous_phase
+                    self._local.automatic_reindex = intent
+                    self._local.automatic_repair_notice = notice
+                    if generation is not None:
+                        # Settle before releasing the workspace guard. A later
+                        # holder consumes this exact result/error, even if a
+                        # newer independent generation has since been reserved.
+                        with self._condition:
+                            generation.update(result=result, error=failure, settled=True)
+                            if self._full_sync is generation:
+                                self._full_sync = None
+                            self._condition.notify_all()
                 if generation is not None:
-                    with self._condition:
-                        generation.update(result=result, error=failure, settled=True)
-                        self._full_sync = None
-                        self._condition.notify_all()
+                    return self._full_sync_result(generation, operation, intent, notice)
+                if failure is not None:
+                    raise failure
+                return result
 
     def reindex_sources(self, workspace: MemoryWorkspace, *, sources: Collection[str],
                         paths: Collection[str] | None = None, force_sources: bool = False) -> int:

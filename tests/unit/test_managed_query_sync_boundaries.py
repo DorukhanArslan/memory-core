@@ -3,13 +3,17 @@ from collections import deque
 from concurrent.futures import ThreadPoolExecutor
 from contextlib import closing, contextmanager
 import json
+import os
 from pathlib import Path
 import sqlite3
+import subprocess
+import sys
 import threading
 
 import pytest
 
 from memory_core.config import MemoryConfig
+from memory_core.client import Memory
 from memory_core.consolidation.forget import plan_memory_index, purge_memory_index
 from memory_core.consolidation.origins import MemoryIndexRevisionConflictError
 from memory_core.flags import FeatureFlags
@@ -19,7 +23,7 @@ from memory_core.index.sqlite_store import MemoryIndexSourceChangedError, SQLite
 from memory_core.runtime_identity import OPENCLAW_COMPAT_RUNTIME_IDENTITY
 from memory_core.tools.memory_search import MemorySearchToolContext
 from memory_core.tools.search_factory import create_memory_search_tool
-from memory_core.workspace import MemoryWorkspace, workspace_index_lock
+from memory_core.workspace import MemoryWorkspace, workspace_file_lock, workspace_index_lock
 
 
 OLD = "# Note\n\nThe old marker is boundarycedar642.\n"
@@ -327,3 +331,164 @@ def test_default_on_write_remains_explicit_and_recursive_producer_cannot_self_jo
         with pytest.raises(RuntimeError, match="own producer"):
             store.reindex(workspace, force=True)
         assert store._full_sync is None
+
+
+def _curator_takeover_probe(directory, mode):
+    """Isolate daemon waiters so a regression fails within a bounded process."""
+    root = directory / "workspace"
+    root.mkdir(parents=True)
+    (root / "MEMORY.md").write_text("## Preferences\n\n- Original fact.\n")
+    config = MemoryConfig(root, store_path=directory / "index.sqlite", session_search=False,
+                          flags=FeatureFlags(vector_search=False))
+    workspace = MemoryWorkspace(root, index_sources=["memory"])
+    store = ManagedSQLiteMemoryStore(config, workspace, memory_publication="on-search",
+                                     runtime_identity=OPENCLAW_COMPAT_RUNTIME_IDENTITY)
+    curator = Memory(config, workspace, store).curator()
+    file_lock, index_lock = workspace_file_lock(root, "MEMORY.md"), workspace_index_lock(root)
+    file_wait, publisher_wait = threading.Event(), threading.Event()
+    completed = {label: threading.Event() for label in ("curator", "force")}
+    results, errors, base_calls = {}, [], []
+    marker = "actual-curator-takeover-marker"
+
+    def profile(frame, event, returned):
+        thread = threading.current_thread()
+        if event == "return" and frame.f_code is workspace_file_lock.__code__:
+            if thread.name == "actual-curator" and returned is file_lock:
+                file_wait.set()
+        elif event == "return" and frame.f_code is workspace_index_lock.__code__:
+            generation = store._full_sync
+            if (returned is index_lock and generation is not None and not generation["started"]
+                    and generation["reservationThreadId"] == thread.ident):
+                publisher_wait.set()
+        elif event == "call" and frame.f_code is SQLiteMemoryStore.reindex.__code__:
+            if frame.f_locals.get("self") is store:
+                base_calls.append({"thread": thread.name, "force": frame.f_locals["force"]})
+
+    def trace(frame, event, arguments):
+        if frame.f_code is ManagedSQLiteMemoryStore.reindex.__code__ and frame.f_locals.get("self") is store:
+            if event == "exception" and isinstance(arguments[1], sqlite3.Error):
+                errors.append((threading.current_thread().name, arguments[1]))
+            return trace
+        return None
+
+    def invoke(label, callback):
+        try:
+            results[label] = callback()
+        except BaseException as error:
+            results[label] = {"error": str(error)}
+        finally:
+            completed[label].set()
+
+    previous_profile, previous_trace = threading.getprofile(), threading.gettrace()
+    threading.setprofile(profile)
+    threading.settrace(trace)
+    file_lock.acquire()
+    held = True
+    report = {"mode": mode}
+    fault = None
+    try:
+        curator_thread = threading.Thread(name="actual-curator", daemon=True, target=invoke,
+            args=("curator", lambda: curator.dispatch("add_memory_entry", {
+                "section": "Preferences", "text": marker})))
+        curator_thread.start()
+        report["originalFileFenceReached"] = file_wait.wait(2)
+        acquired = index_lock.acquire(blocking=False)
+        if acquired:
+            index_lock.release()
+        report["curatorAlreadyHoldsWorkspace"] = not acquired
+        if not report["originalFileFenceReached"] or acquired:
+            return report
+        first = (lambda: _query(store, marker)) if mode == "automatic" else (
+            lambda: store.reindex(workspace, force=mode != "ordinary"))
+        force_thread = threading.Thread(name="actual-force", daemon=True,
+                                        target=invoke, args=("force", first))
+        force_thread.start()
+        report["originalPublisherFenceReached"] = publisher_wait.wait(2)
+        if not report["originalPublisherFenceReached"]:
+            return report
+        with store._condition:
+            report["reservation"] = {key: store._full_sync[key] for key in
+                                     ("id", "reservationOperationId", "reservationThreadId", "started", "force")}
+        if mode == "failure":
+            fault = _journal_fault(store)
+        file_lock.release()
+        held = False
+        report["curatorCompleted"] = completed["curator"].wait(3)
+        report["forceCompleted"] = completed["force"].wait(3)
+        report["sourceCommitted"] = marker in (root / "MEMORY.md").read_text()
+        report["baseCalls"] = base_calls
+        report["results"] = results
+        report["sameOriginalSqliteError"] = (any(name == "actual-curator" for name, _ in errors)
+            and any(name == "actual-force" for name, _ in errors)
+            and len({id(error) for _, error in errors}) == 1)
+        if report["curatorCompleted"] and report["forceCompleted"]:
+            report["lifecycle"] = store.lifecycle_snapshot()
+            report["published"] = store.read_published_index()
+            if fault is not None:
+                fault.unlink()
+                fault = None
+            store.close()
+            report["closed"] = store.closed
+        return report
+    finally:
+        if held:
+            file_lock.release()
+        if fault is not None:
+            fault.unlink()
+        threading.setprofile(previous_profile)
+        threading.settrace(previous_trace)
+
+
+@pytest.mark.parametrize("mode", ["forced", "ordinary", "automatic", "failure"])
+def test_real_default_curator_executes_reserved_generation_without_workspace_join_cycle(tmp_path, mode):
+    root = Path(__file__).resolve().parents[2]
+    child = subprocess.run([sys.executable, str(Path(__file__).resolve()), str(tmp_path), mode],
+        cwd=root, env={**os.environ, "PYTHONPATH": str(root)}, capture_output=True, text=True, timeout=15)
+    assert child.returncode == 0, child.stderr
+    report = json.loads(child.stdout)
+    assert report["originalFileFenceReached"] and report["curatorAlreadyHoldsWorkspace"]
+    assert report["originalPublisherFenceReached"] and report["reservation"]["started"] is False
+    assert report["sourceCommitted"] and report["curatorCompleted"] and report["forceCompleted"]
+    assert report["closed"] is True
+    assert report["baseCalls"] == [{"thread": "actual-curator", "force": mode != "ordinary"}]
+    operations = report["lifecycle"]["operations"]
+    producers = [row for row in operations if "fullSync" in row]
+    assert len(producers) == 1
+    producer = producers[0]
+    assert producer["id"] != report["reservation"]["reservationOperationId"]
+    assert producer["joinedFullSync"] == producer["fullSync"]
+    assert producer["producerRequest"]["force"] is (mode != "ordinary")
+    assert producer["request"]["force"] is False
+    if mode == "failure":
+        assert report["sameOriginalSqliteError"] is True
+        assert "unable to open database file" in report["results"]["curator"]["afterWriteError"]
+        assert report["published"]["revision"] == 0
+    else:
+        assert report["published"]["revision"] == 1
+        assert any("actual-curator-takeover-marker" in row["text"] for row in report["published"]["chunks"])
+        if mode == "automatic":
+            assert "Automatic memory index repair was requested." in report["results"]["force"]["warning"]
+            assert report["lifecycle"]["automaticRebuildNotice"]["sequence"] == 1
+        else:
+            assert report["results"]["force"] == 1
+            assert report["lifecycle"]["automaticRebuildNotice"]["sequence"] == 0
+
+
+def test_real_state_read_failure_settles_reservation_before_base_and_allows_later_request(tmp_path):
+    with _owner(tmp_path) as (store, workspace):
+        preserved = store.path.with_suffix(".preserved")
+        store.path.rename(preserved)
+        store.path.mkdir()
+        try:
+            with pytest.raises(sqlite3.OperationalError):
+                store.reindex(workspace, force=True)
+            assert store._full_sync is None
+            assert store.lifecycle_snapshot()["activeOperations"] == 0
+        finally:
+            store.path.rmdir()
+            preserved.rename(store.path)
+        assert store.reindex(workspace, force=True) == 1
+
+
+if __name__ == "__main__":
+    print(json.dumps(_curator_takeover_probe(Path(sys.argv[1]), sys.argv[2])))

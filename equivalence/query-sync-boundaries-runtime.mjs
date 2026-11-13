@@ -20,6 +20,26 @@ const errorScalars=error=>{const result={};for(const key of ['name','message','c
 const sqlValue=value=>typeof value==='bigint'?{sqliteInt64:value.toString()}:
   value instanceof Uint8Array?{sqliteBlobHex:Buffer.from(value).toString('hex')}:value;
 
+// Match the original agent-owned SQLite domain envelope. This only selects an
+// observed publication; the caller still queues the original generation reader.
+export function matchOriginalTypedPublicationReply(round,receipt,message,workerDispatches,publicationCalls){
+  if(message?.ok!==true||!Number.isSafeInteger(message.id))return null;
+  const returned=receipt.decodedSerialized?.value?.value;
+  if(returned?.ok!==false||returned.error?.name!=='MemoryIndexRevisionConflictError')return null;
+  const request=[...workerDispatches].reverse().find(row=>row.workerId===receipt.workerId&&row.message?.id===message.id);
+  const domain=request?.decodedSerialized?.input?.value;
+  if(domain?.type!=='database.domain.execute')return null;
+  const command=domain.input?.command;
+  if(command?.type!=='database.publish'||command.input?.expectedRevision!==round.expectedRevision)return null;
+  // A shared broker's ambient async scope can belong to an older caller. Use
+  // the exact original publisher entry and real command identity instead.
+  const publication=publicationCalls.find(call=>call.method==='publishShadow'&&
+    call.ownerId===round.actualOwnerId&&call.operationContext?.runSyncCallId===round.runSyncCallId&&
+    call.args[0]?.sourcePath===command.input.sourcePath&&call.args[0]?.expectedRevision===round.expectedRevision&&
+    call.enterSeq<request.enterSeq&&!call.returnSeq);
+  return publication?{request,publication,command,domainId:domain.input.id}:null;
+}
+
 export async function runQuerySyncBoundariesRuntime(input,config){
   const base=config.stateDirectory,workspace=path.join(base,'workspace');
   const deferredErrorStacks=[];
@@ -558,19 +578,10 @@ export async function runQuerySyncBoundariesRuntime(input,config){
   function onOriginalTypedWorkerReply(receipt,message){
     const round=revisionControl?.current,next=round?revisionControl.rounds[round.index+1]:null;
     if(!round||round.role!=='maintenance'||!round.reached||!round.released||!next||next.acquireEnterSeq)return;
-    const returned=receipt.decodedSerialized?.value?.value;
-    if(returned?.ok!==false||returned.error?.name!=='MemoryIndexRevisionConflictError')return;
-    const request=[...raw.workerDispatches].reverse().find(row=>row.workerId===receipt.workerId&&row.message?.id===message.id);
-    const command=request?.decodedSerialized?.input?.value;
-    if(command?.type!=='database.publish'||command.input?.expectedRevision!==round.expectedRevision)return;
-    // The shared broker can dispatch under an older caller's async scope. Bind
-    // the real command to the original publisher entry rather than borrowing
-    // that ambient scope as proof of which runSync owns this publication.
-    const publication=raw.publicationCalls.find(call=>call.method==='publishShadow'&&
-      call.ownerId===round.actualOwnerId&&call.operationContext?.runSyncCallId===round.runSyncCallId&&
-      call.args[0]?.sourcePath===command.input.sourcePath&&call.args[0]?.expectedRevision===round.expectedRevision&&
-      call.enterSeq<request.enterSeq&&!call.returnSeq);
-    if(!publication)return;
+    const matched=matchOriginalTypedPublicationReply(round,receipt,message,raw.workerDispatches,raw.publicationCalls);
+    if(!matched)return;
+    const{request,publication,command,domainId}=matched;
+    round.typedPublicationDomainId=domainId;
     round.typedPublicationCallId=publication.id;round.typedPublicationSourcePath=command.input.sourcePath;
     round.typedWorkerReceiptSeq=receipt.sequence;round.typedWorkerRequestEnterSeq=request.enterSeq;
     // This invocation enqueues the real next reader synchronously inside the

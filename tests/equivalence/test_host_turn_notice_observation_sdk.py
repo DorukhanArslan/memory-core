@@ -1,5 +1,6 @@
 """Forwarding/closure-only tests; no real SDK or Native host is executed."""
 import itertools
+from concurrent.futures import ThreadPoolExecutor
 from types import SimpleNamespace
 
 import pytest
@@ -48,6 +49,9 @@ def test_observed_capture_retains_exact_closure_cells_without_eager_read():
     assert captured["capturedSequence"] == 0 and captured["noticeIsOwnerObject"] is True
     assert captured["originalReaderRef"] != captured["observedReaderRef"]
     assert captured["closureCellRefs"]["notice"] == captured["noticeRef"]
+    sequence_ref = next(row for row in observer.data["references"]
+                        if row["ref"] == captured["closureCellRefs"]["sequence"])
+    assert type(sequence_ref["primitiveValue"]) is int and sequence_ref["primitiveValue"] == 0
     assert reader() is None
     warning = "original warning " + str(id(owner))
     owner._automatic_rebuild_notice.update(sequence=1, warning=warning)
@@ -108,7 +112,8 @@ def test_original_status_retains_live_nested_identity_instead_of_returning_copy(
     owner = Owner()
     observer = _observer(owner)
     status = {"custom": {"automaticRebuildNotice": owner._automatic_rebuild_notice}}
-    original = lambda: status
+    def original():
+        return status
 
     result = observer._method_wrapper("status", original)()
 
@@ -127,7 +132,8 @@ def test_restore_exact_preexisting_and_inherited_descriptors():
             return "original"
 
     owner = InheritedOwner()
-    own_descriptor = lambda: "own"
+    def own_descriptor():
+        return "own"
     owner.own = own_descriptor
     observer = _observer(owner)
     module = SimpleNamespace(_capture_rebuild_notice=_capture)
@@ -142,3 +148,18 @@ def test_restore_exact_preexisting_and_inherited_descriptors():
     assert owner.own is own_descriptor
     assert module._capture_rebuild_notice is _capture
     assert all(row["restoredExactOwnDescriptor"] for row in observer.data["restoration"])
+
+
+def test_reference_bookkeeping_preserves_concurrent_shared_and_distinct_identities_without_locks():
+    observer = _observer(Owner())
+    shared, distinct = object(), [object() for _ in range(64)]
+
+    def record(value):
+        return observer.reference(shared, "shared"), observer.reference(value, "distinct")
+
+    with ThreadPoolExecutor(max_workers=8) as workers:
+        returned = list(workers.map(record, distinct))
+
+    assert len({shared_ref for shared_ref, _ in returned}) == 1
+    assert len({distinct_ref for _, distinct_ref in returned}) == len(distinct)
+    assert len({row["ref"] for row in observer.data["references"]}) == len(observer.data["references"])

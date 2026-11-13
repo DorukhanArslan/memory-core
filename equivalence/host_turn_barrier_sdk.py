@@ -42,6 +42,7 @@ class _NoticeObservations:
     def __init__(self, owner, stamp, context, *, header=None):
         self.owner, self.stamp, self.context = owner, stamp, context
         self._objects, self._restorations = {}, []
+        self._reference_sequence = itertools.count(1)
         self._local = threading.local()
         self.data = {"version": 1, **(header or {}), "references": [], "calls": [],
                      "events": [], "captures": [], "hookDescriptors": []}
@@ -51,11 +52,14 @@ class _NoticeObservations:
     def reference(self, value, kind):
         identifier = id(value)
         if identifier not in self._objects:
-            ref = f"ref-{len(self._objects) + 1}"
+            ref = f"ref-{next(self._reference_sequence)}"
             row = {"ref": ref, "kind": kind, "objectId": str(identifier),
                    "module": type(value).__module__, "qualname": type(value).__qualname__}
-            self._objects[identifier] = (value, row)
-            self.data["references"].append(row)
+            if value is None or type(value) in (str, int, float, bool):
+                row["primitiveValue"] = value
+            candidate = (value, row)
+            if self._objects.setdefault(identifier, candidate) is candidate:
+                self.data["references"].append(row)
         return self._objects[identifier][1]["ref"]
 
     def notice(self, value=_ABSENT):

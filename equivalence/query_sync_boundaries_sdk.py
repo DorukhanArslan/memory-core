@@ -23,9 +23,62 @@ import tempfile
 import threading
 import time
 import traceback
+from types import CodeType
 
 
 ROOT = Path(__file__).resolve().parents[1]
+
+
+def _observed_arguments(values):
+    """Observe a real connection before the older function-callable codec.
+
+    sqlite3.Connection is callable but is not a Python function and has no
+    instance __qualname__. This witness does not invoke or change the handle.
+    """
+    from equivalence.query_sync_outcomes_sdk import _arguments
+
+    return {key: ({"className": type(value).__qualname__, "module": type(value).__module__,
+                   "objectId": str(id(value)), "sqliteConnection": True, "callable": callable(value)}
+                 if isinstance(value, sqlite3.Connection) else _arguments({key: value})[key])
+            for key, value in values.items()}
+
+
+def _sdk_tool_context_codes():
+    """Return original loaded SDK code anchors, without executing a search."""
+    from memory_core.tools.memory_search import execute_memory_search_tool, _run_memory_search_tool
+
+    nested = {item.co_name: item for item in _run_memory_search_tool.__code__.co_consts
+              if isinstance(item, CodeType) and item.co_name in {"search_memory_worker", "search_memory_once"}}
+    if set(nested) != {"search_memory_worker", "search_memory_once"}:
+        raise RuntimeError("The original SDK source-context worker anchors changed")
+    return execute_memory_search_tool.__code__, {_run_memory_search_tool.__code__, *nested.values()}
+
+
+class _SdkToolContexts:
+    """Match an actual SDK worker's source context and exact original store.
+
+    Strong references prevent object-id reuse. No active-query fallback, source
+    replacement, context propagation into production, lock or I/O is involved.
+    """
+
+    def __init__(self, public_code, worker_codes, owner_refs):
+        self.public_code, self.worker_codes, self.owner_refs = public_code, worker_codes, owner_refs
+        self.bindings = {}
+
+    def public_entry(self, code, context, store, label):
+        if code is not self.public_code or context is None or label is None or id(store) not in self.owner_refs:
+            return None
+        binding = {"context": context, "store": store, "label": label, "ownerId": self.owner_refs[id(store)]}
+        self.bindings[(id(context), id(store))] = binding
+        return binding
+
+    def worker_entry(self, code, context, store):
+        if code not in self.worker_codes:
+            return None
+        binding = self.bindings.get((id(context), id(store)))
+        if binding is None or binding["context"] is not context or binding["store"] is not store:
+            return None
+        return binding
 
 
 def _serialized(value):
@@ -197,7 +250,7 @@ def run_query_sync_boundaries_sdk_host(request):
         "originalBaseCalls": [], "sqlStatements": [], "publicationWrites": [], "publicationCalls": [],
         "snapshots": [], "sourceStages": {}, "toolCalls": {}, "toolBindings": [],
         "syncCalls": {}, "faults": [], "sqlGates": [], "schedule": [], "counterDerivations": {},
-        "functionalInterleavings": [], "fixtureErrors": [], "metadataFixtures": []}
+        "functionalInterleavings": [], "fixtureErrors": [], "metadataFixtures": [], "toolContextScopes": []}
     raw["eventObservation"] = {"sharedSequence": "itertools.count", "globalObserverMutex": False,
         "callbackFilesystemWrites": False, "storageOrder": "actual-buffer-append-interleaving",
         "flush": "declared-step-checkpoints-and-settled-teardown",
@@ -287,6 +340,13 @@ def run_query_sync_boundaries_sdk_host(request):
     if any(item is not None for item in (previous_profile, previous_thread_profile, previous_trace, previous_thread_trace)):
         raise RuntimeError("The protected SDK process already has an unexpected call observer")
     base_frame_calls = {}
+    public_context_code, worker_context_codes = _sdk_tool_context_codes()
+    tool_contexts = _SdkToolContexts(public_context_code, worker_context_codes, owner_refs)
+    raw["toolContextObservation"] = {"mechanism": "original-SDK-code-and-source-context-identity",
+        "activeQueryFallback": False, "productionContextModified": False,
+        "codes": [{"qualname": code.co_qualname, "file": code.co_filename, "firstLine": code.co_firstlineno,
+            "sourceSha256": hashlib.sha256(Path(code.co_filename).read_bytes()).hexdigest()}
+            for code in sorted({public_context_code, *worker_context_codes}, key=lambda item: item.co_firstlineno)]}
     raw["baseCallObservation"] = {"mechanism": "original-Python-function-call-profile",
         "previousCurrentProfile": None, "previousNewThreadProfile": None,
         "exceptionMechanism": "original-base-frame-exception-trace",
@@ -300,6 +360,34 @@ def run_query_sync_boundaries_sdk_host(request):
             for function in base_functions.values()]}
 
     def profile(frame, name, returned):
+        # The public factory calls the original execute function synchronously.
+        # Its actual context then appears in the original nested corpus worker
+        # closures on another thread. Match those objects, not an ambient label.
+        context_scopes = getattr(local, "tool_context_scopes", ())
+        if name == "call":
+            if frame.f_code is public_context_code:
+                binding = tool_contexts.public_entry(frame.f_code, frame.f_locals.get("context"),
+                    frame.f_locals.get("store"), getattr(local, "tool", None))
+            elif frame.f_code in worker_context_codes:
+                binding = tool_contexts.worker_entry(frame.f_code, frame.f_locals.get("context"), frame.f_locals.get("store"))
+            else:
+                binding = None
+            if binding is not None:
+                previous_tool, previous_phase = getattr(local, "tool", None), getattr(local, "phase", None)
+                local.tool, local.phase = binding["label"], "query-" + binding["label"]
+                scope = {"label": binding["label"], "ownerId": binding["ownerId"],
+                    "contextObjectId": str(id(binding["context"])), "storeObjectId": str(id(binding["store"])),
+                    "codeQualname": frame.f_code.co_qualname, "codeFirstLine": frame.f_code.co_firstlineno,
+                    "codeFile": frame.f_code.co_filename, "threadId": threading.get_ident(),
+                    "kind": "public-entry" if frame.f_code is public_context_code else "original-source-scope",
+                    "enterSeq": event("original-sdk-tool-context-enter", label=binding["label"], ownerId=binding["ownerId"])["sequence"]}
+                raw["toolContextScopes"].append(scope)
+                local.tool_context_scopes = (*context_scopes, (id(frame), previous_tool, previous_phase, scope))
+        elif name == "return" and context_scopes and context_scopes[-1][0] == id(frame):
+            _, previous_tool, previous_phase, scope = context_scopes[-1]
+            scope["returnSeq"] = event("original-sdk-tool-context-return", label=scope["label"], ownerId=scope["ownerId"])["sequence"]
+            local.tool, local.phase = previous_tool, previous_phase
+            local.tool_context_scopes = context_scopes[:-1]
         if frame.f_code is publisher_code and name == "call":
             publisher = frame.f_locals.get("self")
             if id(publisher) in owner_refs and conflict_fixture is not None:
@@ -384,10 +472,13 @@ def run_query_sync_boundaries_sdk_host(request):
                 entered = event("original-method-enter", ownerId=owner_id, method=name)
                 operations = getattr(owner._local, "operations", ())
                 stack = getattr(local, "bases", ())
+                arguments = ({"prepared": _search_result_custody(args[0]), "expectedRevision": args[1]}
+                             if name == "publish_prepared_index" else
+                             _observed_arguments({str(i): v for i, v in enumerate(args)}))
                 call = {"id": f"method-{entered['sequence']}", "ownerId": owner_id, "method": name,
                     "activeTool": getattr(local, "tool", None), "activeSync": getattr(local, "sync", None),
                     "enterSeq": entered["sequence"], "threadId": threading.get_ident(),
-                    "options": _arguments(kwargs), "arguments": _arguments({str(i): v for i, v in enumerate(args)}),
+                    "options": _observed_arguments(kwargs), "arguments": arguments,
                     "parentOperationId": operations[-1] if operations else None,
                     "baseCallId": stack[-1][1]["id"] if stack else None,
                     "receiverIsExactObservedOwner": original.__self__ is owner}
@@ -404,12 +495,6 @@ def run_query_sync_boundaries_sdk_host(request):
                     local.background_cause = publication_causes.get((owner_id, args[0]["readRevision"]))
                     call["causalPublicQuery"] = local.background_cause
                     job_settlements.setdefault((owner_id, args[0]["id"]), threading.Event())
-                if name == "publish_prepared_index":
-                    # The prepared revision contains nested source/chunk
-                    # dataclasses. Preserve them with the existing full private
-                    # codec rather than classifying them as opaque arguments.
-                    call["arguments"] = {"prepared": _search_result_custody(args[0]),
-                                         "expectedRevision": args[1]}
                 if name in {"reindex", "search"}:
                     label = getattr(local, "sync" if name == "reindex" else "tool", None)
                     if label in call_entered:

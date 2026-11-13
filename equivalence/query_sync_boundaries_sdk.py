@@ -142,6 +142,7 @@ def run_query_sync_boundaries_sdk_host(request):
     from memory_core.flags import FeatureFlags
     from memory_core.host.managed_index import ManagedSQLiteMemoryStore
     from memory_core.consolidation.forget import plan_memory_index, purge_memory_index
+    from memory_core.consolidation.origins import MemoryIndexRevisionConflictError
     from memory_core.index.identity import MEMORY_INDEX_META_KEY, MEMORY_INDEX_META_TABLE
     from memory_core.index.sqlite_store import SQLiteMemoryStore
     from memory_core.runtime_identity import OPENCLAW_COMPAT_RUNTIME_IDENTITY
@@ -200,6 +201,8 @@ def run_query_sync_boundaries_sdk_host(request):
     owners, owner_refs, pending_searches = [], {}, []
     active_owner, fault, gate = None, None, None
     conflict_fixture = None
+    publication_causes = {}
+    job_settlements = {}
     calls, call_entered, call_futures = {}, {}, {}
     executor = ThreadPoolExecutor(max_workers=4, thread_name_prefix="query-sync-fixture-caller")
     searches, syncs = {}, {}
@@ -255,10 +258,17 @@ def run_query_sync_boundaries_sdk_host(request):
                       SQLiteMemoryStore.reindex_sources.__code__: SQLiteMemoryStore.reindex_sources}
     publisher_code = SQLiteMemoryStore.publish_prepared_index.__code__
     previous_profile, previous_thread_profile = sys.getprofile(), threading.getprofile()
-    if previous_profile is not None or previous_thread_profile is not None:
-        raise RuntimeError("The protected SDK process already has an unexpected call profiler")
+    previous_trace, previous_thread_trace = sys.gettrace(), threading.gettrace()
+    if any(item is not None for item in (previous_profile, previous_thread_profile, previous_trace, previous_thread_trace)):
+        raise RuntimeError("The protected SDK process already has an unexpected call observer")
+    base_frame_calls = {}
     raw["baseCallObservation"] = {"mechanism": "original-Python-function-call-profile",
         "previousCurrentProfile": None, "previousNewThreadProfile": None,
+        "exceptionMechanism": "original-base-frame-exception-trace",
+        "previousCurrentTrace": None, "previousNewThreadTrace": None,
+        "typedConflictClass": {"module": MemoryIndexRevisionConflictError.__module__,
+            "qualname": MemoryIndexRevisionConflictError.__qualname__,
+            "sourceSha256": hashlib.sha256(Path(sys.modules[MemoryIndexRevisionConflictError.__module__].__file__).read_bytes()).hexdigest()},
         "functions": [{"module": function.__module__, "qualname": function.__qualname__,
             "file": function.__code__.co_filename, "firstLine": function.__code__.co_firstlineno,
             "sourceSha256": hashlib.sha256(Path(function.__code__.co_filename).read_bytes()).hexdigest()}
@@ -281,17 +291,40 @@ def run_query_sync_boundaries_sdk_host(request):
                 "method": function.__name__, "module": function.__module__, "qualname": function.__qualname__,
                 "enterSeq": entered["sequence"], "threadId": threading.get_ident(),
                 "activeTool": getattr(local, "tool", None), "activeSync": getattr(local, "sync", None),
-                "receiverIsExactObservedOwner": True, "workspaceIsExactOwner": arguments.get("workspace") is workspace,
+                "backgroundCause": getattr(local, "background_cause", None),
+                "receiverIsExactObservedOwner": True, "receiverObjectId": str(id(arguments["self"])),
+                "workspaceIsExactOwner": arguments.get("workspace") is workspace,
+                "managedOperationIds": list(getattr(arguments["self"]._local, "operations", ())),
                 "options": _arguments({key: arguments[key] for key in
                     ("force", "sources", "paths", "force_sources") if key in arguments})}
             raw["originalBaseCalls"].append(call)
+            base_frame_calls[id(frame)] = call
             local.bases = (*stack, (id(frame), call))
         elif stack and stack[-1][0] == id(frame):
             call = stack[-1][1]
             call.update(returned=_search_result_custody(returned),
                 returnSeq=event("original-base-producer-return", ownerId=owner_id,
                                 method=function.__name__)["sequence"])
+            call["outcome"] = {"status": "rejected" if returned is None else "fulfilled",
+                "isTypedConflict": returned is None and bool(call.get("exceptions", [])
+                    and call["exceptions"][-1]["isTypedConflict"])}
             local.bases = stack[:-1]
+            base_frame_calls.pop(id(frame), None)
+
+    def exception_trace(frame, name, arguments):
+        if name == "call":
+            return (exception_trace if frame.f_code in base_functions
+                    and id(frame.f_locals.get("self")) in owner_refs else None)
+        if name == "exception":
+            call = base_frame_calls.get(id(frame))
+            if call is not None:
+                error = arguments[1]
+                call.setdefault("exceptions", []).append({"error": _original_error(error),
+                    "isTypedConflict": isinstance(error, MemoryIndexRevisionConflictError),
+                    "exceptionType": {"module": type(error).__module__, "qualname": type(error).__qualname__},
+                    "sequence": event("original-base-producer-exception", ownerId=call["ownerId"],
+                                      method=call["method"])["sequence"]})
+        return exception_trace
 
     def bind_observers(owner, owner_id):
         original_connect = owner.connect
@@ -330,6 +363,17 @@ def run_query_sync_boundaries_sdk_host(request):
                     "baseCallId": stack[-1][1]["id"] if stack else None,
                     "receiverIsExactObservedOwner": original.__self__ is owner}
                 raw[bucket].append(call)
+                previous_cause = getattr(local, "background_cause", None)
+                if name == "_submit_memory_publication":
+                    publication_causes[(owner_id, args[0])] = getattr(local, "tool", None)
+                    call["actualReadRevision"] = args[0]
+                    call["memoryJobCountBefore"] = owner.lifecycle_snapshot()["memoryPublication"]["jobCount"]
+                elif name == "_run_memory_publication":
+                    call["actualJobAtEntry"] = deepcopy(args[0])
+                    local.background_cause = publication_causes.get((owner_id, args[0]["readRevision"]))
+                    call["causalPublicQuery"] = local.background_cause
+                    with observation_lock:
+                        job_settlements.setdefault((owner_id, args[0]["id"]), threading.Event())
                 if name == "publish_prepared_index":
                     # The prepared revision contains nested source/chunk
                     # dataclasses. Preserve them with the existing full private
@@ -371,7 +415,13 @@ def run_query_sync_boundaries_sdk_host(request):
                         call["writeChanges"] = kwargs["changes"]
                         call["writeError"] = None if kwargs["error"] is None else _original_error(kwargs["error"])
                     call["lifecycleAfter"] = owner.lifecycle_snapshot()
+                    if name == "_submit_memory_publication":
+                        call["admittedJobIds"] = [job["id"] for job in call["lifecycleAfter"]["memoryPublication"]["jobs"]
+                                                  if job["id"] > call["memoryJobCountBefore"]]
                     call["returnSeq"] = event("original-method-return", ownerId=owner_id, method=name)["sequence"]
+                    if name == "_run_memory_publication":
+                        job_settlements[(owner_id, args[0]["id"])].set()
+                        local.background_cause = previous_cause
 
             setattr(owner, name, observed)
 
@@ -453,10 +503,10 @@ def run_query_sync_boundaries_sdk_host(request):
         try:
             returned = owner.reindex(workspace, force=params["force"])
             call["returned"] = _search_result_custody(returned)
-            call["outcome"] = {"status": "fulfilled"}
+            call["outcome"] = {"status": "fulfilled", "isTypedConflict": False}
         except BaseException as error:
             call["error"] = _original_error(error)
-            call["outcome"] = {"status": "rejected"}
+            call["outcome"] = {"status": "rejected", "isTypedConflict": isinstance(error, MemoryIndexRevisionConflictError)}
         finally:
             call["returnSeq"] = event("actual-sync-return", label=label, ownerId=owner_id)["sequence"]
             local.sync, local.phase = None, None
@@ -500,14 +550,28 @@ def run_query_sync_boundaries_sdk_host(request):
         never infer them from missing nested call events or alter the original
         prepared publisher's return/error.
         """
-        paths = conflict_fixture["paths"]
-        number = len(raw["functionalInterleavings"])
-        if number >= len(paths):
+        paths, role = conflict_fixture["selectedPaths"], conflict_fixture["role"]
+        same_arm = [row for row in raw["functionalInterleavings"] if row["armSeq"] == conflict_fixture["armSeq"]]
+        position = len(same_arm)
+        if position >= len(paths):
             return
-        marker = paths[number]
+        if role == "preparation":
+            submitted = raw["syncCalls"].get(conflict_fixture["preparationSyncLabel"])
+            if (submitted is None or "returnSeq" in submitted
+                    or submitted["ownerId"] != owner_refs[id(owner)]):
+                return
+            actual_cause = {"syncLabel": conflict_fixture["preparationSyncLabel"],
+                            "originalSyncEnterSeq": submitted["enterSeq"]}
+        else:
+            cause = getattr(local, "background_cause", None)
+            if cause != conflict_fixture["maintenanceQueryLabel"]:
+                return
+            actual_cause = {"causalPublicQuery": cause}
+        marker, number = paths[position], len(raw["functionalInterleavings"])
         owner_id = owner_refs[id(owner)]
         action = {"number": number, "kind": "declared-original-rival-source-purge",
-            "ownerId": owner_id, "markerPath": marker,
+            "ownerId": owner_id, "markerPath": marker, "role": role,
+            "armSeq": conflict_fixture["armSeq"], "actualCause": actual_cause,
             "trigger": {"module": SQLiteMemoryStore.publish_prepared_index.__module__,
                 "qualname": SQLiteMemoryStore.publish_prepared_index.__qualname__,
                 "sourceSha256": hashlib.sha256(Path(publisher_code.co_filename).read_bytes()).hexdigest(),
@@ -549,28 +613,71 @@ def run_query_sync_boundaries_sdk_host(request):
         with closing(active_owner.connect()) as db:
             if db.execute("SELECT 1 FROM chunks LIMIT 1").fetchone() is not None:
                 raise RuntimeError("The newer-format fixture requires an actually empty index")
-        current = active_owner._build_index_meta(None, provider=None, provider_key=active_owner._provider_identities()[0]["providerKey"])
-        metadata = {**current, specification["field"]: specification["version"]}
+        if not isinstance(before, dict):
+            raise RuntimeError("The newer-format fixture requires metadata from an actual prior empty public bootstrap")
+        metadata = {**before, specification["field"]: specification["version"]}
         with closing(active_owner.connect()) as db, db:
             db.execute("BEGIN IMMEDIATE")
             db.execute(f"INSERT OR REPLACE INTO {MEMORY_INDEX_META_TABLE}(key,value) VALUES (?,?)",
                        (MEMORY_INDEX_META_KEY, _serialized(metadata)))
         raw["metadataFixtures"].append({"specification": deepcopy(specification), "before": before,
-            "currentMetadataFromOriginalBuilder": current, "written": metadata, "after": active_owner.read_index_meta(),
+            "actualStoredMetadataBefore": before, "written": metadata, "after": active_owner.read_index_meta(),
             "enterSeq": entered["sequence"], "returnSeq": event("physical-newer-format-return")["sequence"]})
 
     def dispatch_counts():
-        commits = [call for call in raw["publicationCalls"] if "error" not in call and "returned" in call]
-        raw["counterDerivations"] = {"managerSearchCallIds": [call["id"] for call in raw["originalSearchCalls"]],
-            "explicitSyncLabels": list(raw["syncCalls"]),
-            "producerBaseCallIds": [call["id"] for call in raw["originalBaseCalls"]],
+        primary = raw["ownerAcquisitions"][0]
+        close = raw["owners"][primary["ownerId"]]["close"]
+
+        def selected(call):
+            return (call["ownerId"] == primary["ownerId"]
+                    and primary["returnSeq"] < call["enterSeq"] < call["returnSeq"] < close["returnSeq"])
+
+        tools = [call for call in raw["toolCalls"].values() if selected(call)]
+        managers = [call for call in raw["originalSearchCalls"] if selected(call)]
+        requests = [call for call in raw["methodCalls"]
+                    if call["method"] in {"reindex", "reindex_sources"} and selected(call)]
+        producers = sorted((call for call in raw["originalBaseCalls"] if selected(call)), key=lambda call: call["enterSeq"])
+        producer_ids = {call["id"] for call in producers}
+        commits = [call for call in raw["publicationCalls"] if selected(call)
+                   and call["baseCallId"] in producer_ids and "error" not in call and "returned" in call]
+        commit_proofs = []
+        for call in commits:
+            actual = [row["sequence"] for row in raw["sqlStatements"]
+                if row["baseCallId"] == call["baseCallId"] and not row["fixtureAction"]
+                and call["enterSeq"] < row["sequence"] < call["returnSeq"]
+                and row["statement"].strip().upper() == "COMMIT"]
+            if not actual:
+                raise RuntimeError("An original publisher return lacks its real SQLite COMMIT receipt")
+            commit_proofs.append({"baseCallId": call["baseCallId"], "publicationCallId": call["id"],
+                                  "actualCommitSequences": actual})
+        generations = sorted({call["baseCallId"] for call in commits})
+        repairs = [row for row in close["lifecycle"]["repairs"] if row["reason"] == "search-bootstrap"]
+        raw["counterDerivations"] = {"primaryOwnerId": primary["ownerId"],
+            "lifetime": {"acquireReturnSeq": primary["returnSeq"], "closeReturnSeq": close["returnSeq"]},
+            "publicSearchLabels": [call["label"] for call in tools],
+            "managerSearchCallIds": [call["id"] for call in managers],
+            "syncRequestCallIds": [call["id"] for call in requests],
+            "bootstrapRepairIds": [row["id"] for row in repairs],
+            "producerBaseCallIds": [call["id"] for call in producers],
             "publicationCommitCallIds": [call["id"] for call in commits],
-            "unit": "original-public-base-reindex-or-reindex_sources-execution-entry"}
-        return {"managerSearches": len(raw["originalSearchCalls"]), "explicitSyncRequests": len(raw["syncCalls"]),
-                "producerDispatches": len(raw["originalBaseCalls"]), "publicationCommits": len(commits)}
+            "publicationCommitEvidence": commit_proofs,
+            "committedGenerationBaseCallIds": generations,
+            "unit": "original-public-base-reindex-or-reindex_sources-execution-entry",
+            "freshOwnerActivityExcludedFromCommonCounts": True}
+        raw["allOwnerRawDispatchTotals"] = {"searchRequests": len(raw["toolCalls"]),
+            "managerSearches": len(raw["originalSearchCalls"]),
+            "managedSyncEntries": sum(call["method"] in {"reindex", "reindex_sources"} for call in raw["methodCalls"]),
+            "originalBaseEntries": len(raw["originalBaseCalls"]),
+            "successfulPublicationReturns": sum("error" not in call and "returned" in call for call in raw["publicationCalls"])}
+        raw["primaryProducerOutcomes"] = [deepcopy(call["outcome"]) for call in producers]
+        return {"searchRequests": len(tools), "managerSearches": len(managers), "syncRequests": len(requests),
+                "bootstrapRequests": len(repairs), "producerAttempts": len(producers),
+                "committedGenerations": len(generations)}
 
     threading.setprofile(profile)
     sys.setprofile(profile)
+    threading.settrace(exception_trace)
+    sys.settrace(exception_trace)
     try:
         for number, step in enumerate(value["steps"]):
             operation = step["operation"]
@@ -585,9 +692,10 @@ def run_query_sync_boundaries_sdk_host(request):
                     with target.open("x", encoding="utf8", newline="") as stream:
                         stream.write(text)
                     os.utime(target, ns=(value["initialSourceMtimeMs"] * 1_000_000,) * 2)
+                sources("initial")
             elif operation in {"acquire-owner", "acquire-original-default-owner", "reopen-owner"}:
                 acquire(step.get("label", "first" if not owners else "reopened"))
-            elif operation in {"public-memory-search", "start-search"}:
+            elif operation in {"public-memory-search", "start-public-memory-search"}:
                 label = step["label"]
                 start_call("search", label, value["queries"][label])
                 if operation == "public-memory-search":
@@ -597,7 +705,7 @@ def run_query_sync_boundaries_sdk_host(request):
                 start_call("sync", label, step["params"])
                 if operation == "original-sync":
                     await_call(label)
-            elif operation in {"await-sync", "await-search"}:
+            elif operation in {"await-sync", "await-public-memory-search"}:
                 await_call(step["label"])
             elif operation == "arm-sql-gate":
                 gate = _SqlWriterGate(index_path, event, _path_entry)
@@ -605,18 +713,21 @@ def run_query_sync_boundaries_sdk_host(request):
                 gate.arm()
             elif operation in {"await-real-publication-pending", "await-original-busy"}:
                 gate.wait(3)
-            elif operation == "await-call-enter":
-                label = step["label"]
-                timeout = 3 if gate is None or gate.db is None else min(3, gate.remaining())
-                if not call_entered[label].wait(timeout):
-                    raise TimeoutError("An independent caller did not enter its actual original API")
-                schedule["originalCallPending"] = not call_futures[label].done()
-                schedule["observedSeq"] = event("independent-original-call-entered", label=label)["sequence"]
+            elif operation == "await-joined-requests":
+                observations = []
+                for label in step["labels"]:
+                    timeout = 3 if gate is None or gate.db is None else min(3, gate.remaining())
+                    if not call_entered[label].wait(timeout):
+                        raise TimeoutError("An independent caller did not enter its actual original API")
+                    observations.append({"label": label, "originalCallPending": not call_futures[label].done(),
+                        "observedSeq": event("independent-original-call-entered", label=label)["sequence"]})
+                schedule["actualRequestEntries"] = observations
+                schedule["coalescingAssertedByFixture"] = False
             elif operation == "release-sql-gate":
                 schedule["callCompletionBeforeRelease"] = {label: future.done() for label, future in call_futures.items()}
                 gate.release()
             elif operation == "arm-publication-fault":
-                fault = _PublicationSidecarFault(index_path, directory, value["fault"])
+                fault = _PublicationSidecarFault(index_path, directory, value["publicationFault"])
                 raw["faults"].append(fault.receipt)
                 fault.receipt["armEnterSeq"] = event("physical-fault-arm-enter")["sequence"]
                 fault.arm()
@@ -628,15 +739,37 @@ def run_query_sync_boundaries_sdk_host(request):
             elif operation == "mutate-source":
                 mutate(step.get("specification", value.get("sourceMutation")))
             elif operation == "arm-revision-conflict":
-                conflict_fixture = deepcopy(value["revisionConflict"])
-                raw["revisionConflictFixture"] = {"specification": conflict_fixture,
-                    "armedSeq": event("functional-rival-publication-armed")["sequence"]}
+                role = step["role"]
+                if role not in {"preparation", "maintenance"}:
+                    raise ValueError("A rival-publication arm requires its exact preparation/maintenance role")
+                conflict_fixture = {**deepcopy(value["revisionConflict"]), "role": role,
+                    "selectedPaths": value["revisionConflict"]["paths"][:1] if role == "preparation"
+                                     else value["revisionConflict"]["paths"][1:],
+                    "armSeq": event("functional-rival-publication-armed", role=role)["sequence"]}
+                raw.setdefault("revisionConflictFixtures", []).append(deepcopy(conflict_fixture))
             elif operation == "set-newer-empty-format":
                 newer_empty_format(value["newerFormat"])
             elif operation == "capture-physical-sql":
                 physical(step["label"])
             elif operation == "capture-sources":
                 sources(step["label"])
+            elif operation == "read-physical-sql-and-source-state":
+                physical(step["label"])
+                sources(step["label"])
+            elif operation == "await-observed-background-settlement":
+                label = step["searchLabel"]
+                admitted = {(call["ownerId"], job) for call in raw["backgroundCalls"]
+                    if call["method"] == "_submit_memory_publication" and call["activeTool"] == label
+                    for job in call.get("admittedJobIds", [])}
+                schedule["alreadyAdmittedJobKeys"] = [list(key) for key in sorted(admitted)]
+                schedule["admission"] = "admitted" if admitted else "not-admitted"
+                for key in admitted:
+                    with observation_lock:
+                        settlement = job_settlements.setdefault(key, threading.Event())
+                    if not settlement.wait(20):
+                        raise TimeoutError("An actually admitted original background publisher did not settle")
+                schedule["settledSeq"] = event("already-admitted-background-settlement-observed", searchLabel=label,
+                                                admittedJobs=len(admitted))["sequence"]
             elif operation in {"close-owner", "original-owner-close"}:
                 close_owner(active_owner)
             else:
@@ -658,6 +791,7 @@ def run_query_sync_boundaries_sdk_host(request):
         raw["independentCalls"] = calls
         raw["result"] = {"provider": providers.pop(), "searches": searches, "syncs": syncs,
             "dispatches": dispatch_counts(),
+            "producerOutcomes": raw["primaryProducerOutcomes"],
             "sources": {label: receipt["common"] for label, receipt in raw["sourceStages"].items()}}
         raw["completed"] = True
         return {"result": raw["result"], "raw": raw}
@@ -693,9 +827,18 @@ def run_query_sync_boundaries_sdk_host(request):
                     errors.append({"operation": "owner-close", **_original_error(error)})
         sys.setprofile(previous_profile)
         threading.setprofile(previous_thread_profile)
+        sys.settrace(previous_trace)
+        threading.settrace(previous_thread_trace)
         raw["baseCallObservation"]["profilesRestored"] = (sys.getprofile() is previous_profile
             and threading.getprofile() is previous_thread_profile)
+        raw["baseCallObservation"]["exceptionTraceRestored"] = (sys.gettrace() is previous_trace
+            and threading.gettrace() is previous_thread_trace)
         raw["allManagersClosed"] = all(owner.closed for owner in owners)
+        for armed in raw.get("revisionConflictFixtures", []):
+            reached = [row["markerPath"] for row in raw["functionalInterleavings"] if row["armSeq"] == armed["armSeq"]]
+            armed["actualReachedPaths"] = reached
+            armed["notReachedPaths"] = [path for path in armed["selectedPaths"] if path not in reached]
+            armed["missingProducerWasNotManufacturedOrWaitedFor"] = True
         raw["implementationBindings"] = _loaded_sdk()
         raw["sourceIdentity"]["afterClose"] = _sdk_sources()
         if errors:

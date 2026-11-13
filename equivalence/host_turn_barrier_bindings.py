@@ -233,7 +233,7 @@ COMPILED_ANCHORS.update({
     "dist/tools-DotaQGXh.mjs": (
         'import { t as captureMemoryRebuildNotice } from "./memory-rebuild-notice-9mxFMQoD.mjs";',
         "\t\tparams.onRebuildNotice?.(captureMemoryRebuildNotice(active.manager.status()));",
-        "\t\tconst candidates = await active.manager.search(query.text, {",
+        "\t\t\t\tcandidates: await active.manager.search(query.text, {",
     ),
 })
 

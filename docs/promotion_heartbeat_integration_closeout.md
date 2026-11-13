@@ -1,18 +1,32 @@
 # Promotion and heartbeat maintenance integration
 
-The latest [cold retry development closeout](query_sync_cold_retry_development_closeout.md)
-records **71/128 verified conditions, 57 remaining**, in the complete current
-local catalog on clean `e148d0b`: 1,444 cases, 1,429 matches, 15 mismatches and
-zero blocked/errors. Its recovery fix adds zero conditions. The fresh Native
-cold Unicode notice differs from its previous local output, so original
-`host.turn-barrier.outcomes` loses credit; the SDK output in that case is unchanged.
-The prior 72/128 and all maintenance/promotion/restart captures retain their
-historical identities. This maintenance package still awards zero.
+The latest [query-sync boundary closeout](query_sync_boundaries_closeout.md)
+records **73/128 verified conditions, 55 remaining**, in the complete current
+local catalog on clean code head `d6bb805`: **1,452 cases, 1,438 matches, 14
+mismatches and zero blocked/errors**. Independent audit verifies the original
+query-sync boundary and restores the original natural-turn outcome point after
+all four complete host cases match. The fixed scope remains 128 conditions.
+There are 34 complete, five partial and 25 pending contracts; the full gate still
+fails with 53 uncovered and two registered unresolved conditions.
 
-The later [passive notice packet](next_turn_notice_observation_closeout.md)
-measures four complete original host pairs, all matching, with zero credit and
-no production SDK change. The older missing cold warning does not recur;
-its exact timing cause remains unresolved and the latest full score stays 71/128.
+The changed provider-none on-search SDK passes **11,166 whole-suite tests** with
+zero failures and 1,974 uncredited skips. Both local wheel/sdist consumers pass;
+code-head Python 3.11/3.12 package checks and consumers pass. The hosted Native
+smoke catalog still has 1,434 matches and 18 mismatches, zero blocked/errors;
+its new boundary packet matches 8/8 and its guard passes all 832 tests. Hosted
+notice comparisons still differ in all four cases. Exact executions belong to clean code
+head `d6bb805`; later documentation or merge commits must not relabel this evidence.
+Implementation review is tracked in [PR #17](https://github.com/DorukhanArslan/memory-core/pull/17).
+Source classification remains `partial`, and the bounded schedules do not cover
+every provider or interleaving.
+
+All fifteen previous SDK mismatch payloads stay unchanged. The cold Unicode
+Native warning/corpora fields return in this full run; their earlier missing
+notice timing remains unproved and no notice-policy fix is inferred. The warm
+flush case retains changed Native first-recall arrays, remains mismatched and
+receives no credit. The prior cold-retry and passive-notice packets keep their
+zero-credit identities. This historical maintenance package still awards zero;
+none of its original captures is relabeled.
 
 This is the historical zero-credit maintenance closeout. Subsequent work is
 recorded separately in the [promotion apply/reconciliation closeout](promotion_apply_reconcile_closeout.md):

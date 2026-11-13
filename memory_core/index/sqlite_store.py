@@ -246,6 +246,14 @@ class SQLiteMemoryStore:
     # same optional search keyword. Legacy backends need not accept it.
     supports_partial_results = True
 
+    def _uses_row_mutation_revision(self) -> bool:
+        """Opt-in full rebuild fencing against actual source and chunk writes."""
+        return False
+
+    def _allow_full_reindex(self, workspace: MemoryWorkspace, *, force: bool) -> bool:
+        """Check host policy after admission under the workspace publisher guard."""
+        return True
+
     def __init__(
         self,
         config: MemoryConfig,
@@ -343,6 +351,37 @@ class SQLiteMemoryStore:
             )
             db.execute(f"INSERT OR IGNORE INTO {INDEX_SYNC_TABLE}(id, revision) VALUES (1, 0)")
             ensure_publication_schema(db)
+            if self._uses_row_mutation_revision():
+                self._ensure_row_mutation_revision(db)
+
+    @staticmethod
+    def _ensure_row_mutation_revision(db: sqlite3.Connection) -> None:
+        """Enroll this database in a prospective, transactional mutation clock.
+
+        Existing databases begin at zero when first enrolled: their earlier
+        write history is unknown. Persisted triggers then count every actual
+        INSERT, UPDATE and DELETE on either canonical row owner, including
+        writes from other connections. The private publication generation and
+        an explicitly supplied origins fence retain their separate meanings.
+        """
+        db.execute(
+            "CREATE TABLE IF NOT EXISTS memory_core_index_mutation_state ("
+            "id INTEGER PRIMARY KEY CHECK (id = 1), revision INTEGER NOT NULL)"
+        )
+        db.execute("INSERT OR IGNORE INTO memory_core_index_mutation_state VALUES (1, 0)")
+        for table in ("chunks", INDEX_SOURCES_TABLE):
+            for event in ("insert", "update", "delete"):
+                db.execute(
+                    f"CREATE TRIGGER IF NOT EXISTS {table}_mutation_after_{event} "
+                    f"AFTER {event.upper()} ON {table} BEGIN "
+                    "UPDATE memory_core_index_mutation_state SET revision=revision+1 WHERE id=1; END"
+                )
+
+    def _row_mutation_revision(self, *, db: sqlite3.Connection) -> int:
+        row = db.execute("SELECT revision FROM memory_core_index_mutation_state WHERE id=1").fetchone()
+        if row is None or type(row[0]) is not int or abs(row[0]) > 2 ** 53 - 1:
+            raise RuntimeError("Memory index mutation revision is missing or invalid")
+        return row[0]
 
     def index_revision(self, *, db: sqlite3.Connection | None = None) -> int:
         """The private publication generation, checked like the native owner."""
@@ -569,6 +608,8 @@ class SQLiteMemoryStore:
         changes are still checked rather than retried implicitly.
         """
         with workspace_index_lock(workspace.root):
+            if not self._allow_full_reindex(workspace, force=force):
+                return 0
             return self._reindex_locked(workspace, force=force)
 
     def reindex_sources(self, workspace: MemoryWorkspace, *, sources: Collection[str],
@@ -626,6 +667,10 @@ class SQLiteMemoryStore:
         chunk_tokens, chunk_overlap = next_meta["chunkTokens"], next_meta["chunkOverlap"]
         workspace_root = str(workspace.root.resolve())
         with self.connect() as db:
+            mutation_generation = None
+            if self._uses_row_mutation_revision():
+                db.execute("BEGIN")
+                mutation_generation = self._row_mutation_revision(db=db)
             generation, previous_workspace, needs_rebuild = db.execute(
                 f"SELECT revision, workspace, needs_rebuild FROM {INDEX_SYNC_TABLE} WHERE id = 1"
             ).fetchone()
@@ -695,6 +740,25 @@ class SQLiteMemoryStore:
                     fence.assert_unchanged_in(db, expected_fence)
                 else:
                     fence.assert_unchanged(expected_fence)
+            def owner_changed():
+                return (
+                    self._index_provider() != provider or self._provider_identities() != identities
+                    or self._build_index_meta(None, provider=provider, provider_key=provider_key) != next_meta
+                    or str(workspace.root.resolve()) != workspace_root
+                )
+
+            if rebuild and mutation_generation is not None:
+                current_mutation = self._row_mutation_revision(db=db)
+                if current_mutation != mutation_generation:
+                    if owner_changed():
+                        raise MemoryIndexSourceChangedError(
+                            "Memory index owner changed while refresh was being prepared; retry the index refresh."
+                        )
+                    raise MemoryIndexRevisionConflictError(
+                        "Memory index changed while full reindex was building "
+                        f"(expected revision {mutation_generation}, found {current_mutation}); "
+                        "retry the full reindex."
+                    )
             revision = db.execute(
                 f"SELECT revision FROM {INDEX_SYNC_TABLE} WHERE id = 1"
             ).fetchone()[0]
@@ -702,9 +766,7 @@ class SQLiteMemoryStore:
                 raise MemoryIndexSourceChangedError(
                     "Memory index changed while refresh was being prepared; retry the index refresh."
                 )
-            if (self._index_provider() != provider or self._provider_identities() != identities
-                    or self._build_index_meta(None, provider=provider, provider_key=provider_key) != next_meta
-                    or str(workspace.root.resolve()) != workspace_root):
+            if owner_changed():
                 raise MemoryIndexSourceChangedError(
                     "Memory index owner changed while refresh was being prepared; retry the index refresh."
                 )

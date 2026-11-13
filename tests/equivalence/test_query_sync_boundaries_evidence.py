@@ -119,6 +119,43 @@ def test_actual_full_capture_validates_without_predicting_its_policy(actual):
     assert set(capture[2]["dispatches"]) == set(COUNTERS)
 
 
+@pytest.mark.parametrize("attack", ["code", "message", "removed-declaration", "encoded-sql"])
+def test_absent_native_sql_allows_only_the_declared_deferred_stack_enrichment(attack):
+    capture = deepcopy(_load(CASES[0], True))
+    raw = _raw(capture, True)
+    snapshot = next(row for row in raw["snapshots"] if row.get("exists") is False)
+    assert json.loads(snapshot["serializedJSON"])["error"]["stack"] is None
+    assert isinstance(snapshot["error"]["stack"], str)
+    if attack == "code":
+        snapshot["error"]["code"] = "EACCES"
+    elif attack == "message":
+        snapshot["error"]["message"] += " substituted"
+    elif attack == "removed-declaration":
+        del snapshot["error"]["stackSerialization"]
+    else:
+        sealed = json.loads(snapshot["serializedJSON"])
+        sealed["dbPath"] += "-other"
+        snapshot["serializedJSON"] = json.dumps(sealed)
+        snapshot["sha256"] = hashlib.sha256(snapshot["serializedJSON"].encode()).hexdigest()
+    _reject(capture, True)
+
+
+@pytest.mark.parametrize("attack", ["different-owner", "not-original-class", "different-purpose"])
+def test_native_public_tool_ownership_is_bound_to_its_actual_original_get(attack):
+    capture = deepcopy(_load(CASES[0], True))
+    raw = _raw(capture, True)
+    tool = next(iter(raw["toolCalls"].values()))
+    get = next(row for row in raw["originalGetCalls"]
+               if tool["enterSeq"] < row["enterSeq"] < row["returnSeq"] < tool["returnSeq"])
+    if attack == "different-owner":
+        get["ownerId"] = "borrowed-owner"
+    elif attack == "not-original-class":
+        get["receiverIsOriginalClass"] = False
+    else:
+        get["requestedPurpose"] = "maintenance"
+    _reject(capture, True)
+
+
 @pytest.mark.parametrize("field", ["provider", "searches", "syncs", "dispatches", "producerOutcomes", "sources"])
 def test_whole_public_boundary_result_cannot_drop_a_field(actual, field):
     _, baseline = actual
@@ -272,6 +309,16 @@ def test_typed_conflict_preparation_is_a_real_original_rival_publication(engine,
         else:
             rival["markerPath"] = "memory/borrowed-marker.md"
     _reject(capture, engine)
+
+
+@pytest.mark.parametrize("scenario", ["typed-conflict-once-retry", "typed-conflict-twice-exhaustion"])
+def test_native_revision_control_cannot_skip_an_actual_eligible_maintenance_publisher(scenario):
+    capture = deepcopy(_load(_case(scenario), True))
+    raw = _raw(capture, True)
+    selected = [row for row in raw["revisionControl"]["rounds"] if row["role"] == "maintenance"]
+    assert all(row["reached"] for row in selected), "A selected positive capture must reach every declared Native rival"
+    selected[-1]["reached"] = False
+    _reject(capture, True)
 
 
 @pytest.mark.parametrize("attack", ["before-empty-seed", "different-specification", "missing-fixture"])

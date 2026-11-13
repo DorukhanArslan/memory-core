@@ -10,6 +10,7 @@ import hashlib
 import json
 import os
 from pathlib import Path
+import re
 import shutil
 
 from equivalence.host_turn_barrier_evidence import _same, require
@@ -156,7 +157,20 @@ def _source_custody(case, raw, result, events, *, native):
                         "query-sync boundaries SDK source bytes/stat were replaced")
     for snapshot in raw["snapshots"]:
         _interval(snapshot, events, "physical-sql-read-enter", "physical-sql-read-return", "actual SQL snapshot detached")
-        _sql(snapshot, raw, native=native, missing=snapshot["label"].startswith("before-"))
+        sealed = json.loads(snapshot["serializedJSON"])
+        checked = snapshot
+        if native and snapshot.get("exists") is False:
+            original, final = sealed["error"], snapshot["error"]
+            require(original["code"] == final["code"] == "ENOENT"
+                    and original["stack"] is None and isinstance(final["stack"], str)
+                    and original["stackSerialization"] == final["stackSerialization"] == "original-teardown"
+                    and _same({key: item for key, item in original.items() if key != "stack"},
+                              {key: item for key, item in final.items() if key != "stack"}),
+                    "initial ENOENT receipt changed beyond its declared deferred stack enrichment")
+            # The immutable JSON carrier remains the original observation.
+            # Only the separately retained, later formatted stack is enriched.
+            checked = {**snapshot, "error": original}
+        _sql(checked, raw, native=native, missing=snapshot["label"].startswith("before-"))
 
 
 def _steps(case, raw, events, *, native):
@@ -190,6 +204,14 @@ def _tools(case, raw, result, events, *, native):
                     and set(call["nativeDetailsOwnKeys"]) == set(envelope["details"]) | set(call["nativeDetailsUndefinedOwnKeys"])
                     and set(call["nativeDetailsUndefinedOwnKeys"]).isdisjoint(envelope["details"]),
                     "query-sync boundaries Native original own-field custody was changed")
+            gets = [row for row in raw["originalGetCalls"]
+                    if row["requestedPurpose"] == "default"
+                    and start < row["enterSeq"] < row["returnSeq"] < end]
+            require(gets and all(row["receiverIsOriginalClass"] is True
+                    and row["originalReturnPromisePreserved"] is True and row["ownerId"] in raw["owners"]
+                    and row["requestedPurpose"] == "default" for row in gets)
+                    and len({row["ownerId"] for row in gets}) == 1,
+                    "actual Native public tool lost its original manager acquisition/owner")
         else:
             carrier = call["envelopeFile"]
             data = _owned_file(carrier["path"], raw["fixtureBase"]).read_bytes()
@@ -208,6 +230,9 @@ def _tools(case, raw, result, events, *, native):
                     and (search["query"] if native else search["arguments"]["0"])
                     == case["input"]["queries"][label]["query"],
                     "query-sync boundaries public search dispatched to another receiver/query")
+            if native:
+                require(search["ownerId"] == gets[-1]["ownerId"],
+                        "Native public search borrowed a manager outside its actual tool acquisition")
         if searches and "error" not in searches[-1]:
             _returned_hits(searches[-1], result["searches"][label], native=native)
     require(len(raw["toolCalls"]) == sum(row["event"] == "actual-tool-enter" for row in events.values())
@@ -228,6 +253,14 @@ def _tools(case, raw, result, events, *, native):
 
 
 def _native_counts(raw, result, events):
+    require(all(sum(row["event"] == f"original-{method}-{suffix}" for row in events.values())
+                == sum(row["method"] == method for row in raw["methodCalls"])
+                for method in NATIVE_METHODS for suffix in ("enter", "return")),
+            "actual original Native method events were removed or added")
+    for bucket, method in (("statusCalls", "status"), ("originalSearchCalls", "search"),
+                           ("backgroundCalls", "syncPublishedIndexInBackground")):
+        require(_same(raw[bucket], [row for row in raw["methodCalls"] if row["method"] == method]),
+                "Native specialized method receipts differ from complete original calls")
     window = raw["comparableWindow"]
     primary = window["primaryOwnerId"]
     acquisition = _one(raw["facadeCalls"], lambda row: row["ownerId"] == primary, "first foreground acquisition missing")
@@ -277,7 +310,8 @@ def _native_counts(raw, result, events):
                         "query-sync boundaries actual visible publication was omitted from its generation")
         require((job.get("committedGeneration") is True) == (job["id"] in commits),
                 "query-sync boundaries committed-generation count was asserted without actual publication")
-    counts = {"searchRequests": sum(selected(row) for row in raw["toolCalls"].values()),
+    counts = {"searchRequests": sum(acquisition["returnSeq"] < row["enterSeq"] < row["returnSeq"] < close["returnSeq"]
+                                   for row in raw["toolCalls"].values()),
         "managerSearches": sum(row["method"] == "search" for row in methods),
         "syncRequests": sum(row["method"] == "syncAdmitted" for row in methods),
         "bootstrapRequests": sum(row["method"] == "syncAdmitted" and row["args"][0].get("reason") == "search-bootstrap" for row in methods),
@@ -299,6 +333,9 @@ def _sdk_counts(raw, result, events, *, approved_sdk_root=None):
     def selected(row):
         return row.get("ownerId") == primary and acquisition["returnSeq"] < row["enterSeq"] < row["returnSeq"] < close["returnSeq"]
     methods = raw["methodCalls"] + raw["originalSearchCalls"] + raw["statusCalls"] + raw["backgroundCalls"] + raw["publicationCalls"] + raw["readAdmissions"] + raw["publicationWrites"]
+    require(len(methods) == sum(row["event"] == "original-method-enter" for row in events.values())
+            == sum(row["event"] == "original-method-return" for row in events.values()),
+            "actual original SDK method entries/returns were removed or added")
     for call in methods:
         _interval(call, events, "original-method-enter", "original-method-return", "original SDK method detached")
         require(call["receiverIsExactObservedOwner"] is True and call["ownerId"] in raw["owners"],
@@ -488,9 +525,12 @@ def _typed_errors(raw, *, native, approved_sdk_root=None):
                 kind = witness["exceptionType"]
                 actual = {"module": typed["module"], "qualname": typed["qualname"]} in kind["mro"]
                 error = witness["error"]
+                frames = re.findall(r'^\s*File "([^"]+)", line \d+', error["traceback"], flags=re.MULTILINE)
+                require(frames and not Path(frames[-1]).is_relative_to(ROOT / "equivalence"),
+                        "SDK original producer was interrupted by an observer-origin exception")
                 require(witness["isTypedConflict"] is actual
                         and error["errorRef"] == witness["errorRef"]
-                        and error["module"] == kind["module"] and error["name"] == kind["qualname"],
+                        and error["module"] == kind["module"] and _same(error["exceptionType"], kind),
                         "query-sync boundaries actual SDK exception type/MRO was relabelled")
                 witnesses[witness["errorRef"]] = witness
             if call["outcome"]["status"] == "rejected":
@@ -605,6 +645,13 @@ def _physical_controls(case, raw, events, primary, *, native):
             require(_same(raw["revisionControl"]["specification"], specification) and not raw["revisionErrors"],
                     "Native real revision conflict fixture specification/control failed")
             rows = raw["revisionControl"]["rounds"]
+            actual_targets = [call for call in raw["publicationCalls"] if call["method"] == "publishShadow"
+                and raw["owners"][call["ownerId"]].get("maintenanceSourceOwnerId") == primary
+                and (call.get("operationContext") or {}).get("kind") == "search"
+                and call["operationContext"].get("label") == specification["maintenanceQueryLabel"]]
+            reached = sum(row["role"] == "maintenance" and row["reached"] for row in rows)
+            require(reached == min(len(specification["paths"]) - 1, len(actual_targets)),
+                    "Native revision control missed an actual eligible original maintenance publisher")
         else:
             rows = raw["functionalInterleavings"]
             require([row["role"] for row in raw["revisionConflictFixtures"]] == ["preparation", "maintenance"],
@@ -617,7 +664,7 @@ def _physical_controls(case, raw, events, primary, *, native):
             if native:
                 if not row["reached"]:
                     continue
-                require(row["rivalResult"] is True and row["actualRevisionAfter"] == row["expectedRevision"] + 1
+                require(row["rivalResult"] is True and row["actualRevisionAfter"] > row["expectedRevision"]
                         and row["acquireReturnSeq"] < row["reachedSeq"] < row["rivalEnterSeq"] < row["rivalReturnSeq"]
                         < row["releaseEnterSeq"] < row["releaseReturnSeq"] and row["released"] is True,
                         "Native actual revision conflict lacked a real rival commit/reader lifetime")
@@ -625,6 +672,13 @@ def _physical_controls(case, raw, events, primary, *, native):
                 require(read["result"]["revision"] == row["expectedRevision"]
                         and row["rivalArguments"]["path"] == row["markerPath"],
                         "Native rival revision/source differs from original producer's actual read")
+                before = _one(raw["snapshots"], lambda call: call["label"] == row["beforeSnapshot"], "real rival prepublication SQL omitted")
+                after = _one(raw["snapshots"], lambda call: call["label"] == row["afterSnapshot"], "real rival committed SQL omitted")
+                marker = _one(before["tables"]["memory_index_sources"], lambda call: call["path"] == row["markerPath"], "actual indexed rival marker omitted")
+                require(marker["hash"] == row["rivalArguments"]["expectedHash"]
+                        and not any(call["path"] == row["markerPath"] for call in after["tables"]["memory_index_sources"])
+                        and _one(after["tables"]["memory_index_state"], lambda call: call["id"] == 1, "rival committed revision omitted")["revision"] == row["actualRevisionAfter"],
+                        "Native rival claimed revision/source change without actual committed SQL")
             else:
                 require(row["returned"] is True and "error" not in row
                         and row["revisionAfter"] == row["revisionBefore"] + 1

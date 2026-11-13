@@ -365,7 +365,9 @@ def run_query_sync_boundaries_sdk_host(request):
                 raw[bucket].append(call)
                 previous_cause = getattr(local, "background_cause", None)
                 if name == "_submit_memory_publication":
-                    publication_causes[(owner_id, args[0])] = getattr(local, "tool", None)
+                    actual_cause = getattr(local, "tool", None) or previous_cause
+                    publication_causes[(owner_id, args[0])] = actual_cause
+                    call["causalPublicQuery"] = actual_cause
                     call["actualReadRevision"] = args[0]
                     call["memoryJobCountBefore"] = owner.lifecycle_snapshot()["memoryPublication"]["jobCount"]
                 elif name == "_run_memory_publication":

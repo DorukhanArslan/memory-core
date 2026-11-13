@@ -6,7 +6,7 @@ import path from 'node:path';
 import {pathToFileURL,fileURLToPath} from 'node:url';
 import {createHash} from 'node:crypto';
 import {DatabaseSync} from 'node:sqlite';
-import {isDeepStrictEqual} from 'node:util';
+import {isDeepStrictEqual,getCallSites} from 'node:util';
 const BRIDGE=Symbol.for('memory-core.equivalence.host-turn-barrier-provider');
 const PROVIDER='fixture-turn-barrier-model', MODEL='scripted-turn-barrier-model';
 const transported=value=>JSON.parse(JSON.stringify(value));
@@ -57,13 +57,20 @@ export function createNativeNoticeObserver(OriginalManager,{observations,stamp,h
  const out=Object.assign(observations,header,{events:[],calls:[],managers:[],notices:[],statuses:[],promises:[],
   databaseContexts:[],captureEdges:[],checkpoints:[],observerFailures:[],hookDescriptors:[],restoreReceipts:[]});
  const refs=new WeakMap(),managerRows=new WeakMap(),noticeRows=new WeakMap(),databaseRows=new WeakMap(),
-  retainedNotices=new Map(),lastStatuses=new WeakMap(),hooked=new WeakMap(),stack=[],restorations=[],openRuns=new Map();
+  retainedNotices=new Map(),lastStatuses=new WeakMap(),hooked=new WeakMap(),stack=[],restorations=[],openRuns=new Map(),pendingErrors=[];
  let nextRef=0,nextCall=0,restored=false;
  const own=(value,key)=>value&&(typeof value==='object'||typeof value==='function')?Object.getOwnPropertyDescriptor(value,key):undefined;
  const data=(value,key)=>{const descriptor=own(value,key);return descriptor&&Object.hasOwn(descriptor,'value')?descriptor.value:undefined;};
  const ref=value=>{if(!value||(typeof value!=='object'&&typeof value!=='function'))return null;
   if(!refs.has(value))refs.set(value,`notice-ref-${++nextRef}`);return refs.get(value);};
- const fail=(stage,error)=>{try{out.observerFailures.push({stage,errorRef:ref(error),error:errorRecord(error)});}catch{out.observerFailures.push({stage,error:'observer failure could not be serialized'});}};
+ function errorScalars(error){
+  const result={};for(const key of ['name','message','code']){let value=error,descriptor;
+   while(value&&(typeof value==='object'||typeof value==='function')&&!(descriptor=own(value,key)))value=Object.getPrototypeOf(value);
+   if(descriptor&&Object.hasOwn(descriptor,'value'))result[key]=descriptor.value;}
+  return result;
+ }
+ const retainError=(holder,key,error)=>{holder[`${key}Ref`]=ref(error);holder[key]=errorScalars(error);pendingErrors.push({holder,key,error});};
+ const fail=(stage,error)=>{try{const row={stage};retainError(row,'error',error);out.observerFailures.push(row);}catch{out.observerFailures.push({stage,error:'observer failure could not be serialized'});}};
  const safe=(stage,run)=>{try{return run();}catch(error){fail(stage,error);return undefined;}};
  const emit=(event,fields={})=>safe(event,()=>{const row={...stamp(),event,...fields};out.events.push(row);return row;});
  function scalarNotice(notice){
@@ -125,7 +132,8 @@ export function createNativeNoticeObserver(OriginalManager,{observations,stamp,h
   function observed(...args){
    const receiver=this,call={id:`notice-call-${++nextCall}`,method,kind,parentSynchronousCallId:stack.at(-1)??null,originalInvocations:0,
     receiverRef:ref(receiver),originalFunctionRef:ref(original),declaringPrototypeRef:ref(target),declaringPrototypeName:prototypeName,
-    argsRef:ref(args),argumentRefs:args.map(ref),callerStack:safe('caller-stack',()=>new Error('Original notice method call-through').stack)};
+    argsRef:ref(args),argumentRefs:args.map(ref),callerFrames:safe('caller-frames',()=>getCallSites(64,{sourceMap:false}))};
+   call.callerStack=safe('caller-stack',()=>call.callerFrames.map(frame=>`at ${frame.functionName||'<anonymous>'} (${frame.scriptName}:${frame.lineNumber}:${frame.columnNumber})`).join('\n'));
    safe(`enter:${method}`,()=>{
     if(kind==='manager')Object.assign(call,managerSample(receiver));
     if(kind==='publication')call.databaseContextRef=ref(receiver);
@@ -142,14 +150,15 @@ export function createNativeNoticeObserver(OriginalManager,{observations,stamp,h
      noticeRef:call.noticeRef??null,databaseContextRef:call.databaseContextRef??null});call.enterSeq=entered?.sequence;call.enterSequence=call.enterSeq;
     if(method==='runSync'){if(!openRuns.has(call.managerRef))openRuns.set(call.managerRef,new Set());openRuns.get(call.managerRef).add(call.id);}
     if(method==='search'){const prior=lastStatuses.get(receiver);
-     if(prior&&/\bat (?:async )?searchOnce\b/.test(prior.callerStack??''))out.captureEdges.push({kind:'source-bound-synchronous-edge',
+     if(prior&&prior.noticeRef===call.noticeRef&&prior.notice.sequence===call.before.notice.sequence&&
+      /\bat (?:async )?searchOnce\b/.test(prior.callerStack??''))out.captureEdges.push({kind:'source-bound-synchronous-edge',
       statusCallId:prior.callId,searchCallId:call.id,noticeRef:prior.noticeRef,capturedSequence:prior.notice.sequence,
       statusReturnSeq:prior.returnSeq,searchEnterSeq:call.enterSeq,noDirectReaderClaim:true});}
     out.calls.push(call);
    });
    stack.push(call.id);let returned;
    try{call.originalInvocations+=1;returned=Reflect.apply(original,receiver,args);}
-   catch(error){safe(`throw:${method}`,()=>{call.errorRef=ref(error);call.error=errorRecord(error);
+   catch(error){safe(`throw:${method}`,()=>{retainError(call,'error',error);
      call.after=kind==='manager'?managerSample(receiver):{databaseContextRef:kind==='publication'?ref(receiver):null};
      call.afterNotice=call.after.notice??null;
      call.returnSeq=emit('original-method-throw',{phase:'error',method,callId:call.id,errorRef:call.errorRef})?.sequence;call.returnSequence=call.returnSeq;
@@ -173,7 +182,7 @@ export function createNativeNoticeObserver(OriginalManager,{observations,stamp,h
    });
    function settled(value,error,rejected){
     call.settlement=rejected?'rejected':'fulfilled';call.settledValue=rejected?null:kind==='static'?{privateType:'manager',ref:ref(value)}:codec(value);
-    if(rejected){call.settledErrorRef=ref(error);call.settledError=errorRecord(error);}
+    if(rejected)retainError(call,'settledError',error);
     if(kind==='static'&&value)call.acquiredOwner=managerSample(value);
     call.afterSettlement=kind==='manager'?managerSample(receiver):{databaseContextRef:kind==='publication'?ref(receiver):null};
     call.settleSeq=emit('original-method-settled',{phase:'settled',method,callId:call.id,promiseRef:ref(returned),settlement:call.settlement})?.sequence;
@@ -195,7 +204,10 @@ export function createNativeNoticeObserver(OriginalManager,{observations,stamp,h
   restore(){if(restored)return;restored=true;for(const item of restorations.reverse())safe(`restore:${item.method}`,()=>{
     Object.defineProperty(item.target,item.method,item.descriptor);out.restoreReceipts.push({method:item.method,
      declaringPrototypeRef:item.hookRow.declaringPrototypeRef,originalFunctionRef:item.hookRow.originalFunctionRef,
-     restoredExactDescriptor:Object.getOwnPropertyDescriptor(item.target,item.method).value===item.descriptor.value});});emit('observer-restored');},
+     restoredExactDescriptor:Object.getOwnPropertyDescriptor(item.target,item.method).value===item.descriptor.value});});
+   for(const {holder,key,error}of pendingErrors.slice())safe('teardown-error-serialization',()=>{
+    holder[key]=errorRecord(error);holder[`${key}Serialization`]='original-teardown';});
+   emit('observer-restored');},
  };
 }
 export async function runHostTurnBarrierRuntime(input,runtimeConfig){
@@ -285,8 +297,12 @@ export async function runHostTurnBarrierRuntime(input,runtimeConfig){
    const executionContext=JSON.parse(fsSync.readFileSync(process.env.MEMORY_EQ_RELEASE_CONTEXT,'utf8'));
    const header={version:1,contractSha256:hash(contractBytes),caseWireSha256:executionContext.hostTurnBarrierProfile.caseWireSha256,
     pid:process.pid,ppid:process.ppid,instrumentedActorSha256:hash(fsSync.readFileSync(actorPath)),
-    originalSourceBindings:contract.sourceAuthority.filter(row=>row.path.startsWith('work/openclaw-v2026.9.9/')),
-    compiledBindings:contract.sourceAuthority.filter(row=>row.path.startsWith('.reference/release-runtime/'))};
+    originalSourceBindingsAuthority:'frozen-declarations-not-loaded-source',
+    callerStackFacility:{module:'node:util',function:'getCallSites',sourceMap:false},
+    originalSourceBindings:contract.sourceAuthority.filter(row=>row.path.startsWith('work/openclaw-v2026.9.9/'))
+     .map(row=>({...row,path:row.path.slice('work/openclaw-v2026.9.9/'.length),authority:'pinned-source-declaration'})),
+    compiledBindings:contract.sourceAuthority.filter(row=>row.path.startsWith('.reference/release-runtime/node_modules/openclaw/'))
+     .map(row=>({...row,path:row.path.slice('.reference/release-runtime/node_modules/openclaw/'.length),authority:'official-compiled-declaration'}))};
    noticeObserver=createNativeNoticeObserver(memoryRuntime.MemoryIndexManager,{observations:raw.noticeObservations,header,
     stamp:()=>({sequence:sequence++,atNs:process.hrtime.bigint().toString(),turn:activeTurn?.label??null})});
   }catch(error){raw.noticeObservations.observerFailures.push({stage:'setup',error:errorRecord(error)});}

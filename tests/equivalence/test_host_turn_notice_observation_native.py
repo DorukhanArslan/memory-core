@@ -125,6 +125,45 @@ const assertInvocation=(method,receiver,args)=>{
 
 
 PROBES = {
+    "same-captured-live-object-survives-owner-replacement": r"""
+const captured=owner.automaticRebuildNotice;
+payload.custom={automaticRebuildNotice:captured};
+assert.equal(owner.status(),payload);
+const status=observations.statuses.at(-1);
+assert.equal(status.noticeRef,observations.calls.at(-1).noticeRef);
+owner.automaticRebuildNotice={sequence:999,warning:'A different later object'};
+captured.sequence=3;captured.warning='The original captured object';
+observer.checkpoint('fake-delivery');
+const sampled=observations.checkpoints.at(-1).notices.find(row=>row.noticeRef===status.noticeRef);
+assert.equal(sampled.sequence,3);assert.equal(sampled.warning,'The original captured object');
+assert.equal(statusCalls,1);assert.equal(getCalls,0);
+""",
+    "native-callsite-sampling-defers-error-formatters": r"""
+let formatterCalls=0;
+const originalFormatter=Error.prepareStackTrace;
+Error.prepareStackTrace=()=>{formatterCalls+=1;return 'Only formatted after original teardown';};
+assert.equal(owner.recordAutomaticRebuild(argument),payload);
+const failure=new Error('Original fake error');originalFailure=failure;
+assert.throws(()=>owner.status(argument),error=>error===failure);
+originalFailure=null;
+observer.checkpoint('fake-no-event-time-formatting');
+assert.equal(formatterCalls,0,'Passive event observations must not invoke stack/source-map formatters');
+observer.restore();
+assert.ok(formatterCalls>0,'Full original error formatting belongs to teardown');
+Error.prepareStackTrace=originalFormatter;
+""",
+    "capture-edge-binds-original-status-object": r"""
+payload.custom={automaticRebuildNotice:owner.automaticRebuildNotice};searchReturn=Promise.resolve([]);
+function searchOnce(){owner.status();return owner.search('fake memory-only query');}
+assert.equal(searchOnce(),searchReturn);await searchReturn;
+assert.equal(observations.captureEdges.length,1);
+const edge=observations.captureEdges[0];
+const status=observations.statuses.find(row=>row.callId===edge.statusCallId);
+const searched=observations.calls.find(row=>row.id===edge.searchCallId);
+assert.equal(edge.noticeRef,status.noticeRef);assert.equal(edge.noticeRef,searched.noticeRef);
+assert.equal(edge.capturedSequence,0);assert.equal(edge.noDirectReaderClaim,true);
+assert.equal(statusCalls,1);assert.equal(getCalls,0);
+""",
     "sync-values-receiver-and-arguments": r"""
 assert.equal(Reflect.apply(owner.recordAutomaticRebuild,owner,[argument,otherArgument]),payload);
 assertInvocation('recordAutomaticRebuild',owner,[argument,otherArgument]);

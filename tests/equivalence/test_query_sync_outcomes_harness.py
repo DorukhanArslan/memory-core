@@ -10,6 +10,9 @@ import pytest
 from equivalence.cases import build_cases, run_python
 from equivalence.harness import HarnessError, ROOT, _query_sync_outcomes_family_complete, _oracle, _validate_scope
 from equivalence.query_sync_outcomes import CASE_HASHES, OPERATION, build_cases as family_cases, validate_case, validate_registration
+from equivalence.query_sync_boundaries import (
+    build_cases as boundary_cases, validate_registration as validate_boundary_registration,
+)
 
 
 def _rows():
@@ -17,7 +20,10 @@ def _rows():
 
 
 def test_registration_appends_exact_family_and_retains_all_1437_prior_case_fields():
-    cases = build_cases()
+    registered = build_cases()
+    validate_boundary_registration(registered)
+    assert registered[1444:] == boundary_cases()
+    cases = registered[:1444]
     assert len(cases) == 1444
     assert cases[1437:] == family_cases()
     wire = json.dumps(cases[:1437], sort_keys=True, ensure_ascii=True,

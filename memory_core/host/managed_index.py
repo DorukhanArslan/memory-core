@@ -13,7 +13,7 @@ from __future__ import annotations
 from collections import deque
 from collections.abc import Callable, Collection, Iterator, Sequence
 from concurrent.futures import ThreadPoolExecutor
-from contextlib import closing, contextmanager
+from contextlib import closing, contextmanager, nullcontext
 from copy import deepcopy
 import threading
 import sqlite3
@@ -23,7 +23,7 @@ from memory_core.bootstrap._js import js_trim
 from memory_core.cancellation import CancellationSignal
 from memory_core.config import MemoryConfig
 from memory_core.consolidation.artifact_provenance import MemoryArtifactProvenanceStore
-from memory_core.consolidation.origins import IndexRevisionFence
+from memory_core.consolidation.origins import IndexRevisionFence, MemoryIndexRevisionConflictError
 from memory_core.index.sqlite_store import MemoryIndexRequiresFullReindexError, SQLiteMemoryStore
 from memory_core.index.identity import INDEX_SOURCES_TABLE
 from memory_core.index.hybrid import HybridResult
@@ -53,10 +53,11 @@ class ManagedSQLiteMemoryStore(SQLiteMemoryStore):
     ``close`` refuses new managed search/reindex/status operations and joins
     those already admitted, including a publication whose caller stopped waiting.
     Inherited raw SQL inspection APIs remain outside this managed admission lane.
-    After a failed whole publication, an on-search owner with an empty index
-    attempts one bootstrap on its next nonempty search. Warm-index failures and
-    the default on-write policy require an explicit successful ``reindex`` before
-    automatic preparation resumes. Identity restrictions remain in force.
+    On-search full publications share one admitted producer among overlapping
+    requests. An empty search joins that producer or attempts its own bootstrap.
+    A failed admitted rebuild retains bounded automatic full-retry work; an
+    unopened storage refusal permits ordinary dirty-source recovery. The default
+    on-write policy retains explicit recovery. Identity restrictions remain in force.
     A failed memory-scope ``reindex_sources`` publication is retained separately:
     ``status`` reports it (when no whole publication failure is retained) until
     the failed selection publishes or a whole ``reindex`` succeeds. It does not
@@ -93,6 +94,11 @@ class ManagedSQLiteMemoryStore(SQLiteMemoryStore):
         self._closing = False
         self._closed = False
         self._last_sync_error: str | None = None
+        self._whole_failure_revision = 0
+        self._full_retry_required = False
+        self._whole_failure_sources: frozenset[str] = frozenset()
+        self._full_sync: dict[str, Any] | None = None
+        self._full_sync_count = 0
         # (error message, failed memory paths); ``None`` paths mean the whole memory corpus.
         self._memory_scope_failure: tuple[str, frozenset[str] | None] | None = None
         self._automatic_rebuild_notice: dict[str, Any] = {"sequence": 0, "warning": ""}
@@ -223,15 +229,20 @@ class ManagedSQLiteMemoryStore(SQLiteMemoryStore):
 
     def _submit_memory_publication(self, revision: int) -> None:
         """Admit one actual memory publisher under the pinned reader's gate."""
-        needed = self._memory_dirty or self._memory_scope_failure is not None or self._memory_job_error is not None
+        needed = (self._memory_dirty or self._memory_scope_failure is not None
+                  or self._memory_job_error is not None or self._full_retry_required)
         if (self._memory_publication != "on-search" or not needed
-                or self._memory_active or self._closing or self._closed
-                or self._last_sync_error is not None):
+                or self._memory_active or self._closing or self._closed):
             return
         if self._memory_executor is None:
             self._memory_executor = ThreadPoolExecutor(max_workers=1, thread_name_prefix="memory-publication")
         self._memory_job_count += 1
         job: dict[str, Any] = {"id": self._memory_job_count, "readRevision": revision, "state": "queued"}
+        if self._last_sync_error is not None:
+            job.update(wholeFailureRevision=self._whole_failure_revision,
+                       fullRetry=self._full_retry_required)
+        if self._full_retry_required:
+            self._record_rebuild_request()
         self._memory_jobs.append(job)
         token = object()
         self._memory_worker_token = token
@@ -255,16 +266,33 @@ class ManagedSQLiteMemoryStore(SQLiteMemoryStore):
         error = None
         try:
             with self._operation("memory-background-publication"):
-                # Publish the live outcome under the same guard as its source
-                # and SQL work. A later real recovery must remain authoritative
-                # even if this worker's historical receipt settles afterwards.
-                with workspace_index_lock(self._workspace.root):
-                    try:
-                        returned = self.reindex_sources(self._workspace, sources=("memory",))
-                    except BaseException as caught:
+                if job.get("fullRetry"):
+                    # Each retry is a new real sync generation. Only the first
+                    # typed CAS conflict permits one more attempt in this job.
+                    for attempt in range(2):
+                        try:
+                            with self._automatic_reindex(full_retry=True):
+                                returned = self.reindex(self._workspace, force=True)
+                            break
+                        except MemoryIndexRevisionConflictError:
+                            if attempt:
+                                raise
+                else:
+                    # Settle source/error coverage under the publisher guard;
+                    # historical worker completion cannot replay a covered error.
+                    with workspace_index_lock(self._workspace.root):
+                        try:
+                            returned = self.reindex_sources(self._workspace, sources=("memory",))
+                        except BaseException as caught:
+                            with self._condition:
+                                self._memory_job_error = format_error_message(caught)
+                            raise
                         with self._condition:
-                            self._memory_job_error = format_error_message(caught)
-                        raise
+                            if (job.get("wholeFailureRevision") == self._whole_failure_revision
+                                    and not self._full_retry_required
+                                    and self._whole_failure_sources <= {"memory"}):
+                                self._last_sync_error = None
+                                self._whole_failure_sources = frozenset()
                 with self._condition:
                     job["returned"] = returned
         except BaseException as caught:
@@ -358,27 +386,155 @@ class ManagedSQLiteMemoryStore(SQLiteMemoryStore):
                     controller.start()
                 self._submit_memory_publication(revision)
 
+    @contextmanager
+    def _automatic_reindex(self, *, full_retry: bool = False):
+        previous = getattr(self._local, "automatic_reindex", None)
+        intent = {"fullRetry": full_retry}
+        self._local.automatic_reindex = intent
+        try:
+            yield intent
+        finally:
+            self._local.automatic_reindex = previous
+
+    def _uses_row_mutation_revision(self) -> bool:
+        return self._memory_publication == "on-search"
+
+    def _allow_full_reindex(self, workspace: MemoryWorkspace, *, force: bool) -> bool:
+        intent = getattr(self._local, "automatic_reindex", None)
+        if intent is None:
+            return True
+        identity = self._read_state(provider_key_known=True)["identity"]
+        allowed = identity["status"] == "valid" or self._automatic_repair_allowed(identity)
+        if not allowed:
+            intent["refused"] = deepcopy(identity)
+        return allowed
+
+    def _full_sync_result(self, generation, operation, intent, notice):
+        """Deliver the reserved generation without inventing another producer."""
+        if intent is not None and intent is not generation["intent"]:
+            intent.update(joined=True)
+            if generation.get("refused") is not None:
+                intent["refused"] = generation["refused"]
+        if notice is not None and notice is not generation["notice"]:
+            notice.update(joined=True, unopened=generation.get("unopened", False))
+        self._update(operation, producerOperationId=generation["operationId"],
+                     reservationOperationId=generation["reservationOperationId"])
+        if generation["error"] is not None:
+            raise generation["error"]
+        self._update(operation, returned=generation["result"])
+        return generation["result"]
+
     def reindex(self, workspace: MemoryWorkspace, *, force: bool = False) -> int:
-        """Publish only the bound workspace; preserve the original return/error."""
+        """Reserve a generation; its first workspace holder executes it once.
+
+        A real curated write can already own the reentrant workspace guard.
+        Waiting on a condition there would prevent the reserved caller from
+        ever acquiring that guard. Such a caller executes the unstarted work
+        with the first request's force/authority instead.
+        """
         with self._operation("reindex") as operation:
             self._assert_workspace(workspace)
-            self._update(operation, request={"force": force}, before=self._read_state(),
-                         revisionBefore=self.read_published_index()["revision"])
-            # The outcome is recorded before another cooperating publication can
-            # interleave: the reentrant workspace guard is the publisher's own.
+            intent = getattr(self._local, "automatic_reindex", None)
+            notice = getattr(self._local, "automatic_repair_notice", None)
+            self._update(operation, request={"force": force})
+            generation = None
+            if self._memory_publication == "on-search":
+                with self._condition:
+                    generation = self._full_sync
+                    if generation is None:
+                        self._full_sync_count += 1
+                        generation = {"id": self._full_sync_count,
+                            "reservationOperationId": operation["id"], "operationId": None,
+                            "reservationThreadId": threading.get_ident(), "threadId": None,
+                            "started": False, "settled": False, "force": force,
+                            "intent": intent, "notice": notice, "result": None, "error": None}
+                        self._update(operation, reservedFullSync=generation["id"])
+                        self._full_sync = generation
+                    else:
+                        self._update(operation, joinedFullSync=generation["id"],
+                                     reservationOperationId=generation["reservationOperationId"])
+            # Every unfinished request acquires the actual publisher guard.
+            # No condition wait can retain an external workspace RLock.
             with workspace_index_lock(workspace.root):
+                if generation is not None:
+                    if generation["settled"]:
+                        return self._full_sync_result(generation, operation, intent, notice)
+                    if generation["started"]:
+                        raise RuntimeError("A full publication cannot join its own producer")
+                    generation.update(started=True, operationId=operation["id"],
+                                      threadId=threading.get_ident())
+                previous_phase = getattr(self._local, "full_sync_phase", None)
+                self._local.full_sync_phase = {"changes": 0}
+                if generation is not None:
+                    self._local.automatic_reindex = generation["intent"]
+                    self._local.automatic_repair_notice = generation["notice"]
+                producer_intent = getattr(self._local, "automatic_reindex", None)
+                producer_force = generation["force"] if generation is not None else force
+                result, failure = None, None
                 try:
-                    result = super().reindex(workspace, force=force)
+                    if generation is not None:
+                        self._update(operation, fullSync=generation["id"],
+                            reservationOperationId=generation["reservationOperationId"],
+                            producerOperationId=operation["id"], producerRequest={"force": producer_force})
+                    self._update(operation, request={"force": force}, before=self._read_state(),
+                                 revisionBefore=self.read_published_index()["revision"])
+                    effective_force = producer_force
+                    if producer_intent is not None and not producer_intent["fullRetry"]:
+                        effective_force = self._automatic_repair_allowed(
+                            self._read_state(provider_key_known=True)["identity"])
+                    try:
+                        result = super().reindex(workspace, force=effective_force)
+                    except BaseException as error:
+                        code = getattr(error, "sqlite_errorcode", None)
+                        unopened = (isinstance(error, sqlite3.Error) and isinstance(code, int)
+                                    and code & 0xFF == sqlite3.SQLITE_CANTOPEN
+                                    and self._local.full_sync_phase["changes"] == 0)
+                        self._last_sync_error = format_error_message(error)
+                        self._whole_failure_revision += 1
+                        self._full_retry_required = self._memory_publication == "on-search" and not unopened
+                        self._whole_failure_sources = frozenset(self._workspace.index_sources or ("memory", "sessions"))
+                        if generation is not None:
+                            generation["unopened"] = unopened
+                        producer_notice = getattr(self._local, "automatic_repair_notice", None)
+                        if producer_notice is not None:
+                            producer_notice["unopened"] = unopened
+                        if getattr(self._local, "memory_publisher", False):
+                            self._memory_job_error = format_error_message(error)
+                        raise
+                    refused = producer_intent.get("refused") if producer_intent is not None else None
+                    if generation is not None and refused is not None:
+                        generation["refused"] = refused
+                    if refused is None:
+                        self._last_sync_error = None
+                        self._full_retry_required = False
+                        self._whole_failure_sources = frozenset()
+                        self._memory_scope_failure = None
+                        self._memory_job_error = None
+                        self._refresh_memory_dirty()
+                    self._update(operation, returned=result, after=self._read_state(),
+                                 revisionAfter=self.read_published_index()["revision"])
+                    if refused is not None:
+                        self._update(operation, automaticRefusal=refused)
                 except BaseException as error:
-                    self._last_sync_error = format_error_message(error)
-                    raise
-                self._last_sync_error = None
-                self._memory_scope_failure = None
-                self._memory_job_error = None
-                self._refresh_memory_dirty()
-            self._update(operation, returned=result, after=self._read_state(),
-                         revisionAfter=self.read_published_index()["revision"])
-            return result
+                    failure = error
+                finally:
+                    self._local.full_sync_phase = previous_phase
+                    self._local.automatic_reindex = intent
+                    self._local.automatic_repair_notice = notice
+                    if generation is not None:
+                        # Settle before releasing the workspace guard. A later
+                        # holder consumes this exact result/error, even if a
+                        # newer independent generation has since been reserved.
+                        with self._condition:
+                            generation.update(result=result, error=failure, settled=True)
+                            if self._full_sync is generation:
+                                self._full_sync = None
+                            self._condition.notify_all()
+                if generation is not None:
+                    return self._full_sync_result(generation, operation, intent, notice)
+                if failure is not None:
+                    raise failure
+                return result
 
     def reindex_sources(self, workspace: MemoryWorkspace, *, sources: Collection[str],
                         paths: Collection[str] | None = None, force_sources: bool = False) -> int:
@@ -511,6 +667,9 @@ class ManagedSQLiteMemoryStore(SQLiteMemoryStore):
         self, db: sqlite3.Connection, *, changes: int, error: BaseException | None,
     ) -> None:
         super()._on_index_publication_write(db, changes=changes, error=error)
+        phase = getattr(self._local, "full_sync_phase", None)
+        if phase is not None:
+            phase["changes"] = max(phase["changes"], changes)
         notice = getattr(self._local, "automatic_repair_notice", None)
         if notice is None:
             return
@@ -525,6 +684,44 @@ class ManagedSQLiteMemoryStore(SQLiteMemoryStore):
         if not notice["unopened"] and not notice["recorded"]:
             self._record_rebuild_request()
             notice["recorded"] = True
+
+    def _repair_search(self, state: dict[str, Any], operation: dict[str, Any]) -> None:
+        repair = self._automatic_repair_allowed(state["identity"])
+        request = {"searchOperationId": operation["id"],
+            "reason": "search-bootstrap" if not state["hasContent"] else "search-identity",
+            "force": repair, "before": state,
+            "noticeSequenceBefore": self._automatic_rebuild_notice["sequence"], "state": "requested"}
+        with self._condition:
+            self._repair_count += 1
+            request["id"] = self._repair_count
+            self._repairs.append(request)
+        cold_notice = ({"recorded": False, "unopened": False}
+                       if repair and not state["hasContent"] else None)
+        if repair and cold_notice is None:
+            self._record_rebuild_request()
+        previous_notice = getattr(self._local, "automatic_repair_notice", None)
+        self._local.automatic_repair_notice = cold_notice
+        automatic = self._memory_publication == "on-search"
+        try:
+            with self._automatic_reindex() if automatic else nullcontext() as intent:
+                try:
+                    returned = self.reindex(self._workspace, force=repair)
+                except Exception as error:
+                    if (cold_notice is not None and not cold_notice["unopened"]
+                            and not cold_notice["recorded"] and not cold_notice.get("joined")):
+                        self._record_rebuild_request()
+                        cold_notice["recorded"] = True
+                    self._update(request, state="failed", error=self._error(error), after=self._read_state())
+                else:
+                    if (cold_notice is not None and not cold_notice["recorded"]
+                            and not cold_notice.get("joined") and not (intent or {}).get("refused")):
+                        self._record_rebuild_request()
+                    self._update(request, state="completed", returned=returned, after=self._read_state())
+                    if (intent or {}).get("refused"):
+                        self._update(request, automaticRefusal=intent["refused"])
+        finally:
+            self._local.automatic_repair_notice = previous_notice
+            self._update(request, noticeSequenceAfter=self._automatic_rebuild_notice["sequence"])
 
     def search(
         self,
@@ -552,51 +749,25 @@ class ManagedSQLiteMemoryStore(SQLiteMemoryStore):
             if not js_trim(query):
                 return super().search(query, **options)
             self._update(operation, query=query)
-            with workspace_index_lock(self._workspace.root):
-                self._refresh_memory_dirty()
+            if self._memory_publication == "on-search":
+                # Observe the committed generation before waiting for a writer:
+                # a real cold query must join an already admitted full sync.
                 state = self._read_state(provider_key_known=True)
                 with self._condition:
                     self._provider_initialized = True
-                identity = state["identity"]
-                repair = self._automatic_repair_allowed(identity)
-                retry_empty_bootstrap = self._memory_publication == "on-search" and not state["hasContent"]
-                if (self._last_sync_error is None or retry_empty_bootstrap) and (
-                        repair or not state["hasContent"] and identity["status"] == "valid"):
-                    request = {"searchOperationId": operation["id"],
-                        "reason": "search-bootstrap" if not state["hasContent"] else "search-identity",
-                        "force": repair, "before": state,
-                        "noticeSequenceBefore": self._automatic_rebuild_notice["sequence"], "state": "requested"}
+                if (not state["hasContent"] or self._last_sync_error is None
+                        and self._automatic_repair_allowed(state["identity"])):
+                    self._repair_search(state, operation)
+            with workspace_index_lock(self._workspace.root):
+                self._refresh_memory_dirty()
+                if self._memory_publication != "on-search":
+                    state = self._read_state(provider_key_known=True)
                     with self._condition:
-                        self._repair_count += 1
-                        request["id"] = self._repair_count
-                        self._repairs.append(request)
-                    cold_notice = ({"recorded": False, "unopened": False}
-                                   if repair and not state["hasContent"] else None)
-                    if repair and cold_notice is None:
-                        self._record_rebuild_request()
-                    previous_notice = getattr(self._local, "automatic_repair_notice", None)
-                    self._local.automatic_repair_notice = cold_notice
-                    try:
-                        returned = self.reindex(self._workspace, force=repair)
-                    except Exception as error:
-                        # Source preparation and admitted publication failures
-                        # still report a rebuild request. Only an observed
-                        # prewrite storage-open failure suppresses it.
-                        if cold_notice is not None and not cold_notice["unopened"] and not cold_notice["recorded"]:
-                            self._record_rebuild_request()
-                            cold_notice["recorded"] = True
-                        self._update(request, state="failed", error=self._error(error), after=self._read_state())
-                        # The actual failed repair is retained by reindex/status.
-                        # The ordinary tool presents the genuine remaining index
-                        # identity and sync failure rather than a fabricated hit.
-                        pass
-                    else:
-                        if cold_notice is not None and not cold_notice["recorded"]:
-                            self._record_rebuild_request()
-                        self._update(request, state="completed", returned=returned, after=self._read_state())
-                    finally:
-                        self._local.automatic_repair_notice = previous_notice
-                        self._update(request, noticeSequenceAfter=self._automatic_rebuild_notice["sequence"])
+                        self._provider_initialized = True
+                    identity = state["identity"]
+                    if self._last_sync_error is None and (self._automatic_repair_allowed(identity)
+                            or not state["hasContent"] and identity["status"] == "valid"):
+                        self._repair_search(state, operation)
                 # A search can keep this failed generation while a publisher
                 # recovers a newer one. Capture only after synchronous repair;
                 # the actual SQL pin below decides which generation was read.

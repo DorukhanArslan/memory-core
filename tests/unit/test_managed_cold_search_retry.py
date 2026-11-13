@@ -202,5 +202,16 @@ def test_cold_retry_does_not_bypass_empty_index_identity_restrictions(tmp_path, 
         assert actual["unavailable"] is True and actual["results"] == []
         assert store.read_published_index() == before
         assert store.read_index_meta() == metadata
-        assert store.lifecycle_snapshot()["repairs"] == repairs
-        assert len(_whole_attempts(store)) == 2
+        # The automatic request still runs, but its identity guard refuses to publish.
+        updated = store.lifecycle_snapshot()["repairs"]
+        assert len(updated) == len(repairs) + 1
+        assert updated[:-1] == repairs
+        refused = updated[-1]
+        assert refused["reason"] == "search-bootstrap"
+        assert refused["state"] == "completed" and refused["returned"] == 0
+        assert refused["automaticRefusal"] == refused["after"]["identity"]
+        assert refused["noticeSequenceAfter"] == refused["noticeSequenceBefore"]
+        attempts = _whole_attempts(store)
+        assert len(attempts) == 3
+        assert attempts[-1]["state"] == "completed" and attempts[-1]["returned"] == 0
+        assert attempts[-1]["revisionBefore"] == attempts[-1]["revisionAfter"] == before["revision"]

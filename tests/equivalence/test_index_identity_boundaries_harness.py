@@ -14,6 +14,10 @@ from equivalence.query_sync_outcomes import (
     OPERATION as QUERY_SYNC_OPERATION, build_cases as query_sync_cases,
     validate_registration as validate_query_sync_registration,
 )
+from equivalence.query_sync_boundaries import (
+    build_cases as query_sync_boundary_cases,
+    validate_registration as validate_query_sync_boundary_registration,
+)
 
 
 def _rows():
@@ -21,7 +25,10 @@ def _rows():
 
 
 def test_registration_appends_independent_family_without_changing_any_prior_definition():
-    registered = build_cases()
+    complete = build_cases()
+    validate_query_sync_boundary_registration(complete)
+    assert complete[1444:] == query_sync_boundary_cases()
+    registered = complete[:1444]
     validate_query_sync_registration(registered)
     assert registered[1437:] == query_sync_cases()
     cases = [case for case in registered if case["operation"] != QUERY_SYNC_OPERATION]

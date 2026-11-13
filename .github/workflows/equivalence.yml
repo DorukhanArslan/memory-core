@@ -77,6 +77,13 @@ jobs:
           --reference .reference/openclaw --node "$(command -v node)"
           --release-runtime .reference/release-runtime
           --output .equivalence-results/next-turn-notice
+      - name: Compare the zero-credit query-sync boundary packet
+        if: always()
+        run: >-
+          uv run --frozen python scripts/check_query_sync_boundaries.py
+          --reference .reference/openclaw --node "$(command -v node)"
+          --release-runtime .reference/release-runtime
+          --output .equivalence-results/query-sync-boundaries-acceptance
       - name: Require the complete contract on manual acceptance runs
         if: always() && github.event_name == 'workflow_dispatch'
         run: >-
@@ -111,6 +118,12 @@ jobs:
           MEMORY_NEXT_TURN_NOTICE_REFERENCE_ROOT=.reference/openclaw
           MEMORY_NEXT_TURN_NOTICE_RUNTIME_ROOT=.reference/release-runtime/node_modules/openclaw
           uv run --frozen pytest -q tests/equivalence/test_next_turn_notice_evidence.py
+      - name: Replay the zero-credit query-sync boundary captures
+        if: always()
+        run: >-
+          MEMORY_EQ_NODE="$(command -v node)"
+          MEMORY_QUERY_SYNC_BOUNDARIES_CAPTURE_ROOT=.equivalence-results/query-sync-boundaries-acceptance
+          uv run --frozen pytest -q tests/equivalence/test_query_sync_boundaries_evidence.py
       - name: Retain results, including failed acceptance runs
         if: always()
         uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
@@ -148,6 +161,8 @@ jobs:
             .equivalence-results/query-sync-outcomes/sdk-attempt-*/sdk-query-sync-*/tool-*-envelope.json
             .equivalence-results/query-sync-cold-retry/**
             .equivalence-results/next-turn-notice/**
+            .equivalence-results/query-sync-boundaries-acceptance/**
+            .equivalence-results/query-sync-boundaries/**
           # The reports live in a dot-directory, which this action skips unless told otherwise.
           include-hidden-files: true
           if-no-files-found: ignore

@@ -25,6 +25,10 @@ from equivalence.query_sync_outcomes import (
     OPERATION as QUERY_SYNC_OPERATION, build_cases as query_sync_cases,
     validate_registration as validate_query_sync_registration,
 )
+from equivalence.query_sync_boundaries import (
+    build_cases as query_sync_boundary_cases,
+    validate_registration as validate_query_sync_boundary_registration,
+)
 
 
 ROOT = Path(__file__).resolve().parents[2]
@@ -32,7 +36,10 @@ RUNNER = "equivalence.host_turn_barrier_boundaries_native.run_native_case"
 
 
 def test_closed_six_cases_append_to_the_prior_catalog_and_keep_outcome_literals():
-    registered = catalog()
+    complete = catalog()
+    validate_query_sync_boundary_registration(complete)
+    assert complete[1444:] == query_sync_boundary_cases()
+    registered = complete[:1444]
     validate_query_sync_registration(registered)
     assert registered[-len(query_sync_cases()):] == query_sync_cases()
     validate_identity_registration(registered)

@@ -22,6 +22,10 @@ from equivalence.query_sync_outcomes import (
     OPERATION as QUERY_SYNC_OPERATION, build_cases as query_sync_cases,
     validate_registration as validate_query_sync_registration,
 )
+from equivalence.query_sync_boundaries import (
+    build_cases as query_sync_boundary_cases,
+    validate_registration as validate_query_sync_boundary_registration,
+)
 
 
 ROOT = Path(__file__).resolve().parents[2]
@@ -40,7 +44,10 @@ def _matched_rows():
 
 
 def test_catalog_adds_exactly_the_four_frozen_outcomes_without_changing_prior_1411_literals():
-    registered = build_catalog()
+    complete = build_catalog()
+    validate_query_sync_boundary_registration(complete)
+    assert complete[1444:] == query_sync_boundary_cases()
+    registered = complete[:1444]
     validate_query_sync_registration(registered)
     assert registered[-len(query_sync_cases()):] == query_sync_cases()
     validate_identity_registration(registered)

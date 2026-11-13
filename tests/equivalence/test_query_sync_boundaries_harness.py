@@ -46,8 +46,15 @@ def test_boundary_family_keeps_the_original_scope_and_seven_outcome_members_inde
     assert POINTS == ("indexing.query-sync.boundaries",)
     assert OUTCOME_POINTS == ("indexing.query-sync.outcomes",)
     registered = catalog()
+    assert len(registered) == 1452 and registered[1444:] == cases
+    validate_registration(registered)
     prior = [case for case in registered if case["operation"] != OPERATION]
     assert len(prior) == 1444 and registered[:1444] == prior
+    wire = json.dumps(prior, sort_keys=True, ensure_ascii=True,
+                      separators=(",", ":"), allow_nan=False).encode()
+    assert hashlib.sha256(wire).hexdigest() == "feea3f91ed24646488b241e6dd739d737c05d25d5c71e724e2febd14b349ece7"
+    assert sum("fixtureSource" in case for case in prior) == 79
+    assert sum("diagnosticOnly" in case for case in prior) == 1
     assert prior[1437:] == outcome_cases()
     validate_outcome_registration(registered)
     validate_registration([*outcome_cases(), *cases])

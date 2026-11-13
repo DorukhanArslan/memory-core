@@ -298,6 +298,9 @@ def build_cases(*, include_prospective: bool = False) -> list[dict[str, Any]]:
     from equivalence.query_sync_outcomes import build_cases as build_query_sync_cases
 
     cases.extend(build_query_sync_cases())
+    from equivalence.query_sync_boundaries import build_cases as build_query_sync_boundary_cases
+
+    cases.extend(build_query_sync_boundary_cases())
     if include_prospective:
         from equivalence.flush_contract import build_prospective_flush_contract_cases
         from equivalence.session_projection import build_prospective_session_projection_cases

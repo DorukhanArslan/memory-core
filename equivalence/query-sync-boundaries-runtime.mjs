@@ -167,6 +167,13 @@ export async function runQuerySyncBoundariesRuntime(input,config){
     raw.snapshots.push(row);return row;
   }
   const declaredPaths=new Set(Object.keys(input.initialFiles));
+  for(const specification of [input.sourceMutation,...input.steps.filter(step=>step.operation==='mutate-source').map(step=>step.specification)]){
+    for(const key of ['path','from','to'])if(typeof specification?.[key]==='string'){
+      const relative=specification[key];
+      if(path.isAbsolute(relative)||relative.split('/').includes('..'))throw Error('Invalid declared source mutation path');
+      declaredPaths.add(relative);
+    }
+  }
   function sourceStage(label){
     const entered=event('source-read-enter',{label});
     const paths=new Set(declaredPaths);

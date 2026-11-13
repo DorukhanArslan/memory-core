@@ -205,7 +205,8 @@ def _tools(case, raw, result, events, *, native):
                     and start < row["enterSeq"] < row["returnSeq"] < end]
         for search in searches:
             require(search["receiverIsExactObservedOwner"] is True
-                    and search["query"] == case["input"]["queries"][label]["query"],
+                    and (search["query"] if native else search["arguments"]["0"])
+                    == case["input"]["queries"][label]["query"],
                     "query-sync boundaries public search dispatched to another receiver/query")
         if searches and "error" not in searches[-1]:
             _returned_hits(searches[-1], result["searches"][label], native=native)

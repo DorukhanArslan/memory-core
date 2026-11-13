@@ -351,6 +351,12 @@ def _validate_scope(scope: Any, cases: Any) -> tuple[list[dict], dict[str, set[s
         validate_query_sync_registration(cases)
     except ValueError as error:
         raise HarnessError("cases-invalid", str(error)) from None
+    from equivalence.query_sync_boundaries import validate_registration as validate_query_sync_boundary_registration
+
+    try:
+        validate_query_sync_boundary_registration(cases)
+    except ValueError as error:
+        raise HarnessError("cases-invalid", str(error)) from None
     return requirements, points
 
 
@@ -366,7 +372,10 @@ def _oracle(node: Path, script: Path, checkout: Path, cases: list[dict], timeout
     query_sync_case = len(cases) == 1 and cases[0]["operation"] == "query-sync-outcomes-runtime"
     if any(case.get("operation") == "query-sync-outcomes-runtime" for case in cases) and not query_sync_case:
         raise HarnessError("query-sync-capability-invalid", "Query-sync outcomes require one exact isolated dispatch.")
-    timeout_limit = 180 if boundary_case else 120
+    query_sync_boundary_case = len(cases) == 1 and cases[0]["operation"] == "query-sync-boundaries-runtime"
+    if any(case.get("operation") == "query-sync-boundaries-runtime" for case in cases) and not query_sync_boundary_case:
+        raise HarnessError("query-sync-boundary-capability-invalid", "Query-sync boundaries require one exact isolated dispatch.")
+    timeout_limit = 180 if boundary_case or query_sync_boundary_case else 120
     if not isinstance(timeout, (int, float)) or isinstance(timeout, bool) or not 0 < timeout <= timeout_limit:
         raise HarnessError("timeout-invalid", f"The oracle requires a finite timeout of at most {timeout_limit} seconds.")
     if len(cases) == 1 and cases[0]["operation"] == "host-restart-session-runtime":
@@ -558,6 +567,37 @@ def _oracle(node: Path, script: Path, checkout: Path, cases: list[dict], timeout
                     "evidenceDirectory": native["evidenceDirectory"]}
         except Exception as error:
             failure = HarnessError("query-sync-outcomes-evidence-invalid", "Whole query-sync outcome execution/authority failed; no retry was made.")
+            failure.rejected_evidence = {"caseIds": [cases[0]["id"]], "coverageCredit": False,
+                                         "retainedDirectory": str(attempt), "reason": str(error)}
+            raise failure from error
+    if query_sync_boundary_case:
+        from equivalence.query_sync_boundaries_native import NATIVE_KIND, run_native_case as run_native_query_sync_case
+
+        if release_runtime is None:
+            raise HarnessError("release-runtime-unavailable", "Whole query-sync boundaries require their authenticated release runtime.")
+        retained = ROOT / ".equivalence-results" / "query-sync-boundaries"
+        retained.mkdir(parents=True, exist_ok=True)
+        attempt = Path(tempfile.mkdtemp(prefix="attempt-", dir=retained)) / "case"
+        try:
+            native = run_native_query_sync_case(cases[0], node, release_runtime, attempt, timeout=timeout)
+            if native.get("kind") != NATIVE_KIND:
+                raise ValueError("The query-sync boundary runner returned another capability kind")
+            evidence = attempt / "evidence/native-raw.json"
+            info = evidence.lstat()
+            if not stat.S_ISREG(info.st_mode) or info.st_nlink != 1 or info.st_size > 16 * 1024 * 1024:
+                raise ValueError("Invalid original query-sync boundary diagnostic file")
+            raw = evidence.read_bytes()
+            snapshots = _json(raw.decode("utf-8"))
+            if not _same_json(snapshots, native["runtimeDiagnostics"]) or not isinstance(snapshots, list) or len(snapshots) != 1:
+                raise ValueError("Original boundary diagnostics differ from their actual retained file")
+            return {"kind": "official-release-runtime-comparison", "sources": [],
+                    "results": native["results"], "releaseSources": native["releaseSources"],
+                    "releaseTrace": native["releaseTrace"],
+                    "runtimeDiagnostics": [{"id": cases[0]["id"], "sha256": hashlib.sha256(raw).hexdigest(),
+                                            "rawSnapshots": snapshots, "validationStatus": "verified"}],
+                    "evidenceDirectory": native["evidenceDirectory"]}
+        except Exception as error:
+            failure = HarnessError("query-sync-boundaries-evidence-invalid", "Whole query-sync boundary execution/authority failed; no retry was made.")
             failure.rejected_evidence = {"caseIds": [cases[0]["id"]], "coverageCredit": False,
                                          "retainedDirectory": str(attempt), "reason": str(error)}
             raise failure from error
@@ -898,6 +938,23 @@ def _query_sync_outcomes_family_complete(rows: list[dict]) -> bool:
     return True
 
 
+def _query_sync_boundaries_family_complete(rows: list[dict]) -> bool:
+    """Only the complete exact family with affirmative custody can verify this original point."""
+    from equivalence.query_sync_boundaries import CASE_HASHES, family_members, validate_registration
+
+    family = family_members(rows)
+    if (len(family) != len(CASE_HASHES)
+            or any(row.get("status") != "matched" or row.get("runtimeEvidenceValidated") is not True
+                   for row in family)):
+        return False
+    try:
+        validate_registration([{key: row[key] for key in ("id", "operation", "requirement", "covers", "input")}
+                               for row in family])
+    except (KeyError, TypeError, ValueError):
+        return False
+    return True
+
+
 def _retain_failed_host_update_capture(report: dict, case: dict, directory: Path | None) -> None:
     """Keep the SDK host's own streams when it failed before any capture was admitted.
 
@@ -997,6 +1054,7 @@ def run_suite(*, checkout: Path, node: Path, smoke: bool = False,
             "host-turn-barrier-boundaries-runtime",
             "index-identity-boundaries-runtime",
             "query-sync-outcomes-runtime",
+            "query-sync-boundaries-runtime",
         }
         runtime_cases = [case for case in cases if case["operation"] in runtime_operations]
         source_cases = [case for case in cases if case["operation"] not in runtime_operations]
@@ -1362,13 +1420,20 @@ def run_suite(*, checkout: Path, node: Path, smoke: bool = False,
                 report["querySyncOutcomesBindings"] = prepare_query_sync_outcomes_bindings(
                     checkout, Path(runtime_config["runtimeRoot"]))
                 report["querySyncOutcomesNode"] = prepare_model_node_authority(node)
+            if any(case["operation"] == "query-sync-boundaries-runtime" for case in runtime_cases):
+                from equivalence.query_sync_boundaries_bindings import prepare_query_sync_boundaries_bindings
+                from equivalence.model_runtime_authority import prepare_model_node_authority
+
+                report["querySyncBoundariesBindings"] = prepare_query_sync_boundaries_bindings(
+                    checkout, Path(runtime_config["runtimeRoot"]))
+                report["querySyncBoundariesNode"] = prepare_model_node_authority(node)
             observed_release = {}
             for case in runtime_cases:
                 # The real manager retains global state owners. Each distinct
                 # case gets one fresh process; failed cases are never retried.
                 try:
                     native = _oracle(node, ROOT / "equivalence/release-oracle.mjs", checkout, [case],
-                                     max(timeout_seconds, 180 if case["operation"] == "host-turn-barrier-boundaries-runtime" else
+                                     max(timeout_seconds, 180 if case["operation"] in {"host-turn-barrier-boundaries-runtime", "query-sync-boundaries-runtime"} else
                                          120 if case["operation"] in {"host-turn-barrier-runtime", "index-identity-boundaries-runtime", "query-sync-outcomes-runtime"} else 60),
                                      release_runtime=runtime_config)
                 except HarnessError:
@@ -1421,6 +1486,11 @@ def run_suite(*, checkout: Path, node: Path, smoke: bool = False,
                         != report["querySyncOutcomesBindings"]
                         or prepare_model_node_authority(node) != report["querySyncOutcomesNode"]):
                     raise ValueError("Original query-sync outcome source/artifact/executable owners changed.")
+                if "querySyncBoundariesBindings" in report and (
+                        prepare_query_sync_boundaries_bindings(checkout, Path(runtime_config["runtimeRoot"]))
+                        != report["querySyncBoundariesBindings"]
+                        or prepare_model_node_authority(node) != report["querySyncBoundariesNode"]):
+                    raise ValueError("Original query-sync boundary source/artifact/executable owners changed.")
                 for name, prepare in model_binding_preparers.items():
                     if prepare(checkout, Path(runtime_config["runtimeRoot"])) != report[name]:
                         raise ValueError("A model runtime source/export declaration changed.")
@@ -1585,10 +1655,11 @@ def run_suite(*, checkout: Path, node: Path, smoke: bool = False,
                 try:
                     python_case = deepcopy(case)
                     if case in python_diagnostic_cases:
-                        if case["operation"] in {"index-identity-boundaries-runtime", "query-sync-outcomes-runtime"}:
+                        if case["operation"] in {"index-identity-boundaries-runtime", "query-sync-outcomes-runtime", "query-sync-boundaries-runtime"}:
                             # Keep the original child paths and bytes for the post-run
                             # semantic replay, including failed SDK captures.
-                            family = ("query-sync-outcomes" if case["operation"] == "query-sync-outcomes-runtime"
+                            family = ("query-sync-boundaries" if case["operation"] == "query-sync-boundaries-runtime" else
+                                      "query-sync-outcomes" if case["operation"] == "query-sync-outcomes-runtime"
                                       else "index-identity-boundaries")
                             retained = ROOT / ".equivalence-results" / family
                             retained.mkdir(parents=True, exist_ok=True)
@@ -1720,10 +1791,25 @@ def run_suite(*, checkout: Path, node: Path, smoke: bool = False,
                                 raise ValueError("Query-sync outcome custody did not affirmatively validate")
                             query_sync_diagnostic["validationStatus"] = "verified"
                             row["runtimeEvidenceValidated"] = True
+                        if case["operation"] == "query-sync-boundaries-runtime":
+                            from equivalence.query_sync_boundaries_evidence import validate_pair
+
+                            query_sync_boundary_diagnostic = {"id": case["id"], "side": "python", "sha256": hashlib.sha256(raw).hexdigest(),
+                                                   "rawSnapshots": snapshots, "validationStatus": "unverified"}
+                            report["runtimeDiagnostics"].append(query_sync_boundary_diagnostic)
+                            original = next(d for d in report["runtimeDiagnostics"]
+                                            if d["side"] == "native" and d["id"] == case["id"])
+                            if (original.get("validationStatus") != "verified"
+                                    or len(original["rawSnapshots"]) != 1 or len(snapshots) != 1):
+                                raise ValueError("Query-sync boundaries require one authenticated original and SDK capture")
+                            if validate_pair(case, original["rawSnapshots"][0], snapshots[0], native["result"], python, approved_node=node) is not True:
+                                raise ValueError("Query-sync boundary custody did not affirmatively validate")
+                            query_sync_boundary_diagnostic["validationStatus"] = "verified"
+                            row["runtimeEvidenceValidated"] = True
                         diagnostic_key = "sourceDiagnostics" if case in source_diagnostic_cases else "runtimeDiagnostics"
                         if case["operation"] not in {"promotion-apply-family-runtime", "host-restart-session-runtime",
                                                      "host-update-isolation-runtime", "host-turn-barrier-runtime",
-                                                     "host-turn-barrier-boundaries-runtime", "index-identity-boundaries-runtime", "query-sync-outcomes-runtime"}:
+                                                     "host-turn-barrier-boundaries-runtime", "index-identity-boundaries-runtime", "query-sync-outcomes-runtime", "query-sync-boundaries-runtime"}:
                             report[diagnostic_key].append({
                                 "id": case["id"], "side": "python", "sha256": hashlib.sha256(raw).hexdigest(),
                                 "rawSnapshots": snapshots,
@@ -1738,7 +1824,7 @@ def run_suite(*, checkout: Path, node: Path, smoke: bool = False,
                     row.update(status="blocked", code="python-case-failed")
                     if case["operation"] in {"promotion-apply-family-runtime", "host-restart-session-runtime",
                                              "host-update-isolation-runtime", "host-turn-barrier-runtime",
-                                             "host-turn-barrier-boundaries-runtime", "index-identity-boundaries-runtime", "query-sync-outcomes-runtime"}:
+                                             "host-turn-barrier-boundaries-runtime", "index-identity-boundaries-runtime", "query-sync-outcomes-runtime", "query-sync-boundaries-runtime"}:
                         row["evidenceError"] = {"name": type(error).__name__, "message": str(error)}
                     if case["operation"] == "host-update-isolation-runtime" and python_diagnostics is not None:
                         _retain_failed_host_update_capture(
@@ -1761,6 +1847,8 @@ def run_suite(*, checkout: Path, node: Path, smoke: bool = False,
         turn_barrier_boundaries_complete = _host_turn_barrier_boundaries_family_complete(report["cases"])
         identity_boundaries_complete = _index_identity_boundaries_family_complete(report["cases"])
         query_sync_complete = _query_sync_outcomes_family_complete(report["cases"])
+        query_sync_boundaries_complete = _query_sync_boundaries_family_complete(report["cases"])
+        from equivalence.query_sync_boundaries import POINTS as query_sync_boundary_points
         from equivalence.query_sync_outcomes import POINTS as query_sync_points
         from equivalence.index_identity_boundaries import POINTS as identity_boundary_points
         from equivalence.host_restart_session import POINTS as host_restart_points
@@ -1783,7 +1871,9 @@ def run_suite(*, checkout: Path, node: Path, smoke: bool = False,
                                                       and (point["id"] not in identity_boundary_points
                                                            or identity_boundaries_complete)
                                                       and (point["id"] not in query_sync_points
-                                                           or query_sync_complete)]})
+                                                           or query_sync_complete)
+                                                      and (point["id"] not in query_sync_boundary_points
+                                                           or query_sync_boundaries_complete)]})
             report["requirements"].append({"id": requirement["id"], "required": requirement["required"],
                                             "acceptance": acceptance, "registeredCases": len(rows)})
         uncovered = [point["id"] for requirement in report["requirements"] if requirement["required"]

@@ -370,6 +370,14 @@ def run_python(case: dict[str, Any]) -> Any:
         from equivalence.query_sync_outcomes_sdk import run_query_sync_outcomes_case
 
         return run_query_sync_outcomes_case(arguments, evidence_directory=case.get("_diagnosticDirectory"))
+    if operation == "query-sync-boundaries-runtime":
+        from equivalence.query_sync_boundaries import validate_case as validate_query_sync_boundary_case
+
+        validate_query_sync_boundary_case(
+            {key: case[key] for key in ("id", "operation", "requirement", "covers", "input")})
+        from equivalence.query_sync_boundaries_sdk import run_query_sync_boundaries_case
+
+        return run_query_sync_boundaries_case(arguments, evidence_directory=case.get("_diagnosticDirectory"))
     if operation == "promotion-ranking-runtime":
         from equivalence.promotion_ranking_runtime import run_promotion_ranking
 

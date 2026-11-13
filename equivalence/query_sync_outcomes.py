@@ -53,7 +53,8 @@ def build_cases(path=MANIFEST):
 
 def family_members(cases):
     return [case for case in cases if case.get("operation") == OPERATION
-            or case.get("requirement") == REQUIREMENT
+            or (case.get("requirement") == REQUIREMENT
+                and case.get("operation") != "query-sync-boundaries-runtime")
             or str(case.get("id", "")).startswith("query-sync-outcomes-")
             or set(case.get("covers", ())) & set(POINTS)]
 

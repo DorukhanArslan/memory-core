@@ -12,6 +12,7 @@ from contextlib import closing
 from copy import deepcopy
 from dataclasses import asdict
 import hashlib
+from itertools import count
 import json
 import os
 from pathlib import Path
@@ -21,6 +22,7 @@ import sys
 import tempfile
 import threading
 import time
+import traceback
 
 
 ROOT = Path(__file__).resolve().parents[1]
@@ -153,7 +155,7 @@ def run_query_sync_boundaries_sdk_host(request):
     from memory_core.workspace import MemoryWorkspace
     from equivalence.index_identity_boundaries_sdk import _search_result_custody
     from equivalence.query_sync_cold_retry_sdk import (
-        _PublicationSidecarFault, _original_error, _path_entry,
+        _PublicationSidecarFault, _original_error as _full_original_error, _path_entry,
     )
     from equivalence.query_sync_outcomes_sdk import (
         _arguments, _capture_sources, _owned_path, _persist_tool_envelope,
@@ -196,8 +198,12 @@ def run_query_sync_boundaries_sdk_host(request):
         "snapshots": [], "sourceStages": {}, "toolCalls": {}, "toolBindings": [],
         "syncCalls": {}, "faults": [], "sqlGates": [], "schedule": [], "counterDerivations": {},
         "functionalInterleavings": [], "fixtureErrors": [], "metadataFixtures": []}
-    sequence, phase = 0, "setup"
-    observation_lock, local = threading.RLock(), threading.local()
+    raw["eventObservation"] = {"sharedSequence": "itertools.count", "globalObserverMutex": False,
+        "callbackFilesystemWrites": False, "storageOrder": "actual-buffer-append-interleaving",
+        "flush": "declared-step-checkpoints-and-settled-teardown",
+        "fullErrorFormatting": "after-original-callers-and-owners-settle"}
+    sequence, phase = count(1), "setup"
+    local = threading.local()
     owners, owner_refs, pending_searches = [], {}, []
     active_owner, fault, gate = None, None, None
     conflict_fixture = None
@@ -206,22 +212,41 @@ def run_query_sync_boundaries_sdk_host(request):
     calls, call_entered, call_futures = {}, {}, {}
     executor = ThreadPoolExecutor(max_workers=4, thread_name_prefix="query-sync-fixture-caller")
     searches, syncs = {}, {}
+    pending_files, pending_envelopes, pending_errors = [], [], []
 
     def event(name, **values):
-        nonlocal sequence
-        with observation_lock:
-            sequence += 1
-            row = {"event": name, "sequence": sequence, "atNs": str(time.monotonic_ns()),
-                "phase": getattr(local, "phase", phase), "threadId": threading.get_ident(),
-                "activeTool": getattr(local, "tool", None), "activeSync": getattr(local, "sync", None), **values}
-            raw["events"].append(row)
-            with (directory / "events.jsonl").open("a", encoding="utf8") as stream:
-                stream.write(_serialized(row) + "\n")
-            return row
+        row = {"event": name, "sequence": next(sequence), "atNs": str(time.monotonic_ns()),
+            "phase": getattr(local, "phase", phase), "threadId": threading.get_ident(),
+            "activeTool": getattr(local, "tool", None), "activeSync": getattr(local, "sync", None), **values}
+        raw["events"].append(row)
+        return row
+
+    def observed_error(error, **context):
+        """Keep actual identity now; read/format source and traceback after work."""
+        error_type = type(error)
+        witness = {"module": error_type.__module__, "qualname": error_type.__qualname__,
+            "mro": [{"module": item.__module__, "qualname": item.__qualname__} for item in error_type.__mro__]}
+        record = {"name": error_type.__name__, "module": error_type.__module__,
+            "errorRef": f"sdk-error-{id(error)}", "objectId": str(id(error)),
+            "exceptionType": witness, **context}
+        pending_errors.append((record, error, error.__traceback__))
+        return record
 
     def checkpoint():
-        with observation_lock:
-            (directory / "sdk-host-raw.json").write_text(_serialized(raw) + "\n", encoding="utf8")
+        # Original callbacks only append immutable event/custody observations.
+        # A declared step may flush their already captured values, without a
+        # new mutex that original callers would have to acquire.
+        for path, snapshot, receipt in pending_files[:]:
+            if "serializedJSON" not in receipt:
+                encoded = _serialized(snapshot)
+                path.write_text(encoded + "\n", encoding="utf8")
+                receipt.update(serializedJSON=encoded, sha256=hashlib.sha256(encoded.encode()).hexdigest())
+        for label, envelope, call in pending_envelopes[:]:
+            if "envelopeFile" not in call:
+                call["envelopeFile"] = _persist_tool_envelope(directory, label, envelope)
+        events = raw["events"][:]
+        (directory / "events.jsonl").write_text("".join(_serialized(row) + "\n" for row in events), encoding="utf8")
+        (directory / "sdk-host-raw.json").write_text(_serialized(raw) + "\n", encoding="utf8")
 
     def physical(label):
         entered = event("physical-sql-read-enter", label=label, dbPath=str(index_path))
@@ -308,6 +333,8 @@ def run_query_sync_boundaries_sdk_host(request):
             call["outcome"] = {"status": "rejected" if returned is None else "fulfilled",
                 "isTypedConflict": returned is None and bool(call.get("exceptions", [])
                     and call["exceptions"][-1]["isTypedConflict"])}
+            if returned is None and call.get("exceptions"):
+                call["errorRef"] = call["exceptions"][-1]["errorRef"]
             local.bases = stack[:-1]
             base_frame_calls.pop(id(frame), None)
 
@@ -319,9 +346,11 @@ def run_query_sync_boundaries_sdk_host(request):
             call = base_frame_calls.get(id(frame))
             if call is not None:
                 error = arguments[1]
-                call.setdefault("exceptions", []).append({"error": _original_error(error),
+                observed = observed_error(error)
+                call.setdefault("exceptions", []).append({"error": observed,
+                    "errorRef": observed["errorRef"], "objectId": observed["objectId"],
                     "isTypedConflict": isinstance(error, MemoryIndexRevisionConflictError),
-                    "exceptionType": {"module": type(error).__module__, "qualname": type(error).__qualname__},
+                    "exceptionType": observed["exceptionType"],
                     "sequence": event("original-base-producer-exception", ownerId=call["ownerId"],
                                       method=call["method"])["sequence"]})
         return exception_trace
@@ -374,8 +403,7 @@ def run_query_sync_boundaries_sdk_host(request):
                     call["actualJobAtEntry"] = deepcopy(args[0])
                     local.background_cause = publication_causes.get((owner_id, args[0]["readRevision"]))
                     call["causalPublicQuery"] = local.background_cause
-                    with observation_lock:
-                        job_settlements.setdefault((owner_id, args[0]["id"]), threading.Event())
+                    job_settlements.setdefault((owner_id, args[0]["id"]), threading.Event())
                 if name == "publish_prepared_index":
                     # The prepared revision contains nested source/chunk
                     # dataclasses. Preserve them with the existing full private
@@ -386,8 +414,6 @@ def run_query_sync_boundaries_sdk_host(request):
                     label = getattr(local, "sync" if name == "reindex" else "tool", None)
                     if label in call_entered:
                         call_entered[label].set()
-                if name == "_reindex_locked":
-                    call["revisionBefore"] = owner.index_revision()
                 if name == "_on_search_snapshot":
                     db = args[0]
                     pinned = {"ownerId": owner_id, "activeTool": getattr(local, "tool", None),
@@ -395,11 +421,9 @@ def run_query_sync_boundaries_sdk_host(request):
                         "inTransactionBefore": db.in_transaction, "readRevision": owner.index_revision(db=db),
                         "databases": [list(row) for row in db.execute("PRAGMA database_list")],
                         **_sql_rows(db), "inTransactionAfter": db.in_transaction}
-                    encoded = _serialized(pinned)
                     destination = directory / f"sql-pinned-{entered['sequence']}.json"
-                    destination.write_text(encoded + "\n", encoding="utf8")
-                    call["pinnedSnapshot"] = {**pinned, "file": str(destination), "serializedJSON": encoded,
-                        "sha256": hashlib.sha256(encoded.encode()).hexdigest()}
+                    call["pinnedSnapshot"] = {**pinned, "file": str(destination)}
+                    pending_files.append((destination, pinned, call["pinnedSnapshot"]))
                 try:
                     returned = original(*args, **kwargs)
                     if name == "search":
@@ -408,14 +432,13 @@ def run_query_sync_boundaries_sdk_host(request):
                         call["returned"] = _search_result_custody(returned)
                     return returned
                 except BaseException as error:
-                    call["error"] = _original_error(error)
+                    call["error"] = observed_error(error)
+                    call["errorRef"] = call["error"]["errorRef"]
                     raise
                 finally:
-                    if name == "_reindex_locked":
-                        call["revisionAfter"] = owner.index_revision()
                     if name == "_on_index_publication_write":
                         call["writeChanges"] = kwargs["changes"]
-                        call["writeError"] = None if kwargs["error"] is None else _original_error(kwargs["error"])
+                        call["writeError"] = None if kwargs["error"] is None else observed_error(kwargs["error"])
                     call["lifecycleAfter"] = owner.lifecycle_snapshot()
                     if name == "_submit_memory_publication":
                         call["admittedJobIds"] = [job["id"] for job in call["lifecycleAfter"]["memoryPublication"]["jobs"]
@@ -462,7 +485,7 @@ def run_query_sync_boundaries_sdk_host(request):
         try:
             record["returned"] = owner.close()
         except BaseException as error:
-            record["error"] = _original_error(error)
+            record["error"] = observed_error(error)
             raise
         finally:
             record.update(returnSeq=event("original-close-return", ownerId=owner_id)["sequence"],
@@ -485,11 +508,11 @@ def run_query_sync_boundaries_sdk_host(request):
         raw["toolCalls"][label] = call
         try:
             returned = tool.execute(f"query-sync-boundaries-{label}", deepcopy(params))
-            call["envelopeFile"] = _persist_tool_envelope(directory, label, returned)
             call["envelope"] = deepcopy(returned)
+            pending_envelopes.append((label, call["envelope"], call))
             return deepcopy(returned["details"])
         except BaseException as error:
-            call["error"] = _original_error(error)
+            call["error"] = observed_error(error)
             raise
         finally:
             call["returnSeq"] = event("actual-tool-return", label=label, ownerId=owner_id)["sequence"]
@@ -507,7 +530,8 @@ def run_query_sync_boundaries_sdk_host(request):
             call["returned"] = _search_result_custody(returned)
             call["outcome"] = {"status": "fulfilled", "isTypedConflict": False}
         except BaseException as error:
-            call["error"] = _original_error(error)
+            call["error"] = observed_error(error)
+            call["errorRef"] = call["error"]["errorRef"]
             call["outcome"] = {"status": "rejected", "isTypedConflict": isinstance(error, MemoryIndexRevisionConflictError)}
         finally:
             call["returnSeq"] = event("actual-sync-return", label=label, ownerId=owner_id)["sequence"]
@@ -601,8 +625,8 @@ def run_query_sync_boundaries_sdk_host(request):
             if action["returned"] is not True or not plan.chunks or action["revisionAfter"] != action["revisionBefore"] + 1:
                 raise RuntimeError("The declared rival publication did not purge an actual indexed marker generation")
         except BaseException as error:
-            action["error"] = _original_error(error)
-            raw["fixtureErrors"].append({"operation": "functional-rival-source-purge", **_original_error(error)})
+            action["error"] = observed_error(error)
+            raw["fixtureErrors"].append(observed_error(error, operation="functional-rival-source-purge"))
         finally:
             action["returnSeq"] = event("functional-rival-publication-return", ownerId=owner_id, markerPath=marker)["sequence"]
             local.fixture_action = None
@@ -772,8 +796,7 @@ def run_query_sync_boundaries_sdk_host(request):
                 schedule["alreadyAdmittedJobKeys"] = [list(key) for key in sorted(admitted)]
                 schedule["admission"] = "admitted" if admitted else "not-admitted"
                 for key in admitted:
-                    with observation_lock:
-                        settlement = job_settlements.setdefault(key, threading.Event())
+                    settlement = job_settlements.setdefault(key, threading.Event())
                     if not settlement.wait(20):
                         raise TimeoutError("An actually admitted original background publisher did not settle")
                 schedule["settledSeq"] = event("already-admitted-background-settlement-observed", searchLabel=label,
@@ -804,7 +827,7 @@ def run_query_sync_boundaries_sdk_host(request):
         raw["completed"] = True
         return {"result": raw["result"], "raw": raw}
     except BaseException as error:
-        raw["error"] = _original_error(error)
+        raw["error"] = observed_error(error)
         raise
     finally:
         phase = "teardown"
@@ -814,25 +837,25 @@ def run_query_sync_boundaries_sdk_host(request):
                 gate.release()
                 gate.receipt["releasedDuringTeardown"] = True
             except BaseException as error:
-                errors.append({"operation": "release-sql-gate", **_original_error(error)})
+                errors.append(observed_error(error, operation="release-sql-gate"))
         for label, future in call_futures.items():
             try:
                 future.result(timeout=20)
             except BaseException as error:
-                errors.append({"operation": "settle-independent-caller", "label": label, **_original_error(error)})
+                errors.append(observed_error(error, operation="settle-independent-caller", label=label))
         executor.shutdown(wait=True)
         if fault is not None and fault.armed:
             try:
                 fault.remove()
                 fault.receipt["removedDuringTeardown"] = True
             except BaseException as error:
-                errors.append({"operation": "remove-fault", **_original_error(error)})
+                errors.append(observed_error(error, operation="remove-fault"))
         for owner in owners:
             if not owner.closed:
                 try:
                     close_owner(owner)
                 except BaseException as error:
-                    errors.append({"operation": "owner-close", **_original_error(error)})
+                    errors.append(observed_error(error, operation="owner-close"))
         sys.setprofile(previous_profile)
         threading.setprofile(previous_thread_profile)
         sys.settrace(previous_trace)
@@ -851,6 +874,16 @@ def run_query_sync_boundaries_sdk_host(request):
         raw["sourceIdentity"]["afterClose"] = _sdk_sources()
         if errors:
             raw["teardownErrors"] = errors
+        # Preserve early envelopes, events and exception identities even if an
+        # unexpected private error codec fails. Source/traceback formatting is
+        # deliberately after every real caller/owner has settled and observers
+        # have been restored.
+        checkpoint()
+        for record, error, captured_traceback in pending_errors:
+            record.update(_full_original_error(error))
+            record["traceback"] = "".join(traceback.format_exception(type(error), error, captured_traceback))
+        raw["errorFormatting"] = {"deferredUntilOriginalOwnersSettled": True,
+                                  "observations": len(pending_errors)}
         checkpoint()
         if errors and sys.exc_info()[0] is None:
             raise RuntimeError("Original SDK teardown failed; actual errors and early envelopes retained")

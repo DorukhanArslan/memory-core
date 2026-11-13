@@ -1,0 +1,669 @@
+{
+  "kind": "next-turn-notice-observation-closeout",
+  "date": "2026-11-13",
+  "acceptancePointsAwarded": 0,
+  "lastFullVerifiedConditions": 71,
+  "remainingConditions": 57,
+  "fullScopePassed": false,
+  "replacesEarlierFullReport": false,
+  "historicalMissingColdWarningExplained": false,
+  "productionSdkChanged": false,
+  "execution": {
+    "head": "d34c41e0456d1b1fb91f382d6e1f33f15908252c",
+    "statusBefore": "",
+    "startedUtc": "2026-11-13T13:06:27.521908+00:00",
+    "endedUtc": "2026-11-13T13:07:56.846945+00:00",
+    "elapsedSeconds": 89.32507244600129,
+    "exitCode": 0,
+    "collectorPid": 4051,
+    "runnerPid": 4039,
+    "command": [
+      "/workspace/memory-core/.venv/bin/python",
+      "scripts/check_next_turn_notice.py",
+      "--reference",
+      "work/openclaw-v2026.9.9",
+      "--node",
+      "work/node-v24.16.0-linux-x64/bin/node",
+      "--release-runtime",
+      ".reference/release-runtime",
+      "--output",
+      "work/next-turn-notice/probe-001"
+    ]
+  },
+  "contract": {
+    "path": "docs/next_turn_notice_observation_contract.json",
+    "bytes": 18298,
+    "sha256": "bceed5c96344270816f676d27fa02117370b714d69c6b1cc492aab7b5cb98585"
+  },
+  "originalLiteralManifestSha256": "d8fad3a3e747b9c8fbfab9613cb4c91e7b4dd2143089ee4b33cdf4934a6589b7",
+  "scopeSha256": "a8e066e63970dd0be734485d62a5932640894b8c0a42f47ac3eb67f784cbc7b9",
+  "registeredCaseCount": 1444,
+  "registeredDefinitionsCanonicalSha256": "feea3f91ed24646488b241e6dd739d737c05d25d5c71e724e2febd14b349ece7",
+  "node": {
+    "execPath": "/workspace/memory-core/work/node-v24.16.0-linux-x64/bin/node",
+    "nodeVersion": "v24.16.0",
+    "icuVersion": "78.3",
+    "unicodeVersion": "17.0",
+    "sha256": "b2959781cc5a74c357ffa02367efa8a0330cbb1c9cb347732fdfaaaca381cbcd"
+  },
+  "reference": {
+    "tag": "v2026.9.9",
+    "commit": "bcfc88812a35243893585dbeca87ca41b48272ca"
+  },
+  "collectorSha256": "7f3861060258761d0281f6356a6f796f9f8023a0e83a7f59a390f262b33b63aa",
+  "productionBefore": {
+    "gitCommit": "d34c41e0456d1b1fb91f382d6e1f33f15908252c",
+    "trackedWorkingTreeDirty": false,
+    "sourceSha256": "20abf913ac4d7d394aacbcad73e63ad14968c4f2d485ea2a3c0684413d40237d",
+    "sourceFiles": 160
+  },
+  "productionAfter": {
+    "gitCommit": "d34c41e0456d1b1fb91f382d6e1f33f15908252c",
+    "trackedWorkingTreeDirty": false,
+    "sourceSha256": "20abf913ac4d7d394aacbcad73e63ad14968c4f2d485ea2a3c0684413d40237d",
+    "sourceFiles": 160
+  },
+  "protectedExecutionAdapters": {
+    "beforeCount": 299,
+    "afterCount": 299,
+    "beforeCanonicalSha256": "c3f42b6ffa70726e0c3183d159c99abfacf350c58d67f1a18fa05ad1ca2ee39d",
+    "afterCanonicalSha256": "c3f42b6ffa70726e0c3183d159c99abfacf350c58d67f1a18fa05ad1ca2ee39d",
+    "unchangedDuringExecution": true
+  },
+  "summary": {
+    "match": 4,
+    "mismatch": 0,
+    "blocked": 0
+  },
+  "runnerErrors": [],
+  "firstReport": {
+    "path": "work/next-turn-notice/probe-001/report.json",
+    "bytes": 16987165,
+    "sha256": "85e2ed831be4d517154ae2964cff581c15b8bdaadbfb7fb8842f20948cc90b61"
+  },
+  "actualExitReceipt": {
+    "path": "work/next-turn-notice/probe-001-exit.json",
+    "bytes": 63018,
+    "sha256": "6449564b35807a84889703f8100d42de21cf6387cf60d818c2958c36991ab747"
+  },
+  "cases": [
+    {
+      "id": "host-turn-barrier-cold-ascii",
+      "caseWireSha256": "f15b6b765b7998301945a42e5028a30cbc759fb8251c7e814b35778a88a06e66",
+      "status": "match",
+      "differences": [],
+      "nativePid": 4203,
+      "nativePpid": 4051,
+      "sdkPid": 4239,
+      "sdkPpid": 4051,
+      "files": [
+        {
+          "path": "work/next-turn-notice/probe-001/host-turn-barrier-cold-ascii/stdout.json",
+          "bytes": 1417,
+          "sha256": "94f8780aa21c2a8756771fe4ab03cc059462a9f4ea39582e6c3e05e3a0ba6f4c"
+        },
+        {
+          "path": "work/next-turn-notice/probe-001/host-turn-barrier-cold-ascii/sdk-output.json",
+          "bytes": 1843,
+          "sha256": "c701d81e135219ebe6b8c08e433cfaf038a3745ac7a773446d41c96d550c2407"
+        },
+        {
+          "path": "work/next-turn-notice/probe-001/host-turn-barrier-cold-ascii/evidence/native-raw.json",
+          "bytes": 777535,
+          "sha256": "a725694b786d3ef82468fb682c0ac7b4bafae3c2bdf5aaf749520c5b0dc4f170"
+        },
+        {
+          "path": "work/next-turn-notice/probe-001/host-turn-barrier-cold-ascii/evidence/python-raw.json",
+          "bytes": 416149,
+          "sha256": "c89a0f13418e6dcdbb9b1dd45ec1ef8ee1ee5a0ca822d7aca0311f9f250017b1"
+        }
+      ],
+      "finalIndependentNoticeReplay": {
+        "validated": true,
+        "native": {
+          "validated": true,
+          "captureFacts": [
+            {
+              "searchCallId": "notice-call-5",
+              "noticeRef": "notice-ref-32",
+              "capturedSequence": 0,
+              "incrementCallIdsBeforeSearchSettlement": [
+                "notice-call-8"
+              ],
+              "captureKind": "source-bound-synchronous-edge",
+              "lexicalReaderObserved": false,
+              "toolResultCheckpointSequence": 125,
+              "deliveredSequence": 1,
+              "actualPublicWarningPresent": true,
+              "actualPublicWarning": "Automatic memory index repair was requested. To rebuild manually, run: openclaw memory status --index --agent main. Rebuilding uses keyword indexing only and does not call an embedding provider.",
+              "actualCorporaPresent": true,
+              "actualCorpora": [],
+              "sourceRuleConsistentWithActualPublic": true,
+              "incrementCallIdsInUnobservedReadWindow": [],
+              "previousActualHostReturnSequence": 51,
+              "captureNoticeObservedAtPreviousReturn": false,
+              "causeStatus": "current-run-new-notice-during-search",
+              "historicalMissingWarningExplained": false
+            }
+          ],
+          "incrementCalls": 1,
+          "warningPolicyChanged": false,
+          "acceptancePointsAwarded": 0
+        },
+        "sdk": {
+          "validated": true,
+          "captureFacts": [
+            {
+              "captureCallId": "call-30",
+              "readerCallId": "call-50",
+              "noticeRef": "ref-41",
+              "capturedSequence": 0,
+              "noticeIsOwnerObject": true,
+              "producerStatusCallId": "call-28",
+              "publicationCauseStatus": "no-recorded-publication-failure",
+              "returnPrimitive": "Automatic memory index repair was requested. To rebuild manually, run: openclaw memory status --index --agent main. Rebuilding uses keyword indexing only and does not call an embedding provider.",
+              "causeStatus": "exact-stable-original-reader-rule"
+            }
+          ],
+          "liveNoticeChain": {
+            "managerRef": "ref-1",
+            "liveNoticeRef": "ref-41",
+            "writerCallIds": [
+              "call-38"
+            ],
+            "failedWriterCallIds": [],
+            "overlappingWriterIntervals": [],
+            "counterConservation": "verified-at-original-close",
+            "publicationFailureCallIds": [],
+            "publicationCauseStatus": "no-recorded-publication-failure"
+          },
+          "warningPolicyChanged": false,
+          "acceptancePointsAwarded": 0
+        },
+        "acceptancePointsAwarded": 0
+      }
+    },
+    {
+      "id": "host-turn-barrier-warm-ascii",
+      "caseWireSha256": "a66a8fd95c63ece444cfa50d4c575de504ae1d05b9a9d3dcd5367809b93d0da3",
+      "status": "match",
+      "differences": [],
+      "nativePid": 4251,
+      "nativePpid": 4051,
+      "sdkPid": 4290,
+      "sdkPpid": 4051,
+      "files": [
+        {
+          "path": "work/next-turn-notice/probe-001/host-turn-barrier-warm-ascii/stdout.json",
+          "bytes": 1852,
+          "sha256": "be534f5707716b47606b923ae57cd5b9d0e609702549836c50dc149bac2a03c7"
+        },
+        {
+          "path": "work/next-turn-notice/probe-001/host-turn-barrier-warm-ascii/sdk-output.json",
+          "bytes": 2472,
+          "sha256": "754d164de554e0019f4f4faa086ce8eaa3227f292ed9493d615ddcc594439370"
+        },
+        {
+          "path": "work/next-turn-notice/probe-001/host-turn-barrier-warm-ascii/evidence/native-raw.json",
+          "bytes": 1868270,
+          "sha256": "e5c8261792a7779cd4472d0513137ce9b70fd84172e545ed341995a5dbbdb4e0"
+        },
+        {
+          "path": "work/next-turn-notice/probe-001/host-turn-barrier-warm-ascii/evidence/python-raw.json",
+          "bytes": 826807,
+          "sha256": "c050b92af943a3cb774759917541a3492160cf26e3e73b98f328ba64f0e46f80"
+        }
+      ],
+      "finalIndependentNoticeReplay": {
+        "validated": true,
+        "native": {
+          "validated": true,
+          "captureFacts": [
+            {
+              "searchCallId": "notice-call-5",
+              "noticeRef": "notice-ref-32",
+              "capturedSequence": 0,
+              "incrementCallIdsBeforeSearchSettlement": [
+                "notice-call-8"
+              ],
+              "captureKind": "source-bound-synchronous-edge",
+              "lexicalReaderObserved": false,
+              "toolResultCheckpointSequence": 125,
+              "deliveredSequence": 1,
+              "actualPublicWarningPresent": true,
+              "actualPublicWarning": "Automatic memory index repair was requested. To rebuild manually, run: openclaw memory status --index --agent main. Rebuilding uses keyword indexing only and does not call an embedding provider.",
+              "actualCorporaPresent": true,
+              "actualCorpora": [],
+              "sourceRuleConsistentWithActualPublic": true,
+              "incrementCallIdsInUnobservedReadWindow": [],
+              "previousActualHostReturnSequence": 51,
+              "captureNoticeObservedAtPreviousReturn": false,
+              "causeStatus": "current-run-new-notice-during-search",
+              "historicalMissingWarningExplained": false
+            },
+            {
+              "searchCallId": "notice-call-17",
+              "noticeRef": "notice-ref-76",
+              "capturedSequence": 0,
+              "incrementCallIdsBeforeSearchSettlement": [],
+              "captureKind": "source-bound-synchronous-edge",
+              "lexicalReaderObserved": false,
+              "toolResultCheckpointSequence": 283,
+              "deliveredSequence": 0,
+              "actualPublicWarningPresent": false,
+              "actualPublicWarning": null,
+              "actualCorporaPresent": false,
+              "actualCorpora": null,
+              "sourceRuleConsistentWithActualPublic": true,
+              "incrementCallIdsInUnobservedReadWindow": [],
+              "previousActualHostReturnSequence": 217,
+              "captureNoticeObservedAtPreviousReturn": false,
+              "causeStatus": "current-run-no-new-notice-before-tool-result",
+              "historicalMissingWarningExplained": false
+            }
+          ],
+          "incrementCalls": 1,
+          "warningPolicyChanged": false,
+          "acceptancePointsAwarded": 0
+        },
+        "sdk": {
+          "validated": true,
+          "captureFacts": [
+            {
+              "captureCallId": "call-30",
+              "readerCallId": "call-50",
+              "noticeRef": "ref-41",
+              "capturedSequence": 0,
+              "noticeIsOwnerObject": true,
+              "producerStatusCallId": "call-28",
+              "publicationCauseStatus": "no-recorded-publication-failure",
+              "returnPrimitive": "Automatic memory index repair was requested. To rebuild manually, run: openclaw memory status --index --agent main. Rebuilding uses keyword indexing only and does not call an embedding provider.",
+              "causeStatus": "exact-stable-original-reader-rule"
+            },
+            {
+              "captureCallId": "call-92",
+              "readerCallId": "call-104",
+              "noticeRef": "ref-41",
+              "capturedSequence": 1,
+              "noticeIsOwnerObject": true,
+              "producerStatusCallId": "call-90",
+              "publicationCauseStatus": "no-recorded-publication-failure",
+              "returnPrimitive": null,
+              "causeStatus": "exact-stable-original-reader-rule"
+            }
+          ],
+          "liveNoticeChain": {
+            "managerRef": "ref-1",
+            "liveNoticeRef": "ref-41",
+            "writerCallIds": [
+              "call-38"
+            ],
+            "failedWriterCallIds": [],
+            "overlappingWriterIntervals": [],
+            "counterConservation": "verified-at-original-close",
+            "publicationFailureCallIds": [],
+            "publicationCauseStatus": "no-recorded-publication-failure"
+          },
+          "warningPolicyChanged": false,
+          "acceptancePointsAwarded": 0
+        },
+        "acceptancePointsAwarded": 0
+      }
+    },
+    {
+      "id": "host-turn-barrier-cold-unicode",
+      "caseWireSha256": "76f267e1c678d0ec7ffac28e309bea3360bd31f75230ebf59c6f8a6bdec06a65",
+      "status": "match",
+      "differences": [],
+      "nativePid": 4305,
+      "nativePpid": 4051,
+      "sdkPid": 4355,
+      "sdkPpid": 4051,
+      "files": [
+        {
+          "path": "work/next-turn-notice/probe-001/host-turn-barrier-cold-unicode/stdout.json",
+          "bytes": 1431,
+          "sha256": "86c580b084c30a2399c62ad4876fa703b72bb9fb8f5d8d4bc2a565a4e0400f38"
+        },
+        {
+          "path": "work/next-turn-notice/probe-001/host-turn-barrier-cold-unicode/sdk-output.json",
+          "bytes": 1903,
+          "sha256": "9f252cce81182cae1997ec6f04fc08c08951b2441030b1cec7673182e4c6cf13"
+        },
+        {
+          "path": "work/next-turn-notice/probe-001/host-turn-barrier-cold-unicode/evidence/native-raw.json",
+          "bytes": 780416,
+          "sha256": "84db869f93b30fe23a9e4311764783710f0bf5251904aa6db76f2514b6efe712"
+        },
+        {
+          "path": "work/next-turn-notice/probe-001/host-turn-barrier-cold-unicode/evidence/python-raw.json",
+          "bytes": 417228,
+          "sha256": "8de626a4e978716653241e2cd767bc60b1862a1b7d3cc198d2d22a37f6523ab7"
+        }
+      ],
+      "finalIndependentNoticeReplay": {
+        "validated": true,
+        "native": {
+          "validated": true,
+          "captureFacts": [
+            {
+              "searchCallId": "notice-call-5",
+              "noticeRef": "notice-ref-32",
+              "capturedSequence": 0,
+              "incrementCallIdsBeforeSearchSettlement": [
+                "notice-call-8"
+              ],
+              "captureKind": "source-bound-synchronous-edge",
+              "lexicalReaderObserved": false,
+              "toolResultCheckpointSequence": 125,
+              "deliveredSequence": 1,
+              "actualPublicWarningPresent": true,
+              "actualPublicWarning": "Automatic memory index repair was requested. To rebuild manually, run: openclaw memory status --index --agent main. Rebuilding uses keyword indexing only and does not call an embedding provider.",
+              "actualCorporaPresent": true,
+              "actualCorpora": [],
+              "sourceRuleConsistentWithActualPublic": true,
+              "incrementCallIdsInUnobservedReadWindow": [],
+              "previousActualHostReturnSequence": 51,
+              "captureNoticeObservedAtPreviousReturn": false,
+              "causeStatus": "current-run-new-notice-during-search",
+              "historicalMissingWarningExplained": false
+            }
+          ],
+          "incrementCalls": 1,
+          "warningPolicyChanged": false,
+          "acceptancePointsAwarded": 0
+        },
+        "sdk": {
+          "validated": true,
+          "captureFacts": [
+            {
+              "captureCallId": "call-30",
+              "readerCallId": "call-50",
+              "noticeRef": "ref-41",
+              "capturedSequence": 0,
+              "noticeIsOwnerObject": true,
+              "producerStatusCallId": "call-28",
+              "publicationCauseStatus": "no-recorded-publication-failure",
+              "returnPrimitive": "Automatic memory index repair was requested. To rebuild manually, run: openclaw memory status --index --agent main. Rebuilding uses keyword indexing only and does not call an embedding provider.",
+              "causeStatus": "exact-stable-original-reader-rule"
+            }
+          ],
+          "liveNoticeChain": {
+            "managerRef": "ref-1",
+            "liveNoticeRef": "ref-41",
+            "writerCallIds": [
+              "call-38"
+            ],
+            "failedWriterCallIds": [],
+            "overlappingWriterIntervals": [],
+            "counterConservation": "verified-at-original-close",
+            "publicationFailureCallIds": [],
+            "publicationCauseStatus": "no-recorded-publication-failure"
+          },
+          "warningPolicyChanged": false,
+          "acceptancePointsAwarded": 0
+        },
+        "acceptancePointsAwarded": 0
+      }
+    },
+    {
+      "id": "host-turn-barrier-warm-unicode",
+      "caseWireSha256": "cf7ce1144290e45d8bffa4fc230bbb5fcd26569787bccf149282a66455468750",
+      "status": "match",
+      "differences": [],
+      "nativePid": 4367,
+      "nativePpid": 4051,
+      "sdkPid": 4462,
+      "sdkPpid": 4051,
+      "files": [
+        {
+          "path": "work/next-turn-notice/probe-001/host-turn-barrier-warm-unicode/stdout.json",
+          "bytes": 1857,
+          "sha256": "9f9aa6774c537485c9c13ac422385eb64e05b3f46e739247a84876c2711f4452"
+        },
+        {
+          "path": "work/next-turn-notice/probe-001/host-turn-barrier-warm-unicode/sdk-output.json",
+          "bytes": 2487,
+          "sha256": "69685b1a7fe473b66d49b3bfbfbb2f748f043402a38ebd01d27291cbc7e12411"
+        },
+        {
+          "path": "work/next-turn-notice/probe-001/host-turn-barrier-warm-unicode/evidence/native-raw.json",
+          "bytes": 1873418,
+          "sha256": "f46b186fd7932d5970238ccae2cb75e5f9ad3c2cbc154e3205bcc8df2e0ec404"
+        },
+        {
+          "path": "work/next-turn-notice/probe-001/host-turn-barrier-warm-unicode/evidence/python-raw.json",
+          "bytes": 827852,
+          "sha256": "095ece8f18b212323ac1ead8413a22caec8f6b8c7a1e75a31a8e6149fa7387c8"
+        }
+      ],
+      "finalIndependentNoticeReplay": {
+        "validated": true,
+        "native": {
+          "validated": true,
+          "captureFacts": [
+            {
+              "searchCallId": "notice-call-5",
+              "noticeRef": "notice-ref-32",
+              "capturedSequence": 0,
+              "incrementCallIdsBeforeSearchSettlement": [
+                "notice-call-8"
+              ],
+              "captureKind": "source-bound-synchronous-edge",
+              "lexicalReaderObserved": false,
+              "toolResultCheckpointSequence": 125,
+              "deliveredSequence": 1,
+              "actualPublicWarningPresent": true,
+              "actualPublicWarning": "Automatic memory index repair was requested. To rebuild manually, run: openclaw memory status --index --agent main. Rebuilding uses keyword indexing only and does not call an embedding provider.",
+              "actualCorporaPresent": true,
+              "actualCorpora": [],
+              "sourceRuleConsistentWithActualPublic": true,
+              "incrementCallIdsInUnobservedReadWindow": [],
+              "previousActualHostReturnSequence": 51,
+              "captureNoticeObservedAtPreviousReturn": false,
+              "causeStatus": "current-run-new-notice-during-search",
+              "historicalMissingWarningExplained": false
+            },
+            {
+              "searchCallId": "notice-call-17",
+              "noticeRef": "notice-ref-76",
+              "capturedSequence": 0,
+              "incrementCallIdsBeforeSearchSettlement": [],
+              "captureKind": "source-bound-synchronous-edge",
+              "lexicalReaderObserved": false,
+              "toolResultCheckpointSequence": 283,
+              "deliveredSequence": 0,
+              "actualPublicWarningPresent": false,
+              "actualPublicWarning": null,
+              "actualCorporaPresent": false,
+              "actualCorpora": null,
+              "sourceRuleConsistentWithActualPublic": true,
+              "incrementCallIdsInUnobservedReadWindow": [],
+              "previousActualHostReturnSequence": 217,
+              "captureNoticeObservedAtPreviousReturn": false,
+              "causeStatus": "current-run-no-new-notice-before-tool-result",
+              "historicalMissingWarningExplained": false
+            }
+          ],
+          "incrementCalls": 1,
+          "warningPolicyChanged": false,
+          "acceptancePointsAwarded": 0
+        },
+        "sdk": {
+          "validated": true,
+          "captureFacts": [
+            {
+              "captureCallId": "call-30",
+              "readerCallId": "call-50",
+              "noticeRef": "ref-41",
+              "capturedSequence": 0,
+              "noticeIsOwnerObject": true,
+              "producerStatusCallId": "call-28",
+              "publicationCauseStatus": "no-recorded-publication-failure",
+              "returnPrimitive": "Automatic memory index repair was requested. To rebuild manually, run: openclaw memory status --index --agent main. Rebuilding uses keyword indexing only and does not call an embedding provider.",
+              "causeStatus": "exact-stable-original-reader-rule"
+            },
+            {
+              "captureCallId": "call-92",
+              "readerCallId": "call-106",
+              "noticeRef": "ref-41",
+              "capturedSequence": 1,
+              "noticeIsOwnerObject": true,
+              "producerStatusCallId": "call-90",
+              "publicationCauseStatus": "no-recorded-publication-failure",
+              "returnPrimitive": null,
+              "causeStatus": "exact-stable-original-reader-rule"
+            }
+          ],
+          "liveNoticeChain": {
+            "managerRef": "ref-1",
+            "liveNoticeRef": "ref-41",
+            "writerCallIds": [
+              "call-38"
+            ],
+            "failedWriterCallIds": [],
+            "overlappingWriterIntervals": [],
+            "counterConservation": "verified-at-original-close",
+            "publicationFailureCallIds": [],
+            "publicationCauseStatus": "no-recorded-publication-failure"
+          },
+          "warningPolicyChanged": false,
+          "acceptancePointsAwarded": 0
+        },
+        "acceptancePointsAwarded": 0
+      }
+    }
+  ],
+  "validation": {
+    "genuineGuardReplay": {
+      "path": "work/next-turn-notice/contract/probe-001-independent-replay.json",
+      "bytes": 15626,
+      "sha256": "dfdb37b340b2f56ac062f86be9fefabca2529d311c47730d07f2ae06fe3d8d40",
+      "guardCommit": "12dddd16661d586573b155ed4090d709223a37a4",
+      "guard": {
+        "path": "equivalence/next_turn_notice_evidence.py",
+        "bytes": 31582,
+        "sha256": "a5c33ce15476e1cb83e7a2c453b0d2afb01738c8e40ca01e460767fa599c169f"
+      },
+      "tests": {
+        "path": "tests/equivalence/test_next_turn_notice_evidence.py",
+        "bytes": 14384,
+        "sha256": "9fce904404aea450be5f2e2888477d84962fac9c0a768634b0e83e7ec487a670"
+      },
+      "result": {
+        "passed": 281,
+        "failed": 0,
+        "skipped": 0,
+        "seconds": 4.4,
+        "log": {
+          "path": "work/next-turn-notice/contract/evidence-tests-probe-001-attempt-003.log",
+          "bytes": 340,
+          "sha256": "a284ff887c77cbc3d13e7c660239931acb24dac9269b207df97e5b9742b54def"
+        },
+        "ruff": "passed"
+      },
+      "retainedEarlierTestRuns": [
+        {
+          "result": "225passed8draft-testbugs",
+          "cause": "Test parameter named nonexistent original public save field; no accepted guard attack.",
+          "log": {
+            "path": "work/next-turn-notice/contract/evidence-tests-probe-001-attempt-001.log",
+            "bytes": 9724,
+            "sha256": "66c6f897a99c60709a28919e1f124a4bb65bedf58cf4b88f55754aefd42d14ba"
+          }
+        },
+        {
+          "result": "281passed0skipped4.24s",
+          "log": {
+            "path": "work/next-turn-notice/contract/evidence-tests-probe-001-attempt-002.log",
+            "bytes": 340,
+            "sha256": "ab1265e9ec573c1f2a10d77378bd4ed89decae2f35dcfacddafeced1f94808d8"
+          }
+        }
+      ]
+    },
+    "finalGuardReplay": {
+      "path": "work/next-turn-notice/contract/probe-001-independent-replay-v2.json",
+      "bytes": 18344,
+      "sha256": "1d4b09b1c49e4c591a5bd4599a4b94d581b8f6f0f8548bfb5c57d9fb3554b146",
+      "guardCommit": "67a6592bd2e65d3db5a8be983df3c1330e1d5317",
+      "guard": {
+        "path": "equivalence/next_turn_notice_evidence.py",
+        "bytes": 37855,
+        "sha256": "0583c95010890654991435ea4d6828eef1ac191e56823e4c905614decc116626"
+      },
+      "tests": {
+        "path": "tests/equivalence/test_next_turn_notice_evidence.py",
+        "bytes": 18726,
+        "sha256": "ba4964b14bc146f57c5a9abad8a1e879a17ad88d41501372e7a4c478951a035d"
+      },
+      "result": {
+        "passed": 317,
+        "failed": 0,
+        "skipped": 0,
+        "seconds": 4.36,
+        "ruff": "passed",
+        "log": {
+          "path": "work/next-turn-notice/contract/evidence-tests-probe-001-sdk-followup-002.log",
+          "bytes": 420,
+          "sha256": "87e9afd9de95d581d2d222138e6344ca4fafacda46af53dee5d42d9a6be67eca"
+        }
+      }
+    },
+    "equivalenceHarnessSuite": {
+      "head": "12dddd16661d586573b155ed4090d709223a37a4",
+      "passed": 6790,
+      "failed": 0,
+      "skippedUncredited": 33,
+      "pytestSeconds": 395.82,
+      "exitCode": 0,
+      "observedProcessSeconds": 397.93779098899904,
+      "actualExitReceipt": {
+        "path": "work/next-turn-notice/equivalence-tests-001-exit.json",
+        "bytes": 62379,
+        "sha256": "84e9598069ee6a52ea61012c368ccbcbfc6f9bc82170259dfc949d1379528665"
+      },
+      "log": {
+        "path": "work/next-turn-notice/equivalence-tests-001.log",
+        "bytes": 7645,
+        "sha256": "c6eb29eff08e726ac7d55e608f238bf55cf45947bdfbe1f522cd7864bc5d387c"
+      },
+      "protectedAdaptersUnchangedDuringExecution": true,
+      "productionSdkUnchangedDuringExecution": true,
+      "scope": "Final checker-only follow-up tested separately; no full catalog or general production regression rerun is claimed."
+    },
+    "staticChecks": {
+      "ruff": "passed",
+      "nodeSyntax": "passed",
+      "diffCheck": "passed"
+    }
+  },
+  "limits": [
+    "One first process per original case and engine; no retries selected by outcome.",
+    "Native capture is a source-bound synchronous status-to-search edge; its lexical reader is not intercepted.",
+    "SDK reader forwarding is an explicit private function identity exception; exact original closure and actual return are retained.",
+    "Different private notice objects and counter values are validated independently, not equated across engines.",
+    "The observed Native and SDK writer phases differ, but all complete public results in this packet match.",
+    "Observation consumes CPU and may affect races; the earlier absent cold warning did not recur.",
+    "No warning normalization, allowance, point restoration or full-catalog rerun is substituted.",
+    "Older hosted four-extra-difference artifacts remain on hold and are not used."
+  ],
+  "priorWorkflowReview": {
+    "path": "work/next-turn-notice/ci-review/statuses.json",
+    "sha256": "277ab246ae60218b0822044b15e05c02b4dcddf43c09aad3f8354bf4be4e959f",
+    "conclusion": {
+      "codeAndDocumentationPython311And312OfflineJobsPassed": true,
+      "bothCurrentColdRetryPackets": "2 matched, 0 mismatched, 0 blocked, errors [], acceptancePointsAwarded 0",
+      "bothCurrentColdGuardReplays": "118 passed, 1 skipped; skip reason not printed by pytest -q",
+      "bothCurrentQueryOutcomeGuardReplays": "137 passed, 10 skipped",
+      "newColdOrQueryGuardFailureFound": false,
+      "newObserverWorkBlockedByTheseCurrentChecks": false,
+      "wholeEquivalencePassed": false,
+      "olderHostedFourAdditionalDifferenceInvestigation": "Still paused. Individual IDs/fields/artifacts not investigated.",
+      "artifactDownloads": 0,
+      "hostOrTestExecutions": 0,
+      "trackedFileEdits": 0,
+      "reportHashesInFilteredCliLogsAreReportedValuesOnly": "No artifact was downloaded or independently rehashed."
+    }
+  }
+}

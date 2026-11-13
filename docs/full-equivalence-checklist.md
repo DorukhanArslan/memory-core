@@ -92,8 +92,11 @@ uncredited skips** on the same clean `e148d0b`; SDK and all 298 adapter bytes st
 unchanged through both original full and regression commands. Code-head GitHub
 package checks pass on Python 3.11 and 3.12: **7,850 tests passed and 3,967
 uncredited skips per version**, with wheel/sdist consumers and 27 invalid typed
-calls rejected per installed artifact. The separate Native workflow is still
-running at documentation preparation; no completed hosted acceptance is inferred.
+calls rejected per installed artifact. The separate completed code-head Native
+run retains **1,426 matches and 18 mismatches**, zero blocked/errors; its cold
+retry packet matches both pairs. Its guard replay reports 118 passed and one
+uncredited skip. The Native workflow fails its registered comparison; package
+checks do not establish hosted equivalence.
 
 The complete local gate remains `mismatched`: **54 uncovered conditions plus
 three registered unresolved conditions** remain. The earlier hosted18/local14
@@ -103,12 +106,19 @@ Complete OpenClaw equivalence is not established.
 
 See the [cold retry closeout](query_sync_cold_retry_development_closeout.md) for
 exact identities, preserved first failures, current gate loss and measured limits.
-The next priority is the local next-turn notice discrepancy: observe actual
-original notice/status/publication calls to establish when the first search gets
-its renewal warning. For example, both systems find the saved note but must also
-agree on the warning shown with that answer. Forced-sync/joining, revision-conflict
-retry, other unavailable outcomes and remaining dispatch counts still need their
-original query-sync boundary proof.
+The [first passive notice packet](next_turn_notice_observation_closeout.md)
+observes all four unchanged original host inputs once: **four complete matches,
+zero differences/blocked/errors, zero credit**. The measured cold searches
+capture sequence 0 and observe a real increment to 1; the warm followups observe
+no new increment. Native's capture remains source-bound; SDK records the exact
+original closure and its actual reader call. The older missing cold warning does
+not recur, so its precise timing cause remains unproved. No production SDK code
+or warning policy changes and the failed full assessment is not replaced.
+
+Next is the existing `indexing.query-sync.boundaries` condition: while the search
+list is being refreshed, verify how a second query or forced refresh waits,
+fails and retries. Original forced-sync/joining, revision-conflict retry, other
+unavailable outcomes and dispatch counts still need their complete boundary proof.
 
 The preceding [query-sync outcome closeout](query_sync_outcomes_closeout.md)
 historically verified **71 → 72/128** on clean `aa99a933`; its original capture and

@@ -9,6 +9,11 @@ cold Unicode notice differs from its previous local output, so original
 The prior 72/128 and all maintenance/promotion/restart captures retain their
 historical identities. This maintenance package still awards zero.
 
+The later [passive notice packet](next_turn_notice_observation_closeout.md)
+measures four complete original host pairs, all matching, with zero credit and
+no production SDK change. The older missing cold warning does not recur;
+its exact timing cause remains unresolved and the latest full score stays 71/128.
+
 This is the historical zero-credit maintenance closeout. Subsequent work is
 recorded separately in the [promotion apply/reconciliation closeout](promotion_apply_reconcile_closeout.md):
 its fresh integrated baseline verifies 64/128 conditions. That later evidence

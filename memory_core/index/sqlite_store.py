@@ -19,6 +19,7 @@ from typing import Any, TypeVar
 from memory_core.cancellation import CancellationSignal
 from memory_core.tools.deadline import MemorySearchDeadlineControl
 from memory_core.config import MemoryConfig
+from memory_core.project_name import PACKAGE_NAME
 from memory_core.consolidation.artifact_provenance import MemoryArtifactProvenanceStore
 from memory_core.consolidation.origins import IndexRevisionFence, MemoryIndexRevisionConflictError
 from memory_core.embeddings.base import EmbeddingProvider
@@ -125,6 +126,7 @@ CHUNK_TOKENS = 400
 CHUNK_OVERLAP = 80
 # memory-core always indexes memory files and session transcripts.
 CONFIGURED_SOURCES = ("memory", "sessions")
+_INDEX_MUTATION_TABLE = f"{PACKAGE_NAME}_index_mutation_state"
 # Native src/agents/memory-search.ts DEFAULT_CACHE_MAX_ENTRIES.
 EMBEDDING_CACHE_MAX_ENTRIES = 50_000
 
@@ -365,20 +367,20 @@ class SQLiteMemoryStore:
         an explicitly supplied origins fence retain their separate meanings.
         """
         db.execute(
-            "CREATE TABLE IF NOT EXISTS memory_core_index_mutation_state ("
+            f"CREATE TABLE IF NOT EXISTS {_INDEX_MUTATION_TABLE} ("
             "id INTEGER PRIMARY KEY CHECK (id = 1), revision INTEGER NOT NULL)"
         )
-        db.execute("INSERT OR IGNORE INTO memory_core_index_mutation_state VALUES (1, 0)")
+        db.execute(f"INSERT OR IGNORE INTO {_INDEX_MUTATION_TABLE} VALUES (1, 0)")
         for table in ("chunks", INDEX_SOURCES_TABLE):
             for event in ("insert", "update", "delete"):
                 db.execute(
                     f"CREATE TRIGGER IF NOT EXISTS {table}_mutation_after_{event} "
                     f"AFTER {event.upper()} ON {table} BEGIN "
-                    "UPDATE memory_core_index_mutation_state SET revision=revision+1 WHERE id=1; END"
+                    f"UPDATE {_INDEX_MUTATION_TABLE} SET revision=revision+1 WHERE id=1; END"
                 )
 
     def _row_mutation_revision(self, *, db: sqlite3.Connection) -> int:
-        row = db.execute("SELECT revision FROM memory_core_index_mutation_state WHERE id=1").fetchone()
+        row = db.execute(f"SELECT revision FROM {_INDEX_MUTATION_TABLE} WHERE id=1").fetchone()
         if row is None or type(row[0]) is not int or abs(row[0]) > 2 ** 53 - 1:
             raise RuntimeError("Memory index mutation revision is missing or invalid")
         return row[0]

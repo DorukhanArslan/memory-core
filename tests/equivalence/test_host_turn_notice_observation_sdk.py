@@ -1,6 +1,7 @@
 """Forwarding/closure-only tests; no real SDK or Native host is executed."""
 import itertools
 from concurrent.futures import ThreadPoolExecutor
+import linecache
 from types import SimpleNamespace
 
 import pytest
@@ -163,3 +164,29 @@ def test_reference_bookkeeping_preserves_concurrent_shared_and_distinct_identiti
     assert len({shared_ref for shared_ref, _ in returned}) == 1
     assert len({distinct_ref for _, distinct_ref in returned}) == len(distinct)
     assert len({row["ref"] for row in observer.data["references"]}) == len(observer.data["references"])
+
+
+@pytest.mark.parametrize("method", ["status", "_record_rebuild_request"])
+def test_event_caller_stack_never_looks_up_source_files(method, monkeypatch):
+    owner = Owner()
+    observer = _observer(owner)
+    calls = []
+    status = {"custom": {"automaticRebuildNotice": owner._automatic_rebuild_notice}}
+
+    def original():
+        calls.append(True)
+        return status if method == "status" else None
+
+    def forbid_source_lookup(*args, **kwargs):
+        raise AssertionError("Per-event source I/O is forbidden")
+
+    for name in ("checkcache", "getline", "getlines", "updatecache"):
+        monkeypatch.setattr(linecache, name, forbid_source_lookup)
+
+    result = observer._method_wrapper(method, original)()
+
+    assert result is (status if method == "status" else None)
+    assert calls == [True]
+    frames = observer.data["events"][0]["callerStack"]
+    assert frames and all(set(frame) == {"path", "line", "name", "qualname"} for frame in frames)
+    assert any(frame["name"] == "test_event_caller_stack_never_looks_up_source_files" for frame in frames)

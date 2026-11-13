@@ -31,6 +31,21 @@ MODEL = {"provider": "host-turn-barrier-offline-model", "model": "actual-result-
 _ABSENT = object()
 
 
+def _caller_frames():
+    """Read frame metadata only; traceback/linecache source lookup performs I/O."""
+    frame = sys._getframe(1)
+    rows = []
+    try:
+        while frame is not None:
+            code = frame.f_code
+            rows.append({"path": code.co_filename, "line": frame.f_lineno,
+                         "name": code.co_name, "qualname": code.co_qualname})
+            frame = frame.f_back
+    finally:
+        del frame
+    return rows
+
+
 class _NoticeObservations:
     """Reversible raw-only forwarding; no engine calls belong to this observer."""
 
@@ -91,7 +106,7 @@ class _NoticeObservations:
         entered.update(callId=call["callId"], originalFunctionRef=call["originalFunctionRef"],
                        parentSynchronousCallId=call["parentSynchronousCallId"])
         if method in {"status", "_record_rebuild_request"}:
-            entered["callerStack"] = traceback.format_stack()
+            entered["callerStack"] = _caller_frames()
         self.data["calls"].append(call)
         self._local.calls = (*stack, call["callId"])
         return call
@@ -240,7 +255,11 @@ class _NoticeObservations:
         for value, row in self._objects.values():
             if row["kind"] == "exception":
                 row["error"] = {"name": type(value).__name__, "message": str(value),
+                                "module": type(value).__module__, "arguments": _plain(value.args),
                                 "traceback": "".join(traceback.format_exception(value))}
+                for name in ("sqlite_errorcode", "sqlite_errorname", "errno", "filename", "filename2"):
+                    if hasattr(value, name):
+                        row["error"][name] = getattr(value, name)
 
 
 async def _run_host(request):

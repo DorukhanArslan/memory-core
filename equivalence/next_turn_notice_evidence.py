@@ -353,6 +353,86 @@ def _native(observed, calls, events, raw):
             "warningPolicyChanged": False, "acceptancePointsAwarded": 0}
 
 
+def _writer_overlap_ids(call, writers):
+    return [other["callId"] for other in writers if other["callId"] != call["callId"]
+            and other["beforeNotice"]["noticeRef"] == call["beforeNotice"]["noticeRef"]
+            and call["enterSequence"] < other["returnSequence"]
+            and other["enterSequence"] < call["returnSequence"]]
+
+
+def _sdk_notice_chain(observed, calls, refs, raw):
+    events = _index(observed["events"], "sequence", "SDK live notice event clock")
+    installed = events[observed["installSequence"]]
+    manager, notice = observed["managerRef"], installed["noticeRef"]
+    require(installed["method"] == "observer" and installed["phase"] == "installed"
+            and manager in refs and notice in refs and refs[manager]["kind"] == "manager",
+            "notice SDK actual manager/live notice installation is detached")
+    initial = _scalar(installed["noticeScalar"])
+    for event in events.values():
+        require(event["managerRef"] == manager and event["noticeRef"] == notice,
+                "notice SDK live owner was replaced or inferred from equal scalar values")
+    writers, failed_writers, overlaps = [], [], []
+    writer_calls = [call for call in calls.values() if call["method"] == "_record_rebuild_request"]
+    producers = {}
+    for call in calls.values():
+        require(call["managerRef"] == manager
+                and call["beforeNotice"]["noticeRef"] == call["afterNotice"]["noticeRef"] == notice,
+                "notice SDK original call used another actual manager/live notice")
+        if call["method"] == "_record_rebuild_request":
+            if "errorRef" in call:
+                failed_writers.append(call["callId"])
+            else:
+                concurrent = _writer_overlap_ids(call, writer_calls)
+                if concurrent:
+                    overlaps.append({"callId": call["callId"], "otherCallIds": concurrent,
+                                     "causeStatus": "inconclusive-overlapping-writer-observers"})
+                else:
+                    require(call["afterNotice"]["noticeScalar"]["sequence"]
+                            == call["beforeNotice"]["noticeScalar"]["sequence"] + 1,
+                            "notice SDK original rebuild writer did not advance its same live notice exactly once")
+                writers.append(call)
+        if call["method"] == "status" and "errorRef" not in call:
+            returned = call["statusReturn"]
+            value = _scalar(returned["noticeScalar"])
+            require(returned["statusRef"] == call["returnRef"] and returned["statusRef"] in refs
+                    and returned["customRef"] in refs and returned["noticeRef"] in refs
+                    and type(returned["noticeIsOwnerObject"]) is bool
+                    and returned["noticeIsOwnerObject"] is (returned["noticeRef"] == notice),
+                    "notice SDK original status return/notice identity is detached")
+            if returned["noticeIsOwnerObject"]:
+                require(call["beforeNotice"]["noticeScalar"]["sequence"] <= value["sequence"]
+                        <= call["afterNotice"]["noticeScalar"]["sequence"],
+                        "notice SDK status live scalar contradicts its original same-thread read order")
+            require(returned["statusRef"] not in producers,
+                    "notice SDK status identity was reused for distinct original returns")
+            producers[returned["statusRef"]] = call
+    final = _one(events.values(), lambda row: row.get("hostEvent") == "close-return",
+                 "SDK actual post-close notice checkpoint is missing")
+    original_close = _one(raw["events"], lambda row: row["sequence"] == final["hostEventSequence"],
+                          "SDK post-close notice lacks its actual original host event")
+    require(original_close["event"] == "close-return"
+            and final["sequence"] > original_close["sequence"],
+            "notice SDK final live counter was sampled before original close returned")
+    final_scalar = _scalar(final["noticeScalar"])
+    require(all(initial["sequence"] <= _scalar(event["noticeScalar"])["sequence"] <= final_scalar["sequence"]
+                for event in events.values()),
+            "notice SDK live counter history contradicts original installation/post-close state")
+    # Check conservation only at actual post-close, after already-admitted work
+    # settles. Intermediate lock-free scalar reads can straddle a real writer.
+    if not failed_writers:
+        require(final_scalar["sequence"] == initial["sequence"] + len(writers),
+                "notice SDK live counter changed without a retained original rebuild writer")
+    publication_methods = {"reindex", "reindex_sources", "publish_prepared_index", "_run_memory_publication"}
+    failures = [call["callId"] for call in calls.values()
+                if call.get("publicationErrorRef") or call["method"] in publication_methods and call.get("errorRef")]
+    return producers, {"managerRef": manager, "liveNoticeRef": notice,
+        "writerCallIds": [call["callId"] for call in writers], "failedWriterCallIds": failed_writers,
+        "overlappingWriterIntervals": overlaps,
+        "counterConservation": "inconclusive-original-writer-error" if failed_writers else "verified-at-original-close",
+        "publicationFailureCallIds": failures,
+        "publicationCauseStatus": "inconclusive-real-publication-failure" if failures or failed_writers else "no-recorded-publication-failure"}
+
+
 def _sdk(observed, calls, raw):
     refs = _index(observed["references"], "ref", "SDK actual object references")
     require(len({row["objectId"] for row in refs.values()}) == len(refs),
@@ -363,6 +443,7 @@ def _sdk(observed, calls, raw):
             and all(row["restoredExactOwnDescriptor"] is True
                     and (not row["inherited"] or row["observerInstanceAttributeAbsent"] is True)
                     for row in receipts.values()), "notice SDK observer descriptors were not restored")
+    producers, live_chain = _sdk_notice_chain(observed, calls, refs, raw)
     captures = _index(observed["captures"], "captureCallId", "SDK exact original closure captures")
     require(captures, "notice SDK original closure captures missing")
     facts = []
@@ -379,6 +460,12 @@ def _sdk(observed, calls, raw):
                 and call["observedReaderRef"] == exposed and call["args"]["statusRef"] == capture["statusRef"],
                 "notice SDK exact closure/exposed forwarding identity was substituted")
         _scalar(capture["noticeScalar"])
+        producer = producers.get(capture["statusRef"])
+        require(producer is not None and producer["returnSequence"] < call["enterSequence"]
+                and producer["statusReturn"]["noticeRef"] == capture["noticeRef"]
+                and producer["statusReturn"]["noticeIsOwnerObject"] is capture["noticeIsOwnerObject"]
+                and type(capture["noticeIsOwnerObject"]) is bool,
+                "notice SDK exact closure capture did not consume its actual original status/notice return")
         readers = [row for row in calls.values() if row["method"] == "notice-reader" and row["captureCallId"] == key]
         require(readers, "notice SDK original warning reader was never actually invoked")
         for reading in readers:
@@ -401,6 +488,8 @@ def _sdk(observed, calls, raw):
             facts.append({"captureCallId": key, "readerCallId": reading["callId"],
                           "noticeRef": capture["noticeRef"], "capturedSequence": capture["capturedSequence"],
                           "noticeIsOwnerObject": capture["noticeIsOwnerObject"],
+                          "producerStatusCallId": producer["callId"],
+                          "publicationCauseStatus": live_chain["publicationCauseStatus"],
                           "returnPrimitive": reading.get("returnPrimitive"),
                           "causeStatus": "exact-stable-original-reader-rule" if stable else "inconclusive-concurrent-notice-write"})
     for call in calls.values():
@@ -411,7 +500,8 @@ def _sdk(observed, calls, raw):
                         "SDK call did not name a unique declared original method")
             require(call["originalFunctionRef"] == hook["originalFunctionRef"],
                     "notice SDK invocation did not forward a declared original function")
-    return {"validated": True, "captureFacts": facts, "warningPolicyChanged": False, "acceptancePointsAwarded": 0}
+    return {"validated": True, "captureFacts": facts, "liveNoticeChain": live_chain,
+            "warningPolicyChanged": False, "acceptancePointsAwarded": 0}
 
 
 def validate_observations(case, raw, *, native, approved_reference=None, approved_runtime=None):

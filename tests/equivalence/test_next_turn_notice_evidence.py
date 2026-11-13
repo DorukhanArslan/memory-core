@@ -315,9 +315,85 @@ def test_sdk_reader_exception_delegates_once_and_preserves_the_real_return(sdk_a
     _reject_observation(capture, False)
 
 
+@pytest.mark.parametrize("attack", ["missing-return", "borrowed-status-producer", "borrowed-notice", "changed-status-scalar"])
+def test_sdk_original_status_return_produces_the_exact_capture_input(sdk_actual, attack):
+    capture = deepcopy(sdk_actual)
+    notice = _notice(capture, False)
+    captured = notice["captures"][0]
+    status = next(row for row in notice["calls"] if row["method"] == "status"
+                  and row["returnRef"] == captured["statusRef"])
+    returned = status["statusReturn"]
+    if attack == "missing-return":
+        del status["statusReturn"]
+    elif attack == "borrowed-status-producer":
+        # Reseal the producer's return receipt, while keeping the independently
+        # captured closure/status argument unchanged. Another real dictionary
+        # cannot stand in for the status actually passed to the original helper.
+        replacement = returned["customRef"]
+        returned["statusRef"] = status["returnRef"] = replacement
+        event = next(row for row in notice["events"] if row["sequence"] == status["returnSequence"])
+        event["returnRef"] = replacement
+    elif attack == "borrowed-notice":
+        returned["noticeRef"] = returned["customRef"]
+    else:
+        returned["noticeScalar"]["sequence"] += 1
+    _reject_observation(capture, False)
+
+
+@pytest.mark.parametrize("attack", ["missing-real-writer", "borrowed-manager", "borrowed-notice", "zero-increment"])
+def test_sdk_notice_transition_requires_its_same_owner_original_writer(sdk_actual, attack):
+    capture = deepcopy(sdk_actual)
+    notice = _notice(capture, False)
+    writer = next(row for row in notice["calls"] if row["method"] == "_record_rebuild_request")
+    receipts = [row for row in notice["events"] if row.get("callId") == writer["callId"]]
+    assert len(receipts) == 2
+    if attack == "missing-real-writer":
+        # Remove the call AND its paired events. Call-count/event-count and
+        # interval checks remain coherent; independent parent/status/reader/
+        # host checkpoint scalars still contain the actual observed transition.
+        assert not any(row.get("parentSynchronousCallId") == writer["callId"] for row in notice["calls"])
+        notice["calls"].remove(writer)
+        notice["events"] = [row for row in notice["events"] if row not in receipts]
+    elif attack == "borrowed-manager":
+        replacement = notice["captures"][0]["statusRef"]
+        writer["managerRef"] = replacement
+        for row in receipts:
+            row["managerRef"] = replacement
+    elif attack == "borrowed-notice":
+        # Keep the before/after event snapshots coherent, but attach the real
+        # +1 scalar receipts to a different already registered dictionary.
+        status = next(row for row in notice["calls"] if row["method"] == "status")
+        replacement = status["statusReturn"]["customRef"]
+        writer["beforeNotice"]["noticeRef"] = writer["afterNotice"]["noticeRef"] = replacement
+        for row in receipts:
+            row["noticeRef"] = replacement
+    else:
+        writer["afterNotice"]["noticeScalar"]["sequence"] = writer["beforeNotice"]["noticeScalar"]["sequence"]
+        event = next(row for row in receipts if row["phase"] == "return")
+        event["noticeScalar"] = deepcopy(writer["afterNotice"]["noticeScalar"])
+    _reject_observation(capture, False)
+
+
 @pytest.mark.parametrize("case", CASES, ids=lambda case: case["id"])
 def test_real_pair_custody_does_not_require_matching_warning_outcomes(case):
     native = _load(case, True)
     sdk = _load(case, False)
     facts = _guard().validate_pair(case, native[1], sdk[1], native[2], sdk[2], approved_node=_trusted_node())
     assert facts["validated"] is True and facts["acceptancePointsAwarded"] == 0
+
+
+def test_sdk_writer_race_bounds_keep_same_notice_and_allow_touching_intervals(sdk_actual):
+    original = next(row for row in _notice(sdk_actual, False)["calls"]
+                    if row["method"] == "_record_rebuild_request")
+    first, second = deepcopy(original), deepcopy(original)
+    first.update(enterSequence=original["enterSequence"] * 10,
+                 returnSequence=original["returnSequence"] * 10)
+    second.update(callId=original["callId"] + "-concurrent",
+                  enterSequence=first["enterSequence"] + 1,
+                  returnSequence=first["returnSequence"] + 1)
+    assert _guard()._writer_overlap_ids(first, [first, second]) == [second["callId"]]
+    second["enterSequence"] = first["returnSequence"]
+    assert _guard()._writer_overlap_ids(first, [first, second]) == []
+    second["enterSequence"] = first["enterSequence"] + 1
+    second["beforeNotice"]["noticeRef"] = "another-original-notice"
+    assert _guard()._writer_overlap_ids(first, [first, second]) == []

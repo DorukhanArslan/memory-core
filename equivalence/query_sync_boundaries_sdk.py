@@ -141,6 +141,8 @@ def run_query_sync_boundaries_sdk_host(request):
     from memory_core.config import MemoryConfig
     from memory_core.flags import FeatureFlags
     from memory_core.host.managed_index import ManagedSQLiteMemoryStore
+    from memory_core.consolidation.forget import plan_memory_index, purge_memory_index
+    from memory_core.index.identity import MEMORY_INDEX_META_KEY, MEMORY_INDEX_META_TABLE
     from memory_core.index.sqlite_store import SQLiteMemoryStore
     from memory_core.runtime_identity import OPENCLAW_COMPAT_RUNTIME_IDENTITY
     from memory_core.session_catalog import MemorySessionCatalog
@@ -191,11 +193,13 @@ def run_query_sync_boundaries_sdk_host(request):
         "originalSearchCalls": [], "methodCalls": [], "backgroundCalls": [], "readAdmissions": [],
         "originalBaseCalls": [], "sqlStatements": [], "publicationWrites": [], "publicationCalls": [],
         "snapshots": [], "sourceStages": {}, "toolCalls": {}, "toolBindings": [],
-        "syncCalls": {}, "faults": [], "sqlGates": [], "schedule": [], "counterDerivations": {}}
+        "syncCalls": {}, "faults": [], "sqlGates": [], "schedule": [], "counterDerivations": {},
+        "functionalInterleavings": [], "fixtureErrors": [], "metadataFixtures": []}
     sequence, phase = 0, "setup"
     observation_lock, local = threading.RLock(), threading.local()
     owners, owner_refs, pending_searches = [], {}, []
     active_owner, fault, gate = None, None, None
+    conflict_fixture = None
     calls, call_entered, call_futures = {}, {}, {}
     executor = ThreadPoolExecutor(max_workers=4, thread_name_prefix="query-sync-fixture-caller")
     searches, syncs = {}, {}
@@ -249,6 +253,7 @@ def run_query_sync_boundaries_sdk_host(request):
 
     base_functions = {SQLiteMemoryStore.reindex.__code__: SQLiteMemoryStore.reindex,
                       SQLiteMemoryStore.reindex_sources.__code__: SQLiteMemoryStore.reindex_sources}
+    publisher_code = SQLiteMemoryStore.publish_prepared_index.__code__
     previous_profile, previous_thread_profile = sys.getprofile(), threading.getprofile()
     if previous_profile is not None or previous_thread_profile is not None:
         raise RuntimeError("The protected SDK process already has an unexpected call profiler")
@@ -260,6 +265,10 @@ def run_query_sync_boundaries_sdk_host(request):
             for function in base_functions.values()]}
 
     def profile(frame, name, returned):
+        if frame.f_code is publisher_code and name == "call":
+            publisher = frame.f_locals.get("self")
+            if id(publisher) in owner_refs and conflict_fixture is not None:
+                functional_purge(publisher, frame.f_locals)
         function = base_functions.get(frame.f_code)
         owner_id = owner_refs.get(id(frame.f_locals.get("self"))) if function is not None else None
         if owner_id is None or name not in {"call", "return"}:
@@ -294,9 +303,11 @@ def run_query_sync_boundaries_sdk_host(request):
             def traced(statement):
                 stack = getattr(local, "bases", ())
                 row = event("original-sql-statement", ownerId=owner_id, connectionId=connection_id,
-                    statement=statement, baseCallId=stack[-1][1]["id"] if stack else None)
+                    statement=statement, baseCallId=stack[-1][1]["id"] if stack else None,
+                    fixtureAction=getattr(local, "fixture_action", None))
                 raw["sqlStatements"].append(row)
-                if gate is not None and stack and statement.strip().upper() == "BEGIN IMMEDIATE":
+                if (gate is not None and stack and not getattr(local, "fixture_action", None)
+                        and statement.strip().upper() == "BEGIN IMMEDIATE"):
                     gate.observe(row)
 
             db.set_trace_callback(traced)
@@ -319,6 +330,12 @@ def run_query_sync_boundaries_sdk_host(request):
                     "baseCallId": stack[-1][1]["id"] if stack else None,
                     "receiverIsExactObservedOwner": original.__self__ is owner}
                 raw[bucket].append(call)
+                if name == "publish_prepared_index":
+                    # The prepared revision contains nested source/chunk
+                    # dataclasses. Preserve them with the existing full private
+                    # codec rather than classifying them as opaque arguments.
+                    call["arguments"] = {"prepared": _search_result_custody(args[0]),
+                                         "expectedRevision": args[1]}
                 if name in {"reindex", "search"}:
                     label = getattr(local, "sync" if name == "reindex" else "tool", None)
                     if label in call_entered:
@@ -475,6 +492,73 @@ def run_query_sync_boundaries_sdk_host(request):
         raw["sourceMutation"] = {"specification": deepcopy(specification), "enterSeq": entered["sequence"],
             "returnSeq": event("source-mutation-return")["sequence"], "sdkNotification": "actual-source-detection"}
 
+    def functional_purge(owner, publisher_arguments):
+        """A declared rival original publication, distinct from passive tracing.
+
+        Python disables recursive profile callbacks during this callback. Record
+        the real fixture API calls and complete SQL before/after explicitly;
+        never infer them from missing nested call events or alter the original
+        prepared publisher's return/error.
+        """
+        paths = conflict_fixture["paths"]
+        number = len(raw["functionalInterleavings"])
+        if number >= len(paths):
+            return
+        marker = paths[number]
+        owner_id = owner_refs[id(owner)]
+        action = {"number": number, "kind": "declared-original-rival-source-purge",
+            "ownerId": owner_id, "markerPath": marker,
+            "trigger": {"module": SQLiteMemoryStore.publish_prepared_index.__module__,
+                "qualname": SQLiteMemoryStore.publish_prepared_index.__qualname__,
+                "sourceSha256": hashlib.sha256(Path(publisher_code.co_filename).read_bytes()).hexdigest(),
+                "expectedRevision": publisher_arguments["expected_revision"],
+                "prepared": _search_result_custody(publisher_arguments["prepared"])},
+            "originalFunction": {"module": purge_memory_index.__module__, "qualname": purge_memory_index.__qualname__,
+                "file": purge_memory_index.__code__.co_filename,
+                "sourceSha256": hashlib.sha256(Path(purge_memory_index.__code__.co_filename).read_bytes()).hexdigest()},
+            "enterSeq": event("functional-rival-publication-enter", ownerId=owner_id, markerPath=marker)["sequence"],
+            "profileRecursionIsDisabledByPython": True, "receiverIsExactObservedOwner": True}
+        raw["functionalInterleavings"].append(action)
+        local.fixture_action = f"rival-purge-{number}"
+        try:
+            physical(f"rival-{number}-before")
+            action["revisionBefore"] = owner.index_revision()
+            plan = plan_memory_index(owner, agent_id=value["identity"]["agentId"],
+                changed_paths={marker}, removed_paths={marker}, session_ids=set(), excluded_session_ids=set(),
+                matches_memory=lambda text: False)
+            action["plan"] = _search_result_custody(plan)
+            action["planFunction"] = {"module": plan_memory_index.__module__, "qualname": plan_memory_index.__qualname__,
+                "changedPaths": [marker], "removedPaths": [marker], "sessionIds": [], "excludedSessionIds": []}
+            action["returned"] = purge_memory_index(owner, plan)
+            action["revisionAfter"] = owner.index_revision()
+            physical(f"rival-{number}-after")
+            if action["returned"] is not True or not plan.chunks or action["revisionAfter"] != action["revisionBefore"] + 1:
+                raise RuntimeError("The declared rival publication did not purge an actual indexed marker generation")
+        except BaseException as error:
+            action["error"] = _original_error(error)
+            raw["fixtureErrors"].append({"operation": "functional-rival-source-purge", **_original_error(error)})
+        finally:
+            action["returnSeq"] = event("functional-rival-publication-return", ownerId=owner_id, markerPath=marker)["sequence"]
+            local.fixture_action = None
+
+    def newer_empty_format(specification):
+        if any(not future.done() for future in call_futures.values()):
+            raise RuntimeError("A declared empty-format fixture cannot overlap an active public call")
+        entered = event("physical-newer-format-enter", specification=deepcopy(specification))
+        before = active_owner.read_index_meta()
+        with closing(active_owner.connect()) as db:
+            if db.execute("SELECT 1 FROM chunks LIMIT 1").fetchone() is not None:
+                raise RuntimeError("The newer-format fixture requires an actually empty index")
+        current = active_owner._build_index_meta(None, provider=None, provider_key=active_owner._provider_identities()[0]["providerKey"])
+        metadata = {**current, specification["field"]: specification["version"]}
+        with closing(active_owner.connect()) as db, db:
+            db.execute("BEGIN IMMEDIATE")
+            db.execute(f"INSERT OR REPLACE INTO {MEMORY_INDEX_META_TABLE}(key,value) VALUES (?,?)",
+                       (MEMORY_INDEX_META_KEY, _serialized(metadata)))
+        raw["metadataFixtures"].append({"specification": deepcopy(specification), "before": before,
+            "currentMetadataFromOriginalBuilder": current, "written": metadata, "after": active_owner.read_index_meta(),
+            "enterSeq": entered["sequence"], "returnSeq": event("physical-newer-format-return")["sequence"]})
+
     def dispatch_counts():
         commits = [call for call in raw["publicationCalls"] if "error" not in call and "returned" in call]
         raw["counterDerivations"] = {"managerSearchCallIds": [call["id"] for call in raw["originalSearchCalls"]],
@@ -543,6 +627,12 @@ def run_query_sync_boundaries_sdk_host(request):
                 fault.receipt["removeReturnSeq"] = event("physical-fault-remove-return")["sequence"]
             elif operation == "mutate-source":
                 mutate(step.get("specification", value.get("sourceMutation")))
+            elif operation == "arm-revision-conflict":
+                conflict_fixture = deepcopy(value["revisionConflict"])
+                raw["revisionConflictFixture"] = {"specification": conflict_fixture,
+                    "armedSeq": event("functional-rival-publication-armed")["sequence"]}
+            elif operation == "set-newer-empty-format":
+                newer_empty_format(value["newerFormat"])
             elif operation == "capture-physical-sql":
                 physical(step["label"])
             elif operation == "capture-sources":
@@ -557,6 +647,8 @@ def run_query_sync_boundaries_sdk_host(request):
             raise RuntimeError("A prescribed independent caller was never awaited by its frozen schedule")
         if any(not owner.closed for owner in owners):
             raise RuntimeError("A frozen boundary schedule omitted an original owner close")
+        if raw["fixtureErrors"]:
+            raise RuntimeError("A declared functional fixture failed; original public outputs remain retained")
         # Complete public envelopes and original streams are already durable.
         for call, returned in pending_searches:
             call.update(_search_return_custody(returned))

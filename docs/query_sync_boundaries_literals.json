@@ -1,0 +1,1258 @@
+{
+  "kind": "query-sync-boundaries-acceptance-literals",
+  "acceptancePointsAwarded": 0,
+  "cases": [
+    {
+      "id": "query-sync-boundaries-clean-cold-repeat",
+      "requirement": "indexing.query-sync",
+      "operation": "query-sync-boundaries-runtime",
+      "covers": [
+        "indexing.query-sync.boundaries"
+      ],
+      "input": {
+        "profile": "provider-none-local-memory-on-search-query-sync-boundaries",
+        "nowMs": 1794268800000,
+        "initialSourceMtimeMs": 1794268800000,
+        "identity": {
+          "agentId": "main"
+        },
+        "config": {
+          "memory": {
+            "citations": "off",
+            "search": {
+              "enabled": true,
+              "provider": "none",
+              "fallback": "none",
+              "sources": [
+                "memory"
+              ],
+              "rememberAcrossConversations": false,
+              "experimental": {
+                "sessionMemory": false
+              },
+              "extraPaths": [],
+              "store": {
+                "vector": {
+                  "enabled": false
+                }
+              },
+              "query": {
+                "maxResults": 5,
+                "minScore": 0
+              }
+            }
+          }
+        },
+        "toolOptions": {
+          "agentId": "main",
+          "oneShotCliRun": false
+        },
+        "timers": "Date-only paired wall clock; all actual monotonic/watch/SQLite retry timers unchanged; no artificial delay or timer drain",
+        "counterWindow": "First original foreground acquisition through its first original close return; include seed and genuine maintenanceSource descendants. Reopened owner only supplies whole public recall/SQL/source verification; its startup counters remain raw.",
+        "syncApiContract": "Original Native public manager.sync and SDK managed reindex explicit CLI-force counterpart. Common settlement/status and actual typed-conflict boolean only; original void/int/whole error APIs retained raw, no raw API identity claimed.",
+        "producerUnit": "Actual newly dispatched generation attempt: Native original exact-owner syncOutcomes.track(operation,true), SDK actual original SQLiteMemoryStore.reindex/reindex_sources entry after managed admission. Private runSync/_reindex_locked/worker/SQL/per-file totals remain raw.",
+        "committedGenerationUnit": "A selected primary-lifetime generation with at least one genuine visible publication commit, maximum one per actual producer attempt; exclude fixture rival publications and private shadow preparation commits.",
+        "sourcesPolicy": "All actual declared/discovered source entries retained whole; source content changes only in declared steps.",
+        "comparisonPolicy": {
+          "wholeActualPublicToolDetails": true,
+          "wholeOriginalEnvelopesAndErrorsRaw": true,
+          "numericTolerance": null,
+          "expectedResultsInInputs": false
+        },
+        "scenario": "clean-cold-repeat",
+        "initialFiles": {
+          "memory/topics/note.md": "# Boundary note\n\nThe current marker is boundarycedar642.\n"
+        },
+        "queries": {
+          "first": {
+            "query": "boundarycedar642",
+            "maxResults": 5,
+            "minScore": 0,
+            "corpus": "memory"
+          },
+          "repeat": {
+            "query": "boundarycedar642",
+            "maxResults": 5,
+            "minScore": 0,
+            "corpus": "memory"
+          }
+        },
+        "syncs": {},
+        "steps": [
+          {
+            "operation": "prepare-real-source-files"
+          },
+          {
+            "operation": "acquire-original-default-owner"
+          },
+          {
+            "operation": "public-memory-search",
+            "label": "first"
+          },
+          {
+            "operation": "public-memory-search",
+            "label": "repeat"
+          },
+          {
+            "operation": "original-owner-close"
+          },
+          {
+            "operation": "read-physical-sql-and-source-state",
+            "label": "afterPrimaryClose"
+          }
+        ],
+        "sourceMutation": null
+      }
+    },
+    {
+      "id": "query-sync-boundaries-warm-force-unchanged",
+      "requirement": "indexing.query-sync",
+      "operation": "query-sync-boundaries-runtime",
+      "covers": [
+        "indexing.query-sync.boundaries"
+      ],
+      "input": {
+        "profile": "provider-none-local-memory-on-search-query-sync-boundaries",
+        "nowMs": 1794268800000,
+        "initialSourceMtimeMs": 1794268800000,
+        "identity": {
+          "agentId": "main"
+        },
+        "config": {
+          "memory": {
+            "citations": "off",
+            "search": {
+              "enabled": true,
+              "provider": "none",
+              "fallback": "none",
+              "sources": [
+                "memory"
+              ],
+              "rememberAcrossConversations": false,
+              "experimental": {
+                "sessionMemory": false
+              },
+              "extraPaths": [],
+              "store": {
+                "vector": {
+                  "enabled": false
+                }
+              },
+              "query": {
+                "maxResults": 5,
+                "minScore": 0
+              }
+            }
+          }
+        },
+        "toolOptions": {
+          "agentId": "main",
+          "oneShotCliRun": false
+        },
+        "timers": "Date-only paired wall clock; all actual monotonic/watch/SQLite retry timers unchanged; no artificial delay or timer drain",
+        "counterWindow": "First original foreground acquisition through its first original close return; include seed and genuine maintenanceSource descendants. Reopened owner only supplies whole public recall/SQL/source verification; its startup counters remain raw.",
+        "syncApiContract": "Original Native public manager.sync and SDK managed reindex explicit CLI-force counterpart. Common settlement/status and actual typed-conflict boolean only; original void/int/whole error APIs retained raw, no raw API identity claimed.",
+        "producerUnit": "Actual newly dispatched generation attempt: Native original exact-owner syncOutcomes.track(operation,true), SDK actual original SQLiteMemoryStore.reindex/reindex_sources entry after managed admission. Private runSync/_reindex_locked/worker/SQL/per-file totals remain raw.",
+        "committedGenerationUnit": "A selected primary-lifetime generation with at least one genuine visible publication commit, maximum one per actual producer attempt; exclude fixture rival publications and private shadow preparation commits.",
+        "sourcesPolicy": "All actual declared/discovered source entries retained whole; source content changes only in declared steps.",
+        "comparisonPolicy": {
+          "wholeActualPublicToolDetails": true,
+          "wholeOriginalEnvelopesAndErrorsRaw": true,
+          "numericTolerance": null,
+          "expectedResultsInInputs": false
+        },
+        "scenario": "warm-force-unchanged",
+        "initialFiles": {
+          "memory/topics/note.md": "# Boundary note\n\nThe current marker is boundaryamber753.\n"
+        },
+        "queries": {
+          "seed": {
+            "query": "boundaryamber753",
+            "maxResults": 5,
+            "minScore": 0,
+            "corpus": "memory"
+          },
+          "afterForce": {
+            "query": "boundaryamber753",
+            "maxResults": 5,
+            "minScore": 0,
+            "corpus": "memory"
+          }
+        },
+        "syncs": {
+          "force": {
+            "reason": "cli",
+            "force": true
+          }
+        },
+        "steps": [
+          {
+            "operation": "prepare-real-source-files"
+          },
+          {
+            "operation": "acquire-original-default-owner"
+          },
+          {
+            "operation": "public-memory-search",
+            "label": "seed"
+          },
+          {
+            "operation": "original-sync",
+            "label": "force",
+            "params": {
+              "reason": "cli",
+              "force": true
+            }
+          },
+          {
+            "operation": "public-memory-search",
+            "label": "afterForce"
+          },
+          {
+            "operation": "original-owner-close"
+          },
+          {
+            "operation": "read-physical-sql-and-source-state",
+            "label": "afterPrimaryClose"
+          }
+        ],
+        "sourceMutation": null
+      }
+    },
+    {
+      "id": "query-sync-boundaries-joined-force-and-query",
+      "requirement": "indexing.query-sync",
+      "operation": "query-sync-boundaries-runtime",
+      "covers": [
+        "indexing.query-sync.boundaries"
+      ],
+      "input": {
+        "profile": "provider-none-local-memory-on-search-query-sync-boundaries",
+        "nowMs": 1794268800000,
+        "initialSourceMtimeMs": 1794268800000,
+        "identity": {
+          "agentId": "main"
+        },
+        "config": {
+          "memory": {
+            "citations": "off",
+            "search": {
+              "enabled": true,
+              "provider": "none",
+              "fallback": "none",
+              "sources": [
+                "memory"
+              ],
+              "rememberAcrossConversations": false,
+              "experimental": {
+                "sessionMemory": false
+              },
+              "extraPaths": [],
+              "store": {
+                "vector": {
+                  "enabled": false
+                }
+              },
+              "query": {
+                "maxResults": 5,
+                "minScore": 0
+              }
+            }
+          }
+        },
+        "toolOptions": {
+          "agentId": "main",
+          "oneShotCliRun": false
+        },
+        "timers": "Date-only paired wall clock; all actual monotonic/watch/SQLite retry timers unchanged; no artificial delay or timer drain",
+        "counterWindow": "First original foreground acquisition through its first original close return; include seed and genuine maintenanceSource descendants. Reopened owner only supplies whole public recall/SQL/source verification; its startup counters remain raw.",
+        "syncApiContract": "Original Native public manager.sync and SDK managed reindex explicit CLI-force counterpart. Common settlement/status and actual typed-conflict boolean only; original void/int/whole error APIs retained raw, no raw API identity claimed.",
+        "producerUnit": "Actual newly dispatched generation attempt: Native original exact-owner syncOutcomes.track(operation,true), SDK actual original SQLiteMemoryStore.reindex/reindex_sources entry after managed admission. Private runSync/_reindex_locked/worker/SQL/per-file totals remain raw.",
+        "committedGenerationUnit": "A selected primary-lifetime generation with at least one genuine visible publication commit, maximum one per actual producer attempt; exclude fixture rival publications and private shadow preparation commits.",
+        "sourcesPolicy": "All actual declared/discovered source entries retained whole; source content changes only in declared steps.",
+        "comparisonPolicy": {
+          "wholeActualPublicToolDetails": true,
+          "wholeOriginalEnvelopesAndErrorsRaw": true,
+          "numericTolerance": null,
+          "expectedResultsInInputs": false
+        },
+        "scenario": "joined-force-and-query",
+        "initialFiles": {
+          "memory/topics/note.md": "# Boundary note\n\nThe current marker is boundarymaple864.\n"
+        },
+        "queries": {
+          "duringSync": {
+            "query": "boundarymaple864",
+            "maxResults": 5,
+            "minScore": 0,
+            "corpus": "memory"
+          }
+        },
+        "syncs": {
+          "forceLeader": {
+            "reason": "cli",
+            "force": true
+          },
+          "forceJoiner": {
+            "reason": "cli",
+            "force": true
+          }
+        },
+        "steps": [
+          {
+            "operation": "prepare-real-source-files"
+          },
+          {
+            "operation": "acquire-original-default-owner"
+          },
+          {
+            "operation": "arm-sql-gate"
+          },
+          {
+            "operation": "start-sync",
+            "label": "forceLeader",
+            "params": {
+              "reason": "cli",
+              "force": true
+            }
+          },
+          {
+            "operation": "await-real-publication-pending",
+            "label": "forceLeader"
+          },
+          {
+            "operation": "start-sync",
+            "label": "forceJoiner",
+            "params": {
+              "reason": "cli",
+              "force": true
+            }
+          },
+          {
+            "operation": "start-public-memory-search",
+            "label": "duringSync"
+          },
+          {
+            "operation": "await-joined-requests",
+            "leader": "forceLeader",
+            "labels": [
+              "forceJoiner",
+              "duringSync"
+            ],
+            "meaning": "Actual original request entries while first producer remains unsettled. Joining itself is measured, not assumed or required as fixture feasibility on SDK."
+          },
+          {
+            "operation": "release-sql-gate"
+          },
+          {
+            "operation": "await-sync",
+            "label": "forceLeader"
+          },
+          {
+            "operation": "await-sync",
+            "label": "forceJoiner"
+          },
+          {
+            "operation": "await-public-memory-search",
+            "label": "duringSync"
+          },
+          {
+            "operation": "original-owner-close"
+          },
+          {
+            "operation": "read-physical-sql-and-source-state",
+            "label": "afterPrimaryClose"
+          }
+        ],
+        "sqliteGate": {
+          "kind": "actual-owned-sqlite-transaction",
+          "native": {
+            "target": "actual-resolved-database.reindex-lock.sqlite",
+            "transaction": "BEGIN EXCLUSIVE"
+          },
+          "sdk": {
+            "target": "actual-resolved-index",
+            "transaction": "BEGIN IMMEDIATE"
+          },
+          "dataMutation": false,
+          "proof": "Real helper transaction remains held while actual first producer is pending and later original request entries occur. No actor coalescing or synthetic future."
+        },
+        "sourceMutation": null
+      }
+    },
+    {
+      "id": "query-sync-boundaries-joined-failure-persistent-cold-recovery",
+      "requirement": "indexing.query-sync",
+      "operation": "query-sync-boundaries-runtime",
+      "covers": [
+        "indexing.query-sync.boundaries"
+      ],
+      "input": {
+        "profile": "provider-none-local-memory-on-search-query-sync-boundaries",
+        "nowMs": 1794268800000,
+        "initialSourceMtimeMs": 1794268800000,
+        "identity": {
+          "agentId": "main"
+        },
+        "config": {
+          "memory": {
+            "citations": "off",
+            "search": {
+              "enabled": true,
+              "provider": "none",
+              "fallback": "none",
+              "sources": [
+                "memory"
+              ],
+              "rememberAcrossConversations": false,
+              "experimental": {
+                "sessionMemory": false
+              },
+              "extraPaths": [],
+              "store": {
+                "vector": {
+                  "enabled": false
+                }
+              },
+              "query": {
+                "maxResults": 5,
+                "minScore": 0
+              }
+            }
+          }
+        },
+        "toolOptions": {
+          "agentId": "main",
+          "oneShotCliRun": false
+        },
+        "timers": "Date-only paired wall clock; all actual monotonic/watch/SQLite retry timers unchanged; no artificial delay or timer drain",
+        "counterWindow": "First original foreground acquisition through its first original close return; include seed and genuine maintenanceSource descendants. Reopened owner only supplies whole public recall/SQL/source verification; its startup counters remain raw.",
+        "syncApiContract": "Original Native public manager.sync and SDK managed reindex explicit CLI-force counterpart. Common settlement/status and actual typed-conflict boolean only; original void/int/whole error APIs retained raw, no raw API identity claimed.",
+        "producerUnit": "Actual newly dispatched generation attempt: Native original exact-owner syncOutcomes.track(operation,true), SDK actual original SQLiteMemoryStore.reindex/reindex_sources entry after managed admission. Private runSync/_reindex_locked/worker/SQL/per-file totals remain raw.",
+        "committedGenerationUnit": "A selected primary-lifetime generation with at least one genuine visible publication commit, maximum one per actual producer attempt; exclude fixture rival publications and private shadow preparation commits.",
+        "sourcesPolicy": "All actual declared/discovered source entries retained whole; source content changes only in declared steps.",
+        "comparisonPolicy": {
+          "wholeActualPublicToolDetails": true,
+          "wholeOriginalEnvelopesAndErrorsRaw": true,
+          "numericTolerance": null,
+          "expectedResultsInInputs": false
+        },
+        "scenario": "joined-failure-persistent-cold-recovery",
+        "initialFiles": {
+          "memory/topics/note.md": "# Boundary note\n\nThe current marker is boundaryhazel975.\n"
+        },
+        "queries": {
+          "duringFailure": {
+            "query": "boundaryhazel975",
+            "maxResults": 5,
+            "minScore": 0,
+            "corpus": "memory"
+          },
+          "persistent": {
+            "query": "boundaryhazel975",
+            "maxResults": 5,
+            "minScore": 0,
+            "corpus": "memory"
+          },
+          "recovery": {
+            "query": "boundaryhazel975",
+            "maxResults": 5,
+            "minScore": 0,
+            "corpus": "memory"
+          },
+          "repeat": {
+            "query": "boundaryhazel975",
+            "maxResults": 5,
+            "minScore": 0,
+            "corpus": "memory"
+          }
+        },
+        "syncs": {
+          "forceLeader": {
+            "reason": "cli",
+            "force": true
+          },
+          "forceJoiner": {
+            "reason": "cli",
+            "force": true
+          }
+        },
+        "steps": [
+          {
+            "operation": "prepare-real-source-files"
+          },
+          {
+            "operation": "acquire-original-default-owner"
+          },
+          {
+            "operation": "arm-sql-gate"
+          },
+          {
+            "operation": "start-sync",
+            "label": "forceLeader",
+            "params": {
+              "reason": "cli",
+              "force": true
+            }
+          },
+          {
+            "operation": "await-real-publication-pending",
+            "label": "forceLeader"
+          },
+          {
+            "operation": "start-sync",
+            "label": "forceJoiner",
+            "params": {
+              "reason": "cli",
+              "force": true
+            }
+          },
+          {
+            "operation": "start-public-memory-search",
+            "label": "duringFailure"
+          },
+          {
+            "operation": "await-joined-requests",
+            "leader": "forceLeader",
+            "labels": [
+              "forceJoiner",
+              "duringFailure"
+            ],
+            "meaning": "Original entries while first producer remains unsettled; do not require successful coalescing as an SDK fixture precondition."
+          },
+          {
+            "operation": "arm-publication-fault"
+          },
+          {
+            "operation": "release-sql-gate"
+          },
+          {
+            "operation": "await-sync",
+            "label": "forceLeader"
+          },
+          {
+            "operation": "await-sync",
+            "label": "forceJoiner"
+          },
+          {
+            "operation": "await-public-memory-search",
+            "label": "duringFailure"
+          },
+          {
+            "operation": "public-memory-search",
+            "label": "persistent"
+          },
+          {
+            "operation": "remove-publication-fault"
+          },
+          {
+            "operation": "public-memory-search",
+            "label": "recovery"
+          },
+          {
+            "operation": "public-memory-search",
+            "label": "repeat"
+          },
+          {
+            "operation": "original-owner-close"
+          },
+          {
+            "operation": "read-physical-sql-and-source-state",
+            "label": "afterPrimaryClose"
+          }
+        ],
+        "sqliteGate": {
+          "kind": "actual-owned-sqlite-transaction",
+          "native": {
+            "target": "actual-resolved-database.reindex-lock.sqlite",
+            "transaction": "BEGIN EXCLUSIVE"
+          },
+          "sdk": {
+            "target": "actual-resolved-index",
+            "transaction": "BEGIN IMMEDIATE"
+          },
+          "dataMutation": false,
+          "proof": "Real helper transaction remains held while actual first producer is pending and later original request entries occur. No actor coalescing or synthetic future."
+        },
+        "publicationFault": {
+          "kind": "actual-owned-publication-sidecar-dangling-symlink",
+          "target": "owned-missing-sidecar-parent/journal",
+          "nativeTarget": "actual-resolved-database.reindex-lock.sqlite",
+          "sdkTarget": "actual-resolved-index-journal",
+          "preserveExistingRegularSidecar": true,
+          "sourceContentMutation": false,
+          "underHeldSqlGate": true,
+          "nativeLeasedSidecarControl": "When held, synchronously rename only the actual coordinator-leased sidecar to owned backup before making its original path the dangling symlink. Helper retains original inode until release; restore exact preserved inode/bytes on removal. Never rename the main index.",
+          "sdkLeasedControl": "When held, arm only the journal symlink while main-index reserved transaction has no dirty writes; release that real transaction afterwards. Never rename main index."
+        },
+        "sourceMutation": null
+      }
+    },
+    {
+      "id": "query-sync-boundaries-warm-failure-natural-retry",
+      "requirement": "indexing.query-sync",
+      "operation": "query-sync-boundaries-runtime",
+      "covers": [
+        "indexing.query-sync.boundaries"
+      ],
+      "input": {
+        "profile": "provider-none-local-memory-on-search-query-sync-boundaries",
+        "nowMs": 1794268800000,
+        "initialSourceMtimeMs": 1794268800000,
+        "identity": {
+          "agentId": "main"
+        },
+        "config": {
+          "memory": {
+            "citations": "off",
+            "search": {
+              "enabled": true,
+              "provider": "none",
+              "fallback": "none",
+              "sources": [
+                "memory"
+              ],
+              "rememberAcrossConversations": false,
+              "experimental": {
+                "sessionMemory": false
+              },
+              "extraPaths": [],
+              "store": {
+                "vector": {
+                  "enabled": false
+                }
+              },
+              "query": {
+                "maxResults": 5,
+                "minScore": 0
+              }
+            }
+          }
+        },
+        "toolOptions": {
+          "agentId": "main",
+          "oneShotCliRun": false
+        },
+        "timers": "Date-only paired wall clock; all actual monotonic/watch/SQLite retry timers unchanged; no artificial delay or timer drain",
+        "counterWindow": "First original foreground acquisition through its first original close return; include seed and genuine maintenanceSource descendants. Reopened owner only supplies whole public recall/SQL/source verification; its startup counters remain raw.",
+        "syncApiContract": "Original Native public manager.sync and SDK managed reindex explicit CLI-force counterpart. Common settlement/status and actual typed-conflict boolean only; original void/int/whole error APIs retained raw, no raw API identity claimed.",
+        "producerUnit": "Actual newly dispatched generation attempt: Native original exact-owner syncOutcomes.track(operation,true), SDK actual original SQLiteMemoryStore.reindex/reindex_sources entry after managed admission. Private runSync/_reindex_locked/worker/SQL/per-file totals remain raw.",
+        "committedGenerationUnit": "A selected primary-lifetime generation with at least one genuine visible publication commit, maximum one per actual producer attempt; exclude fixture rival publications and private shadow preparation commits.",
+        "sourcesPolicy": "All actual declared/discovered source entries retained whole; source content changes only in declared steps.",
+        "comparisonPolicy": {
+          "wholeActualPublicToolDetails": true,
+          "wholeOriginalEnvelopesAndErrorsRaw": true,
+          "numericTolerance": null,
+          "expectedResultsInInputs": false
+        },
+        "scenario": "warm-failure-natural-retry",
+        "initialFiles": {
+          "memory/topics/note.md": "# Boundary note\n\nThe current marker is boundarywillow186.\n"
+        },
+        "queries": {
+          "seed": {
+            "query": "boundarywillow186",
+            "maxResults": 5,
+            "minScore": 0,
+            "corpus": "memory"
+          },
+          "failedNatural": {
+            "query": "boundarywillow297",
+            "maxResults": 5,
+            "minScore": 0,
+            "corpus": "memory"
+          },
+          "retryNatural": {
+            "query": "boundarywillow297",
+            "maxResults": 5,
+            "minScore": 0,
+            "corpus": "memory"
+          },
+          "reopened": {
+            "query": "boundarywillow297",
+            "maxResults": 5,
+            "minScore": 0,
+            "corpus": "memory"
+          }
+        },
+        "syncs": {
+          "forcedFailure": {
+            "reason": "cli",
+            "force": true
+          }
+        },
+        "steps": [
+          {
+            "operation": "prepare-real-source-files"
+          },
+          {
+            "operation": "acquire-original-default-owner"
+          },
+          {
+            "operation": "public-memory-search",
+            "label": "seed"
+          },
+          {
+            "operation": "mutate-source"
+          },
+          {
+            "operation": "arm-publication-fault"
+          },
+          {
+            "operation": "original-sync",
+            "label": "forcedFailure",
+            "params": {
+              "reason": "cli",
+              "force": true
+            }
+          },
+          {
+            "operation": "public-memory-search",
+            "label": "failedNatural"
+          },
+          {
+            "operation": "await-observed-background-settlement",
+            "searchLabel": "failedNatural",
+            "onlyAlreadyAdmitted": true,
+            "ifNoAdmission": "Record not-admitted; do not manufacture work or mark a real policy difference as a fixture failure."
+          },
+          {
+            "operation": "remove-publication-fault"
+          },
+          {
+            "operation": "public-memory-search",
+            "label": "retryNatural"
+          },
+          {
+            "operation": "original-owner-close"
+          },
+          {
+            "operation": "read-physical-sql-and-source-state",
+            "label": "afterPrimaryClose"
+          },
+          {
+            "operation": "reopen-owner"
+          },
+          {
+            "operation": "public-memory-search",
+            "label": "reopened"
+          },
+          {
+            "operation": "original-owner-close"
+          },
+          {
+            "operation": "read-physical-sql-and-source-state",
+            "label": "afterFinalClose"
+          }
+        ],
+        "sourceMutation": {
+          "kind": "replace",
+          "path": "memory/topics/note.md",
+          "text": "# Boundary note\n\nThe updated marker is boundarywillow297.\n",
+          "mtimeMs": 1794268801000
+        },
+        "publicationFault": {
+          "kind": "actual-owned-publication-sidecar-dangling-symlink",
+          "target": "owned-missing-sidecar-parent/journal",
+          "nativeTarget": "actual-resolved-database.reindex-lock.sqlite",
+          "sdkTarget": "actual-resolved-index-journal",
+          "preserveExistingRegularSidecar": true,
+          "sourceContentMutation": false,
+          "underHeldSqlGate": false,
+          "nativeLeasedSidecarControl": "When held, synchronously rename only the actual coordinator-leased sidecar to owned backup before making its original path the dangling symlink. Helper retains original inode until release; restore exact preserved inode/bytes on removal. Never rename the main index.",
+          "sdkLeasedControl": "When held, arm only the journal symlink while main-index reserved transaction has no dirty writes; release that real transaction afterwards. Never rename main index."
+        }
+      }
+    },
+    {
+      "id": "query-sync-boundaries-typed-conflict-once-retry",
+      "requirement": "indexing.query-sync",
+      "operation": "query-sync-boundaries-runtime",
+      "covers": [
+        "indexing.query-sync.boundaries"
+      ],
+      "input": {
+        "profile": "provider-none-local-memory-on-search-query-sync-boundaries",
+        "nowMs": 1794268800000,
+        "initialSourceMtimeMs": 1794268800000,
+        "identity": {
+          "agentId": "main"
+        },
+        "config": {
+          "memory": {
+            "citations": "off",
+            "search": {
+              "enabled": true,
+              "provider": "none",
+              "fallback": "none",
+              "sources": [
+                "memory"
+              ],
+              "rememberAcrossConversations": false,
+              "experimental": {
+                "sessionMemory": false
+              },
+              "extraPaths": [],
+              "store": {
+                "vector": {
+                  "enabled": false
+                }
+              },
+              "query": {
+                "maxResults": 5,
+                "minScore": 0
+              }
+            }
+          }
+        },
+        "toolOptions": {
+          "agentId": "main",
+          "oneShotCliRun": false
+        },
+        "timers": "Date-only paired wall clock; all actual monotonic/watch/SQLite retry timers unchanged; no artificial delay or timer drain",
+        "counterWindow": "First original foreground acquisition through its first original close return; include seed and genuine maintenanceSource descendants. Reopened owner only supplies whole public recall/SQL/source verification; its startup counters remain raw.",
+        "syncApiContract": "Original Native public manager.sync and SDK managed reindex explicit CLI-force counterpart. Common settlement/status and actual typed-conflict boolean only; original void/int/whole error APIs retained raw, no raw API identity claimed.",
+        "producerUnit": "Actual newly dispatched generation attempt: Native original exact-owner syncOutcomes.track(operation,true), SDK actual original SQLiteMemoryStore.reindex/reindex_sources entry after managed admission. Private runSync/_reindex_locked/worker/SQL/per-file totals remain raw.",
+        "committedGenerationUnit": "A selected primary-lifetime generation with at least one genuine visible publication commit, maximum one per actual producer attempt; exclude fixture rival publications and private shadow preparation commits.",
+        "sourcesPolicy": "All actual declared/discovered source entries retained whole; source content changes only in declared steps.",
+        "comparisonPolicy": {
+          "wholeActualPublicToolDetails": true,
+          "wholeOriginalEnvelopesAndErrorsRaw": true,
+          "numericTolerance": null,
+          "expectedResultsInInputs": false
+        },
+        "scenario": "typed-conflict-once-retry",
+        "initialFiles": {
+          "memory/topics/note.md": "# Boundary note\n\nThe current marker is boundarybirch318.\n",
+          "memory/topics/rival-prep.md": "# Rival prep\n\nThe independent indexed rival marker is rivalboundarybirch318prep.\n",
+          "memory/topics/rival-a.md": "# Rival a\n\nThe independent indexed rival marker is rivalboundarybirch318a.\n"
+        },
+        "queries": {
+          "seed": {
+            "query": "boundarybirch318",
+            "maxResults": 5,
+            "minScore": 0,
+            "corpus": "memory"
+          },
+          "naturalRetry": {
+            "query": "boundarybirch429",
+            "maxResults": 5,
+            "minScore": 0,
+            "corpus": "memory"
+          },
+          "reopened": {
+            "query": "boundarybirch429",
+            "maxResults": 5,
+            "minScore": 0,
+            "corpus": "memory"
+          }
+        },
+        "syncs": {
+          "preparatoryConflict": {
+            "reason": "cli",
+            "force": true
+          }
+        },
+        "steps": [
+          {
+            "operation": "prepare-real-source-files"
+          },
+          {
+            "operation": "acquire-original-default-owner"
+          },
+          {
+            "operation": "public-memory-search",
+            "label": "seed"
+          },
+          {
+            "operation": "mutate-source"
+          },
+          {
+            "operation": "arm-revision-conflict",
+            "role": "preparation"
+          },
+          {
+            "operation": "original-sync",
+            "label": "preparatoryConflict",
+            "params": {
+              "reason": "cli",
+              "force": true
+            }
+          },
+          {
+            "operation": "arm-revision-conflict",
+            "role": "maintenance"
+          },
+          {
+            "operation": "public-memory-search",
+            "label": "naturalRetry"
+          },
+          {
+            "operation": "original-owner-close"
+          },
+          {
+            "operation": "read-physical-sql-and-source-state",
+            "label": "afterPrimaryClose"
+          },
+          {
+            "operation": "reopen-owner"
+          },
+          {
+            "operation": "public-memory-search",
+            "label": "reopened"
+          },
+          {
+            "operation": "original-owner-close"
+          },
+          {
+            "operation": "read-physical-sql-and-source-state",
+            "label": "afterFinalClose"
+          }
+        ],
+        "sourceMutation": {
+          "kind": "replace",
+          "path": "memory/topics/note.md",
+          "text": "# Boundary note\n\nThe updated marker is boundarybirch429.\n",
+          "mtimeMs": 1794268801000
+        },
+        "revisionConflict": {
+          "kind": "genuine-competing-original-index-publication",
+          "paths": [
+            "memory/topics/rival-prep.md",
+            "memory/topics/rival-a.md"
+          ],
+          "trigger": "Role-specific original publisher entries only: preparatoryConflict explicit CLI producer uses paths[0]; genuine maintenance descendants sourced from naturalRetry use subsequent distinct paths. No global Nth-publisher trigger.",
+          "nativeProducer": "original publishedDatabase.deleteSource with actual generation/lease receipts",
+          "sdkProducer": "original plan_memory_index plus purge_memory_index at actual publish_prepared_index call-entry",
+          "sourceContentMutation": false,
+          "extraIndexRevisionFence": false,
+          "counterUpdateSqlAllowed": false,
+          "unreachedTrigger": "Record not-reached if original policy never admits that attempt; never inject a producer or convert a missing retry into a fixture transport failure.",
+          "reachedTriggerProof": "Every actually reached action must purge its distinct currently indexed marker via the original producer and advance the real published revision before the selected original attempt rechecks it.",
+          "preparationSyncLabel": "preparatoryConflict",
+          "maintenanceQueryLabel": "naturalRetry",
+          "nativeRecipe": "Genuine original read-generation lease, actual selected shadow revision receipt, original rival deleteSource, real lease release; no raw counter edit and no replacement publication result.",
+          "sdkRecipe": "At actual selected original publish_prepared_index code entry, original plan_memory_index and purge_memory_index for that role marker; no added IndexRevisionFence.",
+          "nativeRequiredEvidence": "Actual preparatory CLI shadow rebuild failure and actual automatic shadow publish entries, with real handed-off fullRetry generation; no inferred flag or substitute extra sync."
+        }
+      }
+    },
+    {
+      "id": "query-sync-boundaries-typed-conflict-twice-exhaustion",
+      "requirement": "indexing.query-sync",
+      "operation": "query-sync-boundaries-runtime",
+      "covers": [
+        "indexing.query-sync.boundaries"
+      ],
+      "input": {
+        "profile": "provider-none-local-memory-on-search-query-sync-boundaries",
+        "nowMs": 1794268800000,
+        "initialSourceMtimeMs": 1794268800000,
+        "identity": {
+          "agentId": "main"
+        },
+        "config": {
+          "memory": {
+            "citations": "off",
+            "search": {
+              "enabled": true,
+              "provider": "none",
+              "fallback": "none",
+              "sources": [
+                "memory"
+              ],
+              "rememberAcrossConversations": false,
+              "experimental": {
+                "sessionMemory": false
+              },
+              "extraPaths": [],
+              "store": {
+                "vector": {
+                  "enabled": false
+                }
+              },
+              "query": {
+                "maxResults": 5,
+                "minScore": 0
+              }
+            }
+          }
+        },
+        "toolOptions": {
+          "agentId": "main",
+          "oneShotCliRun": false
+        },
+        "timers": "Date-only paired wall clock; all actual monotonic/watch/SQLite retry timers unchanged; no artificial delay or timer drain",
+        "counterWindow": "First original foreground acquisition through its first original close return; include seed and genuine maintenanceSource descendants. Reopened owner only supplies whole public recall/SQL/source verification; its startup counters remain raw.",
+        "syncApiContract": "Original Native public manager.sync and SDK managed reindex explicit CLI-force counterpart. Common settlement/status and actual typed-conflict boolean only; original void/int/whole error APIs retained raw, no raw API identity claimed.",
+        "producerUnit": "Actual newly dispatched generation attempt: Native original exact-owner syncOutcomes.track(operation,true), SDK actual original SQLiteMemoryStore.reindex/reindex_sources entry after managed admission. Private runSync/_reindex_locked/worker/SQL/per-file totals remain raw.",
+        "committedGenerationUnit": "A selected primary-lifetime generation with at least one genuine visible publication commit, maximum one per actual producer attempt; exclude fixture rival publications and private shadow preparation commits.",
+        "sourcesPolicy": "All actual declared/discovered source entries retained whole; source content changes only in declared steps.",
+        "comparisonPolicy": {
+          "wholeActualPublicToolDetails": true,
+          "wholeOriginalEnvelopesAndErrorsRaw": true,
+          "numericTolerance": null,
+          "expectedResultsInInputs": false
+        },
+        "scenario": "typed-conflict-twice-exhaustion",
+        "initialFiles": {
+          "memory/topics/note.md": "# Boundary note\n\nThe current marker is boundaryelm531.\n",
+          "memory/topics/rival-prep.md": "# Rival prep\n\nThe independent indexed rival marker is rivalboundaryelm531prep.\n",
+          "memory/topics/rival-a.md": "# Rival a\n\nThe independent indexed rival marker is rivalboundaryelm531a.\n",
+          "memory/topics/rival-b.md": "# Rival b\n\nThe independent indexed rival marker is rivalboundaryelm531b.\n"
+        },
+        "queries": {
+          "seed": {
+            "query": "boundaryelm531",
+            "maxResults": 5,
+            "minScore": 0,
+            "corpus": "memory"
+          },
+          "naturalRetry": {
+            "query": "boundaryelm642",
+            "maxResults": 5,
+            "minScore": 0,
+            "corpus": "memory"
+          },
+          "reopened": {
+            "query": "boundaryelm642",
+            "maxResults": 5,
+            "minScore": 0,
+            "corpus": "memory"
+          }
+        },
+        "syncs": {
+          "preparatoryConflict": {
+            "reason": "cli",
+            "force": true
+          }
+        },
+        "steps": [
+          {
+            "operation": "prepare-real-source-files"
+          },
+          {
+            "operation": "acquire-original-default-owner"
+          },
+          {
+            "operation": "public-memory-search",
+            "label": "seed"
+          },
+          {
+            "operation": "mutate-source"
+          },
+          {
+            "operation": "arm-revision-conflict",
+            "role": "preparation"
+          },
+          {
+            "operation": "original-sync",
+            "label": "preparatoryConflict",
+            "params": {
+              "reason": "cli",
+              "force": true
+            }
+          },
+          {
+            "operation": "arm-revision-conflict",
+            "role": "maintenance"
+          },
+          {
+            "operation": "public-memory-search",
+            "label": "naturalRetry"
+          },
+          {
+            "operation": "original-owner-close"
+          },
+          {
+            "operation": "read-physical-sql-and-source-state",
+            "label": "afterPrimaryClose"
+          },
+          {
+            "operation": "reopen-owner"
+          },
+          {
+            "operation": "public-memory-search",
+            "label": "reopened"
+          },
+          {
+            "operation": "original-owner-close"
+          },
+          {
+            "operation": "read-physical-sql-and-source-state",
+            "label": "afterFinalClose"
+          }
+        ],
+        "sourceMutation": {
+          "kind": "replace",
+          "path": "memory/topics/note.md",
+          "text": "# Boundary note\n\nThe updated marker is boundaryelm642.\n",
+          "mtimeMs": 1794268801000
+        },
+        "revisionConflict": {
+          "kind": "genuine-competing-original-index-publication",
+          "paths": [
+            "memory/topics/rival-prep.md",
+            "memory/topics/rival-a.md",
+            "memory/topics/rival-b.md"
+          ],
+          "trigger": "Role-specific original publisher entries only: preparatoryConflict explicit CLI producer uses paths[0]; genuine maintenance descendants sourced from naturalRetry use subsequent distinct paths. No global Nth-publisher trigger.",
+          "nativeProducer": "original publishedDatabase.deleteSource with actual generation/lease receipts",
+          "sdkProducer": "original plan_memory_index plus purge_memory_index at actual publish_prepared_index call-entry",
+          "sourceContentMutation": false,
+          "extraIndexRevisionFence": false,
+          "counterUpdateSqlAllowed": false,
+          "unreachedTrigger": "Record not-reached if original policy never admits that attempt; never inject a producer or convert a missing retry into a fixture transport failure.",
+          "reachedTriggerProof": "Every actually reached action must purge its distinct currently indexed marker via the original producer and advance the real published revision before the selected original attempt rechecks it.",
+          "preparationSyncLabel": "preparatoryConflict",
+          "maintenanceQueryLabel": "naturalRetry",
+          "nativeRecipe": "Genuine original read-generation lease, actual selected shadow revision receipt, original rival deleteSource, real lease release; no raw counter edit and no replacement publication result.",
+          "sdkRecipe": "At actual selected original publish_prepared_index code entry, original plan_memory_index and purge_memory_index for that role marker; no added IndexRevisionFence.",
+          "nativeRequiredEvidence": "Actual preparatory CLI shadow rebuild failure and actual automatic shadow publish entries, with real handed-off fullRetry generation; no inferred flag or substitute extra sync."
+        }
+      }
+    },
+    {
+      "id": "query-sync-boundaries-newer-empty-public-refusal-cli-override",
+      "requirement": "indexing.query-sync",
+      "operation": "query-sync-boundaries-runtime",
+      "covers": [
+        "indexing.query-sync.boundaries"
+      ],
+      "input": {
+        "profile": "provider-none-local-memory-on-search-query-sync-boundaries",
+        "nowMs": 1794268800000,
+        "initialSourceMtimeMs": 1794268800000,
+        "identity": {
+          "agentId": "main"
+        },
+        "config": {
+          "memory": {
+            "citations": "off",
+            "search": {
+              "enabled": true,
+              "provider": "none",
+              "fallback": "none",
+              "sources": [
+                "memory"
+              ],
+              "rememberAcrossConversations": false,
+              "experimental": {
+                "sessionMemory": false
+              },
+              "extraPaths": [],
+              "store": {
+                "vector": {
+                  "enabled": false
+                }
+              },
+              "query": {
+                "maxResults": 5,
+                "minScore": 0
+              }
+            }
+          }
+        },
+        "toolOptions": {
+          "agentId": "main",
+          "oneShotCliRun": false
+        },
+        "timers": "Date-only paired wall clock; all actual monotonic/watch/SQLite retry timers unchanged; no artificial delay or timer drain",
+        "counterWindow": "First original foreground acquisition through its first original close return; include seed and genuine maintenanceSource descendants. Reopened owner only supplies whole public recall/SQL/source verification; its startup counters remain raw.",
+        "syncApiContract": "Original Native public manager.sync and SDK managed reindex explicit CLI-force counterpart. Common settlement/status and actual typed-conflict boolean only; original void/int/whole error APIs retained raw, no raw API identity claimed.",
+        "producerUnit": "Actual newly dispatched generation attempt: Native original exact-owner syncOutcomes.track(operation,true), SDK actual original SQLiteMemoryStore.reindex/reindex_sources entry after managed admission. Private runSync/_reindex_locked/worker/SQL/per-file totals remain raw.",
+        "committedGenerationUnit": "A selected primary-lifetime generation with at least one genuine visible publication commit, maximum one per actual producer attempt; exclude fixture rival publications and private shadow preparation commits.",
+        "sourcesPolicy": "All actual declared/discovered source entries retained whole; source content changes only in declared steps.",
+        "comparisonPolicy": {
+          "wholeActualPublicToolDetails": true,
+          "wholeOriginalEnvelopesAndErrorsRaw": true,
+          "numericTolerance": null,
+          "expectedResultsInInputs": false
+        },
+        "scenario": "newer-empty-public-refusal-cli-override",
+        "initialFiles": {},
+        "queries": {
+          "emptySeed": {
+            "query": "boundaryspruce753",
+            "maxResults": 5,
+            "minScore": 0,
+            "corpus": "memory"
+          },
+          "automaticRefusal": {
+            "query": "boundaryspruce753",
+            "maxResults": 5,
+            "minScore": 0,
+            "corpus": "memory"
+          },
+          "afterCliOverride": {
+            "query": "boundaryspruce753",
+            "maxResults": 5,
+            "minScore": 0,
+            "corpus": "memory"
+          }
+        },
+        "syncs": {
+          "cliOverride": {
+            "reason": "cli",
+            "force": true
+          }
+        },
+        "steps": [
+          {
+            "operation": "prepare-real-source-files"
+          },
+          {
+            "operation": "acquire-original-default-owner"
+          },
+          {
+            "operation": "public-memory-search",
+            "label": "emptySeed"
+          },
+          {
+            "operation": "set-newer-empty-format"
+          },
+          {
+            "operation": "mutate-source"
+          },
+          {
+            "operation": "public-memory-search",
+            "label": "automaticRefusal"
+          },
+          {
+            "operation": "original-sync",
+            "label": "cliOverride",
+            "params": {
+              "reason": "cli",
+              "force": true
+            }
+          },
+          {
+            "operation": "public-memory-search",
+            "label": "afterCliOverride"
+          },
+          {
+            "operation": "original-owner-close"
+          },
+          {
+            "operation": "read-physical-sql-and-source-state",
+            "label": "afterPrimaryClose"
+          }
+        ],
+        "newerFormat": {
+          "field": "chunkingVersion",
+          "version": 6,
+          "base": "Actual original empty metadata from the real emptySeed public search; modify only its declared field, preserve every other metadata field.",
+          "requiresEmptyActualSql": true,
+          "notClaimed": "No non-CLI-force request or new SDK reason API is exercised by this public query/CLI case.",
+          "requiresExistingActualMetadata": true
+        },
+        "sourceMutation": {
+          "kind": "create",
+          "path": "memory/topics/note.md",
+          "text": "# Boundary note\n\nThe current marker is boundaryspruce753.\n",
+          "mtimeMs": 1794268800000
+        }
+      }
+    }
+  ]
+}

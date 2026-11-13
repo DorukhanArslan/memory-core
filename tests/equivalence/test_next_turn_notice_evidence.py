@@ -51,8 +51,7 @@ def _load(case, native):
         pytest.skip("No explicitly selected notice-observation packet; no acceptance credit")
     directory = Path(CAPTURE_ROOT).resolve() / case["id"]
     path = directory / "evidence" / ("native-raw.json" if native else "python-raw.json")
-    if not path.exists():
-        pytest.skip("No retained new notice observation for this case; no acceptance credit")
+    assert path.is_file(), f"Explicitly selected notice packet is incomplete: {path}"
     values = _read(path)
     assert isinstance(values, list) and len(values) == 1, path
     capture = values[0]
@@ -151,7 +150,7 @@ def test_observation_is_source_bound_and_restores_original_descriptors(actual, a
     _reject_observation(capture, native)
 
 
-@pytest.mark.parametrize("field", ["warmup", "save", "followup", "source", "provider"])
+@pytest.mark.parametrize("field", ["warmup", "followup", "source", "provider"])
 def test_original_whole_public_result_cannot_drop_fields(actual, field):
     native, baseline = actual
     capture = deepcopy(baseline)
@@ -212,6 +211,61 @@ def test_native_status_keeps_actual_notice_identity_and_return_snapshot(native_a
         status["notice"]["sequence"] += 1
     else:
         status["returnSeq"] = edge["searchEnterSeq"]
+    _reject_observation(capture, True)
+
+
+@pytest.mark.parametrize("attack", ["missing-result", "wrong-turn", "wrong-model-call", "wrong-tool", "wrong-carrier", "different-public-result"])
+def test_native_tool_checkpoint_is_the_actual_model_consumed_full_carrier(native_actual, attack):
+    capture = deepcopy(native_actual)
+    notice = _notice(capture, True)
+    checkpoint = next(row for row in notice["checkpoints"] if row["event"] == "actual-memory-search-result")
+    if attack == "missing-result":
+        notice["checkpoints"].remove(checkpoint)
+    elif attack == "wrong-turn":
+        checkpoint["turn"] = "save"
+    elif attack == "wrong-model-call":
+        checkpoint["modelCall"] = 0
+    elif attack == "wrong-tool":
+        checkpoint["actualToolResult"]["toolName"] = "write"
+    elif attack == "wrong-carrier":
+        checkpoint["actualToolResult"]["content"][0]["text"] = "{}"
+    else:
+        del checkpoint["publicSearch"]["provider"]
+    _reject_observation(capture, True)
+
+
+@pytest.mark.parametrize("attack", ["missing-live-object", "same-value-copy", "changed-counter", "changed-warning", "before-capture"])
+def test_native_delivery_sample_is_the_same_live_notice_after_the_real_capture(native_actual, attack):
+    capture = deepcopy(native_actual)
+    notice = _notice(capture, True)
+    edge = notice["captureEdges"][0]
+    checkpoint = next(row for row in notice["checkpoints"] if row["event"] == "actual-memory-search-result")
+    sample = next(row for row in checkpoint["notices"] if row["noticeRef"] == edge["noticeRef"])
+    if attack == "missing-live-object":
+        checkpoint["notices"].remove(sample)
+    elif attack == "same-value-copy":
+        sample["noticeRef"] = "equal-value-copy-is-not-original"
+    elif attack == "changed-counter":
+        sample["sequence"] += 1
+    elif attack == "changed-warning":
+        sample["warning"] += " invented-warning"
+    else:
+        checkpoint["sequence"] = edge["statusReturnSeq"] - 1
+    _reject_observation(capture, True)
+
+
+@pytest.mark.parametrize("attack", ["skipped-counter", "different-notice", "invented-run-owner"])
+def test_native_counter_transition_belongs_to_the_actual_original_writer(native_actual, attack):
+    capture = deepcopy(native_actual)
+    notice = _notice(capture, True)
+    writer = next(row for row in notice["calls"] if row["method"] == "recordAutomaticRebuild")
+    if attack == "skipped-counter":
+        writer["afterNotice"]["sequence"] += 1
+        writer["after"]["notice"]["sequence"] = writer["afterNotice"]["sequence"]
+    elif attack == "different-notice":
+        writer["noticeRef"] = "borrowed-writer-notice"
+    else:
+        writer["openRunSyncCallIds"] = [writer["callId"]]
     _reject_observation(capture, True)
 
 

@@ -6,21 +6,24 @@ common result only after this module authenticates each side independently.
 """
 from __future__ import annotations
 
+import ast
+from functools import lru_cache
 import hashlib
 import json
 import os
 from pathlib import Path
 import re
 import shutil
+import subprocess
 
 from equivalence.host_turn_barrier_evidence import _same, require
 from equivalence.query_sync_boundaries import validate_case
 from equivalence.query_sync_cold_retry_evidence import (
-    _entry_identity, _fault_syscall_entries, _native_wires, _owned_file, _sql,
+    _entry_identity, _fault_syscall_entries, _owned_file, _sql,
 )
 from equivalence.query_sync_outcomes_evidence import (
     NATIVE_METHODS, _finite, _interval, _one,
-    _private_markers, _returned_hits, _source_entries,
+    V8_DECODER, _private_markers, _published_sources, _returned_hits, _source_entries,
 )
 from equivalence.query_sync_boundaries_bindings import (
     COMPILED_HASHES, REQUIRED_MAIN_ARTIFACTS, REQUIRED_WORKER_ARTIFACTS,
@@ -30,6 +33,40 @@ from equivalence.release_runtime import MANIFEST_SHA256, REFERENCE_COMMIT, VERSI
 ROOT = Path(__file__).resolve().parents[1]
 COUNTERS = {"searchRequests", "managerSearches", "syncRequests", "bootstrapRequests",
             "producerAttempts", "committedGenerations"}
+
+
+@lru_cache(maxsize=2048)
+def _sealed_file_digest(filename, device, inode, size, mtime_ns, ctime_ns):
+    return hashlib.sha256(Path(filename).read_bytes()).hexdigest()
+
+
+def _file_digest(filename):
+    path = Path(filename)
+    info = path.stat()
+    return _sealed_file_digest(str(path), info.st_dev, info.st_ino, info.st_size, info.st_mtime_ns, info.st_ctime_ns)
+
+
+_WIRE_CACHE = {}
+
+
+def _decode_v8(authority, wires):
+    # The executable is selected and authenticated by _native_process first.
+    # Cache data decoding, never a captured executable or an unchecked file.
+    binary = Path(authority["execPath"])
+    digest = _file_digest(binary)
+    require(digest == authority["sha256"], "trusted original V8 decoder binary changed")
+    decoder_digest = hashlib.sha256(V8_DECODER.encode()).hexdigest()
+    missing = list(dict.fromkeys(wire for wire in wires if (digest, decoder_digest, wire) not in _WIRE_CACHE))
+    if missing:
+        finished = subprocess.run([str(binary), "--input-type=module", "-e", V8_DECODER],
+            input=json.dumps(missing), capture_output=True, text=True, timeout=30,
+            cwd="/tmp", env={"PATH": "/usr/bin:/bin", "LANG": "C.UTF-8", "TZ": "UTC"}, check=False)
+        require(finished.returncode == 0 and not finished.stderr, "independent original V8 decode failed")
+        values = json.loads(finished.stdout)
+        require(isinstance(values, list) and len(values) == len(missing), "independent V8 decode dropped original bytes")
+        for wire, value in zip(missing, values, strict=True):
+            _WIRE_CACHE[digest, decoder_digest, wire] = value
+    return [_WIRE_CACHE[digest, decoder_digest, wire] for wire in wires]
 
 
 def _sdk_source_path(recorded, approved_sdk_root):
@@ -53,8 +90,75 @@ def _sdk_bindings(raw, approved_sdk_root):
             "actual SDK imported implementation modules were omitted")
     for row in bindings:
         path = _sdk_source_path(row["path"], approved_sdk_root)
-        require(hashlib.sha256(path.read_bytes()).hexdigest() == row["sha256"],
+        require(_file_digest(path) == row["sha256"],
                 "actual SDK capture differs from independently selected production bytes")
+    identity = raw["sourceIdentity"]["beforeImports"]
+    require(identity["root"] == str(ROOT), "SDK source inventory borrowed another imported tree")
+    digest = hashlib.sha256()
+    expected = []
+    source_root = _sdk_source_path(ROOT / "memory_core/__init__.py", approved_sdk_root).parent.parent
+    for path in sorted((source_root / "memory_core").rglob("*.py")):
+        require(not path.is_symlink(), "SDK source inventory contains an alias")
+        relative, data = path.relative_to(source_root).as_posix(), path.read_bytes()
+        digest.update(relative.encode() + b"\0" + data + b"\0")
+        expected.append({"path": relative, "bytes": len(data), "sha256": hashlib.sha256(data).hexdigest()})
+    require(identity["sourceFiles"] == len(expected) and identity["sourceSha256"] == digest.hexdigest()
+            and _same(identity["files"], expected), "actual SDK complete source inventory differs from the trusted source seal")
+
+
+def _sdk_tool_contexts(case, raw, events, approved_sdk_root):
+    observation = raw["toolContextObservation"]
+    require(observation["mechanism"] == "original-SDK-code-and-source-context-identity"
+            and observation["activeQueryFallback"] is observation["productionContextModified"] is False,
+            "SDK query cause was guessed or production context was replaced")
+    filename = ROOT / "memory_core/tools/memory_search.py"
+    source = _sdk_source_path(filename, approved_sdk_root)
+    definitions = {}
+    def visit(node, parent=""):
+        for child in ast.iter_child_nodes(node):
+            if isinstance(child, (ast.FunctionDef, ast.AsyncFunctionDef)):
+                name = parent + child.name
+                definitions[name] = child.lineno
+                visit(child, name + ".<locals>.")
+            else:
+                visit(child, parent)
+    visit(ast.parse(source.read_text()))
+    names = {"execute_memory_search_tool", "_run_memory_search_tool",
+             "_run_memory_search_tool.<locals>.search_memory_once",
+             "_run_memory_search_tool.<locals>.search_memory_worker"}
+    codes = {row["qualname"]: row for row in observation["codes"]}
+    require(set(codes) == names and len(codes) == len(observation["codes"]), "SDK original query code anchors were removed or added")
+    for name, row in codes.items():
+        require(row["file"] == str(filename) and row["firstLine"] == definitions[name]
+                and row["sourceSha256"] == _file_digest(source), "SDK original query code anchor changed")
+    scopes = raw["toolContextScopes"]
+    require(len(scopes) == sum(row["event"] == "original-sdk-tool-context-enter" for row in events.values())
+            == sum(row["event"] == "original-sdk-tool-context-return" for row in events.values()),
+            "SDK original query context entries/returns were removed or added")
+    for label, tool in raw["toolCalls"].items():
+        public = _one(scopes, lambda row: row["label"] == label and row["kind"] == "public-entry",
+                      "actual SDK public entry context missing")
+        owner = raw["owners"][tool["ownerId"]]
+        for scope in [row for row in scopes if row["label"] == label]:
+            start, end = _interval(scope, events, "original-sdk-tool-context-enter", "original-sdk-tool-context-return", "SDK original context interval detached")
+            code = codes[scope["codeQualname"]]
+            require(tool["enterSeq"] < start < end < tool["returnSeq"]
+                    and scope["ownerId"] == public["ownerId"] == tool["ownerId"]
+                    and scope["storeObjectId"] == public["storeObjectId"] == owner["objectId"]
+                    and scope["contextObjectId"] == public["contextObjectId"]
+                    and scope["codeFile"] == code["file"] and scope["codeFirstLine"] == code["firstLine"]
+                    and events[start]["threadId"] == events[end]["threadId"] == scope["threadId"]
+                    and events[start]["label"] == events[end]["label"] == label,
+                    "SDK query worker lost the exact original public context/store/code/thread identity")
+    methods = raw["methodCalls"] + raw["statusCalls"] + raw["originalSearchCalls"] + raw["readAdmissions"]
+    for call in methods:
+        label = call.get("activeTool")
+        if label is None:
+            continue
+        require(any(row["label"] == label and row["ownerId"] == call["ownerId"]
+                    and row["threadId"] == call["threadId"]
+                    and row["enterSeq"] < call["enterSeq"] < call["returnSeq"] < row["returnSeq"] for row in scopes),
+                "SDK original tool-labelled method has no actual source context on its original thread")
 
 
 def _outcome(value):
@@ -126,11 +230,18 @@ def _clock(raw, *, native):
 
 
 def _source_custody(case, raw, result, events, *, native):
-    for label, common in result["sources"].items():
-        stage = raw["sourceStages"][label]
+    require(set(result["sources"]) <= set(raw["sourceStages"])
+            and len(raw["sourceStages"]) == sum(row["event"] == "source-read-enter" for row in events.values())
+            == sum(row["event"] == "source-read-return" for row in events.values()),
+            "actual source observations were removed or added")
+    for label, stage in raw["sourceStages"].items():
+        common = stage["common"]
+        paths, expected = _expected_sources(case, initial=label == "initial")
+        _source_entries(common, paths, expected)
         start, end = _interval(stage, events, "source-read-enter", "source-read-return", "source stage detached")
         require(events[start]["label"] == events[end]["label"] == label
-                and _same(stage["common"], common), "query-sync boundaries complete source stage changed")
+                and (label not in result["sources"] or _same(common, result["sources"][label])),
+                "query-sync boundaries complete source stage changed")
         records = stage["records" if native else "entries"]
         require(len(records) == len(common), "query-sync boundaries source byte/stat records omitted")
         for record, source in zip(records, common, strict=True):
@@ -171,6 +282,133 @@ def _source_custody(case, raw, result, events, *, native):
             # Only the separately retained, later formatted stack is enriched.
             checked = {**snapshot, "error": original}
         _sql(checked, raw, native=native, missing=snapshot["label"].startswith("before-"))
+        owner_paths = {owner["settings"]["store"]["databasePath"] if native else owner["indexPath"]
+                       for owner in raw["owners"].values()}
+        require(snapshot["dbPath"] in owner_paths and len(owner_paths) == 1,
+                "physical SQL snapshot borrowed another original index database")
+        if not (snapshot.get("exists") is False if native else snapshot.get("absent") is True):
+            _generation(case, snapshot, native=native)
+
+
+def _generation(case, snapshot, *, native, output=None):
+    tables = snapshot["tables"]
+    source_table = "memory_index_sources" if native else "memory_core_index_sources"
+    chunk_table = "memory_index_chunks" if native else "chunks"
+    variants = {}
+    for initial in (True, False):
+        for path, value in _expected_sources(case, initial=initial)[1].items():
+            variants.setdefault(path, []).append(value)
+    expected = {}
+    for source in tables[source_table]:
+        matches = [value for value in variants.get(source["path"], [])
+                   if hashlib.sha256(value[0].encode()).hexdigest() == source["hash"]
+                   and value[1] == source["mtime"]]
+        require(matches, "physical indexed source is detached from every actual declared source generation")
+        expected[source["path"]] = matches[0]
+    if expected:
+        _published_sources(snapshot, expected, native=native)
+    else:
+        require(all(not tables[name] for name in (chunk_table, "memory_index_chunk_provenance",
+                    "memory_index_chunk_recall_metadata", "memory_index_chunks_fts" if native else "chunks_fts",
+                    "memory_index_paths_fts" if native else "paths_fts"))
+                and (native or not tables["memory_index_chunk_details"]),
+                "empty actual source generation retained unrelated chunks/provenance/recall/FTS rows")
+    if output is not None:
+        for hit in output["results"]:
+            chunk = _one(tables[chunk_table], lambda row: row["path"] == hit["path"]
+                and row["source"] == hit["source"] and row["start_line"] == hit["startLine"]
+                and row["end_line"] == hit["endLine"], "actual pinned SQL chunk for public hit missing")
+            provenance = _one(tables["memory_index_chunk_provenance"], lambda row: row["chunk_id"] == chunk["id"],
+                              "actual pinned public provenance missing")
+            expected_provenance = {"originClass": provenance["origin_class"], "sessionKind": provenance["session_kind"],
+                                   "observedAt": provenance["observed_at"]}
+            if provenance["supersedes_key"] is not None:
+                expected_provenance["supersedesKey"] = provenance["supersedes_key"]
+            require(hit["snippet"].strip() in chunk["text"] and _same(hit.get("provenance"), expected_provenance),
+                    "complete public hit text/provenance differs from its actual pinned SQL generation")
+
+
+def _read_generations(case, raw, result, events, *, native):
+    if not native:
+        for read in raw["readAdmissions"]:
+            pinned = read["pinnedSnapshot"]
+            _sql(pinned, raw, native=False)
+            require(pinned["ownerId"] == read["ownerId"] and pinned["activeTool"] == read["activeTool"]
+                    and pinned["dbPath"] == raw["owners"][read["ownerId"]]["indexPath"]
+                    and pinned["inTransactionBefore"] is pinned["inTransactionAfter"] is True
+                    and [row for row in pinned["databases"] if row[1] == "main"] == [[0, "main", pinned["dbPath"]]]
+                    and _one(pinned["tables"]["memory_core_index_sync"], lambda row: row["id"] == 1,
+                             "actual pinned SDK revision omitted")["revision"] == pinned["readRevision"],
+                    "SDK physical reader lost its actual owner/database/transaction/revision")
+            search = _one(raw["originalSearchCalls"], lambda row: row["ownerId"] == read["ownerId"]
+                and row["threadId"] == read["threadId"] and row["enterSeq"] < read["enterSeq"] < read["returnSeq"] < row["returnSeq"],
+                "actual SDK pinned read lies outside its original search")
+            admission = _one(read["lifecycleAfter"]["sessionReadAdmissions"],
+                lambda row: row["operationId"] == read["parentOperationId"], "actual SDK reader lifecycle admission omitted")
+            operation = _one(search["lifecycleAfter"]["operations"], lambda row: row["id"] == read["parentOperationId"],
+                             "actual SDK original search operation omitted")
+            require(admission["revision"] == pinned["readRevision"] and admission["threadId"] == read["threadId"]
+                    and operation["name"] == "search" and operation["state"] in {"completed", "failed"}
+                    and operation["query"] == case["input"]["queries"][read["activeTool"]]["query"]
+                    and operation["threadId"] == search["threadId"] == read["threadId"],
+                    "SDK pinned physical read lost actual original operation/thread/revision custody")
+            _generation(case, pinned, native=False,
+                output=result["searches"][read["activeTool"]] if "error" not in search else None)
+        return
+    for lease in raw["leaseCalls"]:
+        _interval(lease, events, "original-coordination-enter", "original-coordination-return", "original read/write lease interval detached")
+    for preparation in [row for row in raw["methodCalls"] if row["method"] == "prepareKeywordSearch" and "error" not in row]:
+        db = raw["owners"][preparation["ownerId"]]["settings"]["store"]["databasePath"]
+        pool = _one(raw["poolCalls"], lambda row: row["args"][0].get("kind") == "keyword"
+            and preparation["enterSeq"] < row["enterSeq"] < row["returnSeq"] < preparation["returnSeq"],
+            "actual original keyword worker dispatch omitted")
+        job = pool["args"][0]
+        require(job["databasePath"] == db and job["agentId"] == case["input"]["identity"]["agentId"]
+                and job["query"]["body"]["query"] == preparation["args"][0]
+                and job["query"]["body"]["sourceFilter"]["params"] == ["memory"] and job["includeIndexState"] is True,
+                "Native original keyword worker read another source/query/database")
+        dispatch = _one(raw["workerDispatches"], lambda row: pool["enterSeq"] < row["enterSeq"] < row["returnSeq"] < pool["returnSeq"]
+                        and _same(row["message"].get("input"), job), "actual original keyword postMessage omitted")
+        reply = _one(raw["workerMessages"], lambda row: row["workerId"] == dispatch["workerId"]
+            and row["message"].get("taskId") == dispatch["message"]["taskId"], "actual original keyword result omitted")
+        returned = json.loads(preparation["nativeSerializedJSON"])
+        require(dispatch["returnSeq"] < reply["sequence"] < pool["returnSeq"]
+                and reply["message"]["status"] == "ok" and _same(reply["message"]["value"], pool["result"])
+                and _same(pool["result"]["body"], returned["keyword"]["body"])
+                and _same(pool["result"]["indexState"], returned["indexState"])
+                and _same(preparation["result"]["indexState"], returned["indexState"]),
+                "Native keyword result/index-state differs from the actual original worker reply")
+        candidates = []
+        for begin in raw["leaseCalls"]:
+            if (begin["location"] != db + ".generation-lock.sqlite" or begin["method"] != "exec"
+                    or begin["args"] != ["BEGIN"] or "error" in begin
+                    or begin["activeTool"] != preparation["activeTool"]):
+                continue
+            own = [row for row in raw["leaseCalls"] if row["databaseRef"] == begin["databaseRef"]]
+            pin = [row for row in own if row["method"] == "statement.get" and "error" not in row]
+            rollback = [row for row in own if row["method"] == "exec" and row["args"] == ["ROLLBACK"]]
+            close = [row for row in own if row["method"] == "close"]
+            if len(pin) == len(rollback) == len(close) == 1 and begin["returnSeq"] < pin[0]["enterSeq"] < pin[0]["returnSeq"] < preparation["enterSeq"] < preparation["returnSeq"] < rollback[0]["enterSeq"] < close[0]["enterSeq"]:
+                candidates.append(begin)
+                require(begin["transactionBefore"] is False and begin["transactionAfter"] is True
+                        and pin[0]["transactionBefore"] is pin[0]["transactionAfter"] is True
+                        and close[0]["openAfter"] is False
+                        and "tryAcquireMemorySqliteLease" in begin["originalCallerStack"]
+                        and "/dist/manager-vector-warning-DcyxxT5h.mjs:" in begin["originalCallerStack"],
+                        "Native keyword generation lease was not actually pinned/held/released by the original reader")
+        require(len(candidates) == 1, "Native keyword read lacks its single actual held original generation lease")
+    for label, output in result["searches"].items():
+        if not output["results"]:
+            continue
+        preparations = [row for row in raw["methodCalls"] if row["method"] == "prepareKeywordSearch"
+                        and row["activeTool"] == label and "error" not in row]
+        require(preparations, "Native public hits lack their original pinned keyword preparation")
+        prepared = json.loads(max(preparations, key=lambda row: row["returnSeq"])["nativeSerializedJSON"])["keyword"]
+        for hit in output["results"]:
+            original = _one(prepared["body"]["rows"] + prepared["path"]["rows"],
+                lambda row: all(row[key] == hit[key] for key in ("path", "source", "startLine", "endLine")),
+                "Native public hit is absent from its actual pinned keyword result")
+            require(hit["snippet"].strip() in original["snippet"], "Native public snippet was detached from its pinned original worker hit")
 
 
 def _steps(case, raw, events, *, native):
@@ -250,6 +488,22 @@ def _tools(case, raw, result, events, *, native):
         _outcome(actual)
         require(_same(actual, result["syncs"][label]) and (actual["status"] == "rejected") == ("error" in call),
                 "query-sync boundaries original sync return/error was relabelled")
+        original = _one(raw["methodCalls"], lambda row: row["ownerId"] == call["ownerId"]
+            and row["method"] == ("sync" if native else "reindex")
+            and call["enterSeq"] < row["enterSeq"] < row["returnSeq"] < call["returnSeq"]
+            and ((row.get("operationContext") or {}).get("label") == label if native else row["activeSync"] == label),
+            "actual explicit force request lost its original method dispatch")
+        require(_same(original["args"][0], call["params"]) if native
+                else original["options"]["force"] is call["params"]["force"],
+                "actual explicit sync changed force/reason arguments on its original dispatch")
+        if native:
+            require(original["returnedPromiseRef"] == call["returnedPromiseRef"],
+                    "explicit Native sync replaced the actual original returned promise")
+        if "error" in call:
+            require(original["errorRef"] == call["errorRef"], "explicit sync replaced its actual propagated original error")
+        else:
+            require(_same(original["result" if native else "returned"], call["result" if native else "returned"]),
+                    "explicit sync replaced its actual original completion value")
 
 
 def _native_counts(raw, result, events):
@@ -261,6 +515,12 @@ def _native_counts(raw, result, events):
                            ("backgroundCalls", "syncPublishedIndexInBackground")):
         require(_same(raw[bucket], [row for row in raw["methodCalls"] if row["method"] == method]),
                 "Native specialized method receipts differ from complete original calls")
+    require(len(raw["wholeJobs"]) == sum(row["event"] == "original-sync-ledger-enter" for row in events.values())
+            == sum(row["event"] in {"original-sync-ledger-settled", "original-sync-ledger-threw"} for row in events.values()),
+            "Native actual original whole-producer ledger entries/settlements were removed or added")
+    require(len(raw["publicationCalls"]) == sum(row["event"] == "original-publication-enter" for row in events.values())
+            == sum(row["event"] in {"original-publication-settled", "original-publication-threw"} for row in events.values()),
+            "Native producer counts lost actual original publication entries/settlements")
     window = raw["comparableWindow"]
     primary = window["primaryOwnerId"]
     acquisition = _one(raw["facadeCalls"], lambda row: row["ownerId"] == primary, "first foreground acquisition missing")
@@ -322,6 +582,56 @@ def _native_counts(raw, result, events):
     return primary, close, jobs
 
 
+def _native_publication_wires(raw, events):
+    require(len(raw["publicationCalls"]) == sum(row["event"] == "original-publication-enter" for row in events.values())
+            == sum(row["event"] in {"original-publication-settled", "original-publication-threw"} for row in events.values()),
+            "actual original Native publication entries/settlements were removed or added")
+    for call in raw["publicationCalls"]:
+        start, end = _interval(call, events, "original-publication-enter", "original-publication-settled", "original publication interval detached")
+        require(events[start]["ownerId"] == events[end]["ownerId"] == call["ownerId"]
+                and events[start]["method"] == events[end]["method"] == call["method"],
+                "actual original Native publication owner/method was relabelled")
+        commands = []
+        for dispatch in raw["workerDispatches"]:
+            if not (start < dispatch["enterSeq"] < dispatch["returnSeq"] < end):
+                continue
+            domain = dispatch["decodedSerialized"].get("input", {}).get("value", {})
+            if domain.get("type") != "database.domain.execute":
+                continue
+            command = domain["input"]["command"]
+            reply = _one(raw["workerMessages"], lambda row: row["workerId"] == dispatch["workerId"]
+                and row["message"].get("id") == dispatch["message"]["id"], "original publication worker reply omitted")
+            require(dispatch["returnSeq"] < reply["sequence"] < end, "original publication settled before its actual worker reply")
+            commands.append((command, reply["decodedSerialized"]["value"]["value"]))
+        typ = {"publishShadow": "database.publish", "replaceSource": "source.replace", "deleteSource": "source.delete"}[call["method"]]
+        command, settled = _one(commands, lambda row: row[0]["type"] == typ,
+                                "original visible publication has no independently decoded matching worker command")
+        require(settled["ok"] is ("error" not in call), "actual publication worker error/success differs from original settlement")
+        if "error" in call:
+            require(all(settled["error"][key] == call["error"][key] for key in ("name", "message")),
+                    "actual worker publication error was replaced on original propagation")
+        else:
+            require(_same(settled["value"], call["result"]), "original publication result differs from the decoded real commit reply")
+        if call["method"] in {"publishShadow", "deleteSource"}:
+            require(all(key in command["input"] and _same(value, command["input"][key])
+                        for key, value in call["args"][0].items()),
+                    "actual visible publication parameters differ from its independently decoded worker command")
+        else:
+            begin, _ = _one(commands, lambda row: row[0]["type"] == "stage.start", "actual source replacement stage omitted")
+            original = call["args"][0]
+            require(_same(begin["input"]["header"], {key: original[key] for key in ("entry", "model", "now", "vectorReady", "source")})
+                    and begin["input"]["rows"] == len(original["chunks"])
+                    and command["input"]["operation"] == begin["input"]["operation"],
+                    "actual source replacement header/operation differs from original input")
+        if call.get("wholeJobId"):
+            job = _one(raw["wholeJobs"], lambda row: row["id"] == call["wholeJobId"], "actual publication lost its original producer")
+            run = _one(raw["methodCalls"], lambda row: row["method"] == "runSync"
+                and row["id"] == (call.get("operationContext") or {}).get("runSyncCallId"), "actual publication lost its original runSync cause")
+            require(run["ownerId"] == job["ownerId"] == call["ownerId"]
+                    and job["enterSeq"] < run["enterSeq"] < start < end < run["returnSeq"] < job["returnSeq"],
+                    "actual visible publication borrowed another original producer/runSync")
+
+
 def _sdk_counts(raw, result, events, *, approved_sdk_root=None):
     acquisition = raw["ownerAcquisitions"][0]
     primary = acquisition["ownerId"]
@@ -348,7 +658,7 @@ def _sdk_counts(raw, result, events, *, approved_sdk_root=None):
     for row in functions.values():
         path = Path(row["file"])
         require(path == ROOT / "memory_core/index/sqlite_store.py"
-                and hashlib.sha256(_sdk_source_path(path, approved_sdk_root).read_bytes()).hexdigest() == row["sourceSha256"],
+                and _file_digest(_sdk_source_path(path, approved_sdk_root)) == row["sourceSha256"],
                 "query-sync boundaries original base producer bytes changed")
     for call in raw["originalBaseCalls"]:
         _interval(call, events, "original-base-producer-enter", "original-base-producer-return", "original public base producer detached")
@@ -419,7 +729,7 @@ def _native_process(case, raw, *, approved_node=None):
             and process["cwd"] == str(ROOT),
             "query-sync boundaries Native context supplied an unreviewed local program")
     for filename, digest in local.items():
-        require(Path(filename).is_file() and hashlib.sha256(Path(filename).read_bytes()).hexdigest() == digest,
+        require(Path(filename).is_file() and _file_digest(filename) == digest,
                 "query-sync Native protected actor bytes changed after actual execution")
     expected = {(package["location"], file["path"]): file["sha256"]
                 for package in context["runtime"]["packages"] for file in package["files"]}
@@ -469,7 +779,7 @@ def _native_process(case, raw, *, approved_node=None):
                 loaded_path = package_root / package / relative
                 require(loaded_path.is_file() and not loaded_path.is_symlink()
                         and loaded_path.resolve() == loaded_path
-                        and hashlib.sha256(loaded_path.read_bytes()).hexdigest() == row["sha256"],
+                        and _file_digest(loaded_path) == row["sha256"],
                         "query-sync boundaries actually imported original compiled bytes changed on disk")
                 (main if first["isMainThread"] else worker).add(row["path"])
     require(0 in threads and len(threads) > 1 and set(local) - {str(Path(process["cwd"]) / "equivalence/query-sync-boundaries-preload.mjs")} <= oracle
@@ -488,7 +798,7 @@ def _native_process(case, raw, *, approved_node=None):
     require(selected is not None, "query-sync independent trusted Node decoder is unavailable")
     trusted = Path(selected).resolve(strict=True)
     require(trusted == Path(authority["execPath"]) and trusted.is_file()
-            and hashlib.sha256(trusted.read_bytes()).hexdigest() == authority["sha256"],
+            and _file_digest(trusted) == authority["sha256"],
             "query-sync captured Node authority differs from independently trusted decoder")
     return {**authority, "execPath": str(trusted)}
 
@@ -602,7 +912,7 @@ def _physical_fault(case, raw, events, primary, *, native):
     require(failures, "declared real publication refusal never affected an original admitted sync")
 
 
-def _physical_controls(case, raw, events, primary, *, native):
+def _physical_controls(case, raw, events, primary, *, native, approved_sdk_root=None):
     value = case["input"]
     gates = raw["gates" if native else "sqlGates"]
     require(len(gates) == sum(step["operation"] == "arm-sql-gate" for step in value["steps"]),
@@ -687,6 +997,31 @@ def _physical_controls(case, raw, events, primary, *, native):
                         and row["receiverIsExactObservedOwner"] is True
                         and row["plan"].get("chunks"),
                         "SDK rival action did not genuinely purge an indexed source through the original publisher")
+                original = row["originalFunction"]
+                require(original["module"] == "memory_core.consolidation.forget" and original["qualname"] == "purge_memory_index"
+                        and _file_digest(_sdk_source_path(original["file"], approved_sdk_root)) == original["sourceSha256"],
+                        "SDK rival publication lost its original purge API source authority")
+                before = _one(raw["snapshots"], lambda snapshot: snapshot["label"] == f'rival-{row["number"]}-before', "actual rival prepublication SQL omitted")
+                after = _one(raw["snapshots"], lambda snapshot: snapshot["label"] == f'rival-{row["number"]}-after', "actual rival committed SQL omitted")
+                require(_one(before["tables"]["memory_core_index_sync"], lambda item: item["id"] == 1, "rival prior revision omitted")["revision"] == row["revisionBefore"]
+                        and _one(after["tables"]["memory_core_index_sync"], lambda item: item["id"] == 1, "rival committed revision omitted")["revision"] == row["revisionAfter"]
+                        and any(item["path"] == row["markerPath"] for item in before["tables"]["memory_core_index_sources"])
+                        and not any(item["path"] == row["markerPath"] for item in after["tables"]["memory_core_index_sources"]),
+                        "SDK rival revision/source purge differs from its real before/after SQL")
+                if row["role"] == "preparation":
+                    request = raw["syncCalls"][specification["preparationSyncLabel"]]
+                    require(row["actualCause"]["syncLabel"] == specification["preparationSyncLabel"]
+                            and row["actualCause"]["originalSyncEnterSeq"] == request["enterSeq"]
+                            and request["enterSeq"] < row["enterSeq"] < row["returnSeq"] < request["returnSeq"],
+                            "SDK preparatory rival borrowed another actual sync request")
+                else:
+                    require(row["actualCause"]["causalPublicQuery"] == specification["maintenanceQueryLabel"]
+                            and any(call["method"] == "_run_memory_publication"
+                                and call["causalPublicQuery"] == specification["maintenanceQueryLabel"]
+                                and call["ownerId"] == row["ownerId"]
+                                and call["enterSeq"] < row["enterSeq"] < row["returnSeq"] < call["returnSeq"]
+                                for call in raw["backgroundCalls"]),
+                            "SDK automatic rival borrowed a producer outside the actual declared query maintenance")
     if value.get("newerFormat"):
         fixture = raw["newerFormatFixture"] if native else _one(raw["metadataFixtures"], lambda row: True, "actual newer metadata fixture omitted")
         require(_same(fixture["specification"], value["newerFormat"])
@@ -733,13 +1068,17 @@ def _raw(case, raw, result, *, native, approved_node=None, approved_sdk_root=Non
         require(_same(identity["beforeImports"], identity["afterImports"])
                 and _same(identity["beforeImports"], identity["afterClose"]),
                 "SDK production bytes changed during original execution")
+        _sdk_tool_contexts(case, raw, events, approved_sdk_root)
     _steps(case, raw, events, native=native)
     _source_custody(case, raw, result, events, native=native)
     _tools(case, raw, result, events, native=native)
+    if native:
+        _native_publication_wires(raw, events)
     primary, close, producers = (_native_counts(raw, result, events) if native
         else _sdk_counts(raw, result, events, approved_sdk_root=approved_sdk_root))
     _typed_errors(raw, native=native, approved_sdk_root=approved_sdk_root)
-    _physical_controls(case, raw, events, primary, native=native)
+    _read_generations(case, raw, result, events, native=native)
+    _physical_controls(case, raw, events, primary, native=native, approved_sdk_root=approved_sdk_root)
     require(raw["statusCalls"], "actual original selected provider was never observed")
     for call in raw["statusCalls"]:
         returned = call["result" if native else "returned"]
@@ -802,4 +1141,50 @@ def replay_case(case, directory, *, approved_node=None, approved_sdk_root=None):
     validate_pair(case, originals[0], copies[0], native, sdk, approved_node=approved_node, approved_sdk_root=approved_sdk_root)
     return {"validated": True, "publicMatch": _same(native, sdk), "nativeSnapshots": 1,
             "sdkSnapshots": 1, "acceptancePointsAwarded": 0}
+
+
+
+def _native_wires(raw, events, authority):
+    encoded = []
+    for direction, rows in (("request", raw["workerDispatches"]), ("reply", raw["workerMessages"])):
+        for row in rows:
+            message = row["message"]
+            keys = (["input", "preparation"] if direction == "request" and message.get("type") in {"open", "execute", "execute-frame"}
+                    else ["value"] if direction == "reply" and type(message.get("id")) is int and message.get("ok") is True else [])
+            selected = {key for key in keys if isinstance(message.get(key), dict)
+                        and message[key].get("privateType") in {"Uint8Array", "Buffer"}}
+            require(set(row["decodedSerialized"]) == selected,
+                    "cold-retry opaque original SQL wire lost its complete decode custody")
+            for key in selected:
+                wire, receipt = message[key], row["decodedSerialized"][key]
+                require(wire["byteLength"] == len(bytes.fromhex(wire["hex"]))
+                        and receipt["bytesSha256"] == hashlib.sha256(bytes.fromhex(wire["hex"])).hexdigest()
+                        and set(receipt) == {"bytesSha256", "value"},
+                        "cold-retry original V8 bytes were replaced or decoding failed")
+                encoded.append((wire["hex"], receipt["value"]))
+    require(encoded, "cold-retry omitted all original serialized SQL traffic")
+    actual = _decode_v8(authority, [wire for wire, _ in encoded])
+    require(all(_same(value, claimed) for value, (_, claimed) in zip(actual, encoded, strict=True)),
+            "cold-retry independently decoded original V8 parameters differ from claimed values")
+    for dispatch in raw["workerDispatches"]:
+        _interval(dispatch, events, "actual-worker-dispatch-enter", "actual-worker-dispatch-return", "original worker dispatch detached")
+        require(dispatch["returnedUndefined"] is True and "error" not in dispatch,
+                "cold-retry actual worker postMessage failed")
+        message = dispatch["message"]
+        if type(message.get("id")) is int:
+            replies = [row for row in raw["workerMessages"] if row["workerId"] == dispatch["workerId"]
+                       and row["message"].get("id") == message["id"]]
+            command = dispatch["decodedSerialized"].get("input", {}).get("value", {})
+            if not replies:
+                require(command.get("type") == "pluginState.appendJournal",
+                        "cold-retry original SQL request lost its real worker reply")
+                continue
+            require(len(replies) == 1 and dispatch["returnSeq"] < replies[0]["sequence"]
+                    and replies[0]["threadId"] == dispatch["threadId"] > 0
+                    and type(replies[0]["message"].get("ok")) is bool,
+                    "cold-retry original SQL worker reply changed request/process/order")
+    require(len(raw["workerDispatches"]) == sum(row["event"] == "actual-worker-dispatch-enter" for row in events.values())
+            == sum(row["event"] == "actual-worker-dispatch-return" for row in events.values())
+            and len(raw["workerMessages"]) == sum(row["event"] == "actual-worker-message" for row in events.values()),
+            "cold-retry original worker transport receipts were dropped")
 

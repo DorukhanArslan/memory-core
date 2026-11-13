@@ -259,7 +259,10 @@ def test_real_publication_failure_requires_its_owned_physical_fault_receipts(eng
     if attack == "different-target":
         fault["target"] = str(Path(raw["fixtureBase"]) / "another-owned-target")
     elif attack == "unremoved-fault":
-        fault["removed"] = False
+        if engine:
+            fault["removed"] = False
+        else:
+            fault["afterUnlink"]["kind"] = "symlink"
     else:
         fault["removeEnterSeq"] = fault["armReturnSeq"]
     _reject(capture, engine)
@@ -335,6 +338,175 @@ def test_newer_empty_generation_is_the_actual_owned_metadata_fixture(engine, att
     else:
         raw["metadataFixtures"] = []
     _reject(capture, engine)
+
+
+def _reseal_sql(snapshot):
+    """Challenge semantic joins after making the in-memory JSON/hash coherent."""
+    encoded = json.loads(snapshot["serializedJSON"])
+    encoded.update({key: deepcopy(snapshot[key]) for key in encoded if key in snapshot})
+    snapshot["serializedJSON"] = json.dumps(encoded, ensure_ascii=False, separators=(",", ":"), allow_nan=False)
+    snapshot["sha256"] = hashlib.sha256(snapshot["serializedJSON"].encode()).hexdigest()
+
+
+@pytest.mark.parametrize("attack", ["context", "store", "code-file", "code-name", "code-line", "causal-label", "missing-worker-scope", "missing-all-scopes"])
+def test_sdk_actual_tool_context_binds_original_source_and_complete_causal_scopes(attack):
+    capture = deepcopy(_load(CASES[0], False))
+    raw = _raw(capture, False)
+    scope = next(row for row in raw["toolContextScopes"]
+                 if row["label"] == "first" and row["codeQualname"].endswith(".search_memory_worker"))
+    if attack == "context":
+        scope["contextObjectId"] = "borrowed-context-object"
+    elif attack == "store":
+        scope["storeObjectId"] = "borrowed-store-object"
+    elif attack == "code-file":
+        scope["codeFile"] = str(ROOT / "memory_core/index/sqlite_store.py")
+    elif attack == "code-name":
+        scope["codeQualname"] = "another_original_operation"
+    elif attack == "code-line":
+        scope["codeFirstLine"] += 1
+    elif attack == "causal-label":
+        scope["label"] = "repeat"
+        for row in raw["events"]:
+            if row["sequence"] in {scope["enterSeq"], scope["returnSeq"]}:
+                row["label"] = row["activeTool"] = "repeat"
+    else:
+        removed = ([scope] if attack == "missing-worker-scope" else
+                   [row for row in raw["toolContextScopes"] if row["label"] == "first"])
+        sequences = {row[key] for row in removed for key in ("enterSeq", "returnSeq")}
+        raw["toolContextScopes"] = [row for row in raw["toolContextScopes"] if row not in removed]
+        # Leave the actual tool/manager calls and their lifecycle receipts. Only
+        # source scopes and their matching events disappear coherently.
+        raw["events"] = [row for row in raw["events"] if row["sequence"] not in sequences]
+    _reject(capture, False)
+
+
+@pytest.mark.parametrize("attack", ["schema", "read-revision", "source-row", "chunk-path", "provenance", "details", "missing-admission", "different-thread"])
+def test_sdk_returned_hits_require_the_actual_pinned_schema_source_and_read_generation(attack):
+    capture = deepcopy(_load(CASES[0], False))
+    raw = _raw(capture, False)
+    read = next(row for row in raw["readAdmissions"] if row["activeTool"] == "first")
+    pinned = read["pinnedSnapshot"]
+    if attack == "schema":
+        pinned["schema"] = [row for row in pinned["schema"] if row["name"] != "chunks"]
+    elif attack == "read-revision":
+        pinned["readRevision"] += 1
+    elif attack == "source-row":
+        pinned["tables"]["memory_core_index_sources"][0]["hash"] = "0" * 64
+    elif attack == "chunk-path":
+        pinned["tables"]["chunks"][0]["path"] = "memory/borrowed-note.md"
+    elif attack == "provenance":
+        pinned["tables"]["memory_index_chunk_provenance"][0]["observed_at"] += 1
+    elif attack == "details":
+        pinned["tables"]["memory_index_chunk_details"][0]["hash"] = "0" * 64
+    elif attack == "missing-admission":
+        read["lifecycleAfter"]["sessionReadAdmissions"] = []
+    else:
+        read["threadId"] += 1
+    _reseal_sql(pinned)
+    _reject(capture, False)
+
+
+@pytest.mark.parametrize("attack", ["expected-revision", "source-path", "source-identity", "meta-key", "vector-flag", "owner-run"])
+def test_native_actual_publication_arguments_bind_the_unchanged_original_worker_wire(attack):
+    capture = deepcopy(_load(CASES[0], True))
+    raw = _raw(capture, True)
+    publication = next(row for row in raw["publicationCalls"] if row["method"] == "publishShadow")
+    args = publication["args"][0]
+    if attack == "expected-revision":
+        args["expectedRevision"] += 1
+    elif attack == "source-path":
+        args["sourcePath"] += "-borrowed-shadow"
+    elif attack == "source-identity":
+        args["sourceIdentity"]["inode"] = str(int(args["sourceIdentity"]["inode"]) + 1)
+    elif attack == "meta-key":
+        args["metaKey"] = "another_index_meta_key"
+    elif attack == "vector-flag":
+        args["sourceHasVectors"] = not args["sourceHasVectors"]
+    else:
+        publication["operationContext"]["runSyncCallId"] = "borrowed-original-run"
+    # V8 bytes, independent decoder projections and actual worker replies stay
+    # original. A publication bucket cannot assert another physical operation.
+    with pytest.raises(ValueError):
+        _guard()._native_publication_wires(raw, _guard()._clock(raw, native=True))
+    _reject(capture, True)
+
+
+@pytest.mark.parametrize("attack", ["missing-producer-bucket", "missing-publication-bucket", "missing-ledger-entry", "missing-publication-settlement"])
+def test_native_all_original_producer_and_publication_events_need_complete_buckets(attack):
+    capture = deepcopy(_load(CASES[0], True))
+    raw = _raw(capture, True)
+    job = next(row for row in raw["wholeJobs"] if row["active"] is True)
+    publications = [row for row in raw["publicationCalls"] if row["wholeJobId"] == job["id"]]
+    assert job["committedGeneration"] is True and publications
+    if attack == "missing-producer-bucket":
+        raw["wholeJobs"].remove(job)
+        raw["publicationCalls"] = [row for row in raw["publicationCalls"] if row not in publications]
+        raw["comparableWindow"]["wholeJobIds"].remove(job["id"])
+        capture[2]["dispatches"]["producerAttempts"] -= 1
+        capture[2]["dispatches"]["committedGenerations"] -= 1
+        capture[2]["producerOutcomes"].pop(0)
+    elif attack == "missing-publication-bucket":
+        raw["publicationCalls"] = [row for row in raw["publicationCalls"] if row not in publications]
+        job["publicationCommitCallIds"] = []
+        job["committedGeneration"] = False
+        capture[2]["dispatches"]["committedGenerations"] -= 1
+    else:
+        sequence = job["enterSeq"] if attack == "missing-ledger-entry" else publications[0]["returnSeq"]
+        raw["events"] = [row for row in raw["events"] if row["sequence"] != sequence]
+    # The real baseline was authenticated before mutation. Check this semantic
+    # stage directly as well, so an unchanged stdout cannot hide a missing
+    # event/bucket guard behind its independent public-result consistency check.
+    with pytest.raises(ValueError):
+        _guard()._native_counts(raw, capture[2], _guard()._clock(raw, native=True))
+    _reject(capture, True)
+
+
+@pytest.mark.parametrize("native", [True, False], ids=["native", "sdk"])
+@pytest.mark.parametrize("attack", ["database-path", "source-row"])
+def test_physical_published_snapshot_uses_the_owned_database_and_actual_source_rows(native, attack):
+    capture = deepcopy(_load(CASES[0], native))
+    raw = _raw(capture, native)
+    source_table = "memory_index_sources" if native else "memory_core_index_sources"
+    snapshot = next(row for row in raw["snapshots"] if row.get("tables", {}).get(source_table))
+    if attack == "database-path":
+        snapshot["dbPath"] = str(Path(raw["fixtureBase"]) / "another-index.sqlite")
+    else:
+        snapshot["tables"][source_table][0]["hash"] = "0" * 64
+    _reseal_sql(snapshot)
+    _reject(capture, native)
+
+
+@pytest.mark.parametrize("native", [True, False], ids=["native", "sdk"])
+def test_explicit_force_request_reaches_the_original_producer_with_its_actual_force_argument(native):
+    capture = deepcopy(_load(_case("warm-force-unchanged"), native))
+    raw = _raw(capture, native)
+    if native:
+        call = next(row for row in raw["methodCalls"] if row["method"] == "sync"
+                    and row.get("operationContext", {}).get("label") == "force")
+        assert call["args"][0]["force"] is True
+        call["args"][0]["force"] = False
+    else:
+        call = next(row for row in raw["methodCalls"] if row["method"] == "reindex"
+                    and row["activeSync"] == "force")
+        assert call["options"]["force"] is True
+        call["options"]["force"] = False
+    _reject(capture, native)
+
+
+@pytest.mark.parametrize("attack", ["actual-cause", "original-api-source", "revision-before", "prepared-revision"])
+def test_sdk_preparatory_rival_binds_its_actual_original_api_cause_and_sql_revisions(attack):
+    capture = deepcopy(_load(_case("typed-conflict-once-retry"), False))
+    raw = _raw(capture, False)
+    rival = next(row for row in raw["functionalInterleavings"] if row["role"] == "preparation")
+    if attack == "actual-cause":
+        rival["actualCause"]["syncLabel"] = "naturalRetry"
+    elif attack == "original-api-source":
+        rival["originalFunction"]["sourceSha256"] = "0" * 64
+    elif attack == "revision-before":
+        rival["revisionBefore"] += 1
+    else:
+        rival["trigger"]["expectedRevision"] += 1
+    _reject(capture, False)
 
 
 @pytest.mark.parametrize("case", CASES, ids=lambda case: case["id"])

@@ -75,23 +75,36 @@ def _header(case, raw, *, native, approved_reference=None, approved_runtime=None
         rows = observed[group]
         require(isinstance(rows, list) and (rows or not native and group == "compiledBindings"),
                 "notice original source authority is missing")
+        if native:
+            prefix = ("work/openclaw-v2026.9.9/" if group == "originalSourceBindings"
+                      else ".reference/release-runtime/node_modules/openclaw/")
+            expected = {name[len(prefix):]: digest for name, digest in pinned.items() if name.startswith(prefix)}
+            actual = {row["path"][len(prefix):] if row["path"].startswith(prefix) else row["path"]: row["sha256"]
+                      for row in rows}
+            require(len(actual) == len(rows) and _same(actual, expected),
+                    "notice complete independently pinned original source group was omitted or extended")
+        elif group == "originalSourceBindings":
+            required_modules = {"memory_core.host.managed_index", "memory_core.host.managed_session",
+                                "memory_core.host.kit", "memory_core.host.lifecycle", "memory_core.tools.memory_search"}
+            require(len(rows) == len(required_modules) and {row["module"] for row in rows} == required_modules,
+                    "notice complete SDK original module authority was omitted or extended")
+        else:
+            require(rows == [], "notice SDK cannot claim compiled Native module custody")
         for row in rows:
             path = Path(row["path"])
             if native:
-                require(not path.is_absolute() and pinned.get(row["path"]) == row["sha256"],
+                logical = row["path"][len(prefix):] if row["path"].startswith(prefix) else row["path"]
+                require(not path.is_absolute() and ".." not in Path(logical).parts
+                        and pinned.get(prefix + logical) == row["sha256"],
                         "notice original Native source/compiled authority is not independently pinned")
                 if group == "originalSourceBindings":
-                    prefix = "work/openclaw-v2026.9.9/"
-                    require(row["path"].startswith(prefix), "notice original logical source pin escaped its reference tree")
                     selected = approved_reference or os.environ.get("MEMORY_NEXT_TURN_NOTICE_REFERENCE_ROOT")
                     base = Path(selected) if selected else ROOT / "work/openclaw-v2026.9.9"
-                    path = base.resolve(strict=True) / row["path"][len(prefix):]
+                    path = base.resolve(strict=True) / logical
                 else:
-                    prefix = ".reference/release-runtime/node_modules/openclaw/"
-                    require(row["path"].startswith(prefix), "notice compiled logical source pin escaped its original package")
                     selected = approved_runtime or os.environ.get("MEMORY_NEXT_TURN_NOTICE_RUNTIME_ROOT")
                     base = Path(selected) if selected else ROOT / ".reference/release-runtime/node_modules/openclaw"
-                    path = base.resolve(strict=True) / row["path"][len(prefix):]
+                    path = base.resolve(strict=True) / logical
             else:
                 require(path.is_absolute() and path.is_relative_to(ROOT / "memory_core")
                         and path.suffix == ".py", "notice SDK imported a source outside the current production tree")
@@ -144,6 +157,14 @@ def _calls(observed, events, *, native):
                     "notice synchronous call parent does not enclose the original invocation")
         if "errorRef" in call:
             require(events[end].get("errorRef") == call["errorRef"], "notice original thrown error identity changed")
+        if not native:
+            require(_same(call["beforeNotice"], {key: events[start][key] for key in ("noticeRef", "noticeScalar")})
+                    and _same(call["afterNotice"], {key: events[end][key] for key in ("noticeRef", "noticeScalar")}),
+                    "notice SDK primitive snapshots detached from actual invocation events")
+            for field in ("returnRef", "returnPrimitive"):
+                if field in call:
+                    require(field in events[end] and _same(events[end][field], call[field]),
+                            "notice SDK actual original return changed between call and return event")
     entered = [row for row in events.values() if row.get("phase") == "enter" and row.get("callId")]
     finished = [row for row in events.values() if row.get("phase") in {"return", "error"} and row.get("callId")]
     require(len(entered) == len(finished) == len(calls), "notice original invocation events were dropped")

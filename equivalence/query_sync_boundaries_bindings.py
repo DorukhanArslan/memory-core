@@ -11,10 +11,9 @@ from equivalence.index_identity_boundaries_bindings import _merged_anchors
 from equivalence.query_sync_boundaries import OPERATION
 from equivalence.query_sync_outcomes_bindings import (
     COMPILED_ANCHORS as OUTCOME_COMPILED_ANCHORS,
-    COMPILED_HASHES,
-    REQUIRED_LOADED_ARTIFACTS,
-    REQUIRED_MAIN_ARTIFACTS,
-    REQUIRED_WORKER_ARTIFACTS,
+    COMPILED_HASHES as OUTCOME_COMPILED_HASHES,
+    REQUIRED_MAIN_ARTIFACTS as OUTCOME_REQUIRED_MAIN_ARTIFACTS,
+    REQUIRED_WORKER_ARTIFACTS as OUTCOME_REQUIRED_WORKER_ARTIFACTS,
     SOURCE_ANCHORS as OUTCOME_SOURCE_ANCHORS,
     SOURCE_HASHES as OUTCOME_SOURCE_HASHES,
     prepare_query_sync_outcomes_bindings,
@@ -27,6 +26,8 @@ SOURCE_HASHES = {
     **OUTCOME_SOURCE_HASHES,
     "extensions/memory-core/src/memory/manager-reindex-lock.ts":
         "3ad6e120af56a740d278eda3b5fc4cb2b83509bccd3f12591c413de626870ad1",
+    "extensions/memory-core/src/memory/manager-db-kernel.ts":
+        "4973db0580dc6dd7ac032a983efffa79ccb14fc4206f046b94c4250c7b5597ca",
 }
 SOURCE_ANCHORS = _merged_anchors(OUTCOME_SOURCE_ANCHORS, {
     "extensions/memory-core/src/memory/manager-reindex-lock.ts": (
@@ -41,7 +42,33 @@ SOURCE_ANCHORS = _merged_anchors(OUTCOME_SOURCE_ANCHORS, {
         '            { reason: "search-bootstrap" },',
         '          log.warn(`memory sync failed (search-bootstrap): ${String(err)}`);',
     ),
+    "extensions/memory-core/src/memory/manager-sync-outcome.ts": (
+        "  async track(operation: () => Promise<string | undefined | void>, active = false): Promise<void> {",
+        "      const incompleteReason = await operation();",
+    ),
+    "extensions/memory-core/src/memory/manager-db-kernel.ts": (
+        "export class MemoryIndexRevisionConflictError extends Error {",
+        "    if (liveRevision !== params.expectedRevision) {",
+    ),
+    "extensions/memory-core/src/memory/manager-database-context.ts": (
+        "  async deleteSource(",
+        "  async publishShadow(",
+        '            type: "source.delete",',
+        '            type: "database.publish",',
+    ),
+    "extensions/memory-core/src/memory/manager-index-generation-lease.ts": (
+        "export async function acquireMemoryIndexReadGeneration(",
+        "async function acquireLocal(",
+    ),
 })
+REQUIRED_MAIN_ARTIFACTS = tuple(dict.fromkeys((*OUTCOME_REQUIRED_MAIN_ARTIFACTS,
+    "dist/manager-db-kernel-DyJADqYu.mjs")))
+REQUIRED_WORKER_ARTIFACTS = tuple(dict.fromkeys((*OUTCOME_REQUIRED_WORKER_ARTIFACTS,
+    "dist/manager-db-kernel-DyJADqYu.mjs")))
+REQUIRED_LOADED_ARTIFACTS = tuple(dict.fromkeys((*REQUIRED_MAIN_ARTIFACTS,*REQUIRED_WORKER_ARTIFACTS)))
+COMPILED_HASHES = {**OUTCOME_COMPILED_HASHES,
+    "dist/manager-db-kernel-DyJADqYu.mjs":
+        "b2af8c64d1450a503cecb97a96d37b3597340c6a68cc7c0231f98befc964bd99"}
 COMPILED_ANCHORS = _merged_anchors(OUTCOME_COMPILED_ANCHORS, {
     "dist/manager-vector-warning-DcyxxT5h.mjs": (
         "async function waitForMemoryReindexLock(dbPath, options = {}) {",
@@ -52,6 +79,12 @@ COMPILED_ANCHORS = _merged_anchors(OUTCOME_COMPILED_ANCHORS, {
         '\t\t\t\t\tawait this.syncAdmitted({ reason: "search-bootstrap" }, { allowEmbeddingBootstrapFallback: true });',
         '\t\t\t\t\t} else log$1.warn(`memory sync failed (search-bootstrap): ${String(err)}`);',
         "\t\t\t\tconst lock = await waitForMemoryReindexLock(dbPath, { waitForActive: true });",
+        "var MemorySyncOutcomeLedger = class {",
+        "\tasync track(operation, active = false) {",
+    ),
+    "dist/manager-db-kernel-DyJADqYu.mjs": (
+        "var MemoryIndexRevisionConflictError = class extends Error {",
+        "export { tableExists as i, publishMemoryDatabaseTables as n, readMemoryDatabaseRevision as r, MemoryIndexRevisionConflictError as t };",
     ),
 })
 

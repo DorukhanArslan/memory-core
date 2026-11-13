@@ -13,8 +13,17 @@ if(!contextPath||!path.isAbsolute(contextPath)||fs.realpathSync(contextPath)!==c
 const bytes=fs.readFileSync(contextPath);
 if(bytes.length>64*1024*1024)throw Error('Excessive query-sync boundaries context');
 const context=JSON.parse(bytes),profile=context.querySyncBoundariesProfile;
-// Populated only from the independently frozen new family before any host execution.
-const approved={};
+// Exact independently frozen eight-member input authority.
+const approved={
+ "query-sync-boundaries-clean-cold-repeat": "00cbfb8e3ad5d04e0879e00aee596791bd5f39fabaae3bdb79e416c64589c102",
+ "query-sync-boundaries-warm-force-unchanged": "8d7c9c217c33c0bbebaf974d0107df6984c2b3ec098d6cc33c7d0070804f1a27",
+ "query-sync-boundaries-joined-force-and-query": "206b2278b15383488743a6fb2cda924242e98396bec973e8655d401032f59f5f",
+ "query-sync-boundaries-joined-failure-persistent-cold-recovery": "ab36c05321175afc4c2270df2b757d7f5dd766c7d5241e0235991db400bbd981",
+ "query-sync-boundaries-warm-failure-natural-retry": "75510a726cf7d398bc2292a5ae8a9219f8e00309abbef7bc0e4c62e8f7832013",
+ "query-sync-boundaries-typed-conflict-once-retry": "6fbb327e767dc3a98fa80f03e24c5103c447e47c5a7951e66e0214efbfc95b6a",
+ "query-sync-boundaries-typed-conflict-twice-exhaustion": "faa4be9c79b3515d75f3d5545cdac27ce1824784f11cb35e77895260fa1600a2",
+ "query-sync-boundaries-newer-empty-public-refusal-cli-override": "4f349eaf0498dceec8dbd91304b747e98757d60655af24390d8153cb7be64f1c"
+};
 const keys=['schemaVersion','kind','runtime','providerMode','fetchPolicy','approvedNodeRuntime',
  'querySyncBoundariesProfile','allowedLocal','traceDirectory','evidenceDirectory','stateDirectory',
  'configPath','approvedReferenceSources','fixtureSourceCaptures'].sort().join();

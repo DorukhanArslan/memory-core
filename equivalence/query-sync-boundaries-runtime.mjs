@@ -1,4 +1,4 @@
-// Observe two frozen cold public searches and one real owned publication refusal.
+// Observe the complete independently frozen query-sync boundary family.
 // No synchronization, retrieval, publication or timer algorithm is supplied here.
 import fs from 'node:fs';
 import path from 'node:path';
@@ -12,35 +12,46 @@ import {deserialize} from 'node:v8';
 
 const plain=value=>JSON.parse(JSON.stringify(value));
 const sha=value=>crypto.createHash('sha256').update(value).digest('hex');
-const errorValue=error=>({name:error.name,message:error.message,code:error.code??null,
-  errcode:error.errcode??null,errstr:error.errstr??null,entered:error.entered??null,committed:error.committed??null,stack:error.stack??null});
+const errorScalars=error=>{const result={};for(const key of ['name','message','code','errcode','errstr','entered','committed']){
+  let target=error,descriptor;while(target&&(typeof target==='object'||typeof target==='function')&&
+    !(descriptor=Object.getOwnPropertyDescriptor(target,key)))target=Object.getPrototypeOf(target);
+  result[key]=descriptor&&Object.hasOwn(descriptor,'value')?descriptor.value:null;
+}return result;};
 const sqlValue=value=>typeof value==='bigint'?{sqliteInt64:value.toString()}:
   value instanceof Uint8Array?{sqliteBlobHex:Buffer.from(value).toString('hex')}:value;
 
-export function orderedPublicQueryLabels(input){
-  const labels=input.steps.filter(step=>step.operation==='public-memory-search').map(step=>step.label);
-  if(!labels.length||new Set(labels).size!==labels.length||
-    labels.some(label=>!Object.hasOwn(input.queries,label)))throw Error('Query-sync boundaries require exact ordered public query steps');
-  return labels;
-}
-
 export async function runQuerySyncBoundariesRuntime(input,config){
   const base=config.stateDirectory,workspace=path.join(base,'workspace');
+  const deferredErrorStacks=[];
+  const errorValue=error=>{const value={...errorScalars(error),stack:null,stackSerialization:'original-teardown'};
+    deferredErrorStacks.push({value,error});return value;};
   const raw={kind:'query-sync-boundaries',engine:'native',caseId:config.caseId,input:plain(input),
     pid:process.pid,ppid:process.ppid,fixtureBase:base,events:[],owners:{},ownerNames:{},
     facadeCalls:[],originalGetCalls:[],statusCalls:[],originalSearchCalls:[],methodCalls:[],
     backgroundCalls:[],poolCalls:[],workerDispatches:[],workerMessages:[],workerStates:[],leaseCalls:[],
     snapshots:[],sourceStages:{},toolCalls:{},fault:null,faultSyscalls:[],syncCalls:{},wholeJobs:[],
-    publicationCalls:[],gates:[],executedSteps:[],originalErrors:[]};
+    publicationCalls:[],gates:[],executedSteps:[],originalErrors:[],revisionReads:[],revisionErrors:[]};
   let sequence=0,phase='setup',activeTool=null,requestLabel=null,dbPath;
   let OriginalManager,originalGet,closeAll,Pool,originalPoolRun;
-  let foreground;
+  let foreground,primaryOwnerId,TypedRevisionConflict,acquireOriginalReadGeneration,revisionControl;
   let armedFault=null,gate=null;
   const operationScope=new AsyncLocalStorage(),pendingSyncs=new Map(),pendingSearches=new Map(),
-    observedLedgers=new WeakSet(),observedDatabases=new WeakSet(),fixtureDatabases=new WeakSet();
+    observedLedgers=new WeakSet(),observedDatabases=new WeakSet(),fixtureDatabases=new WeakSet(),openJobs=new Map(),backgroundPromises=new Map();
+  const faultSpecification=input.publicationFault??input.fault;
   const owners=new Map(),refs=new WeakMap(),restorations=[],workers=new Map(),leaseDatabases=new Map();
+  const errorWitnesses=new WeakMap();
   let refCount=0,workerCount=0;
   const ref=value=>{if(!value)return null;if(!refs.has(value))refs.set(value,`ref-${++refCount}`);return refs.get(value);};
+  function originalErrorRef(error){
+    if(!error||(typeof error!=='object'&&typeof error!=='function'))return null;
+    if(!errorWitnesses.has(error)){
+      const prototypeChainRefs=[];let prototype=Object.getPrototypeOf(error),constructor;
+      while(prototype){prototypeChainRefs.push(ref(prototype));constructor??=Object.getOwnPropertyDescriptor(prototype,'constructor')?.value;prototype=Object.getPrototypeOf(prototype);}
+      const row={errorRef:ref(error),constructorRef:ref(constructor),prototypeChainRefs,
+        originalTypedClassRef:ref(TypedRevisionConflict),isTypedConflict:!!TypedRevisionConflict&&error instanceof TypedRevisionConflict,
+        payload:errorValue(error)};errorWitnesses.set(error,row);raw.originalErrors.push(row);
+    }return errorWitnesses.get(error).errorRef;
+  }
   const context=()=>operationScope.getStore()??null;
   const stack=()=>getCallSites(64,{sourceMap:false}).map(frame=>`at ${frame.functionName||'<anonymous>'} (${frame.scriptName}:${frame.lineNumber}:${frame.columnNumber})`).join('\n');
   const event=(name,fields={})=>{const row={event:name,sequence:++sequence,phase,activeTool,operationContext:plain(context()),atNs:process.hrtime.bigint().toString(),...fields};raw.events.push(row);return row;};
@@ -101,7 +112,7 @@ export async function runQuerySyncBoundariesRuntime(input,config){
       phase,activeTool,enterSeq:entered.sequence,startedAtNs:entered.atNs,transactionBefore:database.isTransaction,
       originalCallerStack:stack()};raw.leaseCalls.push(call);
     try{const result=run();call.result=carrier(result);return result;}
-    catch(error){call.error=errorValue(error);
+    catch(error){call.error=errorValue(error);call.errorRef=originalErrorRef(error);
       if(gate&&location===gate.path&&!gate.released&&(/locked|SQLITE_BUSY|SQLITE_LOCKED/i.test(error.message)||[5,6].includes((error.errcode??0)&255))){
         gate.busyCallIds.push(call.id);gate.busy.resolve(call.id);}
       throw error;}
@@ -113,6 +124,18 @@ export async function runQuerySyncBoundariesRuntime(input,config){
     const location=coordination(this),statement=originalPrepare.apply(this,args);
     if(location){const database=this,originalStatementGet=statement.get;
       statement.get=function(...getArgs){return leaseCall(database,'statement.get',[args[0],...getArgs],()=>originalStatementGet.apply(this,getArgs));};}
+    else if(dbPath&&this.isOpen&&originalLocation.call(this,'main')===dbPath&&
+      args[0]==='SELECT revision FROM memory_index_state WHERE id = ?'){
+      const database=this,originalStatementGet=statement.get;
+      statement.get=function(...getArgs){
+        const entered=event('original-live-revision-read-enter',{databaseRef:ref(database),sql:args[0],args:carrier(getArgs)});
+        const value=originalStatementGet.apply(this,getArgs);
+        const row={id:`revision-read-${raw.revisionReads.length+1}`,databaseRef:ref(database),sql:args[0],args:carrier(getArgs),
+          result:carrier(value),operationContext:plain(context()),callerStack:stack(),enterSeq:entered.sequence,
+          returnSeq:event('original-live-revision-read-return').sequence};raw.revisionReads.push(row);
+        onOriginalRevisionRead(row,value);return value;
+      };
+    }
     return statement;
   };
   DatabaseSync.prototype.close=function(...args){return leaseCall(this,'close',args,()=>originalDbClose.apply(this,args));};
@@ -176,39 +199,52 @@ export async function runQuerySyncBoundariesRuntime(input,config){
       acquiredSeq:sequence,providerInitializedAtAcquisition:owner.providerInitialized,stateAtAcquisition:state(owner)};
     const ledger=owner.syncOutcomes;
     if(ledger&&!observedLedgers.has(ledger)){
-      observedLedgers.add(ledger);const originalTrack=ledger.track;
+      observedLedgers.add(ledger);const originalTrack=ledger.track,originalDescriptor=Object.getOwnPropertyDescriptor(ledger,'track');
       ledger.track=function(...args){
         const entered=event('original-sync-ledger-enter',{ownerId,active:args[1]===true});
         const job={id:`whole-job-${raw.wholeJobs.length+1}`,ownerId,ledgerRef:ref(this),originalOperationRef:ref(args[0]),
           active:args[1]===true,args:carrier(args),operationContext:plain(context()),enterSeq:entered.sequence,
           originalCallerStack:stack(),stateBefore:state(owner)};
         raw.wholeJobs.push(job);
+        if(job.active){if(!openJobs.has(ownerId))openJobs.set(ownerId,new Set());openJobs.get(ownerId).add(job.id);}
         try{const returned=originalTrack.apply(this,args);job.returnedPromiseRef=ref(returned);
           job.originalReturnPromisePreserved=true;
-          returned.then(value=>{job.result=carrier(value);job.stateAfter=state(owner);job.returnSeq=event('original-sync-ledger-settled',{ownerId,jobId:job.id,state:'fulfilled'}).sequence;},
-            error=>{job.error=errorValue(error);job.stateAfter=state(owner);job.returnSeq=event('original-sync-ledger-settled',{ownerId,jobId:job.id,state:'rejected'}).sequence;});
+          returned.then(value=>{job.result=carrier(value);job.state='fulfilled';job.isTypedConflict=false;job.stateAfter=state(owner);job.returnSeq=event('original-sync-ledger-settled',{ownerId,jobId:job.id,state:job.state}).sequence;openJobs.get(ownerId)?.delete(job.id);},
+            error=>{job.error=errorValue(error);job.errorRef=originalErrorRef(error);job.state='rejected';job.isTypedConflict=!!TypedRevisionConflict&&error instanceof TypedRevisionConflict;
+              job.stateAfter=state(owner);job.returnSeq=event('original-sync-ledger-settled',{ownerId,jobId:job.id,state:job.state}).sequence;openJobs.get(ownerId)?.delete(job.id);});
           return returned;
-        }catch(error){job.error=errorValue(error);job.returnSeq=event('original-sync-ledger-threw',{ownerId,jobId:job.id}).sequence;throw error;}
-      };restorations.push(()=>{ledger.track=originalTrack;});
+        }catch(error){job.error=errorValue(error);job.errorRef=originalErrorRef(error);job.state='rejected';
+          job.isTypedConflict=!!TypedRevisionConflict&&error instanceof TypedRevisionConflict;
+          job.returnSeq=event('original-sync-ledger-threw',{ownerId,jobId:job.id}).sequence;openJobs.get(ownerId)?.delete(job.id);throw error;}
+      };restorations.push(()=>{if(originalDescriptor)Object.defineProperty(ledger,'track',originalDescriptor);else delete ledger.track;});
     }
     const database=owner.publishedDatabase;
     if(database&&!observedDatabases.has(database)){
       observedDatabases.add(database);
       for(const method of ['publishShadow','replaceSource','deleteSource']){
-        const original=database[method];if(typeof original!=='function')throw Error(`Missing original publication ${method}`);
+        const original=database[method],originalDescriptor=Object.getOwnPropertyDescriptor(database,method);
+        if(typeof original!=='function')throw Error(`Missing original publication ${method}`);
         database[method]=function(...args){
           const call={id:`publication-${raw.publicationCalls.length+1}`,method,ownerId,databaseRef:ref(this),args:carrier(args),
             operationContext:plain(context()),enterSeq:event('original-publication-enter',{ownerId,method}).sequence};raw.publicationCalls.push(call);
+          const candidates=[...(openJobs.get(ownerId)??[])];
+          call.wholeJobId=context()?.kind!=='revision-rival'&&candidates.length===1?candidates[0]:null;
           try{const returned=original.apply(this,args);call.returnedPromiseRef=ref(returned);
-            returned.then(value=>{call.result=carrier(value);call.returnSeq=event('original-publication-settled',{ownerId,method,state:'fulfilled'}).sequence;},
-              error=>{call.error=errorValue(error);call.returnSeq=event('original-publication-settled',{ownerId,method,state:'rejected'}).sequence;});return returned;
-          }catch(error){call.error=errorValue(error);call.returnSeq=event('original-publication-threw',{ownerId,method}).sequence;throw error;}
-        };restorations.push(()=>{database[method]=original;});
+            returned.then(value=>{call.result=carrier(value);call.returnSeq=event('original-publication-settled',{ownerId,method,state:'fulfilled'}).sequence;
+              const committed=method==='publishShadow'||(method==='replaceSource'&&value&&value.databaseRevision>value.beforeRevision)||
+                (method==='deleteSource'&&value===true);
+              if(call.wholeJobId&&committed){const job=raw.wholeJobs.find(row=>row.id===call.wholeJobId);job.committedGeneration=true;
+                (job.publicationCommitCallIds??=[]).push(call.id);}
+            },
+              error=>{call.error=errorValue(error);call.errorRef=originalErrorRef(error);call.returnSeq=event('original-publication-settled',{ownerId,method,state:'rejected'}).sequence;});return returned;
+          }catch(error){call.error=errorValue(error);call.errorRef=originalErrorRef(error);call.returnSeq=event('original-publication-threw',{ownerId,method}).sequence;throw error;}
+        };restorations.push(()=>{if(originalDescriptor)Object.defineProperty(database,method,originalDescriptor);else delete database[method];});
       }
     }
     for(const name of ['status','search','sync','syncAdmitted','syncPublishedIndexInBackground','runSync','syncMemoryFiles',
       'markMemoryWatchDirty','prepareKeywordSearch','close','awaitManagerIdle','takeReindexRetryStateForMaintenance','adoptReindexRetryState']){
-      const original=owner[name];if(typeof original!=='function')throw Error(`Missing original manager method ${name}`);
+      const original=owner[name],originalDescriptor=Object.getOwnPropertyDescriptor(owner,name);
+      if(typeof original!=='function')throw Error(`Missing original manager method ${name}`);
       owner[name]=function(...args){
         const entered=event(`original-${name}-enter`,{ownerId,requestLabel,receiverIsExactObservedOwner:this===owner});
         const call={id:`method-${raw.methodCalls.length+1}`,method:name,ownerId,phase,activeTool,requestLabel,
@@ -224,14 +260,14 @@ export async function runQuerySyncBoundariesRuntime(input,config){
         if(name==='search'){call.query=args[0];call.options=carrier(args[1]);call.optionKeys=Reflect.ownKeys(args[1]??{}).map(String);raw.originalSearchCalls.push(call);}
         if(name==='syncPublishedIndexInBackground')raw.backgroundCalls.push(call);
         const finish=(value,error)=>{
-          if(error)call.error=errorValue(error);else {call.result=carrier(value);call.nativeSerializedJSON=JSON.stringify(value);}
+          if(error){call.error=errorValue(error);call.errorRef=originalErrorRef(error);}else {call.result=carrier(value);call.nativeSerializedJSON=JSON.stringify(value);}
           call.stateAfter=state(owner);
           const returned=event(`original-${name}-return`,{ownerId,requestLabel:call.requestLabel,error:!!error,receiverIsExactObservedOwner:this===owner});
           call.returnSeq=returned.sequence;call.finishedAtNs=returned.atNs;
-          if(name==='prepareKeywordSearch'&&!error)physical(`read-generation-${call.id}`,{ownerId,methodCallId:call.id});
         };
         try{
-          const returned=original.apply(this,args);
+          const returned=name==='runSync'?operationScope.run({...context(),runSyncCallId:call.id,runSyncOwnerId:ownerId},()=>original.apply(this,args)):original.apply(this,args);
+          if(name==='syncPublishedIndexInBackground')backgroundPromises.set(call.id,returned);
           call.immediateReturnState=state(owner);
           if(gate&&!gate.released&&owner===foreground&&name==='syncAdmitted'&&!call.stateBefore.syncing&&owner.syncing)
             gate.originalSyncSlotRef??=ref(owner.syncing);
@@ -242,7 +278,7 @@ export async function runQuerySyncBoundariesRuntime(input,config){
           return returned;
         }catch(error){finish(undefined,error);throw error;}
       };
-      restorations.push(()=>{owner[name]=original;});
+      restorations.push(()=>{if(originalDescriptor)Object.defineProperty(owner,name,originalDescriptor);else delete owner[name];});
     }
     return owner;
   }
@@ -251,12 +287,14 @@ export async function runQuerySyncBoundariesRuntime(input,config){
     let workerId=workers.get(this);
     if(!workerId){workerId=`worker-${++workerCount}`;workers.set(this,workerId);
       raw.workerStates.push({workerId,threadId:this.threadId,firstObservedSeq:sequence});
-      this.on('message',message=>{const row=event('actual-worker-message',{workerId,threadId:this.threadId});raw.workerMessages.push({workerId,threadId:this.threadId,sequence:row.sequence,message:carrier(message),decodedSerialized:decodedSerialized(message,'reply')});});
+      this.on('message',message=>{const row=event('actual-worker-message',{workerId,threadId:this.threadId});
+        const receipt={workerId,threadId:this.threadId,sequence:row.sequence,message:carrier(message),decodedSerialized:decodedSerialized(message,'reply')};
+        raw.workerMessages.push(receipt);onOriginalTypedWorkerReply(receipt,message);});
       this.on('exit',exitCode=>{const row=event('actual-worker-exit',{workerId,exitCode});raw.workerStates.find(item=>item.workerId===workerId).exit={sequence:row.sequence,exitCode};});
     }
     const entered=event('actual-worker-dispatch-enter',{workerId,threadId:this.threadId});
     const call={workerId,threadId:this.threadId,phase,activeTool,enterSeq:entered.sequence,startedAtNs:entered.atNs,
-      message:carrier(args[0]),decodedSerialized:decodedSerialized(args[0],'request'),transferList:carrier(args[1])};raw.workerDispatches.push(call);
+      operationContext:plain(context()),message:carrier(args[0]),decodedSerialized:decodedSerialized(args[0],'request'),transferList:carrier(args[1])};raw.workerDispatches.push(call);
     try{const result=originalPost.apply(this,args);call.returnedUndefined=result===undefined;return result;}
     catch(error){call.error=errorValue(error);throw error;}
     finally{const returned=event('actual-worker-dispatch-return',{workerId});call.returnSeq=returned.sequence;call.finishedAtNs=returned.atNs;}
@@ -302,14 +340,14 @@ export async function runQuerySyncBoundariesRuntime(input,config){
   const sameFaultIdentity=(left,right)=>left?.device===right?.device&&left?.inode===right?.inode&&
     left?.nlink===right?.nlink&&left?.uid===right?.uid;
   function armFault(){
-    if(armedFault||!input.fault||input.fault.kind!=='actual-owned-publication-sidecar-dangling-symlink')throw Error('Invalid query-sync boundaries refusal schedule');
+    if(armedFault||!faultSpecification||faultSpecification.kind!=='actual-owned-publication-sidecar-dangling-symlink')throw Error('Invalid query-sync boundaries refusal schedule');
     const entered=event('fault-arm-enter',{ownerId:ref(foreground)});
-    const sidecar=`${dbPath}.reindex-lock.sqlite`,target=path.resolve(base,input.fault.target),
-      backup=`${sidecar}.cold-retry-owned-backup`;
+    const sidecar=`${dbPath}.reindex-lock.sqlite`,target=path.resolve(base,faultSpecification.target),
+      backup=`${sidecar}.query-sync-boundaries-owned-backup`;
     if(!path.isAbsolute(dbPath)||!dbPath.startsWith(base+path.sep)||
       !target.startsWith(base+path.sep)||target===sidecar||
       fs.realpathSync(path.dirname(sidecar))!==path.dirname(sidecar))throw Error('Fault escaped the actual acquired index owner');
-    const receipt={kind:input.fault.kind,ownerId:ref(foreground),dbPath,sidecar,target,backup,
+    const receipt={kind:faultSpecification.kind,ownerId:ref(foreground),dbPath,sidecar,target,backup,
       armEnterSeq:entered.sequence,initial:faultPath(sidecar),targetBefore:faultPath(target),
       targetParentBefore:faultPath(path.dirname(target)),backupBefore:faultPath(backup),removed:false};
     raw.fault=receipt;
@@ -356,7 +394,7 @@ export async function runQuerySyncBoundariesRuntime(input,config){
   function deferred(){let resolve;const promise=new Promise(done=>{resolve=done;});return{promise,resolve};}
   async function bounded(promise,label){
     let watchdog;try{return await Promise.race([promise,new Promise((_,reject)=>{
-      watchdog=setTimeout(()=>reject(Error(`Bounded original lifecycle observation timed out: ${label}`)),input.gate?.timeoutMs??5000);
+      watchdog=setTimeout(()=>reject(Error(`Bounded original lifecycle observation timed out: ${label}`)),5000);
     })]);}finally{clearTimeout(watchdog);}
   }
   function gateSql(method,args,run){
@@ -398,13 +436,13 @@ export async function runQuerySyncBoundariesRuntime(input,config){
     const returned=operationScope.run({kind:'sync',label},()=>foreground.sync(params));call.returnedPromiseRef=ref(returned);
     const observation=returned.then(value=>{call.settled=true;call.state='fulfilled';call.result=carrier(value);
       call.returnSeq=event('actual-sync-request-return',{label,state:call.state}).sequence;return{state:'fulfilled'};},
-      error=>{call.settled=true;call.state='rejected';call.error=errorValue(error);
+      error=>{call.settled=true;call.state='rejected';call.error=errorValue(error);call.errorRef=originalErrorRef(error);call.isTypedConflict=!!TypedRevisionConflict&&error instanceof TypedRevisionConflict;
         call.returnSeq=event('actual-sync-request-return',{label,state:call.state}).sequence;return{state:'rejected'};});
     pendingSyncs.set(label,{original:returned,observation,call});return call;
   }
   async function awaitSync(label){
     const pending=pendingSyncs.get(label);if(!pending)throw Error('Missing original sync request');
-    await pending.observation;return{state:pending.call.state};
+    await pending.observation;return{status:pending.call.state,isTypedConflict:pending.call.isTypedConflict??false};
   }
   function startSearch(tool,label,args){
     if(pendingSearches.has(label))throw Error('Duplicate public query request label');
@@ -427,6 +465,119 @@ export async function runQuerySyncBoundariesRuntime(input,config){
     if(spec.notify!==false){foreground.markMemoryWatchDirty();receipt.notificationReturnSeq=event('declared-dirty-notification-return',{ownerId:ref(foreground)}).sequence;}
     receipt.returnSeq=event('actual-source-mutation-return').sequence;(raw.sourceMutations??=[]).push(receipt);
   }
+  function setNewerEmptyFormat(){
+    const specification=input.newerFormat;if(!specification||specification.field!=='chunkingVersion')throw Error('Unsupported original metadata fixture');
+    const before=physical('before-newer-empty-format'),db=new DatabaseSync(dbPath);
+    const row={specification:plain(specification),enterSeq:event('owned-newer-format-fixture-enter').sequence,
+      dbPath,beforeSnapshotLabel:before.label};raw.newerFormatFixture=row;
+    try{
+      db.exec('BEGIN IMMEDIATE');
+      row.actualChunkCount=db.prepare('SELECT COUNT(*) AS count FROM memory_index_chunks').get().count;
+      row.actualSourceCount=db.prepare('SELECT COUNT(*) AS count FROM memory_index_sources').get().count;
+      if(row.actualChunkCount!==0||row.actualSourceCount!==0)throw Error('Newer-empty fixture requires genuinely empty original SQL');
+      const prior=db.prepare("SELECT value FROM memory_index_meta WHERE key='memory_index_meta_v1'").get();
+      if(typeof prior?.value!=='string')throw Error('Actual public empty seed did not produce original metadata');
+      row.beforeSerialized=prior.value;row.beforeMetadata=JSON.parse(prior.value);
+      row.afterMetadata={...row.beforeMetadata,[specification.field]:specification.version};row.afterSerialized=JSON.stringify(row.afterMetadata);
+      row.sql='UPDATE memory_index_meta SET value=? WHERE key=? AND value=?';
+      row.params=[row.afterSerialized,'memory_index_meta_v1',row.beforeSerialized];
+      row.sqliteResult=carrier(db.prepare(row.sql).run(...row.params));
+      db.exec('COMMIT');row.committed=true;
+    }catch(error){row.error=errorValue(error);if(db.isTransaction)db.exec('ROLLBACK');throw error;}
+    finally{db.close();row.returnSeq=event('owned-newer-format-fixture-return').sequence;}
+    physical('after-newer-empty-format');
+  }
+  function revisionFailure(round,error){
+    round.error=errorValue(error);round.state='fixture-error';raw.revisionErrors.push({round:round.index,error:errorValue(error)});
+  }
+  async function acquireRevisionRound(index,trigger){
+    const round=revisionControl.rounds[index];if(!round||round.acquireEnterSeq)throw Error('Duplicate or undeclared real revision reader');
+    revisionControl.current=round;round.trigger=carrier(trigger);round.state='reader-pending';
+    round.acquireEnterSeq=event('fixture-original-reader-enter',{round:index,role:round.role}).sequence;
+    const promise=operationScope.run({kind:'revision-reader',round:index},()=>acquireOriginalReadGeneration(dbPath));
+    round.acquirePromiseRef=ref(promise);
+    const release=await promise;Object.defineProperty(round,'release',{value:release,enumerable:false});
+    round.releaseFunctionRef=ref(release);round.state='reader-held';round.readerHeld=true;
+    round.acquireReturnSeq=event('fixture-original-reader-return',{round:index,role:round.role}).sequence;return round;
+  }
+  async function releaseRevisionRound(round,reason){
+    if(!round?.release||round.released)return;
+    round.releaseEnterSeq=event('fixture-original-reader-release-enter',{round:round.index,reason}).sequence;
+    try{await round.release();round.released=true;round.readerHeld=false;}
+    finally{round.releaseReturnSeq=event('fixture-original-reader-release-return',{round:round.index,reason}).sequence;}
+  }
+  async function armRevisionConflict(role){
+    const specification=input.revisionConflict;
+    if(!specification||specification.kind!=='genuine-competing-original-index-publication')throw Error('Missing independently declared revision recipe');
+    if(!revisionControl){revisionControl={specification:plain(specification),current:null,rounds:specification.paths.map((markerPath,index)=>({index,markerPath,
+      role:index===0?'preparation':'maintenance',state:'not-reached',reached:false}))};
+      raw.revisionControl={specification:plain(specification),rounds:revisionControl.rounds};}
+    if(!['preparation','maintenance'].includes(role))throw Error('Revision control requires its frozen role');
+    await acquireRevisionRound(role==='preparation'?0:1,{kind:'declared-role-arm',role});
+  }
+  function onOriginalRevisionRead(receipt,value){
+    const round=revisionControl?.current,scope=receipt.operationContext;
+    if(!round||round.reached||!round.readerHeld||!scope?.runSyncCallId||!Number.isSafeInteger(value?.revision))return;
+    const owner=raw.owners[scope.runSyncOwnerId],spec=revisionControl.specification;
+    const selected=round.role==='preparation'
+      ?scope.kind==='sync'&&scope.label===spec.preparationSyncLabel&&scope.runSyncOwnerId===primaryOwnerId
+      :scope.kind==='search'&&scope.label===spec.maintenanceQueryLabel&&owner?.purpose==='maintenance'&&owner.maintenanceSourceOwnerId===primaryOwnerId;
+    if(!selected)return;
+    round.reached=true;round.state='actual-shadow-revision-captured';round.revisionReadId=receipt.id;
+    round.runSyncCallId=scope.runSyncCallId;round.actualOwnerId=scope.runSyncOwnerId;round.expectedRevision=value.revision;
+    round.reachedSeq=event('fixture-revision-round-reached',{round:round.index,revisionReadId:receipt.id}).sequence;
+    const task=performOriginalRival(round).catch(async error=>{revisionFailure(round,error);
+      try{await releaseRevisionRound(round,'rival-fixture-error');}catch(releaseError){revisionFailure(round,releaseError);}});
+    Object.defineProperty(round,'rivalTask',{value:task,enumerable:false});
+  }
+  async function performOriginalRival(round){
+    const before=physical(`rival-before:${round.index}`),sources=before.tables?.memory_index_sources??[];
+    const actual=sources.find(row=>row.path===round.markerPath&&row.source==='memory');
+    if(typeof actual?.hash!=='string')throw Error('Reached original revision attempt has no actual indexed rival marker');
+    const owner=foreground,database=owner.publishedDatabase;
+    const args={path:round.markerPath,source:'memory',expectedHash:actual.hash};round.rivalArguments=carrier(args);
+    round.rivalOwnerId=ref(owner);round.rivalDatabaseRef=ref(database);round.beforeSnapshot=before.label;
+    round.rivalEnterSeq=event('fixture-original-rival-delete-enter',{round:round.index,args:carrier(args)}).sequence;
+    try{
+      const returned=operationScope.run({kind:'revision-rival',round:round.index},()=>database.deleteSource(args,()=>{
+        if(owner.closed||owner.publishedDatabase!==database||!database.db.isOpen)throw Error('Original rival lost its actual live owner');
+      }));round.rivalPromiseRef=ref(returned);round.rivalResult=carrier(await returned);
+      const after=physical(`rival-after:${round.index}`);round.afterSnapshot=after.label;
+      round.actualRevisionAfter=after.tables?.memory_index_state?.find(row=>row.id===1)?.revision;
+      if(round.rivalResult!==true||!(round.actualRevisionAfter>round.expectedRevision))throw Error('Original rival did not commit a newer live revision');
+      round.state='rival-committed';round.rivalReturnSeq=event('fixture-original-rival-delete-return',{round:round.index}).sequence;
+    }finally{await releaseRevisionRound(round,'after-original-rival');}
+  }
+  function onOriginalTypedWorkerReply(receipt,message){
+    const round=revisionControl?.current,next=round?revisionControl.rounds[round.index+1]:null;
+    if(!round||round.role!=='maintenance'||!round.reached||!round.released||!next||next.acquireEnterSeq)return;
+    const returned=receipt.decodedSerialized?.value?.value;
+    if(returned?.ok!==false||returned.error?.name!=='MemoryIndexRevisionConflictError')return;
+    const request=[...raw.workerDispatches].reverse().find(row=>row.workerId===receipt.workerId&&row.message?.id===message.id);
+    const command=request?.decodedSerialized?.input?.value;
+    if(command?.type!=='database.publish'||command.input?.expectedRevision!==round.expectedRevision)return;
+    // The shared broker can dispatch under an older caller's async scope. Bind
+    // the real command to the original publisher entry rather than borrowing
+    // that ambient scope as proof of which runSync owns this publication.
+    const publication=raw.publicationCalls.find(call=>call.method==='publishShadow'&&
+      call.ownerId===round.actualOwnerId&&call.operationContext?.runSyncCallId===round.runSyncCallId&&
+      call.args[0]?.sourcePath===command.input.sourcePath&&call.args[0]?.expectedRevision===round.expectedRevision&&
+      call.enterSeq<request.enterSeq&&!call.returnSeq);
+    if(!publication)return;
+    round.typedPublicationCallId=publication.id;round.typedPublicationSourcePath=command.input.sourcePath;
+    round.typedWorkerReceiptSeq=receipt.sequence;round.typedWorkerRequestEnterSeq=request.enterSeq;
+    // This invocation enqueues the real next reader synchronously inside the
+    // genuine Worker message callback, before original Promise continuations.
+    const queued=acquireRevisionRound(next.index,{kind:'actual-typed-worker-reply',round:round.index,sequence:receipt.sequence});
+    Object.defineProperty(next,'queuedTask',{value:queued.catch(error=>revisionFailure(next,error)),enumerable:false});
+  }
+  async function releaseUnusedRevisionReaders(reason){
+    if(!revisionControl)return;
+    for(const round of revisionControl.rounds){
+      if(round.queuedTask)await round.queuedTask;
+      if(!round.reached&&round.readerHeld){round.state='not-reached';await releaseRevisionRound(round,reason);}
+    }
+  }
   try{
     fs.mkdirSync(workspace,{recursive:true});
     for(const[relative,text]of Object.entries(input.initialFiles)){
@@ -447,6 +598,11 @@ export async function runQuerySyncBoundariesRuntime(input,config){
     };
     const managerModule=await imp('dist/extensions/memory-core/manager-runtime.js');
     OriginalManager=managerModule.MemoryIndexManager;closeAll=managerModule.closeAllMemoryIndexManagers;
+    ({t:TypedRevisionConflict}=await imp('dist/manager-db-kernel-DyJADqYu.mjs'));
+    raw.typedConflictClass={classRef:ref(TypedRevisionConflict),prototypeRef:ref(TypedRevisionConflict.prototype),
+      module:'dist/manager-db-kernel-DyJADqYu.mjs',export:'t',sourceSha256:'4973db0580dc6dd7ac032a983efffa79ccb14fc4206f046b94c4250c7b5597ca',
+      compiledSha256:'b2af8c64d1450a503cecb97a96d37b3597340c6a68cc7c0231f98befc964bd99'};
+    ({p:acquireOriginalReadGeneration}=await imp('dist/manager-vector-warning-DcyxxT5h.mjs'));
     const api=await imp('dist/extensions/memory-core/runtime-api.js');
     const{createPluginStateKeyedStore}=await imp('dist/plugin-sdk/plugin-state-store-runtime.js');
     api.configureMemoryCoreDreamingState(options=>createPluginStateKeyedStore('memory-core',options));
@@ -460,11 +616,16 @@ export async function runQuerySyncBoundariesRuntime(input,config){
         maintenanceSourceOwnerId:ref(params.maintenanceSource),receiverIsOriginalClass:this===OriginalManager,
         enterSeq:entered.sequence,startedAtNs:entered.atNs};raw.originalGetCalls.push(call);
       const result=originalGet.apply(this,args);
-      return result.then(owner=>{
-        observe(owner);call.ownerId=ref(owner);call.actualPurpose=owner?.purpose??null;
-        call.returnedIsExactSampledOwner=sampled?owner===sampled:null;
-        const returned=event('original-get-return',{ownerId:ref(owner)});call.returnSeq=returned.sequence;call.finishedAtNs=returned.atNs;return owner;
-      },error=>{call.error=errorValue(error);call.returnSeq=event('original-get-return',{error:true}).sequence;throw error;});
+      call.returnedPromiseRef=ref(result);call.originalReturnPromisePreserved=true;
+      result.then(owner=>{
+        try{
+          observe(owner);call.ownerId=ref(owner);call.actualPurpose=owner?.purpose??null;
+          if(owner&&params.maintenanceSource)raw.owners[ref(owner)].maintenanceSourceOwnerId=ref(params.maintenanceSource);
+          call.returnedIsExactSampledOwner=sampled?owner===sampled:null;
+          const returned=event('original-get-return',{ownerId:ref(owner)});call.returnSeq=returned.sequence;call.finishedAtNs=returned.atNs;
+        }catch(error){(raw.observationErrors??=[]).push({stage:'original-get-observer',error:errorValue(error)});}
+      },error=>{call.error=errorValue(error);call.errorRef=originalErrorRef(error);call.returnSeq=event('original-get-return',{error:true}).sequence;});
+      return result;
     };
     const acquire=async label=>{
       const entered=event('original-facade-enter',{label});
@@ -482,6 +643,7 @@ export async function runQuerySyncBoundariesRuntime(input,config){
     const acquireForeground=async label=>{
       phase='owner-acquisition';physical(`before-owner-open:${label}`);
       const previous=foreground;foreground=await acquire(label);
+      primaryOwnerId??=ref(foreground);
       const initialStatus=foreground.status();
       if(initialStatus.dbPath!==dbPath||foreground.purpose!=='default')throw Error('Unexpected original default database owner');
       raw.initialStatus??=carrier(initialStatus);raw.foregroundOwnerId=ref(foreground);
@@ -519,30 +681,56 @@ export async function runQuerySyncBoundariesRuntime(input,config){
       else if(operation==='arm-publication-fault')armFault();
       else if(operation==='remove-publication-fault')removeFault();
       else if(operation==='mutate-source')mutateSource(step.specification??input.sourceMutation);
-      else if(operation==='original-owner-close'){await foreground.close();physical(`after-explicit-close:${index}`);}
+      else if(operation==='set-newer-empty-format')setNewerEmptyFormat();
+      else if(operation==='arm-revision-conflict')await armRevisionConflict(step.role);
+      else if(operation==='await-observed-background-settlement'){
+        const calls=raw.backgroundCalls.filter(call=>call.operationContext?.kind==='search'&&call.operationContext.label===step.searchLabel);
+        receipt.backgroundCallIds=calls.map(call=>call.id);receipt.admissionState=calls.length?'admitted':'not-admitted';
+        if(calls.length)receipt.actualSettlements=carrier(await Promise.allSettled(calls.map(call=>backgroundPromises.get(call.id))));
+      }
+      else if(operation==='original-owner-close'){
+        await foreground.close();await releaseUnusedRevisionReaders('after-original-owner-close');physical(`after-explicit-close:${index}`);
+      }
       else if(operation==='reopen-owner')await acquireForeground(step.label??`reopened-${index}`);
       else if(operation==='read-physical-sql-and-source-state'){
-        physical(step.label??`declared-sql-${index}`);sourceStage(step.label??`declared-source-${index}`);
+        physical(step.label??`declared-sql-${index}`);sources[step.label??`declared-source-${index}`]=sourceStage(step.label??`declared-source-${index}`);
       }else throw Error(`Unsupported independently frozen query-sync operation: ${operation}`);
       receipt.returnSeq=event('declared-step-return',{index,operation,label:step.label??null}).sequence;
     }
     if(gate&&!gate.released)throw Error('Frozen schedule left its real SQL gate held');
     if(armedFault)throw Error('Frozen schedule left its refusal armed');
+    if(raw.revisionErrors.length)throw Error('A reached real revision control failed; original diagnostics retained');
     for(const[label,pending]of pendingSearches){if(!pending.settled)throw Error('Unjoined prescribed public query');searches[label]=pending.result;}
-    for(const[label,pending]of pendingSyncs){if(!pending.call.settled)throw Error('Unjoined prescribed original sync');syncs[label]={state:pending.call.state};}
+    for(const[label,pending]of pendingSyncs){if(!pending.call.settled)throw Error('Unjoined prescribed original sync');syncs[label]={status:pending.call.state,isTypedConflict:pending.call.isTypedConflict??false};}
     phase='owner-close';if(foreground&&!foreground.closed)await foreground.close();
-    physical('after-close');sources.afterClose=sourceStage('afterClose');
-    for(const[label,call]of Object.entries(raw.toolCalls)){
-      const during=raw.methodCalls.filter(row=>row.operationContext?.kind==='search'&&row.operationContext.label===label);
-      dispatches[label]={managerSearches:during.filter(row=>row.method==='search').length,
-        bootstrapAttempts:during.filter(row=>row.method==='syncAdmitted'&&row.args[0]?.reason==='search-bootstrap').length};
-      if(!during.every(row=>row.receiverIsExactObservedOwner))throw Error('An original method used a substituted receiver');
-    }
-    raw.result={provider:'none',searches,syncs,dispatches,sources};
+    physical('after-close');sourceStage('after-runtime-close');
+    const firstClose=raw.methodCalls.find(row=>row.ownerId===primaryOwnerId&&row.method==='close'&&row.returnSeq);
+    if(!firstClose)throw Error('Primary foreground lifetime has no actual close settlement');
+    const ownerIds=new Set([primaryOwnerId]);
+    for(let changed=true;changed;){changed=false;for(const[ownerId,owner]of Object.entries(raw.owners))
+      if(ownerIds.has(owner.maintenanceSourceOwnerId)&&!ownerIds.has(ownerId)){ownerIds.add(ownerId);changed=true;}}
+    const inWindow=row=>row.enterSeq<firstClose.returnSeq;
+    const methods=raw.methodCalls.filter(row=>ownerIds.has(row.ownerId)&&inWindow(row));
+    const jobs=raw.wholeJobs.filter(row=>row.active&&ownerIds.has(row.ownerId)&&inWindow(row));
+    if(jobs.some(row=>!row.returnSeq||!row.state))throw Error('Primary admitted producer lacks original settlement');
+    Object.assign(dispatches,{searchRequests:Object.values(raw.toolCalls).filter(inWindow).length,
+      managerSearches:methods.filter(row=>row.method==='search').length,
+      syncRequests:methods.filter(row=>row.method==='syncAdmitted').length,
+      bootstrapRequests:methods.filter(row=>row.method==='syncAdmitted'&&row.args[0]?.reason==='search-bootstrap').length,
+      producerAttempts:jobs.length,committedGenerations:jobs.filter(row=>row.committedGeneration===true).length});
+    const producerOutcomes=jobs.map(row=>({status:row.state,isTypedConflict:row.isTypedConflict??false}));
+    raw.comparableWindow={primaryOwnerId,ownerIds:[...ownerIds],endSeq:firstClose.returnSeq,closeCallId:firstClose.id,wholeJobIds:jobs.map(row=>row.id)};
+    raw.result={provider:'none',searches,syncs,dispatches,producerOutcomes,sources};
     raw.completed=true;return raw.result;
   }catch(error){raw.error=errorValue(error);throw error;}
   finally{
     phase='teardown';
+    if(revisionControl){
+      for(const round of revisionControl.rounds){
+        try{if(round.queuedTask)await round.queuedTask;if(round.readerHeld)await releaseRevisionRound(round,'emergency-teardown');}
+        catch(error){raw.revisionErrors.push({round:round.index,error:errorValue(error)});}
+      }
+    }
     if(gate&&!gate.released){try{releaseGate({emergency:true});}catch(error){raw.gateCleanupError=errorValue(error);}}
     if(armedFault){try{removeFault({emergency:true});}catch(error){raw.faultCleanupError=errorValue(error);}}
     event('runtime-close-all-enter',{returnedManagerIds:[...owners.keys()]});
@@ -560,6 +748,8 @@ export async function runQuerySyncBoundariesRuntime(input,config){
     raw.counts={managers:owners.size,managerSearches:raw.originalSearchCalls.length,backgroundAdmissions:raw.backgroundCalls.length,
       syncs:raw.methodCalls.filter(call=>call.method==='sync').length,syncAdmitted:raw.methodCalls.filter(call=>call.method==='syncAdmitted').length,
       readPreparations:raw.methodCalls.filter(call=>call.method==='prepareKeywordSearch').length,poolRuns:raw.poolCalls.length,workerDispatches:raw.workerDispatches.length};
+    for(const {value,error}of deferredErrorStacks){try{value.stack=error?.stack??null;}catch(formatError){
+      (raw.observationErrors??=[]).push({stage:'teardown-stack-serialization',message:String(formatError)});}}
     persist();
   }
 }

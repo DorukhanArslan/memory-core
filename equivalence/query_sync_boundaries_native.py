@@ -167,7 +167,8 @@ def run_native_case(case, node, runtime, directory, *, timeout=120):
             or raw[0].get("input") != case["input"] or raw[0].get("caseId") != case["id"]
             or raw[0].get("result") != returned["result"] or raw[0].get("completed") is not True
             or raw[0].get("allManagersClosed") is not True or raw[0].get("teardownError")
-            or raw[0].get("faultCleanupError") or raw[0].get("gateCleanupError")):
+            or raw[0].get("faultCleanupError") or raw[0].get("gateCleanupError")
+            or raw[0].get("observationErrors") or raw[0].get("revisionErrors")):
         raise ValueError("The query-sync custody is detached from its actual process, source or close")
     trace = validate_traces(traces, {**context, "_sha256": digest(context_path)}, runtime, authority,
                             process_pid=process.pid, parent_pid=os.getpid())

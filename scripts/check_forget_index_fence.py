@@ -50,8 +50,13 @@ def main():
     parser.add_argument("--node", type=Path, required=True)
     parser.add_argument("--release-runtime", type=Path, required=True)
     parser.add_argument("--output", type=Path, required=True)
-    parser.add_argument("--case", choices=tuple(CASE_HASHES), action="append")
+    parser.add_argument("--case", choices=tuple(CASE_HASHES), action="append",
+                        help="Select cases in this explicit order; repeated IDs are rejected")
+    parser.add_argument("--stop-on-blocked", action="store_true",
+                        help="Retain the first invalid measurement and stop; ordinary mismatches continue")
     args = parser.parse_args()
+    if args.case and len(set(args.case)) != len(args.case):
+        parser.error("Each independently frozen case may be selected only once")
     output = args.output.resolve()
     output.mkdir(parents=True, exist_ok=False)
     report = {"kind": "forget-index-fence-v2-comparison", "acceptancePointsAwarded": 0,
@@ -67,9 +72,11 @@ def main():
                       implementationIdentity=implementation, adapterHashes=adapters,
                       collectorSha256=digest(Path(__file__)), literalManifestSha256=digest(MANIFEST))
         write_json(output / "report.json", report)
-        for case in build_cases():
-            if args.case and case["id"] not in args.case:
-                continue
+        available = {case["id"]: case for case in build_cases()}
+        ordered = [available[case_id] for case_id in (args.case or CASE_HASHES)]
+        report["execution"] = {"caseOrder": [case["id"] for case in ordered],
+                               "stopOnBlocked": args.stop_on_blocked}
+        for case in ordered:
             directory = output / case["id"]
             directory.mkdir()
             native_directory, sdk_directory = directory / "native", directory / "sdk/evidence"
@@ -102,6 +109,9 @@ def main():
                               "errors": {key: row[key]["message"] for key in
                                          ("nativeError", "sdkError", "custodyError") if key in row},
                               "differences": len(row.get("differences", []))}), flush=True)
+            if args.stop_on_blocked and row["status"] == "blocked":
+                report["stoppedAfterBlockedCase"] = row["id"]
+                break
         if prepare_forget_index_fence_bindings(reference, Path(runtime["runtimeRoot"])) != bindings:
             raise ValueError("Original owner identities changed during execution")
         if prepare_model_node_authority(node) != authority:
@@ -118,6 +128,7 @@ def main():
                          for status in ("match", "mismatch", "blocked")}
     report["candidateFamilyMatched"] = (report.get("finalAuthenticationPassed") is True
         and not report["errors"] and len(report["cases"]) == len(CASE_HASHES)
+        and {row["id"] for row in report["cases"]} == set(CASE_HASHES)
         and report["summary"]["match"] == len(CASE_HASHES))
     encoded = json.dumps(report, ensure_ascii=False, allow_nan=False, indent=2) + "\n"
     (output / "report.json").write_text(encoded)

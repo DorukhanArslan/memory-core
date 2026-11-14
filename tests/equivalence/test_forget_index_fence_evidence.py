@@ -1456,3 +1456,98 @@ def test_v3_wait_callable_owner_rejects_source_role_and_bytecode_substitution(ro
         row["bytecodeSha256"] = alternate
     with pytest.raises(ValueError):
         guard._sdk_callable_owner(row, ROOT, ROOT, role=role)
+
+
+def _v3_private_database_context(actual):
+    context = _v3_sdk_observation_context(actual)
+    _, _, observation, recorded, trusted, _, events, returns = context
+    lookups = [row for row in events.values() if row["event"] == "original-call" and row["name"] == "_lease_for"]
+    if not lookups:
+        pytest.skip("The actual selected SDK has no producer lease acquisition; no lease boundary credit")
+    assert guard._sdk_private_database_owners(observation, events, returns, recorded, trusted) is None
+    return context, lookups
+
+
+def _private_database_variants(context, changes):
+    _, _, original, _, _, _, events, returns = context
+    changed_events = {number: changes.get(number, row) for number, row in events.items()}
+    changed_returns = {number: changes.get(row["sequence"], row) for number, row in returns.items()}
+    observation = {**original, **{name: [changes.get(row["sequence"], row) for row in original[name]]
+                                  for name in ("originalCalls", "sqlExecutions", "sqlStatements")}}
+    return observation, changed_events, changed_returns
+
+
+def test_actual_v3_sdk_private_databases_keep_their_original_lease_and_store_owners(v3_sdk_actual):
+    _v3_private_database_context(v3_sdk_actual)
+
+
+@pytest.mark.parametrize("attack", ["returned-owner", "returned-type", "returned-path", "index-argument", "later-receiver", "cached-owner"])
+def test_v3_sdk_lease_lookup_and_later_calls_cannot_change_the_actual_owner(v3_sdk_actual, attack):
+    context, lookups = _v3_private_database_context(v3_sdk_actual)
+    _, _, original, recorded, trusted, _, events, returns = context
+    store = original["ownerBindings"][0]
+    changes = {}
+    if attack in {"returned-owner", "returned-type", "returned-path", "cached-owner"}:
+        if attack == "cached-owner" and len(lookups) < 2:
+            pytest.skip("The actual selected original did not reuse its lease lookup; no cache-reuse credit")
+        call = lookups[-1] if attack == "cached-owner" else lookups[0]
+        row = deepcopy(returns[call["sequence"]])
+        if attack in {"returned-owner", "cached-owner"}:
+            row["returnedOwnerObjectId"] = store["storeObjectId"]
+        elif attack == "returned-type":
+            row["returnedOwnerType"]["name"] = "ManagedSQLiteMemoryStore"
+        else:
+            row["returned"]["path"] = store["storage"]["index"]
+    elif attack == "index-argument":
+        row = deepcopy(lookups[0])
+        assert store["storage"]["catalog"] != row["arguments"]["index_path"]
+        row["arguments"]["index_path"] = store["storage"]["catalog"]
+    else:
+        row = deepcopy(next(item for item in events.values() if item["event"] == "original-call"
+                            and item["name"] == "_ReindexLease.try_acquire"))
+        row["receiverObjectId"] = row["selfObjectId"] = store["storeObjectId"]
+    changes[row["sequence"]] = row
+    observation, changed_events, changed_returns = _private_database_variants(context, changes)
+    with pytest.raises(ValueError):
+        guard._sdk_private_database_owners(observation, changed_events, changed_returns, recorded, trusted)
+
+
+@pytest.mark.parametrize("attack", ["database-path", "database-owner", "connection", "current-scope", "opening-scope"])
+def test_v3_sdk_private_sql_cannot_borrow_another_owner_connection_or_scope(v3_sdk_actual, attack):
+    context, _ = _v3_private_database_context(v3_sdk_actual)
+    _, _, original, recorded, trusted, _, _, _ = context
+    execution = next(row for row in original["sqlExecutions"] if row["source"] == "_ReindexLease._open_database")
+    if attack in {"database-path", "database-owner", "connection"}:
+        row = deepcopy(execution)
+        store = original["ownerBindings"][0]
+        if attack == "database-path":
+            row["ownerDatabasePath"] = store["storage"]["index"]
+        elif attack == "database-owner":
+            row["databaseOwnerObjectId"] = store["storeObjectId"]
+        else:
+            row["connectionId"] = next(item["connectionId"] for item in original["sqlExecutions"]
+                                        if item["connectionId"] != execution["connectionId"])
+    else:
+        statement = next(item for item in original["sqlStatements"]
+                         if item.get("executionSequence") == execution["sequence"])
+        row = deepcopy(statement)
+        name = "callScope" if attack == "current-scope" else "connectionOpenedByScope"
+        alternate = next((item["callScope"] for item in original["sqlExecutions"]
+                          if item.get("callScope") != row[name]), None)
+        if alternate is None:
+            pytest.skip("The actual selected original exposed no different scope; no scope-substitution credit")
+        row[name] = deepcopy(alternate)
+    observation, changed_events, changed_returns = _private_database_variants(context, {row["sequence"]: row})
+    with pytest.raises(ValueError):
+        guard._sdk_private_database_owners(observation, changed_events, changed_returns, recorded, trusted)
+
+
+def test_actual_v3_sdk_private_connection_can_keep_distinct_opening_and_current_scopes(v3_sdk_actual):
+    context, _ = _v3_private_database_context(v3_sdk_actual)
+    _, _, original, recorded, trusted, _, _, _ = context
+    statements = [row for row in original["sqlStatements"] if row.get("source") in {
+        "_ReindexLease._open_database", "SQLiteMemoryStore.is_session_forgotten"}
+        and row.get("connectionOpenedByScope") != row.get("callScope")]
+    if not statements:
+        pytest.skip("The actual selected original did not expose an opening/current-scope handoff; no handoff credit")
+    assert guard._sdk_private_database_owners(original, context[6], context[7], recorded, trusted) is None

@@ -414,6 +414,111 @@ def _sdk_effective_predicate(owner, recorded, trusted, adapter_roots):
                 "An SDK default forgotten-session predicate lost its actual same-index store receiver")
 
 
+def _sdk_private_database_owners(observation, events, returns, recorded, trusted):
+    """Bind source-owned lease and default-predicate SQL to actual receivers."""
+    stores = {owner["storeObjectId"]: owner for owner in observation["ownerBindings"]}
+    original = [row for row in events.values() if row["event"] == "original-call"]
+    by_receiver = {}
+    for call in original:
+        by_receiver.setdefault((call["name"], call["receiverObjectId"], call["threadId"]), []).append(call)
+    module = trusted / "memory_core/host/reindex_lease.py"
+    lease_methods = {"_ReindexLease._open_database", "_ReindexLease.try_acquire", "_ReindexLease.release",
+                     "_ReindexLease.waiting", "_ReindexLease._close"}
+    lease_names = lease_methods | {"_lease_for", "memory_index_producer_guard"}
+    lease_calls = [row for row in original if row["name"] in lease_names]
+    leases, leases_by_index, acquired_at = {}, {}, {}
+    if module.is_file():
+        declarations = {row["name"]: row for row in observation["codeOwners"] if row["name"] in lease_names}
+        require(set(declarations) == lease_names, "SDK producer admission omitted its actual original lease owners")
+        for name, declaration in declarations.items():
+            require(declaration["code"]["qualname"] == name
+                    and _sdk_code_owner(declaration["code"], recorded, trusted) == module,
+                    "SDK producer admission substituted another lease callable")
+        for call in lease_calls:
+            if call["name"] != "_lease_for":
+                continue
+            index_path = call["arguments"]["index_path"]
+            require(any(index_path == store["storage"]["index"] for store in stores.values()),
+                    "An SDK lease was requested for another store's actual index")
+            require(call["sequence"] in returns, "An SDK lease lookup has no actual returned owner")
+            returned = returns[call["sequence"]]
+            reference = returned["returnedOwnerObjectId"]
+            require(isinstance(reference, str) and reference.isdigit() and int(reference) > 0
+                    and returned["returnedOwnerType"] == {"module": "memory_core.host.reindex_lease", "name": "_ReindexLease"}
+                    and returned["returned"]["path"] == index_path + ".reindex-lock.sqlite",
+                    "An SDK lease lookup lost its original returned receiver and coordination path")
+            binding = index_path, returned["returned"]["path"]
+            require(leases.setdefault(reference, binding) == binding,
+                    "An actual SDK lease receiver was reassigned to another index")
+            require(leases_by_index.setdefault(index_path, reference) == reference,
+                    "An SDK process replaced its original cached lease owner for the same actual index")
+            at = _ns(returned["atNs"])
+            acquired_at[reference] = min(acquired_at.get(reference, at), at)
+        for call in lease_calls:
+            if call["name"] in lease_methods:
+                require(call["exactReceiver"] is True and call["receiverObjectId"] in leases
+                        and call["selfObjectId"] == call["receiverObjectId"],
+                        "An SDK lease method borrowed a receiver outside its original lookup return")
+                require(acquired_at[call["receiverObjectId"]] < _ns(call["atNs"]),
+                        "An SDK lease method preceded its actual original owner acquisition")
+    else:
+        require(not lease_calls, "SDK admission receipts invented a lease absent from the approved source")
+
+    connections, first_executions = {}, {}
+    for execution in observation["sqlExecutions"]:
+        connection = execution["connectionId"]
+        if connection not in first_executions or execution["sequence"] < first_executions[connection]["sequence"]:
+            first_executions[connection] = execution
+    selected = lease_methods | {"SQLiteMemoryStore.is_session_forgotten"}
+    for execution in observation["sqlExecutions"]:
+        name = execution["source"]
+        if name not in selected:
+            continue
+        owner = execution["databaseOwnerObjectId"]
+        if name in lease_methods:
+            require(owner in leases, "An SDK coordination SQL execution has no actual original lease receiver")
+            expected_path = leases[owner][1]
+        else:
+            require(owner in stores, "An SDK forgotten-session query borrowed another store")
+            expected_path = stores[owner]["storage"]["index"]
+        require(execution["ownerDatabasePath"] == expected_path,
+                "An SDK private SQLite execution borrowed another index or coordination database")
+        parents = [call for call in by_receiver.get((name, owner, execution["threadId"]), [])
+                   if call["code"] == execution["parentCode"]
+                   and _ns(call["atNs"]) < _ns(execution["atNs"])
+                   and (call["sequence"] not in returns or _ns(execution["atNs"]) < _ns(returns[call["sequence"]]["atNs"]))]
+        require(len(parents) == 1 and execution["callLabel"] == parents[0]["callLabel"],
+                "An SDK private SQLite execution lost its actual current original receiver frame")
+        connection = execution["connectionId"]
+        binding = owner, expected_path
+        require(connections.setdefault(connection, binding) == binding,
+                "An actual SDK SQLite connection was reassigned to another lease or store")
+        require(first_executions[connection]["source"] in {
+            "_ReindexLease._open_database", "SQLiteMemoryStore.is_session_forgotten"},
+                "An SDK private connection has no actual source-owned factory execution")
+        if execution["method"] == "close":
+            require(any(row["connectionId"] == connection and row["sequence"] < execution["sequence"]
+                        and row["source"] in {"_ReindexLease._open_database", "SQLiteMemoryStore.is_session_forgotten"}
+                        for row in observation["sqlExecutions"]),
+                    "An SDK private connection closed without its actual original opening execution")
+    for statement in observation["sqlStatements"]:
+        if statement["connectionId"] not in connections:
+            continue
+        execution = events[statement["executionSequence"]]
+        require(execution["connectionId"] == statement["connectionId"]
+                and execution["sequence"] < statement["sequence"]
+                and statement["statement"] in execution["statements"],
+                "An SDK coordination or predicate statement lost its actual C execution")
+        _same(statement["callScope"], execution["callScope"],
+              "An SDK private SQL trace replaced its actual current execution scope")
+        _same(statement["connectionOpenedByScope"], first_executions[statement["connectionId"]]["callScope"],
+              "An SDK private SQL trace changed its actual original connection-opening scope")
+        # A genuine PENDING lease connection can be continued by another
+        # thread. Its creator scope is retained; it is not the execution scope.
+        require(statement["source"] in {"_ReindexLease._open_database", "SQLiteMemoryStore.is_session_forgotten"},
+                "An SDK private connection borrowed another original connection factory")
+
+
 def _observer_exception(error, recorded_root, recorded_adapter_root=None):
     trace = error.get("traceback", "")
     require(isinstance(trace, str), "An actual SDK exception traceback was removed")
@@ -2447,6 +2552,8 @@ def _sdk_observation(observation, process, value, approved_root, *, adapter_root
             require(end["executionSequence"] == row["sequence"] and end["connectionId"] == row["connectionId"]
                     and end["event"] in {"original-sql-c-return", "original-sql-c-exception"},
                     "An original SDK C execution lost its actual return or exception")
+    if adapter_roots:
+        _sdk_private_database_owners(observation, events, returns, recorded, trusted)
     return recorded, trusted, events, returns
 
 

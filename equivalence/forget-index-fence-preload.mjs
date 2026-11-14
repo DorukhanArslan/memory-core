@@ -290,7 +290,7 @@ Worker.prototype.emit=function(name,message,...args){
        controlFailure('held-keyword-message-mutated',Error('Actual held keyword reply changed before original delivery'),facts);
       event('keyword-reply-'+stage,{...facts,...fields});
       if(incoming)event(stage==='delivery-enter'?'original-worker-reply-call':stage==='delivery-return'?'original-worker-reply-return':'original-worker-reply-throw',{
-       ...incoming,...fields});if(stage!=='delivery-enter'){tasks.get(this).delete(message.taskId);flush();}},
+       ...incoming,...fields,message:incoming.message,arguments:incoming.arguments});if(stage!=='delivery-enter'){tasks.get(this).delete(message.taskId);flush();}},
      onControlFailure:error=>controlFailure('keyword-reply-control-failed',error,facts)});
     held.completion.catch(error=>controlFailure('keyword-reply-deferred-completion-rejected',error,facts));
     callLabel=previous;return; // The original emit has deliberately not run yet.

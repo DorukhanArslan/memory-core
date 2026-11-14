@@ -570,6 +570,8 @@ def _native_authority(case, raw, directory, approved_node, trusted_archive, appr
             _events(rows)
             passive[key] = rows
     _native_process_graph(case, raw, context, process, authority, by_pid, passive, approved_node or binary)
+    if _v2(case):
+        _native_ram_channels(directory, process, by_pid, passive)
     return context, process, authority, by_pid, passive
 
 
@@ -1429,6 +1431,348 @@ def _native_gate_release(gate, raw, events, directory):
     return releases[0], step
 
 
+def _native_observed_value(row, authority, approved_node, *, opaque=False):
+    if set(row) == {"v8Hex"}:
+        return _native_value(row, authority, approved_node)
+    require(opaque and set(row) in ({"serializationError"}, {"unserializable"}),
+            "An actual Native private carrier was replaced or its V8 bytes were dropped")
+    error = row.get("serializationError", row.get("unserializable"))
+    require(isinstance(error, dict) and isinstance(error["name"], str) and isinstance(error["message"], str),
+            "An original Native host serialization failure was stripped")
+    return None
+
+
+def _native_ram_channels(directory, process, imports, passive):
+    protocol, token = "shared-original-event-jsonl-v1", process["contextSha256"]
+    files, claimed = {}, {}
+    for key in imports:
+        pid, thread = key
+        filename = _owned(Path(directory) / "evidence" / f"{pid}-{thread}-events.jsonl", directory)
+        data = filename.read_bytes()
+        require(data.endswith(b"\n"), "Native passive RAM log lost a complete immutable JSONL prefix")
+        files[key] = data
+        registered = [row for row in passive[key] if row["event"] == "passive-channel-register"]
+        require(len(registered) == 1 and registered[0]["protocol"] == protocol
+                and registered[0]["token"] == token and registered[0]["channelIndex"] == thread
+                and registered[0]["initialBytes"] == 64 * 1024 and registered[0]["maxBytes"] == 64 * 1024 * 1024
+                and registered[0]["slotCount"] == 128,
+                "A Native actual thread lost its independently owned passive RAM channel")
+    def channel(row, owner_pid):
+        key = row["pid"], row["threadId"]
+        require(key in files and row["pid"] == owner_pid and row["protocol"] == protocol and row["token"] == token
+                and row["channelIndex"] == row["threadId"] and row["failureCode"] == 0,
+                "A Native RAM seal borrowed another process/thread/context or hid a buffer failure")
+        names = ("publishedBytes", "persistedBytes", "capacityBytes", "maxBytes", "failureCode", "channelIndex")
+        require(all(type(row[name]) is int for name in names)
+                and 0 <= row["publishedBytes"] <= row["persistedBytes"] <= len(files[key])
+                and row["publishedBytes"] <= row["capacityBytes"] <= row["maxBytes"] == 64 * 1024 * 1024,
+                "Native passive channel lost its actual atomic published/persisted prefix bounds")
+        prefix = files[key][:row["publishedBytes"]]
+        require((not prefix or prefix.endswith(b"\n")) and _sha(prefix) == row["sha256"],
+                "Native passive prefix differs from its actual RAM byte seal")
+        claimed[key] = max(claimed.get(key, 0), row["publishedBytes"])
+    seals = list((Path(directory) / "evidence").glob("*-passive-seal.json"))
+    require(seals, "Native selected SQL/transport RAM channels have no actual lifecycle checkpoint seal")
+    for filename in seals:
+        seal = _read(filename, directory)
+        require(seal["protocol"] == protocol and seal["token"] == token and seal["failures"] == []
+                and (seal["pid"], seal["flushingThreadId"]) in imports
+                and filename.name == f'{seal["pid"]}-{seal["flushingThreadId"]}-passive-seal.json',
+                "Native passive checkpoint seal lost its actual flushing thread/source context")
+        _ns(seal["atNs"])
+        require(len({row["threadId"] for row in seal["channels"]}) == len(seal["channels"]),
+                "A Native passive checkpoint duplicated an actual thread channel")
+        for row in seal["channels"]:
+            channel(row, seal["pid"])
+    require(set(claimed) == set(files) and all(claimed[key] == len(data) for key, data in files.items()),
+            "A Native original thread lost an unflushed tail or supplied unsealed passive event bytes")
+
+
+def _native_terminated_threads(context, imports, passive, authority, approved_node):
+    workers, exited = {}, {}
+    for (pid, _), rows in passive.items():
+        for row in rows:
+            if row["event"] == "original-worker-command-call" and row["workerThreadId"] > 0:
+                key = pid, row["workerRef"]
+                require(key not in workers or workers[key] == row["workerThreadId"],
+                        "An original Native Worker object changed its actual thread identity")
+                workers[key] = row["workerThreadId"]
+    for (pid, thread), rows in passive.items():
+        for row in rows:
+            if row["event"] != "original-worker-lifecycle-event" or row["eventName"] != "exit":
+                continue
+            actual_thread = workers.get((pid, row["workerRef"]))
+            key = pid, actual_thread
+            require(key in imports and key not in exited, "A Native original Worker exit lost its actual object/thread ownership")
+            _native_clock_owner(row["sourceCaller"], row["originalStack"], context, imports, pid)
+            arguments = _native_transport_value(row["arguments"], authority, approved_node, pid=pid, thread=thread)
+            require(isinstance(arguments, list) and arguments and type(arguments[0]) is int,
+                    "An actual Native Worker exit lost its original numeric exit code")
+            exited[key] = _ns(row["atNs"])
+    return exited
+
+
+def _native_sql_custody(raw, context, imports, passive, authority, approved_node):
+    """Authenticate actual selected native SQL without replaying a query."""
+    fixture = Path(raw["fixtureBase"])
+    exited = _native_terminated_threads(context, imports, passive, authority, approved_node)
+    operations = {"prepare", "exec", "get", "all", "run", "iterate", "columns", "setAllowBareNamedParameters",
+                  "setAllowUnknownNamedParameters", "setReadBigInts", "setReturnArrays", "iterate.next", "iterate.return", "iterate.throw"}
+    for key, rows in passive.items():
+        pid, thread = key
+        prefix = f"{pid}:{thread}:process-ref-"
+        def valid_ref(value):
+            return isinstance(value, str) and value.startswith(prefix) and value[len(prefix):].isdigit()
+        installed = [row for row in rows if row["event"] == "original-sql-observer-installed"]
+        require(len(installed) == 1 and installed[0]["storage"] == "shared-per-thread-immutable-jsonl"
+                and installed[0]["statementMethods"] == ["get", "all", "run", "iterate", "columns", "setAllowBareNamedParameters",
+                    "setAllowUnknownNamedParameters", "setReadBigInts", "setReturnArrays"]
+                and installed[0]["iteratorMethods"] == ["next", "return", "throw"]
+                and all(valid_ref(installed[0][name]) for name in ("databaseClassRef", "databasePrototypeRef", "prepareOriginalRef", "execOriginalRef")),
+                "The actual Native thread never armed the complete source-owned SQL observation surface")
+        bindings, calls, settled, statements = {}, {}, set(), {}
+        for row in rows:
+            event = row["event"]
+            if event == "original-sql-method-binding":
+                require(valid_ref(row["functionRef"]) and row["functionRef"] not in bindings
+                        and row["functionSourceSha256"] == _sha(row["functionSource"].encode())
+                        and "[native code]" in row["functionSource"]
+                        and all(valid_ref(row[name]) for name in ("databaseClassRef", "databasePrototypeRef",
+                                                                  "receiverPrototypeRef", "receiverConstructorRef")),
+                        "An actual Native SQL callable lost its native function/class/prototype identity")
+                bindings[row["functionRef"]] = row
+                require(row["databaseClassRef"] == installed[0]["databaseClassRef"]
+                        and row["databasePrototypeRef"] == installed[0]["databasePrototypeRef"],
+                        "A Native selected SQL binding borrowed another installed database class")
+                continue
+            if event not in {"original-selected-sql-call", "original-selected-sql-return", "original-selected-sql-throw"}:
+                continue
+            require(row["operation"] in operations and valid_ref(row["databaseRef"])
+                    and isinstance(row["sql"], str) and row["originalMethodRef"] in bindings
+                    and bindings[row["originalMethodRef"]]["functionName"] == row["originalMethodName"]
+                    == row["operation"].split(".")[-1],
+                    "A selected Native SQL operation borrowed another database/method binding")
+            require(row["transactionActive"] is None or type(row["transactionActive"]) is bool,
+                    "Native SQL transaction state lost its actual type")
+            path = row["dbPath"]
+            require(path in (None, "", ":memory:") or (Path(path).is_absolute()
+                    and Path(path).is_relative_to(fixture) and ".." not in Path(path).parts),
+                    "An original Native selected SQL operation escaped its owned database fixture")
+            if event == "original-selected-sql-call":
+                require(row["callId"] not in calls, "An actual Native SQL invocation was duplicated")
+                arguments = _native_observed_value(row["arguments"], authority, approved_node)
+                require(isinstance(arguments, list), "Native original SQL lost its complete actual argument array")
+                if row["operation"] in {"prepare", "exec"}:
+                    _native_clock_owner(row["sourceCaller"], row["originalStack"], context, imports, pid)
+                    require(row["statementRef"] is None and arguments and arguments[0] == row["sql"],
+                            "Native SQL text differs from its actual original prepare/exec argument")
+                    require(row["originalMethodRef"] == installed[0][row["operation"] + "OriginalRef"],
+                            "A Native prepare/exec call bypassed its actually installed original native method")
+                else:
+                    statement = statements.get(row["statementRef"])
+                    require(statement is not None and statement["databaseRef"] == row["databaseRef"]
+                            and statement["sql"] == row["sql"],
+                            "An actual Native statement operation lost its original prepare receiver/SQL")
+                    _same(statement["sourceCaller"], row["sourceCaller"],
+                          "A Native cached statement changed its original preparation owner")
+                    package_root = Path(context["runtime"]["runtimeRoot"]).parent.parent
+                    require(isinstance(row["originalStack"], str) and any(
+                        str(package_root / _relative(owner["package"]) / _relative(owner["path"])) in row["originalStack"]
+                        for (process_pid, _), loaded in imports.items() if process_pid == pid
+                        for owner in loaded["releaseImports"]),
+                        "A Native cached SQL statement was invoked outside an actual original source frame")
+                calls[row["callId"]] = row
+                continue
+            require(row["callId"] in calls and row["callId"] not in settled,
+                    "An original Native SQL settlement was duplicated or has no actual invocation")
+            call = calls[row["callId"]]
+            _same({name: row[name] for name in ("operation", "statementRef", "sql", "sourceCaller", "originalStack",
+                   "originalMethodRef", "originalMethodName", "databaseRef")},
+                  {name: call[name] for name in ("operation", "statementRef", "sql", "sourceCaller", "originalStack",
+                   "originalMethodRef", "originalMethodName", "databaseRef")},
+                  "A Native SQL result/error was reassigned to another original call")
+            require(call["sequence"] < row["sequence"], "A Native SQL settlement preceded its actual invocation")
+            settled.add(row["callId"])
+            if event == "original-selected-sql-return":
+                result = _native_observed_value(row["result"], authority, approved_node,
+                                                opaque=row["operation"] in {"prepare", "iterate"})
+                require(row["resultType"] in {"undefined", "object", "number", "bigint", "boolean", "string"},
+                        "Native SQL lost its original returned type")
+                if row["resultRef"] is not None:
+                    require(valid_ref(row["resultRef"]) and type(row["resultPrototypeIsNull"]) is bool
+                            and ((row["resultPrototypeIsNull"] is True and row["resultPrototypeRef"] is None)
+                                 or (row["resultPrototypeIsNull"] is False and valid_ref(row["resultPrototypeRef"]))),
+                            "Native SQL lost its actual returned object/prototype identity")
+                if row["operation"] == "prepare":
+                    require(valid_ref(row["resultRef"]) and row["resultRef"] not in statements,
+                            "Native SQL prepare lost or reused its actual StatementSync object")
+                    statements[row["resultRef"]] = call
+                elif row["operation"] == "exec":
+                    require(result == {"privateType": "undefined"} and row["resultType"] == "undefined",
+                            "Original Native DatabaseSync.exec lost its actual void return")
+            else:
+                error = _native_observed_value(row["privateError"], authority, approved_node)
+                require(error["privateType"] == "Error" and error["name"] == row["name"]
+                        and error["message"] == row["message"] and error["stack"] == row["stack"]
+                        and all(valid_ref(row[name]) for name in ("errorRef", "errorPrototypeRef", "errorConstructorRef")),
+                        "An original Native SQLite exception lost its complete actual typed carrier")
+                for field in row["ownProperties"]:
+                    if "value" in field:
+                        value = _native_observed_value(field["value"], authority, approved_node, opaque=True)
+                        if field["key"] in {"message", "stack"}:
+                            _same(value, row[field["key"]], "A Native SQL exception descriptor changed its actual error field")
+        # Any retained unreturned call is an actual partial frame. It is never
+        # converted into a void result or an inferred exception here.
+        for call_id in set(calls) - settled:
+            require((key in exited and _ns(calls[call_id]["atNs"]) < exited[key]) or any(
+                    child["pid"] == pid and child["exit"] == {"code": None, "signal": "SIGKILL"} for child in raw["children"]),
+                    "A live original Native SQL invocation lost its actual return/error receipt")
+
+
+def _native_transport_value(payload, authority, approved_node, *, pid, thread):
+    require(set(payload) == {"value", "privateJSON", "valueRef"}, "A Native transport payload lost its whole original carrier")
+    prefix = f"{pid}:{thread}:process-ref-"
+    def ref(value):
+        require(isinstance(value, str) and value.startswith(prefix) and value[len(prefix):].isdigit(),
+                "A Native transport host value borrowed another actual object identity")
+    def projection(value):
+        if isinstance(value, list):
+            return [projection(item) for item in value]
+        if not isinstance(value, dict):
+            return value
+        kind = value.get("privateType")
+        if kind in {"SharedArrayBuffer", "ArrayBuffer"}:
+            require(set(value) == {"privateType", "byteLength", "hex", "ref"} and type(value["byteLength"]) is int
+                    and value["byteLength"] >= 0 and bytes.fromhex(value["hex"]).hex() == value["hex"]
+                    and len(bytes.fromhex(value["hex"])) == value["byteLength"],
+                    "A Native original transport buffer lost its complete actual bytes or size")
+            ref(value["ref"])
+            return value if kind == "SharedArrayBuffer" else {name: value[name] for name in ("privateType", "byteLength", "hex")}
+        if kind in {"MessagePort", "function"}:
+            require(set(value) == ({"privateType", "ref"} if kind == "MessagePort" else {"privateType", "name", "ref"}),
+                    "A Native opaque transport value lost its actual host type/ref descriptor")
+            ref(value["ref"])
+            return value
+        if kind == "reference":
+            ref(value["ref"])
+            return value
+        if kind in {"URL", "AbortSignal"}:
+            if kind == "AbortSignal":
+                ref(value["ref"])
+            return {}
+        if kind == "Error":
+            ref(value["ref"])
+            require(isinstance(value["ownProperties"], list), "Native transport exception descriptors were dropped")
+            if value["constructorName"] == "DOMException":
+                return {}
+            result = {"privateType": "Error", "name": value["name"], "message": value["message"], "stack": value.get("stack")}
+            causes = [row for row in value["ownProperties"] if row["key"] == "cause" and "value" in row]
+            require(len(causes) <= 1, "A Native transport exception cause was duplicated")
+            if causes:
+                result["cause"] = projection(causes[0]["value"])
+            return result
+        return {name: projection(item) for name, item in value.items()}
+    def has_opaque(value):
+        if isinstance(value, list):
+            return any(has_opaque(item) for item in value)
+        return isinstance(value, dict) and (value.get("privateType") in {"SharedArrayBuffer", "MessagePort", "function"}
+                or any(has_opaque(item) for item in value.values()))
+    observed = payload["privateJSON"]
+    if payload["valueRef"] is not None:
+        ref(payload["valueRef"])
+    if isinstance(observed, dict) and "ref" in observed and observed.get("privateType") != "reference":
+        require(observed["ref"] == payload["valueRef"], "A Native transport's original root host-object ref changed")
+    expected = projection(observed)
+    if set(payload["value"]) == {"v8Hex"}:
+        _same(_native_value(payload["value"], authority, approved_node), expected,
+              "A Native transport JSON/typed side observation differs from its complete actual V8 value")
+    else:
+        _native_observed_value(payload["value"], authority, approved_node, opaque=True)
+        require(has_opaque(observed), "A Native transport V8 failure has no retained actual nonserializable host value")
+    return observed
+
+
+def _native_transport_custody(raw, context, imports, passive, authority, approved_node):
+    families = {"original-worker-command": ("originalPostRef", "postMessage"),
+                "original-worker-reply": ("originalEmitRef", "emit"),
+                "original-message-port": ("originalPostRef", "postMessage")}
+    exited = _native_terminated_threads(context, imports, passive, authority, approved_node)
+    for (pid, thread), rows in passive.items():
+        bindings, calls, settled, received = {}, {}, set(), {}
+        known_workers = {row["workerRef"]: row["workerThreadId"] for row in rows
+                         if row["event"] == "original-worker-command-call" and row["workerThreadId"] > 0}
+        installed = [row for row in rows if row["event"] == "original-transport-observer-installed"]
+        require(len(installed) == 1 and installed[0]["storage"] == "shared-per-thread-immutable-jsonl"
+                and all(isinstance(installed[0][name], str) for name in ("workerClassRef", "workerPrototypeRef", "workerPostOriginalRef",
+                    "workerEmitOriginalRef", "portClassRef", "portPrototypeRef", "portPostOriginalRef")),
+                "The actual Native thread never armed its complete original Worker/MessagePort observation surface")
+        for row in rows:
+            event = row["event"]
+            if event == "original-transport-method-binding":
+                require(row["functionRef"] not in bindings and row["functionName"] in {"postMessage", "emit"}
+                        and row["functionSourceSha256"] == _sha(row["functionSource"].encode())
+                        and isinstance(row["sourceClassRef"], str) and isinstance(row["sourcePrototypeRef"], str),
+                        "An original Native transport callable lost its source/class/function binding")
+                bindings[row["functionRef"]] = row
+                continue
+            if event == "original-worker-reply-received":
+                require(row["callId"] not in received, "An original Native worker notification was duplicated")
+                received[row["callId"]] = row
+            family = next((name for name in families if event in {name + "-call", name + "-return", name + "-throw"}), None)
+            if family is None:
+                continue
+            function_ref, function_name = families[family]
+            require(row[function_ref] in bindings and bindings[row[function_ref]]["functionName"] == function_name,
+                    "An actual Native transport invocation borrowed a different original method")
+            method = "portPostOriginalRef" if family == "original-message-port" else (
+                "workerEmitOriginalRef" if family == "original-worker-reply" else "workerPostOriginalRef")
+            owner = "port" if family == "original-message-port" else "worker"
+            require(row[function_ref] == installed[0][method]
+                    and bindings[row[function_ref]]["sourceClassRef"] == installed[0][owner + "ClassRef"]
+                    and bindings[row[function_ref]]["sourcePrototypeRef"] == installed[0][owner + "PrototypeRef"],
+                    "A Native transport bypassed the actually installed original class/prototype/method")
+            _native_clock_owner(row["sourceCaller"], row["originalStack"], context, imports, pid)
+            if event.endswith("-call"):
+                require(row["callId"] not in calls, "A Native transport original invocation was duplicated")
+                _native_transport_value(row["message"], authority, approved_node, pid=pid, thread=thread)
+                _native_transport_value(row["arguments"], authority, approved_node, pid=pid, thread=thread)
+                if family != "original-message-port":
+                    actual_thread = row["workerThreadId"] if row["workerThreadId"] > 0 else known_workers.get(row["workerRef"])
+                    require((pid, actual_thread) in imports and actual_thread != 0,
+                            "An original Native transport borrowed a Worker outside its actual imported process graph")
+                if family == "original-worker-reply":
+                    require(row["callId"] in received and received[row["callId"]]["sequence"] < row["sequence"],
+                            "An actual original worker reply was delivered without its actual incoming notification")
+                    for name in ("workerRef", "sourceCaller", "originalStack", "message", "arguments", "requestId", "taskId"):
+                        _same(row[name], received[row["callId"]][name], "A Native original worker reply changed between receipt and delivery")
+                calls[row["callId"]] = family, row
+                continue
+            require(row["callId"] in calls and row["callId"] not in settled,
+                    "A Native original transport result/error was duplicated or has no actual invocation")
+            original_family, call = calls[row["callId"]]
+            require(original_family == family and call["sequence"] < row["sequence"],
+                    "Native transport completion belongs to another actual call or precedes it")
+            for name in (function_ref, "sourceCaller", "originalStack", "message", "arguments"):
+                _same(call[name], row[name], "An original Native transport completion changed its actual call carrier or callable")
+            settled.add(row["callId"])
+            if event.endswith("-return"):
+                value = row.get("actualReturn", row.get("result"))
+                returned = _native_observed_value(value, authority, approved_node)
+                require((function_name == "postMessage" and returned == {"privateType": "undefined"})
+                        or (function_name == "emit" and type(returned) is bool),
+                        "A Native original transport lost its actual void/boolean return type")
+            else:
+                error = _native_observed_value(row["privateError"], authority, approved_node)
+                require(error["privateType"] == "Error" and error["name"] == row["error"]["name"]
+                        and error["message"] == row["error"]["message"] and isinstance(row["error"]["ownProperties"], list),
+                        "A Native original transport exception lost its complete actual typed error carrier")
+        require(set(received) <= set(calls), "An incoming original Native worker reply was never delivered to the original listener")
+        for call_id in set(calls) - settled:
+            require(((pid, thread) in exited and _ns(calls[call_id][1]["atNs"]) < exited[pid, thread]) or any(
+                    child["pid"] == pid and child["exit"] == {"code": None, "signal": "SIGKILL"} for child in raw["children"]),
+                    "A live Native original transport call lost its actual return/error")
+
+
 def _native_keyword_delivery(receipt, gate, raw, actors, passive, authority, approved_node, context, imports, directory):
     require(receipt["mode"] == "deferred-original-worker-reply" and receipt["threadId"] == 0
             and receipt["sourceOwner"] == "WorkerTaskPool.original-keyword-reply" and receipt["eventName"] == "message",
@@ -1501,6 +1845,40 @@ def _native_keyword_delivery(receipt, gate, raw, actors, passive, authority, app
             "The Native keyword fixture did not permit the actual independent original forget to settle while held")
 
 
+def _native_held_publication_terminal(gate, passive, context, imports, authority, approved_node):
+    receipt = gate["receipt"]
+    key = receipt["pid"], receipt["threadId"]
+    rows = passive[key]
+    terminal = [row for row in rows if row["event"] == "held-publication-worker-terminal-reply"
+                and row["gate"] == gate["name"] and row["gateEnterSequence"] == receipt["sequence"]]
+    require(len(terminal) == 1, "The actual held Native publication lost its source-owned original terminal reply checkpoint")
+    terminal = terminal[0]
+    require(terminal["sourceOwner"] == "SqliteStoreWorker.receive.original-terminal-reply"
+            and terminal["sourceCaller"]["package"] == "node_modules/openclaw"
+            and terminal["sourceCaller"]["path"] == "dist/infra/sqlite-store.worker.js",
+            "A held Native publication terminal reply came from another original source owner")
+    _native_clock_owner(terminal["sourceCaller"], terminal["originalStack"], context, imports, key[0])
+    request = _native_value(terminal["request"], authority, approved_node)
+    command = _native_value(terminal["requestInput"], authority, approved_node)
+    reply = _native_value(terminal["reply"], authority, approved_node)
+    arguments = _native_value(terminal["postArguments"], authority, approved_node)
+    require(terminal["requestType"] == request["type"] == "execute" and type(request["id"]) is int
+            and request["id"] == terminal["brokerRequestId"] == reply["id"]
+            and command["type"] == "database.publish" and type(reply["ok"]) is bool
+            and isinstance(arguments, list) and arguments,
+            "The held Native terminal reply lost its actual original broker request/command/result envelope")
+    _same(_native_value({"v8Hex": request["input"]["hex"]}, authority, approved_node), command,
+          "The held Native publication command differs from its complete actual received broker bytes")
+    _same(arguments[0], reply, "The actual Native terminal post received another original reply object")
+    publication = [row for (pid, _), records in passive.items() if pid == key[0] for row in records
+                   if row["event"] == "original-database-publication-command" and row["brokerRequestId"] == request["id"]]
+    require(len(publication) == 1, "The held Native reply has no unique actual parent publication dispatch")
+    _same(_native_value(publication[0]["command"], authority, approved_node), command,
+          "The original Native worker published a command different from its actual parent dispatch")
+    require(receipt["sequence"] < terminal["sequence"] and command["input"]["expectedRevision"] == receipt["lastRevisionRead"]["value"],
+            "The held Native publication refreshed its original captured expected fence or replied before the held frame")
+
+
 def _native_gates(case, raw, actors, passive, authority, approved_node, directory, *, context=None, imports=None):
     specifications = {row["name"]: row for row in case["input"]["gates"]}
     require(len(raw["gates"]) == len(specifications), "An original Native functional gate was omitted or added")
@@ -1552,6 +1930,7 @@ def _native_gates(case, raw, actors, passive, authority, approved_node, director
                     "The Native postcheck gate lacks its actual owned transaction/live SQL fence check")
             require(_native_value(read["result"], authority, approved_node)["revision"] == read["value"],
                     "The Native postcheck live fence differs from its actual SQL return")
+            _native_held_publication_terminal(gate, passive, context, imports, authority, approved_node)
         elif boundary == "forget.marker-committed-before-purge":
             require(receipt["commitReturned"] is True and receipt["wasTransaction"] is True
                     and receipt["transactionActive"] is False and receipt["sql"].strip().upper() in {"COMMIT", "COMMIT;"}
@@ -1914,6 +2293,20 @@ def _native_capture(case, raw, result, directory, approved_node, trusted_archive
     require(set(reconstructed) == set(_expected_calls(case["input"])), "Native actual calls differ from the complete frozen schedule")
     _same(reconstructed, result["calls"], "Native common calls dropped or repaired original public outcomes")
     if _v2(case):
+        wires = []
+        def collect_carriers(value):
+            if isinstance(value, dict):
+                if "v8Hex" in value:
+                    wires.append(value["v8Hex"])
+                for item in value.values():
+                    collect_carriers(item)
+            elif isinstance(value, list):
+                for item in value:
+                    collect_carriers(item)
+        collect_carriers(list(passive.values()))
+        _decode_v8_views(authority, wires, approved_node)
+        _native_sql_custody(raw, context, imports, passive, authority, approved_node)
+        _native_transport_custody(raw, context, imports, passive, authority, approved_node)
         _native_source_clock_v2(case, raw, actors, imports, passive, context, authority, approved_node)
         for pid, (_, actor) in actors.items():
             entries = [row["sequence"] for row in passive[pid, 0] if row["event"] == "original-transcript-export-read-enter"]

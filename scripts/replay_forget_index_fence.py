@@ -23,6 +23,7 @@ sys.path.insert(0, str(ROOT))
 from equivalence.harness import _validate_reference  # noqa: E402
 from equivalence.model_runtime_authority import prepare_model_node_authority  # noqa: E402
 from equivalence.promotion_apply_family import differences  # noqa: E402
+from memory_core.project_name import PACKAGE_NAME  # noqa: E402
 
 SHA256 = re.compile(r"[0-9a-f]{64}\Z")
 CALL_RESULT_KEYS = {"validated", "publicMatch", "nativeSnapshots", "sdkSnapshots",
@@ -110,7 +111,7 @@ def _read_json(value, *, root=None, limit=1024 * 1024 * 1024):
 
 def _sdk_identity(root):
     root = _directory(root)
-    package = _directory(root / "memory_core")
+    package = _directory(root / PACKAGE_NAME)
     paths = sorted(package.rglob("*.py"))
     if not paths:
         raise ValueError("The independently selected SDK source inventory is empty")

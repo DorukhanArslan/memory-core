@@ -11,7 +11,7 @@ permissions:
 
 jobs:
   differential:
-    name: Differential subset (full contract on manual runs)
+    name: Differential full contract
     runs-on: ubuntu-latest
     # Measured V5 cases take 6.5–7.5 minutes each. Allow the hosted six-hour limit
     # for the registered catalog, retained standalone captures and strict replays.
@@ -58,12 +58,12 @@ jobs:
         run: >-
           uv run --frozen python -m equivalence.release_runtime
           --reference .reference/openclaw --destination .reference/release-runtime --install
-      - name: Compare the registered cases with actual OpenClaw
+      - name: Compare the full registered catalog with actual OpenClaw
         run: >-
           uv run --frozen python scripts/check_equivalence.py
           --reference .reference/openclaw --node "$(command -v node)"
           --release-runtime .reference/release-runtime
-          --smoke --report .equivalence-results/subset.json
+          --report .equivalence-results/full.json
       - name: Compare the zero-credit cold retry development packet
         if: always()
         run: >-
@@ -85,20 +85,14 @@ jobs:
           --reference .reference/openclaw --node "$(command -v node)"
           --release-runtime .reference/release-runtime
           --output .equivalence-results/query-sync-boundaries-acceptance
-      - name: Compare the zero-credit forget/index-fence v5 packet
+      - name: Smoke the standalone forget/index-fence v5 collector
         if: always()
         run: >-
           uv run --frozen python scripts/check_forget_index_fence.py --version v5
           --reference .reference/openclaw --node "$(command -v node)"
           --release-runtime .reference/release-runtime
+          --case forget-index-fence-v5-shared-clean-dryrun-unresolved-promotion-controls
           --output .equivalence-results/forget-index-fence-v5-acceptance
-      - name: Require the complete contract on manual acceptance runs
-        if: always() && github.event_name == 'workflow_dispatch'
-        run: >-
-          uv run --frozen python scripts/check_equivalence.py
-          --reference .reference/openclaw --node "$(command -v node)"
-          --release-runtime .reference/release-runtime
-          --report .equivalence-results/full.json
       - name: Replay the retained original update captures through their guard tests
         # The earlier test step runs before any original capture exists, so it skips these.
         if: always()
@@ -136,7 +130,9 @@ jobs:
         if: always()
         run: >-
           uv run --frozen python scripts/replay_forget_index_fence.py --version v5
-          --capture-root .equivalence-results/forget-index-fence-v5-acceptance
+          --suite-report .equivalence-results/full.json
+          --native-capture-root .equivalence-results/forget-index-fence-v5
+          --sdk-capture-root .equivalence-results/forget-index-fence-v5
           --reference .reference/openclaw --node "$(command -v node)"
           --sdk-source-root . --adapter-root .
           --output .equivalence-results/forget-index-fence-v5-independent-replay.json
@@ -144,7 +140,9 @@ jobs:
         if: always()
         run: >-
           MEMORY_EQ_NODE="$(command -v node)"
-          MEMORY_FORGET_INDEX_FENCE_V5_CAPTURE_ROOT=.equivalence-results/forget-index-fence-v5-acceptance
+          MEMORY_FORGET_INDEX_FENCE_V5_SUITE_REPORT=.equivalence-results/full.json
+          MEMORY_FORGET_INDEX_FENCE_V5_NATIVE_CAPTURE_ROOT=.equivalence-results/forget-index-fence-v5
+          MEMORY_FORGET_INDEX_FENCE_V5_SDK_CAPTURE_ROOT=.equivalence-results/forget-index-fence-v5
           MEMORY_FORGET_INDEX_FENCE_REFERENCE_ROOT=.reference/openclaw
           MEMORY_FORGET_INDEX_FENCE_SDK_SOURCE_ROOT=.
           MEMORY_FORGET_INDEX_FENCE_ADAPTER_ROOT=.

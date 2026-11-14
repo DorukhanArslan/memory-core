@@ -1614,22 +1614,64 @@ def test_v4_selector_and_closed_family_never_borrow_a_v3_packet(tmp_path, monkey
 
 
 V5_CAPTURE_ROOT = os.environ.get('MEMORY_FORGET_INDEX_FENCE_V5_CAPTURE_ROOT')
+V5_SUITE_REPORT = os.environ.get('MEMORY_FORGET_INDEX_FENCE_V5_SUITE_REPORT')
+V5_NATIVE_CAPTURE_ROOT = os.environ.get('MEMORY_FORGET_INDEX_FENCE_V5_NATIVE_CAPTURE_ROOT')
+V5_SDK_CAPTURE_ROOT = os.environ.get('MEMORY_FORGET_INDEX_FENCE_V5_SDK_CAPTURE_ROOT')
 V5_NATIVE_CAPTURE = os.environ.get('MEMORY_FORGET_INDEX_FENCE_V5_NATIVE_CAPTURE')
 V5_CASES = build_v5_cases()
 
 
 @lru_cache(maxsize=1)
+def _v5_replay_cli():
+    from importlib.util import module_from_spec, spec_from_file_location
+    spec = spec_from_file_location("v5_guard_suite_admission", ROOT / "scripts/replay_forget_index_fence.py")
+    module = module_from_spec(spec)
+    spec.loader.exec_module(module)
+    return module
+
+
+@lru_cache(maxsize=1)
+def _v5_suite_admission():
+    from types import SimpleNamespace
+    from equivalence import forget_index_fence_v5
+    assert V5_SUITE_REPORT is not None and V5_CAPTURE_ROOT is None, "V5 suite and collector selectors are exclusive"
+    assert V5_NATIVE_CAPTURE_ROOT is not None and V5_SDK_CAPTURE_ROOT is not None, "V5 suite replay requires both independently selected physical roots"
+    assert ADAPTER_ROOT is not None, "V5 replay requires an independently selected adapter root"
+    cli = _v5_replay_cli()
+    args = SimpleNamespace(version="v5", suite_report=Path(V5_SUITE_REPORT),
+        native_capture_root=Path(V5_NATIVE_CAPTURE_ROOT), sdk_capture_root=Path(V5_SDK_CAPTURE_ROOT),
+        node=_trusted_node(), reference=REFERENCE_ROOT, sdk_source_root=SDK_SOURCE_ROOT,
+        adapter_root=Path(ADAPTER_ROOT))
+    authority = cli._authorities(args, guard, forget_index_fence_v5)
+    selected, _, _ = cli._admit_suite_report(args, authority, {"sourceReports": []}, forget_index_fence_v5)
+    return selected
+
+
+@lru_cache(maxsize=1)
 def _v5_raw_packet(case_id):
-    if V5_CAPTURE_ROOT is None:
+    assert not (V5_SUITE_REPORT is not None and V5_CAPTURE_ROOT is not None), "V5 suite and collector selectors are exclusive"
+    if V5_SUITE_REPORT is None and V5_CAPTURE_ROOT is None:
         pytest.skip('No explicitly selected V5 packet; no acceptance credit')
     assert ADAPTER_ROOT is not None, 'V5 replay requires an independently selected adapter root'
     case = next(row for row in V5_CASES if row['id'] == case_id)
-    directory = Path(V5_CAPTURE_ROOT).resolve(strict=True) / case_id
-    native_directory, sdk_directory = directory / 'native', directory / 'sdk/evidence'
+    selected = None
+    if V5_SUITE_REPORT is not None:
+        selected = _v5_suite_admission()[case_id]
+        native_directory, sdk_directory = selected['directories']['native'], selected['directories']['sdk']
+        assert all(_v5_replay_cli()._seal(item['path']) == item for item in selected['files'].values())
+    else:
+        assert V5_NATIVE_CAPTURE_ROOT is None and V5_SDK_CAPTURE_ROOT is None, "V5 physical suite roots require an explicit suite report"
+        directory = Path(V5_CAPTURE_ROOT).resolve(strict=True) / case_id
+        native_directory, sdk_directory = directory / 'native', directory / 'sdk/evidence'
     native, sdk = _read(native_directory / 'evidence/native-raw.json'), _read(sdk_directory / 'python-raw.json')
     returned = _read(native_directory / 'stdout.json')
     assert len(native) == len(sdk) == 1 and returned['id'] == case_id and returned['ok'] is True
-    return case, native[0], sdk[0], returned['result'], guard.materialize_sdk_dispatch(sdk[0])['observation']['result'], native_directory, sdk_directory
+    sdk_result = guard.materialize_sdk_dispatch(sdk[0])['observation']['result']
+    if selected is not None:
+        guard._same(returned['result'], selected['nativeResult'], "Whole suite Native payload differs from its actual stdout")
+        guard._same(sdk_result, selected['sdkResult'], "Whole suite SDK payload differs from its actual original dispatch")
+        assert all(_v5_replay_cli()._seal(item['path']) == item for item in selected['files'].values())
+    return case, native[0], sdk[0], returned['result'], sdk_result, native_directory, sdk_directory
 
 
 @pytest.mark.parametrize('case', V5_CASES, ids=lambda case: case['id'])
@@ -1657,9 +1699,80 @@ def test_v5_closed_business_family_preserves_original_control_protocols(case):
 
 def test_v5_selector_never_borrows_a_v4_packet(tmp_path, monkeypatch):
     monkeypatch.setitem(globals(), 'V5_CAPTURE_ROOT', None)
+    monkeypatch.setitem(globals(), 'V5_SUITE_REPORT', None)
     monkeypatch.setitem(globals(), 'V4_CAPTURE_ROOT', str(tmp_path / 'labelled-v4-only'))
     with pytest.raises(pytest.skip.Exception, match='No explicitly selected V5 packet'):
         _v5_raw_packet.__wrapped__(V5_CASES[0]['id'])
+
+
+@pytest.mark.parametrize('missing', ['V5_NATIVE_CAPTURE_ROOT', 'V5_SDK_CAPTURE_ROOT'])
+def test_v5_suite_selector_requires_independent_roots_without_fallback(monkeypatch, missing):
+    monkeypatch.setitem(globals(), 'V5_SUITE_REPORT', 'UNIT_FULL_REPORT')
+    monkeypatch.setitem(globals(), 'V5_CAPTURE_ROOT', None)
+    monkeypatch.setitem(globals(), 'V5_NATIVE_CAPTURE_ROOT', 'UNIT_NATIVE_ROOT')
+    monkeypatch.setitem(globals(), 'V5_SDK_CAPTURE_ROOT', 'UNIT_SDK_ROOT')
+    monkeypatch.setitem(globals(), missing, None)
+    with pytest.raises(AssertionError, match='both independently selected physical roots'):
+        _v5_suite_admission.__wrapped__()
+
+
+def test_v5_suite_and_collector_selectors_are_mutually_exclusive(monkeypatch):
+    monkeypatch.setitem(globals(), 'V5_SUITE_REPORT', 'UNIT_FULL_REPORT')
+    monkeypatch.setitem(globals(), 'V5_CAPTURE_ROOT', 'UNIT_COLLECTOR_ROOT')
+    with pytest.raises(AssertionError, match='exclusive'):
+        _v5_raw_packet.__wrapped__(V5_CASES[0]['id'])
+
+
+@pytest.mark.parametrize('changed_payload', [False, True])
+def test_v5_suite_route_uses_sealed_original_refs_and_whole_results(tmp_path, monkeypatch, changed_payload):
+    # Labelled files/CLI admission double only; real pair validation is unchanged.
+    from types import SimpleNamespace
+    import importlib.util
+    spec = importlib.util.spec_from_file_location('unit_suite_route_cli', ROOT / 'scripts/replay_forget_index_fence.py')
+    cli = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(cli)
+    case = V5_CASES[0]
+    native_dir, sdk_dir = tmp_path / 'native', tmp_path / 'sdk'
+    (native_dir / 'evidence').mkdir(parents=True)
+    sdk_dir.mkdir()
+    native_result, sdk_result = {'UNIT_WHOLE': [False, 0, None]}, {'UNIT_WHOLE': {'retained': True}}
+    (native_dir / 'evidence/native-raw.json').write_text('[{"UNIT_NATIVE":true}]')
+    (native_dir / 'stdout.json').write_text(json.dumps({'id': case['id'], 'ok': True, 'result': native_result}))
+    (sdk_dir / 'python-raw.json').write_text(json.dumps([{'observation': {'result': sdk_result}}]))
+    files = {name: cli._seal(path) for name, path in {
+        'nativeRaw': native_dir / 'evidence/native-raw.json', 'nativeStdout': native_dir / 'stdout.json',
+        'sdkRaw': sdk_dir / 'python-raw.json'}.items()}
+    selected = {case['id']: {'directories': {'native': native_dir, 'sdk': sdk_dir}, 'files': files,
+                            'nativeResult': native_result, 'sdkResult': {'UNIT_CHANGED': True} if changed_payload else sdk_result}}
+    observed = []
+    def authority(args, actual_guard, frozen):
+        assert actual_guard is guard and frozen.build_cases() == V5_CASES
+        observed.append(('authority', args))
+        return {'UNIT_AUTHORITY': True}
+    def admit(args, actual_authority, report, frozen):
+        assert actual_authority == {'UNIT_AUTHORITY': True} and report == {'sourceReports': []}
+        observed.append(('admit', args))
+        return selected, [], {'UNIT_SUITE_AUTHORITY': True}
+    fake = SimpleNamespace(_authorities=authority, _admit_suite_report=admit, _seal=cli._seal)
+    monkeypatch.setitem(globals(), 'V5_SUITE_REPORT', str(tmp_path / 'actual-full.json'))
+    monkeypatch.setitem(globals(), 'V5_CAPTURE_ROOT', None)
+    monkeypatch.setitem(globals(), 'V5_NATIVE_CAPTURE_ROOT', str(native_dir))
+    monkeypatch.setitem(globals(), 'V5_SDK_CAPTURE_ROOT', str(sdk_dir))
+    monkeypatch.setitem(globals(), 'ADAPTER_ROOT', str(tmp_path))
+    monkeypatch.setitem(globals(), '_v5_replay_cli', lambda: fake)
+    admission = _v5_suite_admission.__wrapped__()
+    monkeypatch.setitem(globals(), '_v5_suite_admission', lambda: admission)
+    if changed_payload:
+        with pytest.raises(ValueError, match='Whole suite SDK payload'):
+            _v5_raw_packet.__wrapped__(case['id'])
+    else:
+        result = _v5_raw_packet.__wrapped__(case['id'])
+        assert len(result) == 7 and result[0] == case and result[3:5] == (native_result, sdk_result)
+        assert result[5:] == (native_dir, sdk_dir)
+    assert [row[0] for row in observed] == ['authority', 'admit']
+    args = observed[0][1]
+    assert args.version == 'v5' and args.native_capture_root == native_dir and args.sdk_capture_root == sdk_dir
+    assert args.adapter_root == tmp_path and args.sdk_source_root == SDK_SOURCE_ROOT and args.reference == REFERENCE_ROOT
 
 
 @pytest.fixture(scope='module')

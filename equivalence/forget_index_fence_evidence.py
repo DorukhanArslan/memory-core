@@ -1412,7 +1412,24 @@ def _native_public(case, child, actor, command, entry, authority, approved_node)
     return expected
 
 
-def _native_keyword_delivery(receipt, gate, raw, actors, passive, authority, approved_node, context, imports):
+def _native_gate_release(gate, raw, events, directory):
+    """Authenticate consumption against the real release write interval."""
+    steps = [row for row in raw["steps"] if row["step"]["operation"] == "release-gate"
+             and row["step"]["gate"] == gate["name"]]
+    require(len(steps) == 1, "A held Native gate has no unique actual release operation")
+    step = steps[0]
+    _same(_read(Path(directory) / "gates" / (gate["name"] + ".release"), directory), step["step"],
+          "The Native original gate consumed a release file from another actual schedule step")
+    require(_ns(gate["receipt"]["enteredAtNs"]) < _ns(step["startedAtNs"])
+            <= _ns(gate["releasedAtNs"]) <= _ns(step["finishedAtNs"]),
+            "Native release timestamps lost the original pre-write/post-write operation bracket")
+    releases = [row for row in events if row["event"] == "fence-gate-release" and row["gate"] == gate["name"]]
+    require(len(releases) == 1 and _ns(releases[0]["atNs"]) >= _ns(step["startedAtNs"]),
+            "The held Native original frame never consumed its actual release")
+    return releases[0], step
+
+
+def _native_keyword_delivery(receipt, gate, raw, actors, passive, authority, approved_node, context, imports, directory):
     require(receipt["mode"] == "deferred-original-worker-reply" and receipt["threadId"] == 0
             and receipt["sourceOwner"] == "WorkerTaskPool.original-keyword-reply" and receipt["eventName"] == "message",
             "The Native keyword fixture froze a thread instead of holding only the original reply delivery")
@@ -1462,10 +1479,10 @@ def _native_keyword_delivery(receipt, gate, raw, actors, passive, authority, app
         _same({key: rows[0][key] for key in facts}, {key: receipt[key] for key in facts},
               "Native deferred delivery changed its actual original receiver/task/message/arguments")
     held, enter, returned = (selected[name] for name in ("held", "delivery-enter", "delivery-return"))
-    releases = [row for row in events if row["event"] == "fence-gate-release" and row["gate"] == gate["name"]]
-    require(len(releases) == 1 and held["sequence"] < receipt["sequence"] < releases[0]["sequence"]
+    release, release_step = _native_gate_release(gate, raw, events, directory)
+    require(held["sequence"] < receipt["sequence"] < release["sequence"]
             < enter["sequence"] < returned["sequence"]
-            and _ns(gate["releasedAtNs"]) <= _ns(releases[0]["atNs"]) <= _ns(enter["enteredAtNs"])
+            and _ns(release_step["startedAtNs"]) <= _ns(release["atNs"]) <= _ns(enter["enteredAtNs"])
             < _ns(returned["returnedAtNs"]) and returned["actualReturnType"] == "boolean"
             and type(_native_value(returned["actualReturn"], authority, approved_node)) is bool
             and "actualReturn" not in held and "actualReturn" not in enter,
@@ -1475,12 +1492,12 @@ def _native_keyword_delivery(receipt, gate, raw, actors, passive, authority, app
     progress = [row for row in events if row["event"] == "async-gate-mainloop-progress" and row["gate"] == gate["name"]]
     require(len(progress) == 2 and {row["kind"] for row in progress} == {"setImmediate", "setTimeout"}
             and all(row["gateEnterAtNs"] == receipt["enteredAtNs"] and row["callLabel"] == receipt["callLabel"]
-                    and receipt["sequence"] < row["sequence"] < releases[0]["sequence"] for row in progress),
+                    and receipt["sequence"] < row["sequence"] < release["sequence"] for row in progress),
             "The Native keyword hold has no genuine independent main-loop progress while delivery is pending")
     forgets = [entry for _, actor in actors.values() for entry in actor["calls"]
                if entry["operation"] == "original-forget" and entry.get("label") == "selected"]
     require(len(forgets) == 1 and _ns(receipt["enteredAtNs"]) < _ns(forgets[0]["startedAtNs"])
-            < _ns(forgets[0]["settledAtNs"]) < _ns(gate["releasedAtNs"]),
+            < _ns(forgets[0]["settledAtNs"]) < _ns(release_step["startedAtNs"]),
             "The Native keyword fixture did not permit the actual independent original forget to settle while held")
 
 
@@ -1509,11 +1526,7 @@ def _native_gates(case, raw, actors, passive, authority, approved_node, director
                         and hit < _ns(child["kill"]["atNs"]) <= _ns(child["finishedAtNs"])
                         and "releasedAtNs" not in gate, "An alleged marker kill did not kill the actual held original process")
             else:
-                require(hit < _ns(gate["releasedAtNs"]), "A Native gate released before the actual original boundary")
-                release = next((row for row in events if row["event"] == "fence-gate-release"
-                                and row["gate"] == gate["name"]), None)
-                require(release is not None and _ns(release["atNs"]) >= _ns(gate["releasedAtNs"]),
-                        "The held Native original frame never consumed its actual release")
+                _native_gate_release(gate, raw, events, directory)
         boundary = spec["boundary"]
         if boundary == "rebuild.revision-captured-before-publication":
             read = receipt["originalCapturedRevisionRead"]
@@ -1555,7 +1568,7 @@ def _native_gates(case, raw, actors, passive, authority, approved_node, director
                         and receipt["asyncId"] and receipt["triggerAsyncId"] is not None,
                         "Native workspace wait was not an actual source-owned pending sleep")
         elif boundary == "search.keyword-result-before-enrichment":
-            _native_keyword_delivery(receipt, gate, raw, actors, passive, authority, approved_node, context, imports)
+            _native_keyword_delivery(receipt, gate, raw, actors, passive, authority, approved_node, context, imports, directory)
         elif boundary == "promotion.model-planning-before-final-lock":
             require(receipt["sourceOwner"] == "consolidateMemory.actual-subagent-complete-await"
                     and isinstance(receipt["request"], dict), "The Native model gate did not hold the actual original planning request")
@@ -2346,8 +2359,17 @@ def _sdk_gates(case, raw, processes, observations, recorded, trusted):
                 observed = stage["returned"]["hits"][0]
                 _same(observed, receipt, "The actual SDK writer progress receipt changed after its admission")
                 require(execution["sequence"] <= trigger["sequence"] and execution["source"] in {
-                    "SQLiteMemoryStore.connect", "MemoryEntryOriginLedger._open_write"},
+                    "SQLiteMemoryStore.connect", "MemoryEntryOriginLedger._open_write",
+                    "MemoryEntryOriginLedger.record_session_tombstones_if_lineage_current"}
+                        and execution["parentCode"]["qualname"] == execution["source"]
+                        and execution["event"] == "original-sql-c-call" and execution["method"] in {"execute", "executescript"}
+                        and execution["connectionId"] == trigger["connectionId"]
+                        and (trigger["event"] != "original-sql" or (trigger["executionSequence"] == execution["sequence"]
+                             and trigger["statement"] in execution["statements"])),
                     "SDK pending writer progress did not reach an actual owned original SQLite call")
+                require(_ns(execution["atNs"]) < _ns(stage["settledAtNs"])
+                        and ("finishedAtNs" not in execution or _ns(stage["settledAtNs"]) < _ns(execution["finishedAtNs"])),
+                        "SDK writer-wait progress was already settled when the actual gate was observed")
         elif boundary == "search.keyword-result-before-enrichment":
             require(trigger["event"] == "original-return" and trigger["name"] == "SQLiteMemoryStore._search_keyword_with_fallback"
                     and isinstance(trigger["returned"], list), "SDK in-flight search gate lacks its actual complete original keyword return")

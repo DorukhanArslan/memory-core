@@ -23,6 +23,7 @@ ROOT = Path(__file__).resolve().parents[2]
 CAPTURE_ROOT = os.environ.get("MEMORY_FORGET_INDEX_FENCE_CAPTURE_ROOT")
 SDK_CAPTURE_ROOT = os.environ.get("MEMORY_FORGET_INDEX_FENCE_SDK_CAPTURE_ROOT")
 REJECTED_NATIVE_CAPTURE_ROOT = os.environ.get("MEMORY_FORGET_INDEX_FENCE_REJECTED_NATIVE_ROOT")
+REJECTED_RELEASE_CAPTURE_ROOT = os.environ.get("MEMORY_FORGET_INDEX_FENCE_REJECTED_RELEASE_ROOT")
 SDK_SOURCE_ROOT = Path(os.environ.get("MEMORY_FORGET_INDEX_FENCE_SDK_SOURCE_ROOT", ROOT)).resolve()
 REFERENCE_ROOT = Path(os.environ.get("MEMORY_FORGET_INDEX_FENCE_REFERENCE_ROOT", ROOT / "work/openclaw-v2026.9.9")).resolve()
 CASES = build_cases()
@@ -104,8 +105,66 @@ def v2_clock_actual(request):
     return _v2_raw_packet(request.param["id"])
 
 
+@lru_cache(maxsize=1)
+def _v2_sdk_packet(case_id):
+    values = _v2_raw_packet(case_id)
+    case, _, sdk, _, result, _, directory = values
+    validated = guard.validate_capture(case, sdk, result, native=False,
+        approved_sdk_root=SDK_SOURCE_ROOT, directory=directory)
+    assert validated is True
+    return (*values, validated)
+
+
+@pytest.fixture(scope="module", params=V2_CASES, ids=lambda case: case["id"])
+def v2_sdk_actual(request):
+    """Independent SDK custody alone supplies no paired acceptance credit."""
+    return _v2_sdk_packet(request.param["id"])
+
+
 def test_actual_v2_pair_authenticates_both_originals_without_predicting_parity(v2_actual):
     assert v2_actual[-1] is True
+
+
+def test_actual_v2_sdk_capture_authenticates_without_a_native_positive(v2_sdk_actual):
+    assert v2_sdk_actual[-1] is True
+
+
+@pytest.mark.parametrize("attack", ["source-code", "already-settled"])
+def test_v2_sdk_writer_progress_requires_original_source_and_pending_execution(v2_sdk_actual, attack):
+    case, _, sdk, *_ = v2_sdk_actual
+    raw = sdk["observation"]
+    processes, observations = {}, {}
+    for process in raw["processes"]:
+        observation = process["observation"]
+        recorded, trusted, events, returns = guard._sdk_observation(observation, process,
+            case["input"], SDK_SOURCE_ROOT)
+        processes[process["pid"]] = process
+        observations[process["pid"]] = observation, events, returns
+    selected = next(((pid, gate) for pid, (observation, _, _) in observations.items()
+                     for gate in observation["functionalGates"].values()
+                     if gate["armed"] and gate["hits"] and gate["hits"][0].get("progressKind") ==
+                     "actual-original-SQLite-writer-attempt"), None)
+    if selected is None:
+        pytest.skip("The actual selected SDK original did not enter a pending writer attempt; no progress boundary credit")
+    pid, gate = selected
+    receipt = gate["hits"][0]
+    observation, events, returns = observations[pid]
+    sequence = receipt["sqlExecutionSequence"]
+    execution = deepcopy(events[sequence])
+    if attack == "source-code":
+        execution["parentCode"]["sourceSha256"] = "0" * 64
+        changed = {**observation,
+            "originalCalls": [execution if row["sequence"] == sequence else row for row in observation["originalCalls"]],
+            "sqlExecutions": [execution if row["sequence"] == sequence else row for row in observation["sqlExecutions"]]}
+        with pytest.raises(ValueError):
+            guard._sdk_observation(changed, processes[pid], case["input"], SDK_SOURCE_ROOT)
+    else:
+        stage = next(step for step in raw["steps"] if step["specification"]["operation"] == "await-gate"
+                     and step["specification"]["gate"] == gate["specification"]["name"])
+        execution["finishedAtNs"] = stage["settledAtNs"]
+        observations[pid] = observation, {**events, sequence: execution}, returns
+        with pytest.raises(ValueError, match="already settled"):
+            guard._sdk_gates(case, raw, processes, observations, recorded, trusted)
 
 
 @pytest.mark.parametrize("field", ["provider", "calls", "snapshots"])
@@ -141,6 +200,54 @@ def test_rejected_native_transport_never_supplies_a_positive_pair():
         guard.replay_case(case, native_directory, sdk_directory,
             approved_node=_trusted_node(), approved_sdk_root=SDK_SOURCE_ROOT,
             approved_reference=REFERENCE_ROOT)
+
+
+def test_actual_rejected_native_gate_release_is_not_inferred_from_a_release_file():
+    if REJECTED_RELEASE_CAPTURE_ROOT is None:
+        pytest.skip("No explicitly selected rejected Native release packet; no acceptance credit")
+    case = next(case for case in V2_CASES if case["id"] == "forget-index-fence-v2-shared-postcheck-pending-forget")
+    directory = Path(REJECTED_RELEASE_CAPTURE_ROOT).resolve(strict=True) / case["id"] / "native"
+    values = _read(directory / "evidence/native-raw.json")
+    assert isinstance(values, list) and len(values) == 1
+    raw = values[0]
+    assert raw["caseId"] == case["id"] and raw["completed"] is raw["allChildrenReaped"] is True
+    guard._same(raw["input"], case["input"], "The rejected release packet must retain its actual frozen input")
+    process, returned = _read(directory / "process.json"), _read(directory / "stdout.json")
+    assert process["returncode"] == 0 and returned["id"] == case["id"] and returned["ok"] is True
+    gates = [gate for gate in raw["gates"] if gate["name"] == "postcheck"]
+    assert len(gates) == 1
+    gate = gates[0]
+    receipt = gate["receipt"]
+    path = directory / "evidence" / f'{receipt["pid"]}-{receipt["threadId"]}-events.jsonl'
+    info = path.lstat()
+    assert stat.S_ISREG(info.st_mode) and info.st_nlink == 1 and not path.is_symlink()
+    events = [json.loads(line) for line in path.read_text(encoding="utf8").splitlines()]
+    assert events and all((row["pid"], row["threadId"]) == (receipt["pid"], receipt["threadId"]) for row in events)
+    assert not any(row["event"] == "fence-gate-release" and row["gate"] == gate["name"] for row in events)
+    # The original coordinator wrote the real file and returned successfully.
+    # Neither fact can replace the missing actual worker-consumption receipt.
+    assert _read(directory / "gates/postcheck.release") == next(row["step"] for row in raw["steps"]
+        if row["step"]["operation"] == "release-gate" and row["step"]["gate"] == gate["name"])
+    with pytest.raises(ValueError, match="never consumed its actual release"):
+        guard._native_gate_release(gate, raw, events, directory)
+
+
+@pytest.mark.parametrize("attack", ["drop", "duplicate"])
+def test_v2_native_gate_release_requires_actual_unique_consumption(v2_actual, attack):
+    case, raw, _, _, _, directory, *_ = v2_actual
+    _, _, _, _, _, passive = _native_clock_context(case["id"])
+    selected = next(((gate, passive[gate["receipt"]["pid"], gate["receipt"]["threadId"]])
+                     for gate in raw["gates"] if gate.get("releasedAtNs") is not None), None)
+    if selected is None:
+        pytest.skip("The actual selected original did not release a held gate; no release boundary credit")
+    gate, events = selected
+    release, _ = guard._native_gate_release(gate, raw, events, directory)
+    if attack == "drop":
+        changed = [row for row in events if row is not release]
+    else:
+        changed = [*events, deepcopy(release)]
+    with pytest.raises(ValueError, match="never consumed its actual release"):
+        guard._native_gate_release(gate, raw, changed, directory)
 
 
 def _sdk_clock_context(v2_actual, *, require_receipt=False, require_datetime=False):

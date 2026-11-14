@@ -12,7 +12,9 @@ permissions:
 jobs:
   offline:
     runs-on: ubuntu-latest
-    timeout-minutes: 15
+    # All 13 genuine SDK schedules retain their 360-second outer bounds (78 minutes).
+    # Allow the existing regressions, package consumers, and pure checks to finish too.
+    timeout-minutes: 120
     strategy:
       fail-fast: false
       matrix:

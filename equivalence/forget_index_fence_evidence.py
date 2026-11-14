@@ -3474,6 +3474,10 @@ def _sdk_launch_environment(carrier, adapter_root, fixture):
 def _sdk_capture(case, dispatch, result, directory, approved_root, approved_adapter_root=None):
     encoded_stdout = "observationEncoding" in dispatch
     dispatch = materialize_sdk_dispatch(dispatch)
+    if _version(case) == 5:
+        require(not any(name in dispatch for name in ("stdoutBytesHex", "stderrBytesHex", "stdoutDecodeError",
+                                                      "stderrDecodeError", "observationEncodingError")),
+                "SDK V5 original stream decode or retention failed; diagnostic bytes receive no custody credit")
     value = case["input"]
     prefix = _capture_prefix(case)
     modern_effects = _search_effects(case)
@@ -3811,8 +3815,9 @@ def materialize_sdk_dispatch(dispatch):
     require(dispatch.get("kind") == "forget-index-fence-v5-sdk-dispatch"
             and isinstance(dispatch.get("input"), dict) and dispatch["input"].get("kind") == "forget-index-fence-v5",
             "SDK stdout encoding is only declared for the closed V5 transport")
-    require("observation" not in dispatch and "stdoutBytesHex" not in dispatch
-            and "stdoutDecodeError" not in dispatch and "stdoutParseError" not in dispatch,
+    require("observation" not in dispatch
+            and not any(name in dispatch for name in ("stdoutBytesHex", "stderrBytesHex", "stdoutDecodeError",
+                                                     "stderrDecodeError", "stdoutParseError", "observationEncodingError")),
             "SDK stdout-authoritative dispatch contains dual observations or a failed original decode")
     marker = dispatch["observationEncoding"]
     require(isinstance(marker, dict) and set(marker) == {"kind", "field", "utf8Bytes", "sha256"}

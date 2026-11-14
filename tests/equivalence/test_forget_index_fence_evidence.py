@@ -1761,7 +1761,8 @@ def test_v5_stdout_codec_preserves_historical_inline_wire_without_rewriting(vers
 
 @pytest.mark.parametrize('attack', ['dual', 'wrong-version', 'mixed-input', 'marker-extra', 'marker-missing',
     'codec', 'field', 'bool-length', 'negative-length', 'over-limit', 'wrong-length', 'wrong-sha',
-    'uppercase-sha', 'stdout-type', 'stdout-tamper', 'invalid-utf8', 'decode-failure', 'bytes-duplicate'])
+    'uppercase-sha', 'stdout-type', 'stdout-tamper', 'invalid-utf8', 'decode-failure', 'stderr-decode-failure',
+    'stderr-bytes-duplicate', 'retention-failure', 'bytes-duplicate'])
 def test_v5_stdout_codec_rejects_ambiguous_or_changed_bytes(attack):
     dispatch, observation = _v5_stdout_codec_example()
     marker = dispatch['observationEncoding']
@@ -1799,6 +1800,12 @@ def test_v5_stdout_codec_rejects_ambiguous_or_changed_bytes(attack):
         dispatch['stdout'] = '\ud800\n'
     elif attack == 'decode-failure':
         dispatch['stdoutDecodeError'] = {'message': 'actual invalid UTF8'}
+    elif attack == 'stderr-decode-failure':
+        dispatch['stderrDecodeError'] = {'message': 'actual invalid UTF8'}
+    elif attack == 'stderr-bytes-duplicate':
+        dispatch['stderrBytesHex'] = 'ff'
+    elif attack == 'retention-failure':
+        dispatch['observationEncodingError'] = {'message': 'actual retention failed'}
     else:
         dispatch['stdoutBytesHex'] = dispatch['stdout'].encode('utf8').hex()
     with pytest.raises(ValueError):
@@ -1830,3 +1837,13 @@ def test_v5_stdout_codec_rejects_resealed_noncanonical_json_records(attack):
     changed, _ = _v5_stdout_codec_example(text)
     with pytest.raises(ValueError):
         guard.materialize_sdk_dispatch(changed)
+
+
+@pytest.mark.parametrize('field', ['stdoutDecodeError', 'stderrDecodeError', 'observationEncodingError'])
+def test_v5_stdout_codec_diagnostic_inline_data_never_becomes_successful_custody(field):
+    dispatch, observation = _v5_stdout_codec_example()
+    del dispatch['observationEncoding']
+    dispatch['observation'] = observation
+    dispatch[field] = {'message': 'failed original stream retention'}
+    with pytest.raises(ValueError, match='stream decode or retention failed'):
+        guard._sdk_capture(V5_CASES[0], dispatch, {}, None, None)

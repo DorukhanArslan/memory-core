@@ -8,12 +8,48 @@ Every fixture failure is retained separately from the original API settlement.
 from __future__ import annotations
 
 from copy import deepcopy
+from collections.abc import MutableMapping
 import hashlib
 import os
 from pathlib import Path
 import stat
 import sys
 import time
+
+
+class CodeIdentityMap(MutableMapping):
+    """Static code ownership indexed by identity, with strong original refs.
+
+    CodeType hashing walks its constants even for unselected trace frames.
+    Registration stays live; missing lookups never install a negative cache.
+    """
+
+    def __init__(self, values=()):
+        self._entries = {}
+        self.update(values)
+
+    def __getitem__(self, code):
+        row = self._entries.get(id(code))
+        if row is None or row[0] is not code:
+            raise KeyError(code)
+        return row[1]
+
+    def get(self, code, default=None):
+        row = self._entries.get(id(code))
+        return row[1] if row is not None and row[0] is code else default
+
+    def __setitem__(self, code, value):
+        self._entries[id(code)] = (code, value)
+
+    def __delitem__(self, code):
+        self[code]
+        del self._entries[id(code)]
+
+    def __iter__(self):
+        return (row[0] for row in self._entries.values())
+
+    def __len__(self):
+        return len(self._entries)
 
 
 class DatetimeClockProxy:
@@ -54,7 +90,7 @@ class OwnedSourceWriteClock:
 
     def __init__(self, *, root, actor, policy, owners, scope, encode, full_stat):
         self.root, self.actor = Path(root).resolve(), actor
-        self.policy, self.owners = deepcopy(policy), dict(owners)
+        self.policy, self.owners = deepcopy(policy), CodeIdentityMap(owners)
         self.scope, self.encode, self.full_stat = scope, encode, full_stat
         self.receipts, self.original_io, self.failures = [], [], []
         self.source_reads = []

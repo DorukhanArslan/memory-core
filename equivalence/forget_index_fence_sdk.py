@@ -29,6 +29,8 @@ import time
 import traceback
 from types import CodeType
 
+from equivalence.forget_index_fence_sdk_clock import CodeIdentityMap
+
 
 ROOT = Path(__file__).resolve().parents[1]
 SDK_ROOT = ROOT
@@ -107,6 +109,10 @@ def _observation_copy(value, memo=None):
     avoid iterating a live dict without adding a worker/observer mutex. This is
     an observation of those containers, not one atomic multi-thread snapshot.
     """
+    value_type = type(value)
+    if (value is None or value_type is str or value_type is bytes or value_type is int
+            or value_type is float or value_type is bool):
+        return value
     memo = {} if memo is None else memo
     identity = id(value)
     if identity in memo:
@@ -357,7 +363,7 @@ class _OriginalObserver:
 
     def __init__(self, codes, *, gate_callback=None, sql_callback=None,
                  functional_profile=None, functional_trace=None):
-        self.codes = dict(codes)
+        self.codes = CodeIdentityMap(codes)
         self.owners = {}
         self.local = threading.local()
         self.events, self.exceptions, self.sql, self.failures = [], [], [], []

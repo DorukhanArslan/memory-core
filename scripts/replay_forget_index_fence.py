@@ -2,6 +2,8 @@
 
 This diagnostic starts no original engine, repairs no capture and awards no
 acceptance credit. All source roots and the decoder executable are explicit.
+V5 may instead stream an actual complete registered-suite report and its
+independently selected Native/SDK capture roots, without collector substitutes.
 """
 from __future__ import annotations
 
@@ -267,6 +269,233 @@ def _case_files(selection, identifier):
     return result
 
 
+OLD_DEFINITIONS_SHA256 = "0fa31b6393c65303f4fa2e1663671e4ef60eb15edc563f05aba218c8c408349c"
+FIXED_SCOPE_SHA256 = "a8e066e63970dd0be734485d62a5932640894b8c0a42f47ac3eb67f784cbc7b9"
+
+
+def _registered_cases():
+    from equivalence.cases import build_cases
+    return build_cases()
+
+
+def _suite_adapter_hashes():
+    from equivalence.harness import _adapter_identity as current_adapter_identity
+    return current_adapter_identity()
+
+
+def _suite_authority(frozen):
+    cases = _registered_cases()
+    prior = json.dumps(cases[:1452], sort_keys=True, ensure_ascii=True,
+                       separators=(",", ":"), allow_nan=False).encode()
+    if (len(cases) != 1465 or cases[1452:] != frozen.build_cases()
+            or hashlib.sha256(prior).hexdigest() != OLD_DEFINITIONS_SHA256
+            or sum("fixtureSource" in case for case in cases) != 79
+            or sum("diagnosticOnly" in case for case in cases) != 1):
+        raise ValueError("Suite replay requires the unchanged 1452 definitions plus exact frozen V5 thirteen")
+    frozen.validate_registration(cases)
+    scope, scope_seal = _read_json(ROOT / "equivalence/scope.json", limit=1024 * 1024)
+    reference = _seal(ROOT / "equivalence/reference.json", limit=1024 * 1024)
+    if (scope_seal["sha256"] != FIXED_SCOPE_SHA256 or len(scope["requirements"]) != 64
+            or sum(len(row["acceptance"]) for row in scope["requirements"]) != 128):
+        raise ValueError("Suite replay requires the unchanged 64-contract/128-condition scope")
+    return cases, scope, {"scope": scope_seal, "reference": reference,
+                         "casesModule": _seal(ROOT / "equivalence/cases.py"),
+                         "adapters": _suite_adapter_hashes(),
+                         "registeredCases": 1465, "priorDefinitionsSha256": OLD_DEFINITIONS_SHA256}
+
+
+def _suite_reference(item, side, root):
+    expected_file = "evidence/native-raw.json" if side == "native" else "python-raw.json"
+    if (not isinstance(item, dict) or set(item) != {
+            "id", "side", "sha256", "rawSnapshotReference", "validationStatus", "evidenceDirectory"}
+            or item["side"] != side or item["validationStatus"] != "verified"):
+        raise ValueError("A V5 suite capture lacks affirmative original file custody")
+    ref = item["rawSnapshotReference"]
+    if (not isinstance(ref, dict) or set(ref) != {"directory", "file", "bytes", "sha256"}
+            or not isinstance(ref["directory"], str) or str(Path(ref["directory"])) != ref["directory"]
+            or ref["file"] != expected_file or type(ref["bytes"]) is not int or ref["bytes"] <= 0
+            or not isinstance(ref["sha256"], str) or not SHA256.fullmatch(ref["sha256"])
+            or item["sha256"] != ref["sha256"] or item["evidenceDirectory"] != ref["directory"]):
+        raise ValueError("A suite rawSnapshotReference is incomplete or changed")
+    directory = _directory(ref["directory"])
+    if not directory.is_relative_to(root):
+        raise ValueError("A suite capture escaped its independently selected physical root")
+    role = "nativeRaw" if side == "native" else "sdkRaw"
+    sealed = _seal(directory / expected_file, root=root, limit=FILES[role][1])
+    if sealed["bytes"] != ref["bytes"] or sealed["sha256"] != ref["sha256"]:
+        raise ValueError("A suite capture differs from its actual original raw file seal")
+    return directory, sealed
+
+
+def _admit_suite_report(args, authority, report, frozen):
+    """Stream the actual full report, retaining only fixed metadata and V5 rows."""
+    from equivalence.harness import _same_json
+    from equivalence.strict_report_reader import Reader
+
+    definitions, scope, suite = _suite_authority(frozen)
+    registered_ids = {case["id"] for case in definitions}
+    native_root, sdk_root = _directory(args.native_capture_root), _directory(args.sdk_capture_root)
+    path, before = _file(args.suite_report, limit=1024 * 1024 * 1024)
+    sealed = _seal(path, limit=1024 * 1024 * 1024)
+    selected, diagnostics, metadata = {}, {}, {}
+    case_index = 0
+    requirements_index = 0
+    counts = {"matched": 0, "mismatched": 0, "blocked": 0}
+    arrays = set()
+    uncovered = []
+    points = {point["id"]: [] for requirement in scope["requirements"] for point in requirement["acceptance"]}
+    for case in definitions:
+        for point in case["covers"]:
+            points[point].append(case["id"])
+    selected_requirement = None
+    keep = {"schemaVersion", "kind", "mode", "status", "reference", "manifestSha256", "implementation",
+            "adapterSha256", "casesSha256", "forgetIndexFenceNode", "forgetIndexFenceBindings",
+            "summary", "fullScopePassed", "startedAt", "finishedAt", "durationSeconds", "referenceExecution"}
+
+    def accept(key, value, array):
+        nonlocal case_index, requirements_index, selected_requirement
+        if array == "array-done":
+            arrays.add(key)
+            return
+        if key in {"cases", "runtimeDiagnostics", "requirements", "errors", "uncoveredAcceptance"} and array is not True:
+            raise ValueError("A full suite array has an invalid type")
+        if key == "cases":
+            if case_index >= len(definitions):
+                raise ValueError("The full suite contains extra registered rows")
+            expected = definitions[case_index]
+            if (not isinstance(value, dict)
+                    or any(not _same_json(value.get(field), expected[field])
+                           for field in ("id", "operation", "input", "requirement", "covers"))
+                    or any((field in value) != (field in expected)
+                           or field in expected and not _same_json(value[field], expected[field])
+                           for field in ("normalizationPolicy", "driverScope", "declaredDeviation"))
+                    or value.get("status") not in counts):
+                raise ValueError("The full suite omitted, reordered or changed a registered definition")
+            counts[value["status"]] += 1
+            case_index += 1
+            if expected["id"] in frozen.CASE_HASHES:
+                if (value.get("runtimeEvidenceValidated") is not True
+                        or value["status"] not in {"matched", "mismatched"}
+                        or not isinstance(value.get("python"), dict) or not isinstance(value.get("openclaw"), dict)
+                        or "evidenceError" in value or "code" in value):
+                    raise ValueError("A V5 suite row lost its frozen metadata, whole public results or paired custody")
+                selected[value["id"]] = value
+        elif key == "runtimeDiagnostics":
+            if not isinstance(value, dict) or value.get("id") not in registered_ids:
+                raise ValueError("The full suite contains foreign runtime evidence")
+            if value["id"] in frozen.CASE_HASHES:
+                identity = value["id"], value.get("side")
+                if identity in diagnostics:
+                    raise ValueError("A V5 suite capture side was duplicated")
+                diagnostics[identity] = value
+        elif key == "requirements":
+            if requirements_index >= len(scope["requirements"]):
+                raise ValueError("The suite added a foreign scope requirement")
+            expected = scope["requirements"][requirements_index]
+            if (not isinstance(value, dict) or value.get("id") != expected["id"]
+                    or value.get("required") is not expected["required"]
+                    or type(value.get("registeredCases")) is not int
+                    or value.get("registeredCases") != sum(case["requirement"] == expected["id"] for case in definitions)
+                    or not isinstance(value.get("acceptance"), list)
+                    or len(value["acceptance"]) != len(expected["acceptance"])):
+                raise ValueError("The suite changed the fixed acceptance denominator")
+            for actual, point in zip(value["acceptance"], expected["acceptance"], strict=True):
+                if (actual.get("id") != point["id"] or actual.get("caseIds") != points[point["id"]]
+                        or not isinstance(actual.get("matchedCaseIds"), list)
+                        or len(set(actual["matchedCaseIds"])) != len(actual["matchedCaseIds"])
+                        or any(identifier not in actual["caseIds"] for identifier in actual["matchedCaseIds"])):
+                    raise ValueError("The suite changed fixed point membership")
+            requirements_index += 1
+            if expected["id"] == "forget.index-fence":
+                selected_requirement = value
+        elif key == "errors":
+            raise ValueError("The original full suite contains a failed final check")
+        elif key == "uncoveredAcceptance":
+            if value not in points or points[value]:
+                raise ValueError("The suite changed the fixed uncovered point set")
+            uncovered.append(value)
+        elif key in keep:
+            if array is not False:
+                raise ValueError("A suite authentication field has an invalid type")
+            metadata[key] = value
+
+    reader = Reader(path)
+    if _fingerprint(os.fstat(reader.stream.fileno())) != _fingerprint(before):
+        reader.close()
+        raise ValueError("The suite changed before streaming admission")
+    reader.top(accept)
+    _, after = _file(path, limit=1024 * 1024 * 1024)
+    if (_fingerprint(before) != _fingerprint(after) or _seal(path) != sealed):
+        raise ValueError("The full suite changed during streaming admission")
+    del reader  # Release the last decoded wire buffer before opening raw captures.
+    if (not {"cases", "runtimeDiagnostics", "requirements", "errors", "uncoveredAcceptance"} <= arrays
+            or case_index != 1465 or requirements_index != 64 or len(selected) != 13
+            or set(diagnostics) != {(identifier, side) for identifier in frozen.CASE_HASHES for side in ("native", "python")}):
+        raise ValueError("The full suite is incomplete or omits a V5 physical engine capture")
+    manifest = metadata.get("manifestSha256", {})
+    implementation = metadata.get("implementation", {})
+    if (type(metadata.get("schemaVersion")) is not int or metadata["schemaVersion"] != 1
+            or metadata.get("kind") != "pinned-differential-acceptance" or metadata.get("mode") != "full"
+            or metadata.get("status") not in {"passed", "mismatched", "incomplete"} or counts["blocked"]
+            or type(metadata.get("fullScopePassed")) is not bool
+            or metadata["fullScopePassed"] is not (metadata["status"] == "passed")
+            or not isinstance(metadata.get("finishedAt"), str) or not metadata["finishedAt"]
+            or not isinstance(metadata.get("startedAt"), str) or not metadata["startedAt"]
+            or type(metadata.get("durationSeconds")) not in (int, float) or metadata["durationSeconds"] < 0
+            or manifest.get("scope") != suite["scope"]["sha256"]
+            or manifest.get("reference") != suite["reference"]["sha256"]
+            or metadata.get("casesSha256") != suite["casesModule"]["sha256"]
+            or not _same_json(metadata.get("adapterSha256"), suite["adapters"])
+            or not _same_json(metadata.get("reference"), authority["reference"])
+            or implementation.get("trackedWorkingTreeDirty") is not False
+            or implementation.get("sourceSha256") != authority["sdk"]["sourceSha256"]
+            or type(implementation.get("sourceFiles")) is not int
+            or implementation["sourceFiles"] != authority["sdk"]["sourceFiles"]):
+        raise ValueError("The full suite lacks unchanged complete source/scope/registered authority")
+    if any(metadata.get("forgetIndexFenceNode", {}).get(key) != authority["node"].get(key)
+           for key in ("sha256", "nodeVersion", "icuVersion", "unicodeVersion")):
+        raise ValueError("The full suite names another approved Node authority")
+    summary = metadata.get("summary", {})
+    expected_uncovered = [point for point, members in points.items() if not members]
+    expected_status = "mismatched" if counts["mismatched"] else "incomplete" if expected_uncovered else "passed"
+    if (any(type(summary.get(key)) is not int or summary[key] != count for key, count in counts.items())
+            or uncovered != expected_uncovered or type(summary.get("uncoveredAcceptance")) is not int
+            or summary["uncoveredAcceptance"] != len(expected_uncovered) or metadata["status"] != expected_status):
+        raise ValueError("The full suite summary differs from its complete actual registered rows")
+    owner_bindings = metadata.get("forgetIndexFenceBindings")
+    if (not isinstance(owner_bindings, dict) or owner_bindings.get("sourceBuildReproduced") is not False
+            or owner_bindings.get("sourceFallbackAllowed") is not False):
+        raise ValueError("The suite omitted its honest independently qualified release authority")
+    execution = metadata.get("referenceExecution", {})
+    groups = [execution.get("trackedTypeScriptCaseIds"), execution.get("compiledReleaseCaseIds")]
+    if (any(not isinstance(group, list) for group in groups)
+            or len(groups[0] + groups[1]) != 1465
+            or set(groups[0] + groups[1]) != {case["id"] for case in definitions}
+            or not set(frozen.CASE_HASHES) <= set(groups[1])):
+        raise ValueError("The suite lost the complete source/release dispatch identities")
+    all_match = all(row["status"] == "matched" for row in selected.values())
+    if (selected_requirement is None or any(point["matchedCaseIds"] != (list(frozen.CASE_HASHES) if all_match else [])
+                                           for point in selected_requirement["acceptance"])):
+        raise ValueError("The original full suite did not preserve the atomic two-point family gate")
+    report["sourceReports"].append({"mode": "registered-suite", "report": sealed, "registeredCases": 1465,
+                                    "fixedAcceptancePoints": 128, "sourceStatus": metadata["status"]})
+    report["suiteAuthority"] = suite
+    result = {}
+    seals = [sealed, suite["scope"], suite["reference"], suite["casesModule"]]
+    for identifier in frozen.CASE_HASHES:
+        native_dir, native_seal = _suite_reference(diagnostics[identifier, "native"], "native", native_root)
+        sdk_dir, sdk_seal = _suite_reference(diagnostics[identifier, "python"], "python", sdk_root)
+        stdout = _seal(native_dir / "stdout.json", root=native_root, limit=FILES["nativeStdout"][1])
+        if native_dir == sdk_dir:
+            raise ValueError("A suite reused one physical directory for both engines")
+        result[identifier] = {"mode": "registered-suite", "report": sealed,
+            "directories": {"native": native_dir, "sdk": sdk_dir},
+            "files": {"nativeRaw": native_seal, "sdkRaw": sdk_seal, "nativeStdout": stdout},
+            "nativeResult": selected[identifier]["openclaw"], "sdkResult": selected[identifier]["python"],
+            "originalRow": {"status": selected[identifier]["status"], "runtimeEvidenceValidated": True}}
+    return result, seals, suite
+
+
 class AtomicOutput:
     """Exclusive first publication; every later progress update replaces only our file."""
 
@@ -306,7 +535,11 @@ def _error(error):
 def main(argv=None):
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--version", choices=("v2", "v3", "v4", "v5"), default="v2")
-    parser.add_argument("--capture-root", type=Path, action="append", required=True)
+    selection = parser.add_mutually_exclusive_group(required=True)
+    selection.add_argument("--capture-root", type=Path, action="append")
+    selection.add_argument("--suite-report", type=Path)
+    parser.add_argument("--native-capture-root", type=Path)
+    parser.add_argument("--sdk-capture-root", type=Path)
     parser.add_argument("--reference", type=Path, required=True)
     parser.add_argument("--node", type=Path, required=True)
     parser.add_argument("--sdk-source-root", type=Path, required=True)
@@ -314,6 +547,10 @@ def main(argv=None):
                         help="Independent actor source tree; V3/V4/V5 default to this replay program tree, V2 preserves legacy custody when omitted")
     parser.add_argument("--output", type=Path, required=True)
     args = parser.parse_args(argv)
+    if args.suite_report and (args.version != "v5" or not args.native_capture_root or not args.sdk_capture_root):
+        parser.error("Registered-suite replay requires explicit --version v5 and both independently selected capture roots")
+    if not args.suite_report and (args.native_capture_root or args.sdk_capture_root):
+        parser.error("Physical engine root options apply only to --suite-report")
     frozen = import_module(f"equivalence.forget_index_fence_{args.version}")
     CASE_HASHES, MANIFEST_SHA256, POINTS = frozen.CASE_HASHES, frozen.MANIFEST_SHA256, frozen.POINTS
     report = {"schemaVersion": 1, "kind": f"forget-index-fence-{args.version}-independent-replay",
@@ -333,21 +570,28 @@ def main(argv=None):
         if authority["manifest"]["sha256"] != MANIFEST_SHA256:
             raise ValueError("The independently selected frozen manifest changed")
         report["authority"] = authority
-        selected, final_seals = _admit_reports(args.capture_root, authority, report, frozen, args.version)
+        suite_authority = None
+        if args.suite_report:
+            selected, final_seals, suite_authority = _admit_suite_report(args, authority, report, frozen)
+        else:
+            selected, final_seals = _admit_reports(args.capture_root, authority, report, frozen, args.version)
         output.write(report)
         for case in cases:
             selection = selected[case["id"]]
-            root = selection["root"]
-            native_directory = root / case["id"] / "native"
-            sdk_directory = root / case["id"] / "sdk/evidence"
+            suite_mode = selection.get("mode") == "registered-suite"
+            root = None if suite_mode else selection["root"]
+            native_directory = (selection["directories"]["native"] if suite_mode else root / case["id"] / "native")
+            sdk_directory = (selection["directories"]["sdk"] if suite_mode else root / case["id"] / "sdk/evidence")
             row = {"id": case["id"], "operation": case["operation"], "covers": [],
                    "status": "blocked", "sourceReport": selection["report"],
-                   "originalCollectorRow": selection["originalRow"],
+                   **{("originalSuiteRow" if suite_mode else "originalCollectorRow"): selection["originalRow"]},
                    "directories": {"native": str(native_directory), "sdk": str(sdk_directory)}}
             report["cases"].append(row)
             replay = native_result = sdk_result = sdk_output = None
             try:
-                files = _case_files(selection, case["id"])
+                files = selection["files"] if suite_mode else _case_files(selection, case["id"])
+                if suite_mode and any(_seal(item["path"]) != item for item in files.values()):
+                    raise ValueError("A selected suite capture changed before its independent replay")
                 row["files"] = files
                 final_seals.extend(files.values())
                 replay = guard.replay_case(
@@ -364,12 +608,19 @@ def main(argv=None):
                 native_result, sdk_result = replay["nativeResult"], replay["sdkResult"]
                 row["structuralReplay"] = {key: value for key, value in replay.items()
                                            if key not in {"nativeResult", "sdkResult"}}
-                sdk_output, sdk_seal = _read_json(files["sdkOutput"]["path"], root=root,
-                                                limit=FILES["sdkOutput"][1])
-                if sdk_seal != files["sdkOutput"] or differences(sdk_output, sdk_result):
-                    raise ValueError("The small SDK output differs from its actual authenticated raw result")
+                if suite_mode:
+                    if (differences(selection["sdkResult"], sdk_result)
+                            or differences(selection["nativeResult"], native_result)):
+                        raise ValueError("Whole V5 suite payloads differ from the independently replayed actual results")
+                else:
+                    sdk_output, sdk_seal = _read_json(files["sdkOutput"]["path"], root=root,
+                                                    limit=FILES["sdkOutput"][1])
+                    if sdk_seal != files["sdkOutput"] or differences(sdk_output, sdk_result):
+                        raise ValueError("The small SDK output differs from its actual authenticated raw result")
                 row["differences"] = differences(native_result, sdk_result)
                 matched = not row["differences"]
+                if suite_mode and selection["originalRow"]["status"] != ("matched" if matched else "mismatched"):
+                    raise ValueError("The original suite row status differs from its whole actual results")
                 if replay["publicMatch"] is not matched:
                     raise ValueError("Guard public parity disagrees with the established whole-result comparator")
                 row["status"] = "match" if matched else "mismatch"
@@ -386,6 +637,8 @@ def main(argv=None):
                 raise ValueError("An original collector report or engine file changed during independent replay")
         if _authorities(args, guard, frozen) != authority:
             raise ValueError("The independent guard, source inputs or approved authorities changed during replay")
+        if suite_authority is not None and _suite_authority(frozen)[2] != suite_authority:
+            raise ValueError("The registered catalog/scope/source authority changed during replay")
         frozen.build_cases()
         report["finalAuthenticationPassed"] = True
     except Exception as error:

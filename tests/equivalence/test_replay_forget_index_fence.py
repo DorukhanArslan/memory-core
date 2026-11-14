@@ -450,3 +450,290 @@ def test_missing_explicit_adapter_source_is_rejected_before_guard(packet):
     report = json.loads(output.read_text())
     assert packet["calls"] == [] and report["validCompleteBaseline"] is False and report["errors"]
     assert report["acceptancePointsAwarded"] == 0 and report["fullScopePassed"] is False
+
+
+@pytest.fixture
+def suite_packet(packet, monkeypatch):
+    """Labelled real-shaped full report; isolated guard, never original evidence."""
+    import shutil
+    from equivalence.cases import build_cases as registered
+
+    assert packet["version"] == "v5"
+    cli, program = packet["cli"], packet["program"]
+    production_program = SCRIPT.parents[1]
+    for name in ("scope.json", "reference.json"):
+        (program / "equivalence" / name).write_bytes((production_program / "equivalence" / name).read_bytes())
+    (program / "equivalence/cases.py").write_text("# UNIT_REGISTERED_FACTORY_ONLY\n")
+    definitions = registered()[:1452] + packet["frozen"].build_cases()
+    monkeypatch.setattr(cli, "_registered_cases", lambda: deepcopy(definitions))
+    adapter_hashes = {"UNIT_ONLY.py": "e" * 64}
+    monkeypatch.setattr(cli, "_suite_adapter_hashes", lambda: dict(adapter_hashes))
+    native_root, sdk_root = (packet["tmp"] / name for name in ("suite-native", "suite-sdk"))
+    native_root.mkdir()
+    sdk_root.mkdir()
+    captures = {}
+    for identifier in packet["frozen"].CASE_HASHES:
+        source = next(root / identifier for root in packet["roots"] if (root / identifier).exists())
+        native_dir, sdk_dir = native_root / identifier, sdk_root / identifier
+        shutil.move(str(source / "native"), native_dir)
+        shutil.move(str(source / "sdk/evidence"), sdk_dir)
+        (source / "sdk-output.json").unlink()
+        captures[identifier] = native_dir, sdk_dir
+    for root in packet["roots"]:
+        (root / "report.json").unlink()  # Suite mode must not need a collector surrogate.
+    rows, diagnostics = [], []
+    for definition in definitions:
+        row = {key: deepcopy(definition[key]) for key in ("id", "operation", "input", "requirement", "covers")}
+        row.update({key: deepcopy(definition[key]) for key in
+                    ("normalizationPolicy", "driverScope", "declaredDeviation") if key in definition})
+        row["status"] = "matched"
+        if definition["id"] in captures:
+            native_dir, sdk_dir = captures[definition["id"]]
+            row.update(runtimeEvidenceValidated=True,
+                       openclaw=json.loads((native_dir / "stdout.json").read_text())["result"],
+                       python=json.loads((sdk_dir / "python-raw.json").read_text())[0]["observation"]["result"])
+            row["status"] = "mismatched"
+            for side, directory, filename in (("native", native_dir, "evidence/native-raw.json"),
+                                              ("python", sdk_dir, "python-raw.json")):
+                sealed = cli._seal(directory / filename)
+                diagnostics.append({"id": definition["id"], "side": side, "sha256": sealed["sha256"],
+                                    "evidenceDirectory": str(directory), "validationStatus": "verified",
+                                    "rawSnapshotReference": {"directory": str(directory), "file": filename,
+                                                             "bytes": sealed["bytes"], "sha256": sealed["sha256"]}})
+        rows.append(row)
+    scope = json.loads((program / "equivalence/scope.json").read_text())
+    requirements, uncovered = [], []
+    for requirement in scope["requirements"]:
+        acceptance = []
+        for point in requirement["acceptance"]:
+            identifiers = [case["id"] for case in definitions if point["id"] in case["covers"]]
+            if not identifiers:
+                uncovered.append(point["id"])
+            acceptance.append({"id": point["id"], "caseIds": identifiers, "matchedCaseIds": []})
+        requirements.append({"id": requirement["id"], "required": requirement["required"], "acceptance": acceptance,
+                             "registeredCases": sum(case["requirement"] == requirement["id"] for case in definitions)})
+    report = {"schemaVersion": 1, "kind": "pinned-differential-acceptance", "mode": "full", "status": "mismatched",
+              "reference": cli._reference_authority(packet["reference"], packet["node"]),
+              "manifestSha256": {"reference": cli._seal(program / "equivalence/reference.json")["sha256"],
+                                 "scope": cli._seal(program / "equivalence/scope.json")["sha256"]},
+              "implementation": {**cli._sdk_identity(packet["sdk"]), "trackedWorkingTreeDirty": False},
+              "adapterSha256": adapter_hashes, "casesSha256": cli._seal(program / "equivalence/cases.py")["sha256"],
+              "forgetIndexFenceNode": cli._node_authority(packet["node"]),
+              "forgetIndexFenceBindings": {"sourceBuildReproduced": False, "sourceFallbackAllowed": False},
+              "summary": {"matched": 1452, "mismatched": 13, "blocked": 0, "uncoveredAcceptance": len(uncovered)},
+              "fullScopePassed": False, "startedAt": "2026-11-14T00:00:00+00:00", "finishedAt": "2026-11-14T00:01:00+00:00",
+              "durationSeconds": 60.0, "referenceExecution": {"trackedTypeScriptCaseIds": [],
+                                                            "compiledReleaseCaseIds": [case["id"] for case in definitions]},
+              "cases": rows, "runtimeDiagnostics": diagnostics, "requirements": requirements,
+              "uncoveredAcceptance": uncovered, "errors": []}
+    path = packet["tmp"] / "full-1465.json"
+    def save():
+        path.write_text(json.dumps(report, ensure_ascii=True, allow_nan=False) + "\n")
+    save()
+    def args(output):
+        return ["--version", "v5", "--suite-report", str(path), "--native-capture-root", str(native_root),
+                "--sdk-capture-root", str(sdk_root), "--reference", str(packet["reference"]), "--node", str(packet["node"]),
+                "--sdk-source-root", str(packet["sdk"]), "--adapter-root", str(program), "--output", str(output)]
+    return {**packet, "suite": report, "suite_path": path, "save_suite": save, "suite_args": args,
+            "captures": captures, "native_root": native_root, "sdk_root": sdk_root}
+
+
+@pytest.mark.parametrize("packet", ["v5"], indirect=True)
+def test_suite_mode_streams_exact_full_registered_scope_without_collector_or_small_sdk_files(suite_packet, monkeypatch):
+    packet, cli = suite_packet, suite_packet["cli"]
+    before = packet["suite_path"].read_bytes()
+    original = cli._read_json
+    def no_whole_report(path, **kwargs):
+        assert Path(path) != packet["suite_path"], "The large suite must be streamed, never whole-loaded"
+        return original(path, **kwargs)
+    monkeypatch.setattr(cli, "_read_json", no_whole_report)
+    output = packet["tmp"] / "suite-replay.json"
+    assert cli.main(packet["suite_args"](output)) == 1
+    result = json.loads(output.read_text())
+    assert result["validCompleteBaseline"] is True and result["summary"] == {"match": 0, "mismatch": 13, "blocked": 0}
+    assert result["suiteAuthority"]["registeredCases"] == 1465
+    assert result["sourceReports"][0]["fixedAcceptancePoints"] == 128
+    assert [call[0] for call in packet["calls"]] == list(packet["frozen"].CASE_HASHES)
+    assert all(set(row["files"]) == {"nativeRaw", "sdkRaw", "nativeStdout"} for row in result["cases"])
+    assert all("sdkOutput" not in row["files"] for row in result["cases"])
+    assert result["acceptancePointsAwarded"] == 0 and result["covers"] == [] and result["fullScopePassed"] is False
+    assert packet["suite_path"].read_bytes() == before
+
+
+@pytest.mark.parametrize("packet", ["v5"], indirect=True)
+@pytest.mark.parametrize("attack", [
+    "missing-payload", "missing-input", "wrong-old-definition", "omitted-old-row", "duplicated-v5-row",
+    "scope-hash", "source-hash", "dirty-source", "node", "case-source", "missing-side", "duplicate-side",
+    "unverified-side", "wrong-file", "reference-hash", "boolean-custody", "scope-denominator", "errors",
+    "foreign-runtime-record",
+])
+def test_suite_admission_rejects_incomplete_or_foreign_global_and_v5_claims_before_guard(suite_packet, attack):
+    packet = suite_packet
+    report = packet["suite"]
+    row = report["cases"][1452]
+    if attack == "missing-payload":
+        del row["python"]
+    elif attack == "missing-input":
+        del row["input"]
+    elif attack == "wrong-old-definition":
+        report["cases"][0]["input"] = {"changed": True}
+    elif attack == "omitted-old-row":
+        report["cases"].pop(0)
+    elif attack == "duplicated-v5-row":
+        report["cases"].append(deepcopy(row))
+    elif attack == "scope-hash":
+        report["manifestSha256"]["scope"] = "0" * 64
+    elif attack == "source-hash":
+        report["implementation"]["sourceSha256"] = "0" * 64
+    elif attack == "dirty-source":
+        report["implementation"]["trackedWorkingTreeDirty"] = True
+    elif attack == "node":
+        report["forgetIndexFenceNode"]["sha256"] = "0" * 64
+    elif attack == "case-source":
+        report["casesSha256"] = "0" * 64
+    elif attack == "missing-side":
+        report["runtimeDiagnostics"].pop()
+    elif attack == "duplicate-side":
+        report["runtimeDiagnostics"].append(deepcopy(report["runtimeDiagnostics"][0]))
+    elif attack == "unverified-side":
+        report["runtimeDiagnostics"][0]["validationStatus"] = "unverified"
+    elif attack == "wrong-file":
+        report["runtimeDiagnostics"][0]["rawSnapshotReference"]["file"] = "../other.json"
+    elif attack == "reference-hash":
+        report["runtimeDiagnostics"][0]["rawSnapshotReference"]["sha256"] = "0" * 64
+    elif attack == "boolean-custody":
+        row["runtimeEvidenceValidated"] = 1
+    elif attack == "scope-denominator":
+        report["requirements"].pop()
+    elif attack == "foreign-runtime-record":
+        report["runtimeDiagnostics"].append({"id": "unregistered-evidence", "side": "native"})
+    else:
+        report["errors"].append({"code": "actual-final-check-failure"})
+    packet["save_suite"]()
+    output = packet["tmp"] / "bad-suite.json"
+    assert packet["cli"].main(packet["suite_args"](output)) == 2
+    result = json.loads(output.read_text())
+    assert packet["calls"] == [] and result["validCompleteBaseline"] is False and result["errors"]
+    assert result["acceptancePointsAwarded"] == 0 and result["fullScopePassed"] is False
+
+
+@pytest.mark.parametrize("packet", ["v5"], indirect=True)
+@pytest.mark.parametrize("attack", ["native-root", "sdk-root", "bytes", "symlink", "report-payload", "post-replay-change"])
+def test_suite_roots_original_bytes_whole_payloads_and_final_seals_are_independent(suite_packet, attack):
+    packet = suite_packet
+    output = packet["tmp"] / "tampered-suite.json"
+    args = packet["suite_args"](output)
+    identifier = next(iter(packet["frozen"].CASE_HASHES))
+    native_dir, sdk_dir = packet["captures"][identifier]
+    if attack in {"native-root", "sdk-root"}:
+        root = packet["tmp"] / "unselected-physical-root"
+        root.mkdir()
+        flag = "--native-capture-root" if attack == "native-root" else "--sdk-capture-root"
+        args[args.index(flag) + 1] = str(root)
+    elif attack == "bytes":
+        path = sdk_dir / "python-raw.json"
+        path.write_bytes(path.read_bytes() + b" ")
+    elif attack == "symlink":
+        path = sdk_dir / "python-raw.json"
+        original = path.with_name("original.json")
+        path.rename(original)
+        path.symlink_to(original)
+    elif attack == "report-payload":
+        packet["suite"]["cases"][1452]["python"]["calls"]["labelled"]["side"] = "altered-full-payload"
+        packet["save_suite"]()
+    else:
+        def change(case):
+            packet["hook"]["function"] = None
+            path = native_dir / "stdout.json"
+            path.write_bytes(path.read_bytes() + b" ")
+        packet["hook"]["function"] = change
+    assert packet["cli"].main(args) == 2
+    result = json.loads(output.read_text())
+    assert result["errors"] and result["validCompleteBaseline"] is False
+    assert result["acceptancePointsAwarded"] == 0 and result["fullScopePassed"] is False
+
+
+@pytest.mark.parametrize("packet", ["v5"], indirect=True)
+def test_suite_selector_is_v5_only_explicit_and_mutually_exclusive(suite_packet):
+    packet = suite_packet
+    args = packet["suite_args"](packet["tmp"] / "never-created.json")
+    invalid = [args + ["--capture-root", str(packet["roots"][0])],
+               ["v4" if part == "v5" else part for part in args],
+               [part for index, part in enumerate(args) if index not in (args.index("--native-capture-root"), args.index("--native-capture-root") + 1)]]
+    for value in invalid:
+        with pytest.raises(SystemExit) as error:
+            packet["cli"].main(value)
+        assert error.value.code == 2
+    assert packet["calls"] == []
+
+
+@pytest.mark.parametrize("packet", ["v5"], indirect=True)
+def test_suite_mode_authenticates_matched_whole_payloads_without_awarding_acceptance(suite_packet):
+    packet = suite_packet
+    for row in packet["suite"]["cases"][1452:]:
+        _, sdk_dir = packet["captures"][row["id"]]
+        dispatch = json.loads((sdk_dir / "python-raw.json").read_text())
+        dispatch[0]["observation"]["result"] = deepcopy(row["openclaw"])
+        (sdk_dir / "python-raw.json").write_text(json.dumps(dispatch) + "\n")
+        row["python"] = deepcopy(row["openclaw"])
+        row["status"] = "matched"
+        diagnostic = next(item for item in packet["suite"]["runtimeDiagnostics"]
+                          if item["id"] == row["id"] and item["side"] == "python")
+        sealed = packet["cli"]._seal(sdk_dir / "python-raw.json")
+        diagnostic["sha256"] = sealed["sha256"]
+        diagnostic["rawSnapshotReference"].update(bytes=sealed["bytes"], sha256=sealed["sha256"])
+    for requirement in packet["suite"]["requirements"]:
+        if requirement["id"] == "forget.index-fence":
+            for point in requirement["acceptance"]:
+                point["matchedCaseIds"] = list(packet["frozen"].CASE_HASHES)
+    packet["suite"]["status"] = "incomplete" if packet["suite"]["uncoveredAcceptance"] else "passed"
+    packet["suite"]["fullScopePassed"] = packet["suite"]["status"] == "passed"
+    packet["suite"]["summary"].update(matched=1465, mismatched=0)
+    packet["save_suite"]()
+    output = packet["tmp"] / "all-match-suite.json"
+    assert packet["cli"].main(packet["suite_args"](output)) == 0
+    report = json.loads(output.read_text())
+    assert report["validCompleteBaseline"] is True and report["candidateFamilyMatched"] is True
+    assert report["summary"] == {"match": 13, "mismatch": 0, "blocked": 0}
+    assert report["acceptancePointsAwarded"] == 0 and report["covers"] == [] and report["fullScopePassed"] is False
+
+
+@pytest.mark.parametrize("packet", ["v5"], indirect=True)
+@pytest.mark.parametrize("suffix", [',"ignored":{"duplicate":1,"duplicate":2}}', ',"ignored":1e4000}', '} {}'])
+def test_suite_stream_validates_even_discarded_fields_and_trailing_data(suite_packet, suffix):
+    packet = suite_packet
+    wire = packet["suite_path"].read_text().rstrip()
+    packet["suite_path"].write_text(wire[:-1] + suffix)
+    output = packet["tmp"] / "bad-stream.json"
+    assert packet["cli"].main(packet["suite_args"](output)) == 2
+    result = json.loads(output.read_text())
+    assert packet["calls"] == [] and result["validCompleteBaseline"] is False
+    assert result["errors"] and result["acceptancePointsAwarded"] == 0
+
+
+@pytest.mark.parametrize("packet", ["v5"], indirect=True)
+def test_suite_reader_and_discarded_wire_are_released_before_any_raw_capture_access(suite_packet, monkeypatch):
+    import weakref
+    from equivalence import strict_report_reader
+
+    packet = suite_packet
+    packet["suite"]["runtimeDiagnostics"].insert(0, {
+        "id": packet["suite"]["cases"][0]["id"], "side": "native", "rawSnapshots": [{"UNIT_LEGACY_DISCARDED": "x" * 1024 * 1024}]})
+    packet["save_suite"]()
+    references = []
+    original_reader = strict_report_reader.Reader
+    class ObservedReader(original_reader):
+        def __init__(self, *args, **kwargs):
+            super().__init__(*args, **kwargs)
+            references.append(weakref.ref(self))
+    monkeypatch.setattr(strict_report_reader, "Reader", ObservedReader)
+    original_reference = packet["cli"]._suite_reference
+    def checked_reference(*args, **kwargs):
+        assert references and all(reference() is None for reference in references)
+        return original_reference(*args, **kwargs)
+    monkeypatch.setattr(packet["cli"], "_suite_reference", checked_reference)
+    output = packet["tmp"] / "bounded-replay.json"
+    assert packet["cli"].main(packet["suite_args"](output)) == 1
+    report = json.loads(output.read_text())
+    assert report["validCompleteBaseline"] is True
+    assert "UNIT_LEGACY_DISCARDED" not in output.read_text()

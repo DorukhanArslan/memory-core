@@ -167,12 +167,15 @@ async function pauseAsync(boundary,facts={}){
   clockModule.publishControlFile(prefix+'.hit.json',JSON.stringify(receipt)+'\n');
   if(gate.pause===false)return;
   if(planning){
+   const observedScope=()=>{const actual=commandScopes.current();if(actual!==planningFields.commandScope)
+     throw Error('Planning continuation lost its actual original command scope');return actual;};
    const released=await clockModule.awaitOriginalPlanningGateRelease(prefix+'.release',{enteredAtNs,originalTimeout,originalImmediate,
     onProgress:kind=>event('async-gate-mainloop-progress',{gate:gate.name,boundary,callLabel:gate.callLabel,
-     kind,gateEnterAtNs:enteredAtNs,mode,...planningFields})});
+     kind,gateEnterAtNs:enteredAtNs,mode,...planningFields,observedCommandScope:observedScope()})});
+   const observedCommandScope=observedScope();
    if(released.releaseStep.wallClockNowMs!==undefined)setWallClock(released.releaseStep.wallClockNowMs);
    event('fence-gate-release',{gate:gate.name,boundary,callLabel:gate.callLabel,mode,...planningFields,
-    gateEnterSequence:receipt.sequence,releaseStep:released.releaseStep,consumedAtNs:released.consumedAtNs});flush();continue;
+    observedCommandScope,gateEnterSequence:receipt.sequence,releaseStep:released.releaseStep,consumedAtNs:released.consumedAtNs});flush();continue;
   }
   // These real callbacks demonstrate that the held notification does not own
   // unrelated IPC, SQLite admission ports, timers or main-loop completions.
@@ -296,7 +299,8 @@ Worker.prototype.postMessage=function(message,...args){
   onControlFailure:error=>controlFailure('original-worker-command-observer-failed',error)});
 };
 Worker.prototype.emit=function(name,message,...args){
- const receiver=this;
+ const receiver=this,task=name==='message'&&message?.status==='ok'&&message.value?.kind==='keyword'?tasks.get(this)?.get(message.taskId):null;
+ const observeAndDeliver=()=>{
  if(['exit','error','messageerror','online'].includes(name)&&sourceWorkers.has(this))passiveObservation(()=>{
   event('original-worker-lifecycle-event',{...sourceWorkers.get(this),workerThreadId:this.threadId,eventName:name,arguments:workerPayload([message,...args])});});
  const workerSource=sourceWorkers.get(this),incoming=name==='message'&&workerSource?passiveObservation(()=>{
@@ -304,9 +308,7 @@ Worker.prototype.emit=function(name,message,...args){
   const facts={...workerSource,callId:`${process.pid}:${threadId}:worker-reply-${++nextWorkerCall}`,workerThreadId:this.threadId,
    originalEmitRef:processRef(emit),message:workerPayload(message),arguments:workerPayload([name,message,...args]),
    requestId:message?.id??null,taskId:message?.taskId??null};event('original-worker-reply-received',facts);return facts;}):null;
- if(name==='message'&&message?.status==='ok'&&message.value?.kind==='keyword'){
-  const task=tasks.get(this)?.get(message.taskId);
-  if(task)return commandScopes.resume(task.commandScope,()=>{
+ if(task){
    const boundary='search.keyword-result-before-enrichment',armed=isMainThread&&matching(boundary).some(gate=>fs.existsSync(path.join(context.gateDirectory,gate.name)+'.armed'));
    if(armed){const facts={sourceOwner:'WorkerTaskPool.original-keyword-reply',taskId:message.taskId,workerThreadId:this.threadId,
      workerRef:processRef(this),emitRef:processRef(emit),messageRef:processRef(message),requestRef:task.requestRef,
@@ -331,7 +333,6 @@ Worker.prototype.emit=function(name,message,...args){
     return; // The original emit has deliberately not run yet.
    }
    tasks.get(this).delete(message.taskId);return deliver();
-  });
  }
  return deliver();
  function deliver(){
@@ -342,6 +343,8 @@ Worker.prototype.emit=function(name,message,...args){
    ...incoming,...(error?{error:transportError(error),privateError:carrier(error)}:{actualReturn:carrier(result)})}),
   onControlFailure:error=>controlFailure('original-worker-reply-observer-failed',error)});
  }
+ };
+ return task?commandScopes.resume(task.commandScope,observeAndDeliver):observeAndDeliver();
 };
 const realpath=fsp.realpath;
 fsp.realpath=async function(...args){const stack=new Error('Original promotion lock target resolution').stack;

@@ -147,26 +147,73 @@ const source=fs.readFileSync(preloadPath,'utf8'),start=source.indexOf('Worker.pr
  end=source.indexOf('\nconst realpath=fsp.realpath;',start);
 assert(start>=0&&end>start);
 const emit=Worker.prototype.emit,commandScopes=createOriginalCommandScope(),sourceWorkers=new WeakMap(),tasks=new WeakMap();
-const passiveObservation=callback=>callback(),event=()=>{},matching=()=>[];
+const rows=[],passiveObservation=callback=>callback(),matching=()=>[];
+const event=(name,fields)=>rows.push({name,scope:commandScopes.current(),...fields});
 const workerSource={sourceCaller:{path:'builtin-only-worker'}},refs=new WeakMap();let nextRef=0,nextWorkerCall=0;
 const processRef=value=>{if(!refs.has(value))refs.set(value,`builtin-ref-${++nextRef}`);return refs.get(value);};
 const bindTransportMethod=()=>{},workerPayload=value=>value;
 const carrier=value=>({v8Hex:serialize(value).toString('hex')}),controlFailure=(reason,error)=>{throw error;};
 eval(source.slice(start,end)); // Exercise the actual production wrapper body.
-const worker=new Worker(`const {parentPort}=require('node:worker_threads');
- parentPort.postMessage({status:'ok',taskId:73,value:{kind:'keyword',body:{rows:['whole original payload']}}});`,
- {eval:true,execArgv:[]});
+let resourceScope;
+const worker=commandScopes.run({id:43,operation:'acquire-original-owner'},()=>{
+ resourceScope=commandScopes.current();return new Worker(`const {parentPort}=require('node:worker_threads');
+ parentPort.postMessage({status:'ok',taskId:73,value:{kind:'keyword',body:{rows:['whole original payload']}}});
+ parentPort.postMessage({status:'ok',taskId:74,value:{kind:'unassociated'}});`,{eval:true,execArgv:[]});
+});
 let taskScope;commandScopes.run({id:44,operation:'public-memory-search',label:'selected'},()=>{taskScope=commandScopes.current();});
 tasks.set(worker,new Map([[73,{callLabel:'selected',commandScope:taskScope}]]));sourceWorkers.set(worker,workerSource);
 const received=new Promise((resolve,reject)=>{
- worker.once('message',function(message){try{
-  assert.equal(this,worker);assert.deepEqual(message.value.body.rows,['whole original payload']);
-  assert.equal(commandScopes.current(),taskScope);resolve(message);
+ worker.on('message',function(message){try{
+  assert.equal(this,worker);
+  if(message.taskId===73){assert.deepEqual(message.value.body.rows,['whole original payload']);
+   assert.equal(commandScopes.current(),taskScope);}
+  else{assert.equal(message.taskId,74);assert.equal(commandScopes.current(),resourceScope);resolve(message);}
  }catch(error){reject(error);}});worker.once('error',reject);
 });
 const exit=new Promise(resolve=>worker.once('exit',resolve));
-assert.equal((await received).taskId,73);assert.equal(await exit,0);assert.equal(tasks.get(worker).size,0);
+assert.equal((await received).taskId,74);assert.equal(await exit,0);assert.equal(tasks.get(worker).size,0);
+for(const [taskId,scope]of [[73,taskScope],[74,resourceScope]]){
+ const transport=rows.filter(row=>row.taskId===taskId&&row.name.startsWith('original-worker-reply-'));
+ assert.deepEqual(transport.map(row=>row.name),['original-worker-reply-received','original-worker-reply-call','original-worker-reply-return']);
+ assert(transport.every(row=>row.scope===scope));
+ assert(transport.every(row=>row.message===transport[0].message&&row.arguments===transport[0].arguments));
+}
 assert.equal(commandScopes.current(),null);Worker.prototype.emit=emit;
+""")
+
+
+@pytest.mark.parametrize("checkpoint", ["progress", "release"])
+def test_actual_planning_gate_rejects_borrowed_observed_command_context(node, tmp_path, checkpoint):
+    _run(node, tmp_path, "const checkpoint=" + json.dumps(checkpoint) + ";\n" + r"""
+await(async(actualClock)=>{
+ const source=fs.readFileSync(preloadPath,'utf8'),start=source.indexOf('async function pauseAsync(boundary,facts={}){'),
+  end=source.indexOf('\nglobalThis[Symbol.for(',start);
+ assert(start>=0&&end>start);
+ const actualScopes=createOriginalCommandScope();let borrowed,borrowNow=false;
+ actualScopes.run({id:18,operation:'await-original-watch-effects',label:'selectedWatch'},()=>{borrowed=actualScopes.current();});
+ const commandScopes={...actualScopes,current:()=>borrowNow?borrowed:actualScopes.current()};
+ let sequence=0;
+ const failures=[],rows=[],fired=new Set(),gate={name:'promotionPlan',actor:'promoter',callLabel:'stored',boundary:'promotion.model-planning-before-final-lock'};
+ const profile={kind:'forget-index-fence-v5'},context={gateDirectory:directory},actor='promoter';
+ const matching=boundary=>boundary===gate.boundary?[gate]:[],trace=()=>{},flush=()=>true;
+ const event=(name,fields)=>rows.push({name,...fields}),controlFailure=(reason,error)=>failures.push({reason,error});
+ const originalTimeout=setTimeout,originalImmediate=setImmediate,setWallClock=()=>assert.fail('No declared phase change');
+ const clockModule={...actualClock,async awaitOriginalPlanningGateRelease(filename,options){
+  if(checkpoint==='progress')return actualScopes.run({id:18,operation:'await-original-watch-effects',label:'selectedWatch'},()=>options.onProgress('setImmediate'));
+  options.onProgress('setImmediate');options.onProgress('setTimeout');borrowNow=true;
+  return{releaseStep:{operation:'release-gate',gate:'promotionPlan'},consumedAtNs:process.hrtime.bigint().toString()};
+ }};
+ actualClock.publishControlFile(path.join(directory,'promotionPlan.armed'),'{}\n');
+ const pauseAsync=eval('('+source.slice(start,end)+')'); // Actual production context checkpoints.
+ await actualScopes.run({id:12,operation:'original-promotion',label:'stored'},()=>pauseAsync(gate.boundary,{
+  sourceOwner:'consolidateMemory.actual-subagent-complete-await',request:{candidates:['whole original request']},
+ }));
+ assert.equal(failures.length,1);assert.equal(failures[0].reason,'asynchronous-gate-control-failed');
+ assert.match(failures[0].error.message,/lost its actual original command scope/);
+ assert(!rows.some(row=>row.name==='fence-gate-release'));
+ if(checkpoint==='progress')assert.equal(rows.length,0);
+ else assert(rows.every(row=>row.observedCommandScope===row.commandScope&&row.observedCommandScope.label==='stored'));
+})(clockModule);
 """)
 
 

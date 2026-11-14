@@ -539,8 +539,8 @@ class _SdkActor:
         self._install_clock_fixtures()
         if _sdk_sources() != self.before:
             raise RuntimeError("SDK sources changed while loading original actors")
-        # Only Date/time.time is frozen. Monotonic clocks, SQLite waits, Events,
-        # timers, process deadlines and filesystem metadata retain real clocks.
+        # V2 declares wall and source-file clock controls. Monotonic clocks,
+        # waits, timers, deadlines and unrelated filesystem metadata stay real.
         self.real_time = time.time
         time.time = lambda: self.wall_ms / 1000
         sys.setprofile(self.observer.profile)

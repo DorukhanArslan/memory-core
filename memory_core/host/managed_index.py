@@ -25,7 +25,7 @@ from memory_core.config import MemoryConfig
 from memory_core.consolidation.artifact_provenance import MemoryArtifactProvenanceStore
 from memory_core.consolidation.origins import IndexRevisionFence, MemoryIndexRevisionConflictError
 from memory_core.index.sqlite_store import MemoryIndexRequiresFullReindexError, SQLiteMemoryStore
-from memory_core.index.identity import INDEX_SOURCES_TABLE
+from memory_core.index.identity import INDEX_SOURCES_TABLE, INDEX_SYNC_TABLE
 from memory_core.index.hybrid import HybridResult
 from memory_core.runtime_identity import MEMORY_CORE_RUNTIME_IDENTITY, RuntimeIdentity
 from memory_core.session_catalog import normalize_session_agent_id
@@ -159,6 +159,12 @@ class ManagedSQLiteMemoryStore(SQLiteMemoryStore):
                 or workspace.session_catalog is not self._bound_catalog):
             raise ValueError("The managed index may only publish its bound workspace")
 
+    @property
+    def bound_workspace(self) -> MemoryWorkspace:
+        """Return the actual publication owner, including its catalog and scope."""
+        self._assert_workspace(self._workspace)
+        return self._workspace
+
     @staticmethod
     def _error(error: BaseException) -> dict[str, Any]:
         return {"name": getattr(error, "name", type(error).__name__), "message": format_error_message(error)}
@@ -181,9 +187,11 @@ class ManagedSQLiteMemoryStore(SQLiteMemoryStore):
         chunks = db.execute("SELECT COUNT(*) FROM chunks").fetchone()[0]
         fts_content = fts_available and db.execute("SELECT 1 FROM chunks_fts LIMIT 1").fetchone() is not None
         counts = {source: count for source, count in db.execute("SELECT source,COUNT(*) FROM chunks GROUP BY source")}
+        needs_rebuild = bool(db.execute(
+            f"SELECT needs_rebuild FROM {INDEX_SYNC_TABLE} WHERE id=1").fetchone()[0])
         sources = self._workspace.index_sources or ("memory", "sessions")
         return {"identity": identity, "hasContent": bool(chunks or fts_content), "chunks": chunks,
-                "ftsAvailable": fts_available,
+                "ftsAvailable": fts_available, "needsRebuild": needs_rebuild,
                 "sourceCounts": [{"source": source, "chunks": counts.get(source, 0)} for source in sources]}
 
     def _retained_sync_error(self) -> str | None:
@@ -227,10 +235,10 @@ class ManagedSQLiteMemoryStore(SQLiteMemoryStore):
                             and self._last_sync_error is None and self._memory_scope_failure is None
                             and self._memory_job_error is None)
 
-    def _submit_memory_publication(self, revision: int) -> None:
+    def _submit_memory_publication(self, revision: int, *, needs_rebuild: bool = False) -> None:
         """Admit one actual memory publisher under the pinned reader's gate."""
         needed = (self._memory_dirty or self._memory_scope_failure is not None
-                  or self._memory_job_error is not None or self._full_retry_required)
+                  or self._memory_job_error is not None or self._full_retry_required or needs_rebuild)
         if (self._memory_publication != "on-search" or not needed
                 or self._memory_active or self._closing or self._closed):
             return
@@ -238,6 +246,8 @@ class ManagedSQLiteMemoryStore(SQLiteMemoryStore):
             self._memory_executor = ThreadPoolExecutor(max_workers=1, thread_name_prefix="memory-publication")
         self._memory_job_count += 1
         job: dict[str, Any] = {"id": self._memory_job_count, "readRevision": revision, "state": "queued"}
+        if needs_rebuild:
+            job["fullRebuild"] = True
         if self._last_sync_error is not None:
             job.update(wholeFailureRevision=self._whole_failure_revision,
                        fullRetry=self._full_retry_required)
@@ -266,13 +276,14 @@ class ManagedSQLiteMemoryStore(SQLiteMemoryStore):
         error = None
         try:
             with self._operation("memory-background-publication"):
-                if job.get("fullRetry"):
+                if job.get("fullRetry") or job.get("fullRebuild"):
                     # Each retry is a new real sync generation. Only the first
                     # typed CAS conflict permits one more attempt in this job.
                     for attempt in range(2):
                         try:
-                            with self._automatic_reindex(full_retry=True):
-                                returned = self.reindex(self._workspace, force=True)
+                            retry = bool(job.get("fullRetry"))
+                            with self._automatic_reindex(full_retry=retry):
+                                returned = self.reindex(self._workspace, force=retry)
                             break
                         except MemoryIndexRevisionConflictError:
                             if attempt:
@@ -358,7 +369,7 @@ class ManagedSQLiteMemoryStore(SQLiteMemoryStore):
         revision = self.index_revision(db=db)
         frames = getattr(self._local, "search_status_frames", ())
         frame = frames[-1] if frames else None
-        state = self._read_state(db=db) if frame is not None else None
+        state = self._read_state(db=db) if frame is not None or self._memory_publication == "on-search" else None
         with self._condition:
             if frame is not None:
                 status = deepcopy(frame["beforeStatus"])
@@ -384,7 +395,7 @@ class ManagedSQLiteMemoryStore(SQLiteMemoryStore):
             if not self._closing and not self._closed:
                 if controller is not None:
                     controller.start()
-                self._submit_memory_publication(revision)
+                self._submit_memory_publication(revision, needs_rebuild=bool(state and state["needsRebuild"]))
 
     @contextmanager
     def _automatic_reindex(self, *, full_retry: bool = False):
@@ -688,7 +699,8 @@ class ManagedSQLiteMemoryStore(SQLiteMemoryStore):
     def _repair_search(self, state: dict[str, Any], operation: dict[str, Any]) -> None:
         repair = self._automatic_repair_allowed(state["identity"])
         request = {"searchOperationId": operation["id"],
-            "reason": "search-bootstrap" if not state["hasContent"] else "search-identity",
+            "reason": ("search-bootstrap" if not state["hasContent"] else
+                       "search-invalidated" if state["needsRebuild"] else "search-identity"),
             "force": repair, "before": state,
             "noticeSequenceBefore": self._automatic_rebuild_notice["sequence"], "state": "requested"}
         with self._condition:
@@ -756,7 +768,8 @@ class ManagedSQLiteMemoryStore(SQLiteMemoryStore):
                 with self._condition:
                     self._provider_initialized = True
                 if (not state["hasContent"] or self._last_sync_error is None
-                        and self._automatic_repair_allowed(state["identity"])):
+                        and (self._automatic_repair_allowed(state["identity"])
+                             or state["needsRebuild"] and state["identity"]["status"] == "valid")):
                     self._repair_search(state, operation)
             with workspace_index_lock(self._workspace.root):
                 self._refresh_memory_dirty()

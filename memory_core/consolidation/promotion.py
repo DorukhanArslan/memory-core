@@ -109,6 +109,7 @@ from memory_core.consolidation.store import (
 )
 from memory_core.memory_budget import DEFAULT_MEMORY_FILE_MAX_CHARS, build_budgeted_memory_append
 from memory_core.runtime_identity import MEMORY_CORE_RUNTIME_IDENTITY, RuntimeIdentity
+from memory_core.session_catalog import normalize_session_agent_id
 from memory_core.workspace import MemoryWorkspace
 
 if TYPE_CHECKING:
@@ -1008,7 +1009,13 @@ def _commit_promotion(
         record_deep_consolidation_history,
     )
 
-    workspace = MemoryWorkspace(config.workspace_dir)
+    workspace = getattr(store, "bound_workspace", None)
+    if workspace is None:
+        workspace = MemoryWorkspace(config.workspace_dir)
+    elif (not isinstance(workspace, MemoryWorkspace)
+          or workspace.root.resolve() != Path(config.workspace_dir).resolve()
+          or normalize_session_agent_id(workspace.agent_id) != normalize_session_agent_id(config.agent_id)):
+        raise ValueError("Promotion must publish the index's bound workspace")
     reader_identity = promotion_marker_reader_identity(identity)
     workspace_dir = Path(config.workspace_dir)
     target = PROMOTION_TARGET

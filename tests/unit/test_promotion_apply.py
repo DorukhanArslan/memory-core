@@ -14,6 +14,7 @@ import json
 import logging
 import os
 import sqlite3
+from dataclasses import replace
 from pathlib import Path
 from typing import Any
 
@@ -48,7 +49,11 @@ from memory_core.consolidation.store import (
 )
 from memory_core.embeddings.base import FakeEmbeddingProvider
 from memory_core.index.sqlite_store import SQLiteMemoryStore
+from memory_core.flags import FeatureFlags
+from memory_core.host.managed_index import ManagedSQLiteMemoryStore
 from memory_core.runtime_identity import OPENCLAW_COMPAT_RUNTIME_IDENTITY
+from memory_core.session_catalog import MemorySessionCatalog
+from memory_core.workspace import MemoryWorkspace
 
 NOW_MS = 1779811200000
 KEY = "memory:memory/2026-05-08.md:3:3"
@@ -154,6 +159,48 @@ def test_event_reaches_the_host_callback_and_the_run(tmp_path: Path) -> None:
     assert events[0]["candidates"] == [
         {"key": KEY, "path": "memory/2026-05-08.md", "startLine": 3, "endLine": 3, "score": 0.9, "recallCount": 4}
     ]
+
+
+def test_managed_promotion_publishes_through_its_actual_workspace_owner(tmp_path: Path) -> None:
+    config = replace(_workspace(tmp_path), flags=FeatureFlags(vector_search=False, temporal_decay=False))
+    catalog = MemorySessionCatalog(tmp_path / "catalog.sqlite", clock_ms=lambda: NOW_MS)
+    workspace = MemoryWorkspace(config.workspace_dir, session_catalog=catalog, index_sources=["memory"])
+    store = ManagedSQLiteMemoryStore(config, workspace, memory_publication="on-search",
+        runtime_identity=OPENCLAW_COMPAT_RUNTIME_IDENTITY)
+    try:
+        store.reindex(workspace)
+        before = store.read_published_index()
+        run = _run(config, tmp_path, store=store)
+        assert run.reindex_error is None and run.appended == 1
+        assert run.indexed_files >= 1 and run.chunks == store.count_chunks()
+        assert store.bound_workspace is workspace and store.bound_workspace.session_catalog is catalog
+        published = store.read_published_index()
+        assert published["revision"] > before["revision"]
+        assert any(row["path"] == "MEMORY.md" and "<!-- openclaw-memory-promotion:" in row["text"]
+                   for row in published["chunks"])
+        assert {row["source"] for row in published["chunks"]} == {"memory"}
+        assert store.lifecycle_snapshot()["operations"][-1]["state"] == "completed"
+        with pytest.raises(ValueError, match="bound workspace"):
+            store.reindex(MemoryWorkspace(config.workspace_dir))
+    finally:
+        store.close()
+
+
+@pytest.mark.parametrize("different_owner", ["workspace", "agent"])
+def test_managed_promotion_refuses_other_owners_before_memory_commit(tmp_path: Path, different_owner: str) -> None:
+    config = replace(_workspace(tmp_path), flags=FeatureFlags(vector_search=False))
+    other_config = (replace(_workspace(tmp_path / "other"), flags=FeatureFlags(vector_search=False))
+                    if different_owner == "workspace" else replace(config, agent_id="other"))
+    workspace = MemoryWorkspace(other_config.workspace_dir, agent_id=other_config.agent_id, index_sources=["memory"])
+    store = ManagedSQLiteMemoryStore(other_config, workspace)
+    before = (config.workspace_dir / "MEMORY.md").read_bytes()
+    try:
+        with pytest.raises(ValueError, match="bound workspace"):
+            _run(config, tmp_path, store=store)
+        assert (config.workspace_dir / "MEMORY.md").read_bytes() == before
+        assert store.lifecycle_snapshot()["operations"] == []
+    finally:
+        store.close()
 
 
 def test_no_event_when_nothing_was_rehydrated(tmp_path: Path) -> None:

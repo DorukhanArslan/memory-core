@@ -137,6 +137,15 @@ def _observation_copy(value, memo=None):
     return deepcopy(value, memo)
 
 
+def _source_clock_observation(clock):
+    # One membership cut across the clock's shared sequence. Rich row copies
+    # happen after releasing its private journal lock, as for other observers.
+    journals = clock.snapshot_journals()
+    return {field: _observation_copy(journals[name]) for field, name in (
+        ("sourceClockReceipts", "receipts"), ("sourceClockOriginalIO", "original_io"),
+        ("sourceClockReads", "source_reads"), ("sourceClockFailures", "failures"))}
+
+
 def _encode(value):
     """Retain values, including raw scalar types, without invoking callbacks."""
     if value is None or type(value) in (bool, int, str):
@@ -353,12 +362,14 @@ class _FunctionalGate:
 
 
 class _OriginalObserver:
-    """Source-code and exact-receiver witnesses with no observer lock or I/O.
+    """Source-code and exact-receiver witnesses with a private journal lock.
 
     ``codes`` maps original CodeType objects to {name, receiver}. A receiver is a
     frame-local parameter whose exact object must have been bound. ``None``
     accepts a receiverless function only inside an already labelled original
     worker scope. Strong owner/context references prevent object-id reuse.
+    The lock covers only journal metadata/publication and membership copies;
+    original operations, argument encoding and functional callbacks stay outside.
     """
 
     def __init__(self, codes, *, gate_callback=None, sql_callback=None,
@@ -376,6 +387,7 @@ class _OriginalObserver:
         self.sql_callback = sql_callback
         self.functional_profile, self.functional_trace = functional_profile, functional_trace
         self._sequence = 0
+        self._event_lock = threading.Lock()
 
     def bind_owner(self, owner, label):
         self.owners[id(owner)] = (owner, label)
@@ -419,13 +431,21 @@ class _OriginalObserver:
             "storeObjectId": str(id(store)), "detectorGeneration": detected}
 
     def event(self, event_name, **values):
-        # CPython's call event and list append run under its interpreter lock.
-        # No observer mutex is introduced into an original execution lane.
-        self._sequence += 1
-        row = {"sequence": self._sequence, "event": event_name, "pid": os.getpid(),
-               "threadId": threading.get_ident(), "atNs": str(time.monotonic_ns()), **values}
-        self.events.append(row)
+        if {"sequence", "event", "pid", "threadId", "atNs"}.intersection(values):
+            raise ValueError("Original event values cannot override journal metadata")
+        # The GIL does not make allocation, timestamping and append one action.
+        # Values are already encoded; no original operation/callback runs here.
+        with self._event_lock:
+            sequence = self._sequence + 1
+            row = {"sequence": sequence, "event": event_name, "pid": os.getpid(),
+                   "threadId": threading.get_ident(), "atNs": str(time.monotonic_ns()), **values}
+            list.append(self.events, row)
+            self._sequence = sequence
         return row
+
+    def snapshot_events(self):
+        with self._event_lock:
+            return list.copy(self.events)
 
     @contextmanager
     def call_scope(self, label, kind, wall_ms=None):
@@ -1645,7 +1665,7 @@ class _SdkActor:
                 "loadedFixtureModules": _loaded_fixtures()} if self.adapter_before is not None else {}),
             "sourceProvenanceAfter": _sdk_sources(), "importedBefore": self.imported_before, "loadedSdk": _loaded_sdk(),
             "codeOwners": list(self.observer.codes.values()), "ownerBindings": _observation_copy(self.bindings),
-            "originalCalls": _observation_copy(self.observer.events), "originalExceptions": _observation_copy(self.observer.exceptions),
+            "originalCalls": _observation_copy(self.observer.snapshot_events()), "originalExceptions": _observation_copy(self.observer.exceptions),
             "observerFailures": _observation_copy(self.observer.failures),
             "sqlStatements": _observation_copy(self.observer.sql), "sqlExecutions": _observation_copy(self.observer.sql_executions),
             "functionalGates": {key: gate.snapshot() for key, gate in self.gates.items()},
@@ -1653,10 +1673,7 @@ class _SdkActor:
             "hostEvents": _observation_copy(self.host_events), "hostEventReceipts": _observation_copy(self.host_event_receipts),
             "clockBindings": _observation_copy(self.clock_bindings), "datetimeClockCalls": _observation_copy(self.datetime_clock_calls),
             "datetimeClockFailures": _observation_copy(self.datetime_proxy.failures),
-            "sourceClockReceipts": _observation_copy(self.source_clock.receipts),
-            "sourceClockOriginalIO": _observation_copy(self.source_clock.original_io),
-            "sourceClockReads": _observation_copy(self.source_clock.source_reads),
-            "sourceClockFailures": _observation_copy(self.source_clock.failures),
+            **_source_clock_observation(self.source_clock),
             "queuedSearchTasks": [row for row in self.observer.task_receipts()
                 if self.value["kind"] != "forget-index-fence-v5" or row["scope"]["kind"] == "search"],
             **({"queuedWatchTasks": [row for row in self.observer.task_receipts() if row["scope"]["kind"] == "watch"],

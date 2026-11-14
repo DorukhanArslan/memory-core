@@ -14,6 +14,7 @@ import os
 from pathlib import Path
 import stat
 import sys
+import threading
 import time
 
 
@@ -85,7 +86,8 @@ class OwnedSourceWriteClock:
     ``owners`` maps exact loaded original code objects to precomputed source
     witnesses and a source role (io, write-all, atomic, append, in-place,
     dreams). Tests may supply labelled stand-ins without executing their bodies.
-    No source lookup or observer mutex occurs in the passive IO recorder.
+    A private journal mutex covers only metadata publication and membership
+    snapshots. Source lookup, clock stamping and original IO stay outside it.
     """
 
     def __init__(self, *, root, actor, policy, owners, scope, encode, full_stat):
@@ -97,16 +99,30 @@ class OwnedSourceWriteClock:
         self.descriptors, self.failed_frames, self.pending_renames = {}, set(), {}
         self.committed_versions = {}
         self.sequence = 0
+        self._event_lock = threading.Lock()
         self.original_os = {name: getattr(os, name) for name in (
             "open", "write", "pwrite", "fsync", "ftruncate", "close", "replace", "utime",
             "read", "pread", "lstat", "fstat", "unlink")}
 
     def _event(self, collection, event, **values):
-        self.sequence += 1
-        row = {"sequence": self.sequence, "event": event, "pid": os.getpid(),
-               "actor": self.actor, "atNs": str(time.monotonic_ns()), **values}
-        collection.append(row)
+        if {"sequence", "event", "pid", "actor", "atNs"}.intersection(values):
+            raise ValueError("Source-clock payload cannot replace journal metadata")
+        row = dict.copy(values)
+        # No encoder, callback, source operation or original gate runs here.
+        # Allocation and append form one publication across all four journals.
+        with self._event_lock:
+            sequence = self.sequence + 1
+            row.update(sequence=sequence, event=event, pid=os.getpid(), actor=self.actor,
+                       atNs=str(time.monotonic_ns()))
+            list.append(collection, row)
+            self.sequence = sequence
         return row
+
+    def snapshot_journals(self):
+        """Freeze one membership prefix; later row settlements remain live."""
+        with self._event_lock:
+            return {"receipts": list.copy(self.receipts), "original_io": list.copy(self.original_io),
+                    "source_reads": list.copy(self.source_reads), "failures": list.copy(self.failures)}
 
     def _failure(self, error, frame=None):
         owner = self.owners.get(frame.f_code) if frame is not None else None

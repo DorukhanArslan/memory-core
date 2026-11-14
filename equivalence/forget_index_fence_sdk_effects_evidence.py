@@ -22,7 +22,7 @@ _STDLIB = {"ThreadPoolExecutor.submit": ThreadPoolExecutor.submit,
 
 
 def _closed_effects_case(case):
-    """Admit only the exact frozen V3/V4 inputs sharing effects protocol V3."""
+    """Admit only the exact frozen V3/V4/V5 inputs sharing effects protocol V3."""
     kind = case.get("input", {}).get("kind") if isinstance(case, dict) else None
     if kind == "forget-index-fence-v3":
         from equivalence.forget_index_fence_v3 import validate_case
@@ -30,8 +30,11 @@ def _closed_effects_case(case):
     elif kind == "forget-index-fence-v4":
         from equivalence.forget_index_fence_v4 import validate_case
         version = 4
+    elif kind == "forget-index-fence-v5":
+        from equivalence.forget_index_fence_v5 import validate_case
+        version = 5
     else:
-        raise ValueError("SDK effects require an exact frozen V3 or V4 case")
+        raise ValueError("SDK effects require an exact frozen V3, V4 or V5 case")
     validate_case(case)
     return version
 
@@ -45,7 +48,7 @@ def validate_sdk_effects_v3(case, observation, process, events, returns, *, reco
     adapter, trusted_adapter = Path(recorded_adapter_root), Path(approved_adapter_root)
     require(trusted_adapter.is_absolute() and trusted_adapter.resolve(strict=True) == trusted_adapter,
             "SDK effects need an independently selected fixture source root")
-    _closed_effects_case(case)
+    version = _closed_effects_case(case)
     value, pid, actor = case["input"], observation["pid"], observation["actor"]
     require(pid == process["pid"] and actor == process["actor"],
             "SDK effects borrowed another frozen profile or process")
@@ -53,6 +56,12 @@ def validate_sdk_effects_v3(case, observation, process, events, returns, *, reco
     require(policy["protocol"] == "original-search-effects-v3", "SDK effects protocol changed")
     producer_names = {"ManagedSQLiteMemoryStore._run_memory_publication", "_record_search_recalls"}
     calls = [row for row in events.values() if row["event"] == "original-call"]
+    watch_proof = {"workers": []}
+    if version == 5:
+        from equivalence.forget_index_fence_sdk_watch_evidence import validate_sdk_watch_v5
+        watch_proof = validate_sdk_watch_v5(case, observation, process, events, returns,
+            recorded_root=recorded, approved_sdk_root=approved,
+            recorded_adapter_root=adapter, approved_adapter_root=trusted_adapter)
 
     def ident(value):
         require(isinstance(value, str) and value.isdecimal() and int(value) > 0,
@@ -246,11 +255,23 @@ def validate_sdk_effects_v3(case, observation, process, events, returns, *, reco
                 "SDK effect Future was admitted after the original public search settled")
         tasks[fid], worker_calls[fid] = task, worker
 
-    submitted = {row["sequence"] for row in calls if row["name"] == "ThreadPoolExecutor.submit"}
+    submitted = {row["sequence"] for row in calls if row["name"] == "ThreadPoolExecutor.submit"
+                 and (version != 5 or row["callKind"] == "search")}
     require(submitted == {task["submitSequence"] for task in tasks.values()},
             "SDK effects omitted or fabricated an actual original submission")
     require(all(row["sequence"] in {worker["sequence"] for worker in worker_calls.values()}
-                for row in calls if row["name"] in producer_names), "SDK effects omitted a source-owned queued worker")
+                for row in calls if row["name"] in producer_names and (version != 5 or row["callKind"] == "search")),
+            "SDK effects omitted a source-owned queued worker")
+    original_tasks = dict(tasks)
+    original_workers = dict(worker_calls)
+    if version == 5:
+        for task in observation["queuedWatchTasks"]:
+            fid = task["futureObjectId"]
+            matching = [row for row in watch_proof["workers"] if row["code"] == task["functionCode"]
+                        and row["receiverObjectId"] == task["storeObjectId"] and row["scope"] == task["scope"]
+                        and row["arguments"]["job"]["id"] == task["job"]["id"]]
+            require(len(matching) == 1, "SDK search wait borrowed an unauthenticated watcher worker")
+            original_tasks[fid], original_workers[fid] = task, matching[0]
 
     waits = {}
     for wait in observation["searchEffectWaits"]:
@@ -303,14 +324,14 @@ def validate_sdk_effects_v3(case, observation, process, events, returns, *, reco
             if state["syncActivePresent"] is False:
                 require(state["syncActive"] is False, "SDK publisher wait invented an absent sync-active state")
             for job in state["jobs"]:
-                admitted = [task for task in tasks.values() if task["kind"] == "memory-publication"
+                admitted = [task for task in original_tasks.values() if task["kind"] == "memory-publication"
                             and task["storeObjectId"] == wait["storeObjectId"] and task["job"]["id"] == job["id"]]
                 require(len(admitted) == 1, "SDK publisher condition state borrowed an unadmitted original job")
                 submitted_job = events[admitted[0]["submitSequence"]]["arguments"]["args"][0]
                 require(all(job[key] == item for key, item in submitted_job.items() if key != "state"),
                         "SDK publisher condition state changed its admitted original job epoch")
                 if "threadId" in job:
-                    require(job["threadId"] == worker_calls[admitted[0]["futureObjectId"]]["threadId"],
+                    require(job["threadId"] == original_workers[admitted[0]["futureObjectId"]]["threadId"],
                             "SDK publisher condition state borrowed another worker thread")
         for state in (wait["publisherBefore"], after):
             publisher_state(state)
@@ -377,6 +398,9 @@ def validate_sdk_effects_v3(case, observation, process, events, returns, *, reco
         # barrier itself cannot create a new producer or public search.
         worker_threads = [(worker["threadId"], _ns(worker["atNs"]), _ns(settled(worker)["atNs"]))
                           for fid, worker in worker_calls.items() if fid in own]
+        if version == 5:
+            worker_threads.extend((worker["threadId"], _ns(worker["atNs"]), _ns(settled(worker)["atNs"]))
+                                  for worker in watch_proof["workers"])
         for row in calls:
             if begin < _ns(row["atNs"]) < end and row["name"] in {
                     "MemorySearchTool.execute", "execute_memory_search_tool", "_run_memory_search_tool",
@@ -432,4 +456,7 @@ def validate_sdk_effects_v3(case, observation, process, events, returns, *, reco
     adapter_source = _regular(trusted_adapter / "equivalence/forget_index_fence_sdk.py")
     require(adapter_source.relative_to(trusted_adapter).as_posix() == "equivalence/forget_index_fence_sdk.py"
             and adapter.is_absolute(), "SDK effects lost independently approved adapter ownership")
-    return {"waits": waits, "workers": list(worker_calls.values())}
+    proof = {"waits": waits, "workers": list(worker_calls.values())}
+    if version == 5:
+        proof["watchProof"] = watch_proof
+    return proof

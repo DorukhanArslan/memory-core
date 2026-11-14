@@ -54,9 +54,13 @@ def main():
                         help="Select cases in this explicit order; repeated IDs are rejected")
     parser.add_argument("--stop-on-blocked", action="store_true",
                         help="Retain the first invalid measurement and stop; ordinary mismatches continue")
+    parser.add_argument("--defer-custody", action="store_true",
+                        help="Capture originals only; retain blocked status and award no credit until independent replay")
     args = parser.parse_args()
     if args.case and len(set(args.case)) != len(args.case):
         parser.error("Each independently frozen case may be selected only once")
+    if args.defer_custody and args.stop_on_blocked:
+        parser.error("Deferred custody remains blocked and cannot be combined with --stop-on-blocked")
     output = args.output.resolve()
     output.mkdir(parents=True, exist_ok=False)
     report = {"kind": "forget-index-fence-v2-comparison", "acceptancePointsAwarded": 0,
@@ -75,7 +79,8 @@ def main():
         available = {case["id"]: case for case in build_cases()}
         ordered = [available[case_id] for case_id in (args.case or CASE_HASHES)]
         report["execution"] = {"caseOrder": [case["id"] for case in ordered],
-                               "stopOnBlocked": args.stop_on_blocked}
+                               "stopOnBlocked": args.stop_on_blocked,
+                               "deferCustody": args.defer_custody}
         for case in ordered:
             directory = output / case["id"]
             directory.mkdir()
@@ -95,14 +100,17 @@ def main():
             except Exception as error:
                 row["sdkError"] = error_record(error)
             if native_result is not None and sdk_result is not None:
-                try:
-                    row["structuralReplay"] = replay_case(case, native_directory, sdk_directory,
-                                                        approved_node=node, approved_sdk_root=ROOT,
-                                                        approved_reference=reference)
-                    row["differences"] = differences(native_result, sdk_result)
-                    row["status"] = "mismatch" if row["differences"] else "match"
-                except Exception as error:
-                    row["custodyError"] = error_record(error)
+                if args.defer_custody:
+                    row["custodyPending"] = True
+                else:
+                    try:
+                        row["structuralReplay"] = replay_case(case, native_directory, sdk_directory,
+                                                            approved_node=node, approved_sdk_root=ROOT,
+                                                            approved_reference=reference)
+                        row["differences"] = differences(native_result, sdk_result)
+                        row["status"] = "mismatch" if row["differences"] else "match"
+                    except Exception as error:
+                        row["custodyError"] = error_record(error)
             row["artifacts"] = artifacts(directory, output)
             write_json(output / "report.json", report)
             print(json.dumps({"id": row["id"], "status": row["status"],

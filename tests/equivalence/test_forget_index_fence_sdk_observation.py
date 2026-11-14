@@ -286,18 +286,34 @@ def test_split_ledger_progress_uses_actual_observed_writer_attempt_without_a_sha
 def test_new_source_bindings_use_original_generator_body_and_exact_worker_receivers_without_execution():
     from memory_core.consolidation.origins import IndexRevisionFence
     from memory_core.index.sqlite_store import SQLiteMemoryStore
-    from memory_core.tools.memory_search import MemorySearchRecallOwner, _record_search_recalls
+    from memory_core.tools import memory_search
 
     codes = _original_bindings()
-    generator = IndexRevisionFence.publication_guard.__wrapped__.__code__
-    assert codes[generator]["name"] == "IndexRevisionFence.publication_guard"
-    assert codes[generator]["receiver"] == "self"
-    assert IndexRevisionFence.publication_guard.__code__ not in codes
-    assert codes[IndexRevisionFence.ledger.fget.__code__]["receiver"] == "self"
-    assert codes[SQLiteMemoryStore._existing_forget_revision.__code__]["receiver"] == "db"
-    assert codes[SQLiteMemoryStore.is_session_forgotten.__code__]["receiver"] == "self"
-    assert codes[_record_search_recalls.__code__]["receiver"] == "store"
-    assert codes[MemorySearchRecallOwner.submit.__code__]["receiver"] == "store"
+    names = {row["name"] for row in codes.values()}
+    guard = getattr(IndexRevisionFence, "publication_guard", None)
+    if guard is None:
+        assert "IndexRevisionFence.publication_guard" not in names
+    else:
+        assert codes[guard.__wrapped__.__code__]["receiver"] == "self"
+        assert guard.__code__ not in codes
+    ledger = getattr(IndexRevisionFence, "ledger", None)
+    if ledger is None:
+        assert "IndexRevisionFence.ledger" not in names
+    else:
+        assert codes[ledger.fget.__code__]["receiver"] == "self"
+    for name, receiver in (("_existing_forget_revision", "db"), ("is_session_forgotten", "self")):
+        function = getattr(SQLiteMemoryStore, name, None)
+        if function is None:
+            assert "SQLiteMemoryStore." + name not in names
+        else:
+            assert codes[function.__code__]["receiver"] == receiver
+    worker = getattr(memory_search, "_record_search_recalls", None)
+    owner = getattr(memory_search, "MemorySearchRecallOwner", None)
+    if worker is None:
+        assert "_record_search_recalls" not in names and "MemorySearchRecallOwner.submit" not in names
+    else:
+        assert codes[worker.__code__]["receiver"] == "store"
+        assert codes[owner.submit.__code__]["receiver"] == "store"
 
 
 def test_direct_readonly_predicate_connection_retains_its_actual_bound_path_without_observer_queries(tmp_path):

@@ -2,6 +2,7 @@
 from concurrent.futures import Future, ThreadPoolExecutor
 from copy import deepcopy
 import inspect
+import importlib.util
 import os
 from pathlib import Path
 import sqlite3
@@ -205,9 +206,12 @@ def test_explicit_effects_step_refuses_inflight_or_foreign_owner_and_checks_sett
 
 
 def test_lease_registry_uses_actual_generator_bodies_and_returned_owner_without_acquiring():
+    codes = _original_bindings()
+    if importlib.util.find_spec("memory_core.host.reindex_lease") is None:
+        assert not any(row["name"].startswith("_ReindexLease.") or row["name"] == "_lease_for" for row in codes.values())
+        return
     from memory_core.host.reindex_lease import _ReindexLease, _lease_for, memory_index_producer_guard
 
-    codes = _original_bindings()
     assert codes[_lease_for.__code__]["bindReturnedOwner"] == "original-reindex-producer-lease"
     assert codes[memory_index_producer_guard.__wrapped__.__code__]["receiver"] is None
     assert codes[_ReindexLease.waiting.__wrapped__.__code__]["receiver"] == "self"

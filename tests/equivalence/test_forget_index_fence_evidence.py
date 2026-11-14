@@ -1664,12 +1664,19 @@ def test_v5_selector_never_borrows_a_v4_packet(tmp_path, monkeypatch):
 
 @pytest.fixture(scope='module')
 def v5_native_watcher_actual():
-    if V5_NATIVE_CAPTURE is None:
+    suite_selected = os.environ.get('MEMORY_FORGET_INDEX_FENCE_V5_SUITE_REPORT') is not None
+    if V5_NATIVE_CAPTURE is None and V5_CAPTURE_ROOT is None and not suite_selected:
         pytest.skip('No explicitly selected genuine V5 Native watcher packet; no acceptance credit')
     assert ADAPTER_ROOT is not None
     from unittest.mock import patch
     from equivalence import forget_index_fence_native_watch_evidence as watcher
-    directory = Path(V5_NATIVE_CAPTURE).resolve(strict=True)
+    if V5_NATIVE_CAPTURE is not None:
+        selected = Path(V5_NATIVE_CAPTURE)
+    elif suite_selected:
+        selected = _v5_raw_packet('forget-index-fence-v5-shared-marker-commit-process-kill')[5]
+    else:
+        selected = Path(V5_CAPTURE_ROOT) / 'forget-index-fence-v5-shared-marker-commit-process-kill' / 'native'
+    directory = selected.resolve(strict=True)
     values, returned = _read(directory / 'evidence/native-raw.json'), _read(directory / 'stdout.json')
     assert len(values) == 1 and returned['ok'] is True
     case = next(row for row in V5_CASES if row['id'] == returned['id'])
@@ -1895,3 +1902,89 @@ def test_v5_native_opaque_callback_requires_original_promise_source(v5_actual_op
                                    if not row['path'].endswith('forget-index-fence-source-clock.mjs')]
     with pytest.raises(ValueError):
         _opaque_native_reconciliation_return(returned, delivery, context, pid)
+
+
+@pytest.fixture(scope='module')
+def v5_native_interrupted_actual(v5_native_watcher_actual):
+    args = v5_native_watcher_actual
+    stopped = args[1].get('interruptedSourceCalls', [])
+    if not stopped:
+        pytest.skip('Selected genuine Native packet did not exercise a marker-held process kill')
+    assert len(stopped) == 1
+    return args, stopped[0]
+
+
+def test_v5_native_interrupted_source_remains_a_negative_proof(v5_native_interrupted_actual):
+    args, stopped = v5_native_interrupted_actual
+    assert stopped['kind'] == 'original-interrupted-source-call' and 'versions' not in stopped
+    assert stopped['sourceCallCutoff']['completed'] is False
+    assert stopped['sourceCallCutoff']['handles'] == stopped['sourceCallCutoff']['commits'] == []
+    child, _, command, entry = args[3][stopped['commandId']]
+    assert child['exit'] == {'code': None, 'signal': 'SIGKILL'}
+    assert 'settlement' not in command and 'sourceVersions' not in entry
+    assert int(child['reapedAtNs']) < int(stopped['markerGate']['receipt']['enteredAtNs']) + 30_000_000_000
+
+
+@pytest.mark.parametrize('attack', ['completed', 'released', 'foreign-frame', 'unreaped', 'not-pending',
+                                  'coherent-write-admission', 'coherent-late-reap', 'coherent-io-omission'])
+def test_v5_native_interrupted_source_rejects_false_absence(v5_native_interrupted_actual, attack):
+    from equivalence.forget_index_fence_native_watch_evidence import validate_native_watch_v5
+    actual, original = v5_native_interrupted_actual
+    args = list(actual)
+    stopped = deepcopy(original)
+    raw = dict(args[1])
+    raw['interruptedSourceCalls'] = [stopped]
+    args[1] = raw
+    if attack == 'completed':
+        stopped['versions'] = []
+    elif attack == 'released':
+        stopped['markerGate']['releasedAtNs'] = stopped['kill']['atNs']
+    elif attack == 'unreaped':
+        stopped['exit'] = {'code': 0, 'signal': None}
+    elif attack == 'not-pending':
+        commands = dict(args[3])
+        row = list(commands[stopped['commandId']])
+        row[2] = {**row[2], 'settlement': {'type': 'settled'}}
+        commands[stopped['commandId']] = tuple(row)
+        args[3] = commands
+    elif attack == 'coherent-late-reap':
+        commands = dict(args[3])
+        row = list(commands[stopped['commandId']])
+        child = deepcopy(row[0])
+        late = str(int(stopped['markerGate']['receipt']['enteredAtNs']) + 30_000_000_001)
+        child['reapedAtNs'] = late
+        row[0] = child
+        row[2] = {**row[2], 'termination': {**row[2]['termination'], 'reapedAtNs': late}}
+        stopped['termination'] = deepcopy(row[2]['termination'])
+        stopped['reapedAtNs'] = late
+        stopped['capturedAtNs'] = str(int(late) + 1)
+        commands[stopped['commandId']] = tuple(row)
+        args[3] = commands
+    else:
+        cutoff = stopped['sourceCallCutoff']
+        if attack == 'foreign-frame':
+            cutoff['causalFrame']['pid'] += 1
+        elif attack == 'coherent-write-admission':
+            control = next(row for rows in args[4].values() for row in rows if row['event'] == 'source-clock-control')
+            cutoff['handles'] = [deepcopy(control['open'])]
+        else:
+            assert cutoff['receipts']
+            cutoff['receipts'].pop()
+        # Keep the copied carrier/seal/gate/passive-cutoff views coherent. The
+        # independent original IO stream and negative source policy still reject.
+        text = json.dumps(cutoff, ensure_ascii=False, separators=(',', ':'))
+        stopped['sourceCallCutoffSeal'] = {'serializedJSON': text, 'sha256': hashlib.sha256(text.encode()).hexdigest()}
+        stopped['markerGate']['receipt']['sourceCallCutoff'] = deepcopy(cutoff)
+        raw['gates'] = [stopped['markerGate'] if row['name'] == stopped['markerGate']['name'] else row for row in raw['gates']]
+        passive = {key: list(rows) for key, rows in args[4].items()}
+        key = stopped['pid'], 0
+        passive[key] = [{**row, 'cutoff': deepcopy(cutoff)} if row['event'] == 'original-source-call-interrupted-cutoff'
+                        and row['gate'] == stopped['markerGate']['name'] else row for row in passive[key]]
+        args[4] = passive
+    cache = {'sourceIndexes': {}, 'verifiedFiles': {}, 'terminated': {}, 'decoderAuthorities': {}, 'v8': {}}
+    token = guard._VALIDATION_CACHE.set(cache)
+    try:
+        with pytest.raises((ValueError, KeyError)):
+            validate_native_watch_v5(*args)
+    finally:
+        guard._VALIDATION_CACHE.reset(token)

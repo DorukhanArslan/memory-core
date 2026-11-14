@@ -25,7 +25,7 @@ def _rows():
 
 
 def test_registration_appends_independent_family_without_changing_any_prior_definition():
-    complete = build_cases()
+    complete = build_cases()[:1452]
     validate_query_sync_boundary_registration(complete)
     assert complete[1444:] == query_sync_boundary_cases()
     registered = complete[:1444]

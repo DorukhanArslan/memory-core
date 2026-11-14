@@ -20,7 +20,7 @@ def _rows():
 
 
 def test_registration_appends_exact_family_and_retains_all_1437_prior_case_fields():
-    registered = build_cases()
+    registered = build_cases()[:1452]
     validate_boundary_registration(registered)
     assert registered[1444:] == boundary_cases()
     cases = registered[:1444]

@@ -36,7 +36,7 @@ RUNNER = "equivalence.host_turn_barrier_boundaries_native.run_native_case"
 
 
 def test_closed_six_cases_append_to_the_prior_catalog_and_keep_outcome_literals():
-    complete = catalog()
+    complete = catalog()[:1452]
     validate_query_sync_boundary_registration(complete)
     assert complete[1444:] == query_sync_boundary_cases()
     registered = complete[:1444]

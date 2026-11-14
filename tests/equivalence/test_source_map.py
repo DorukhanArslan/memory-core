@@ -30,6 +30,22 @@ def test_inventory_maps_every_fixed_acceptance_point_without_claiming_behavior(m
     assert mapping == before
 
 
+def test_forget_family_inventory_keeps_both_original_points_and_source_only_status(mapping):
+    row = next(row for row in mapping["inventory"]["requirements"] if row["id"] == "forget.index-fence")
+    assert row["acceptancePoints"] == ["forget.index-fence.outcomes", "forget.index-fence.boundaries"]
+    assert row["implementation"] == "partial"
+    assert {"ManagedSQLiteMemoryStore", "MemoryWorkspace", "run_short_term_promotion", "MemorySearchTool"} <= {
+        location["symbol"] for location in row["python"]}
+    assert {"MemoryFileWatcher", "MemoryFileWatcher.capture_versions", "MemoryFileWatcher.wait_for_versions",
+            "ManagedSQLiteMemoryStore.wait_for_memory_watches"} <= {
+        location["symbol"] for location in row["python"]}
+    assert {"MemoryProviderLifecycle.activeBackgroundSearchSyncs", "waitForMemoryReindexLock"} <= {
+        location["symbol"] for location in row["upstream"]}
+    assert {"MemoryFileWatchResources", "MemoryManagerWatchOps.ensureWatcher", "resolveSyncConfig"} <= {
+        location["symbol"] for location in row["upstream"]}
+    assert validate_source_map(**mapping)["behaviorVerified"] is False
+
+
 @pytest.mark.parametrize("change", [
     "missing-contract", "duplicate-contract", "missing-point", "foreign-point",
     "wrong-reference", "stale-scope", "missing-module", "invalid-status",

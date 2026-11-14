@@ -301,6 +301,9 @@ def build_cases(*, include_prospective: bool = False) -> list[dict[str, Any]]:
     from equivalence.query_sync_boundaries import build_cases as build_query_sync_boundary_cases
 
     cases.extend(build_query_sync_boundary_cases())
+    from equivalence.forget_index_fence_v5 import build_cases as build_forget_index_fence_cases
+
+    cases.extend(build_forget_index_fence_cases())
     if include_prospective:
         from equivalence.flush_contract import build_prospective_flush_contract_cases
         from equivalence.session_projection import build_prospective_session_projection_cases
@@ -381,6 +384,14 @@ def run_python(case: dict[str, Any]) -> Any:
         from equivalence.query_sync_boundaries_sdk import run_query_sync_boundaries_case
 
         return run_query_sync_boundaries_case(arguments, evidence_directory=case.get("_diagnosticDirectory"))
+    if operation == "forget-index-fence-v5-runtime":
+        from equivalence.forget_index_fence_v5 import validate_case as validate_forget_index_fence_case
+
+        validate_forget_index_fence_case(
+            {key: case[key] for key in ("id", "operation", "requirement", "covers", "input")})
+        from equivalence.forget_index_fence_sdk import run_forget_index_fence_sdk_case
+
+        return run_forget_index_fence_sdk_case(arguments, evidence_directory=case.get("_diagnosticDirectory"))
     if operation == "promotion-ranking-runtime":
         from equivalence.promotion_ranking_runtime import run_promotion_ranking
 

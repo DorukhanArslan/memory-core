@@ -126,6 +126,20 @@ def _sdk_identity(root):
     return {"root": str(root), "sourceFiles": len(files), "sourceSha256": digest.hexdigest(), "files": files}
 
 
+def _adapter_identity(root, version):
+    root = _directory(root)
+    folder = _directory(root / "equivalence")
+    paths = sorted(folder.glob("*.py")) + sorted(folder.glob("*.mjs"))
+    paths.extend(path for path in (folder / "openclaw.plugin.json",
+                 root / f"docs/forget_index_fence_{version}_literals.json",
+                 root / f"docs/forget_index_fence_{version}_plan.md") if path.is_file())
+    if not paths:
+        raise ValueError("The independently selected adapter source inventory is empty")
+    return {"root": str(root), "files": [
+        {"path": path.relative_to(root).as_posix(), **{key: value for key, value in _seal(path, root=root).items()
+          if key != "path"}} for path in paths]}
+
+
 def _node_authority(node):
     return prepare_model_node_authority(node)
 
@@ -142,7 +156,9 @@ def _authorities(args, guard, frozen):
         raise ValueError("Replay attempted to use a guard outside the independently selected program")
     node, _ = _file(args.node)
     reference, sdk = _directory(args.reference), _directory(args.sdk_source_root)
+    adapter_root = args.adapter_root or (ROOT if args.version != "v2" else None)
     return {
+        **({"adapters": _adapter_identity(adapter_root, args.version)} if adapter_root is not None else {}),
         "guard": _seal(guard_path), "script": _seal(Path(__file__).resolve()),
         "literalModule": _seal(Path(frozen.__file__).resolve()), "manifest": _seal(frozen.MANIFEST),
         "node": _node_authority(node), "reference": _reference_authority(reference, node),
@@ -173,7 +189,7 @@ def _admit_reports(roots, authority, report, frozen, version):
             raise ValueError("A source collector report lacks complete final authentication or selected frozen scope")
         execution = source.get("execution")
         if (not isinstance(execution, dict)
-                or version == "v3" and execution.get("inputVersion") != version
+                or version in {"v3", "v4"} and execution.get("inputVersion") != version
                 or "inputVersion" in execution and execution["inputVersion"] != version):
             raise ValueError("A collector report does not belong to the explicitly selected input version")
         identity, node = source.get("implementationIdentity"), source.get("node")
@@ -288,11 +304,13 @@ def _error(error):
 
 def main(argv=None):
     parser = argparse.ArgumentParser(description=__doc__)
-    parser.add_argument("--version", choices=("v2", "v3"), default="v2")
+    parser.add_argument("--version", choices=("v2", "v3", "v4"), default="v2")
     parser.add_argument("--capture-root", type=Path, action="append", required=True)
     parser.add_argument("--reference", type=Path, required=True)
     parser.add_argument("--node", type=Path, required=True)
     parser.add_argument("--sdk-source-root", type=Path, required=True)
+    parser.add_argument("--adapter-root", type=Path,
+                        help="Independent actor source tree; V3/V4 default to this replay program tree, V2 preserves legacy custody when omitted")
     parser.add_argument("--output", type=Path, required=True)
     args = parser.parse_args(argv)
     frozen = import_module(f"equivalence.forget_index_fence_{args.version}")
@@ -334,7 +352,9 @@ def main(argv=None):
                 replay = guard.replay_case(
                     case, native_directory, sdk_directory, approved_node=Path(authority["node"]["execPath"]),
                     approved_reference=_directory(args.reference),
-                    approved_sdk_root=Path(authority["sdk"]["root"]), include_results=True)
+                    approved_sdk_root=Path(authority["sdk"]["root"]), include_results=True,
+                    **({"approved_adapter_root": Path(authority["adapters"]["root"])}
+                       if "adapters" in authority else {}))
                 if (not isinstance(replay, dict) or set(replay) != CALL_RESULT_KEYS
                         or replay["validated"] is not True or type(replay["publicMatch"]) is not bool
                         or type(replay["acceptancePointsAwarded"]) is not int

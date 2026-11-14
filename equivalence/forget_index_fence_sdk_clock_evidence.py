@@ -397,7 +397,7 @@ def validate_sdk_clock_v2(case, observation, process, events, returns, *, record
             read_frames.add(call["sequence"])
             _same(returns[call["sequence"]]["returned"], row["returned"], "SDK source read altered its original complete return")
             _same(call["arguments"]["file"], row["arguments"]["file"], "SDK source read borrowed another original file")
-            if value["kind"] == "forget-index-fence-v3" and "returnSeq" in public and _ns(row["atNs"]) >= _ns(events[public["returnSeq"]]["atNs"]):
+            if value["kind"] in {"forget-index-fence-v3", "forget-index-fence-v4"} and "returnSeq" in public and _ns(row["atNs"]) >= _ns(events[public["returnSeq"]]["atNs"]):
                 workers = [worker for worker in source_read_workers if worker["callLabel"] == call["callLabel"]
                            and worker["callKind"] == call["callKind"] == "search"
                            and worker["threadId"] == call["threadId"] and worker["sequence"] in returns

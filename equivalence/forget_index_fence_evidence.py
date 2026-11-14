@@ -312,12 +312,13 @@ def _adapter_path(filename, recorded_root, approved_root):
     return _regular(Path(approved_root) / relative)
 
 
-def _adapter_inventory(identity, approved_root):
+def _adapter_inventory(identity, approved_root, *, version=3):
+    require(version in {3, 4}, "An undeclared SDK adapter contract version was selected")
     recorded, approved = Path(identity["root"]), Path(approved_root or ROOT).resolve(strict=True)
     require(recorded.is_absolute(), "The actual adapter source root was omitted")
     names = ("equivalence/forget_index_fence_sdk.py", "equivalence/forget_index_fence_sdk_cli.py",
-             "equivalence/forget_index_fence_sdk_clock.py", "equivalence/forget_index_fence_v3.py",
-             "docs/forget_index_fence_v3_literals.json", "docs/forget_index_fence_v3_plan.md")
+             "equivalence/forget_index_fence_sdk_clock.py", f"equivalence/forget_index_fence_v{version}.py",
+             f"docs/forget_index_fence_v{version}_literals.json", f"docs/forget_index_fence_v{version}_plan.md")
     digest, rows = hashlib.sha256(), []
     for name in names:
         path = _adapter_path(recorded / name, recorded, approved)
@@ -519,6 +520,121 @@ def _sdk_private_database_owners(observation, events, returns, recorded, trusted
                 "An SDK private connection borrowed another original connection factory")
 
 
+def _sdk_v4_maintenance(value, observation, events, returns, recorded, trusted):
+    """Map the supported SDK on-search constructor, without inventing watch APIs."""
+    source = _regular(trusted / "memory_core/host/managed_index.py")
+    classes = [node for node in ast.parse(source.read_text()).body if isinstance(node, ast.ClassDef)
+               and node.name == "ManagedSQLiteMemoryStore"]
+    require(len(classes) == 1, "The V4 SDK owner has no unique original managed-store class")
+    constructors = [node for node in classes[0].body if isinstance(node, ast.FunctionDef) and node.name == "__init__"]
+    require(len(constructors) == 1, "The V4 SDK owner has no unique original constructor")
+    arguments = constructors[0].args
+    parameters = [node.arg for node in (*arguments.posonlyargs, *arguments.args, *arguments.kwonlyargs)]
+    roles = {"constructor": "ManagedSQLiteMemoryStore.__init__",
+             "onSearchSnapshot": "ManagedSQLiteMemoryStore._on_search_snapshot",
+             "submitMemoryPublication": "ManagedSQLiteMemoryStore._submit_memory_publication",
+             "bindSessionPublication": "ManagedSQLiteMemoryStore.bind_session_publication"}
+    calls = [row for row in events.values() if row["event"] == "original-call"
+             and row["name"] == "ManagedSQLiteMemoryStore.__init__"]
+    used = set()
+    for owner in observation["ownerBindings"]:
+        policy = owner["searchMaintenance"]
+        require(set(policy) == {"declaredNativeSync", "constructorParameters", "actualSdk", "sourceRoles"},
+                "A V4 SDK maintenance observation lost its complete actual policy/source fields")
+        _same(policy["declaredNativeSync"], value["config"]["memory"]["search"]["sync"],
+              "The SDK declared Native profile differs from the frozen V4 input")
+        _same(policy["constructorParameters"], parameters, "The actual SDK constructor signature differs from approved source")
+        require(set(policy["sourceRoles"]) == set(roles), "V4 SDK on-search policy omitted an original source owner")
+        for role, name in roles.items():
+            code = policy["sourceRoles"][role]
+            require(code["qualname"] == name and _sdk_code_owner(code, recorded, trusted) == source,
+                    "V4 SDK on-search policy borrowed another original method")
+        _same(policy["sourceRoles"]["constructor"], owner["constructorCode"],
+              "The V4 SDK policy borrowed another original constructor")
+        actual = policy["actualSdk"]
+        require(set(actual) == {"memoryPublication", "sessionPublicationController", "memoryExecutor", "memoryActive", "memoryJobs"}
+                and actual["memoryPublication"] == "on-search" and actual["sessionPublicationController"] is None
+                and type(actual["memoryActive"]) is bool and isinstance(actual["memoryJobs"], list),
+                "The actual SDK owner does not expose the declared on-search policy without a bound session controller")
+        matching = [call for call in calls if call["selfObjectId"] == owner["storeObjectId"]]
+        require(len(matching) == 1, "The V4 SDK policy has no unique actual constructor invocation")
+        call = matching[0]
+        require(call["sequence"] not in used and call["callLabel"] == call["callKind"] == "acquire"
+                and call["workspaceObjectId"] == owner["workspaceObjectId"]
+                and call["arguments"]["memory_publication"] == actual["memoryPublication"]
+                and call["sequence"] in returns and returns[call["sequence"]]["returned"] is None,
+                "V4 SDK maintenance policy was predicted rather than bound to the actual original constructor")
+        _same(call["code"], owner["constructorCode"], "The actual V4 SDK constructor differs from its original owner binding")
+        used.add(call["sequence"])
+    require(used == {call["sequence"] for call in calls}, "A V4 SDK constructor or actual owner binding was omitted")
+
+
+def _sdk_v4_forget_plans(observation, events, returns, recorded, trusted):
+    """Authenticate the original writer's live replan callback and connection."""
+    source = _regular(trusted / "memory_core/consolidation/forget.py")
+    tree = ast.parse(source.read_text())
+    definitions = {node.name: node for node in tree.body if isinstance(node, ast.FunctionDef)}
+    arguments = definitions["purge_memory_index"].args
+    if "replan" not in {node.arg for node in (*arguments.args, *arguments.kwonlyargs)}:
+        require(not any(row.get("replanParent") for row in events.values()),
+                "An SDK source without writer replanning invented an original callback")
+        return
+    callback_name = "_forget_workspace_memory.<locals>.current_index_plan"
+    required = {"purge_memory_index", "plan_memory_index", callback_name}
+    declarations = {row["name"]: row["code"] for row in observation["codeOwners"] if row["name"] in required}
+    require(set(declarations) == required, "SDK writer replanning omitted an original callable owner")
+    for name, code in declarations.items():
+        require(code["qualname"] == name and _sdk_code_owner(code, recorded, trusted) == source,
+                "SDK writer replanning borrowed another source callable")
+    calls = [row for row in events.values() if row["event"] == "original-call"]
+    callbacks = [row for row in calls if row["name"] == callback_name and row["arguments"].get("db") is not None]
+    used = set()
+    for callback in callbacks:
+        proof = callback["replanParent"]
+        require(set(proof) == {"parentFrameObjectId", "parentCallSequence", "parentCode", "replanObjectId",
+                              "replanCodeIsCallback", "databaseObjectId", "parentDatabaseObjectId", "parentStoreObjectId", "inTransaction"},
+                "An SDK writer replan omitted its actual parent/connection observations")
+        parent = events[proof["parentCallSequence"]]
+        database = callback["arguments"]["db"]
+        require(parent["event"] == "original-call" and parent["name"] == "purge_memory_index"
+                and parent["frameObjectId"] == proof["parentFrameObjectId"]
+                and parent["receiverObjectId"] == proof["parentStoreObjectId"]
+                and parent["threadId"] == callback["threadId"] and parent["callLabel"] == callback["callLabel"]
+                and parent["sequence"] < callback["sequence"] and proof["replanCodeIsCallback"] is True
+                and proof["inTransaction"] is True and database["sqliteConnection"] is True
+                and database["objectId"] == proof["databaseObjectId"] == proof["parentDatabaseObjectId"],
+                "An SDK replan did not execute inside its actual original purge writer frame")
+        _same(proof["parentCode"], parent["code"], "An SDK replan borrowed another original parent code object")
+        function = parent["arguments"]["replan"]
+        require(function["callable"] is True and function["module"] == "memory_core.consolidation.forget"
+                and function["qualname"] == callback_name and function["objectId"] == proof["replanObjectId"],
+                "An SDK writer invoked another callback instead of its original replan argument")
+        connection = database["objectId"]
+        starts = [row for row in observation["sqlExecutions"] if row["connectionId"] == connection
+                  and row["source"] == "purge_memory_index" and row["method"] == "execute"
+                  and "BEGIN IMMEDIATE" in row.get("statements", []) and row.get("settlement") == "returned"
+                  and parent["sequence"] < row["sequence"] < row["finishedSequence"] < callback["sequence"]]
+        require(len(starts) == 1, "An SDK writer replan has no actual successful BEGIN IMMEDIATE on that same connection")
+        plans = [row for row in calls if row["name"] == "plan_memory_index"
+                 and row["receiverObjectId"] == parent["receiverObjectId"] and row["threadId"] == callback["threadId"]
+                 and isinstance(row["arguments"].get("db"), dict) and row["arguments"]["db"].get("objectId") == connection
+                 and callback["sequence"] < row["sequence"]
+                 and (callback["sequence"] not in returns or row["sequence"] < returns[callback["sequence"]]["sequence"])]
+        require(len(plans) == 1 and plans[0]["sequence"] not in used,
+                "An SDK replan has no unique actual planner invocation on the admitted writer")
+        plan = plans[0]
+        if callback["sequence"] in returns:
+            require(plan["sequence"] in returns and returns[plan["sequence"]]["sequence"] < returns[callback["sequence"]]["sequence"],
+                    "An SDK replan returned before its actual original planner settled")
+            _same(returns[callback["sequence"]]["returned"], returns[plan["sequence"]]["returned"],
+                  "An SDK writer callback replaced the actual planner result")
+        used.add(plan["sequence"])
+    actual = {row["sequence"] for row in calls if row["name"] == "plan_memory_index" and row["arguments"].get("db") is not None}
+    require(used == actual, "An SDK supplied-connection plan omitted or fabricated its actual writer callback")
+    require(all(row["name"] == callback_name for row in calls if "replanParent" in row),
+            "An SDK unrelated invocation borrowed the original writer replan receipt")
+
+
 def _observer_exception(error, recorded_root, recorded_adapter_root=None):
     trace = error.get("traceback", "")
     require(isinstance(trace, str), "An actual SDK exception traceback was removed")
@@ -541,7 +657,9 @@ SNAPSHOT_FIELDS = {"documents", "origins", "tombstones", "recall", "phaseSignals
 
 
 def _case(case):
-    if isinstance(case, dict) and case.get("operation") == "forget-index-fence-v3-runtime":
+    if isinstance(case, dict) and case.get("operation") == "forget-index-fence-v4-runtime":
+        from equivalence.forget_index_fence_v4 import validate_case
+    elif isinstance(case, dict) and case.get("operation") == "forget-index-fence-v3-runtime":
         from equivalence.forget_index_fence_v3 import validate_case
     elif isinstance(case, dict) and case.get("operation") == "forget-index-fence-v2-runtime":
         from equivalence.forget_index_fence_v2 import validate_case
@@ -556,14 +674,24 @@ def _v2(case):
 
 
 def _version(case):
-    operations = {"forget-index-fence-runtime": 1, "forget-index-fence-v2-runtime": 2, "forget-index-fence-v3-runtime": 3}
+    operations = {"forget-index-fence-runtime": 1, "forget-index-fence-v2-runtime": 2,
+                  "forget-index-fence-v3-runtime": 3, "forget-index-fence-v4-runtime": 4}
     require(case["operation"] in operations, "An undeclared forget/index-fence runtime version was selected")
     return operations[case["operation"]]
 
 
 def _native_profile_key(case):
-    version = _version(case)
-    return f"forgetIndexFenceV{version}Profile" if version >= 2 else "forgetIndexFenceProfile"
+    return {1: "forgetIndexFenceProfile", 2: "forgetIndexFenceV2Profile",
+            3: "forgetIndexFenceV3Profile", 4: "forgetIndexFenceV3Profile"}[_version(case)]
+
+
+def _search_effects(case):
+    return _version(case) in {3, 4}
+
+
+def _native_bootstrap_prefix(case):
+    return {1: "forget-index-fence", 2: "forget-index-fence-v2",
+            3: "forget-index-fence-v3", 4: "forget-index-fence-v3"}[_version(case)]
 
 
 def _capture_prefix(case):
@@ -814,11 +942,11 @@ def _native_authority(case, raw, directory, approved_node, trusted_archive, appr
                 for name in local_names}, "Native execution allowed an undeclared local program")
     for filename, digest in allowed.items():
         source = (_adapter_path(filename, program_root, Path(approved_adapter_root or ROOT).resolve(strict=True))
-                  if _version(case) == 3 or approved_adapter_root is not None else filename)
+                  if _search_effects(case) or approved_adapter_root is not None else filename)
         require(_digest(source) == digest, "An actual Native observer/actor program differs from independently approved source")
         if (cache := _VALIDATION_CACHE.get()) is not None:
             cache["verifiedFiles"][str(source)] = digest
-    if _version(case) == 3:
+    if _search_effects(case):
         _same(profile["searchEffects"], case["input"]["observationPolicy"]["searchEffects"],
               "The Native queued-search-effects capability differs from its frozen input")
     environment = process["environment"]
@@ -847,7 +975,7 @@ def _native_authority(case, raw, directory, approved_node, trusted_archive, appr
         for row in rows[1:]:
             require(row["pid"] == pid and row["threadId"] == thread,
                     "An original Native import trace changed process or worker")
-            if row["event"] == _capture_prefix(case) + "-bootstrap":
+            if row["event"] == _native_bootstrap_prefix(case) + "-bootstrap":
                 clock.append(row)
                 continue
             if row["event"] == "fence-gate-enter":
@@ -2436,6 +2564,7 @@ def _native_gates(case, raw, actors, passive, authority, approved_node, director
 
 
 def _sdk_observation(observation, process, value, approved_root, *, adapter_roots=None):
+    require(not observation.get("observerFailures"), "The SDK observer invalidated an original source/receiver receipt")
     recorded, trusted = _sdk_inventory(observation["sourceProvenanceBefore"], approved_root)
     _same(observation["sourceProvenanceBefore"], observation["sourceProvenanceAfter"],
           "Original SDK production bytes changed during an actor lifetime")
@@ -2451,7 +2580,8 @@ def _sdk_observation(observation, process, value, approved_root, *, adapter_root
         source = _source_path(module["path"], recorded, trusted)
         require(_digest(source) == module["sha256"], "An actually imported SDK module differs from the trusted source seal")
     if adapter_roots:
-        actual_adapter = _adapter_inventory(observation["adapterProvenanceBefore"], adapter_roots[1])
+        adapter_version = {"forget-index-fence-v3": 3, "forget-index-fence-v4": 4}[value["kind"]]
+        actual_adapter = _adapter_inventory(observation["adapterProvenanceBefore"], adapter_roots[1], version=adapter_version)
         require(actual_adapter == adapter_roots, "An SDK child borrowed another approved adapter tree")
         _same(observation["adapterProvenanceBefore"], observation["adapterProvenanceAfter"],
               "SDK fixture sources changed during the actual actor lifetime")
@@ -2470,7 +2600,7 @@ def _sdk_observation(observation, process, value, approved_root, *, adapter_root
                 cache["verifiedFiles"][str(source)] = module["sha256"]
             modules.add(module["module"])
         require({"__main__", "equivalence.forget_index_fence_sdk", "equivalence.forget_index_fence_sdk_clock",
-                 "equivalence.forget_index_fence_v3"} <= modules,
+                 f"equivalence.forget_index_fence_v{adapter_version}"} <= modules,
                 "The actual SDK actor omitted its loaded fixture sources")
     codes = {}
     def code_key(name, code):
@@ -2554,6 +2684,9 @@ def _sdk_observation(observation, process, value, approved_root, *, adapter_root
                     "An original SDK C execution lost its actual return or exception")
     if adapter_roots:
         _sdk_private_database_owners(observation, events, returns, recorded, trusted)
+        if value["kind"] == "forget-index-fence-v4":
+            _sdk_v4_maintenance(value, observation, events, returns, recorded, trusted)
+            _sdk_v4_forget_plans(observation, events, returns, recorded, trusted)
     return recorded, trusted, events, returns
 
 
@@ -2777,6 +2910,8 @@ def _native_capture(case, raw, result, directory, approved_node, trusted_archive
         if _v2(case):
             require(actor["controlFailures"] == [], "A Native deferred fixture control failed outside the original public outcome")
         _native_code_owners(actor, imports[child["pid"], 0]["loaded"], context)
+        if _version(case) == 4:
+            _native_v4_settings(case, actor, child, passive[child["pid"], 0], authority, approved_node)
         _native_producers(case, actor, authority, approved_node)
         actors[child["pid"]] = child, actor
         if child["exit"]["code"] == 0:
@@ -2833,7 +2968,7 @@ def _native_capture(case, raw, result, directory, approved_node, trusted_archive
             entries = [row["sequence"] for row in passive[pid, 0] if row["event"] == "original-transcript-export-read-enter"]
             require([row["enterSeq"] for row in actor["sessionTranscriptExportReads"]] == entries,
                     "Native transcript exports were omitted, duplicated, or reordered after actual invocation")
-    if _version(case) == 3:
+    if _search_effects(case):
         _native_search_effects_v3(case, raw, actors, commands, passive, context, imports, authority, approved_node)
     _native_gates(case, raw, actors, passive, authority, approved_node, directory, context=context, imports=imports)
     snapshots = {}
@@ -2872,6 +3007,43 @@ def _native_capture(case, raw, result, directory, approved_node, trusted_archive
         snapshots[label] = common
     _same(snapshots, result["snapshots"], "Native common snapshot stages were omitted or repaired")
     return True
+
+
+def _native_v4_settings(case, actor, child, rows, authority, approved_node):
+    """Use actual original owners' resolved settings, never fixture config alone."""
+    expected = case["input"]["config"]["memory"]["search"]["sync"]
+    reads = [row for row in rows if row["event"] == "original-manager-resolved-settings-read"]
+    require(len(reads) == len(actor["ownerBindings"]), "A V4 actual manager settings read was omitted or duplicated")
+    for owner in actor["ownerBindings"]:
+        settings = owner["resolvedSettings"]
+        require(set(settings) == {"property", "receiverRef", "settingsRef", "value", "privateValue",
+                                  "serializedJSON", "sha256", "readAtNs", "sourceModule", "sourceSymbol",
+                                  "constructorRef", "ownPropertyDescriptor", "modeAdmission"}
+                and settings["property"] == "settings" and settings["receiverRef"] == owner["ownerRef"]
+                and settings["constructorRef"] == owner["classRef"]
+                and settings["sourceModule"] == "dist/extensions/memory-core/manager-runtime.js"
+                and settings["sourceSymbol"] == "MemoryIndexManager.settings"
+                and isinstance(settings["settingsRef"], str) and settings["settingsRef"].startswith(str(actor["pid"]) + ":")
+                and _ns(child["startedAtNs"]) <= _ns(settings["readAtNs"]) <= _ns(child["finishedAtNs"]),
+                "A V4 Native sync policy borrowed another actual owner, property or lifetime")
+        descriptor = settings["ownPropertyDescriptor"]
+        require(isinstance(descriptor, dict) and set(descriptor) == {"enumerable", "configurable", "writable", "valueRef"}
+                and all(type(descriptor[name]) is bool for name in ("enumerable", "configurable", "writable"))
+                and descriptor["valueRef"] == settings["settingsRef"],
+                "The Native resolved-settings value lost its actual original own-property identity")
+        actual_reads = [row for row in reads if row["receiverRef"] == owner["ownerRef"]]
+        require(len(actual_reads) == 1 and _ns(settings["readAtNs"]) <= _ns(actual_reads[0]["atNs"]),
+                "A Native resolved-settings binding has no unique actual property-read event")
+        _same({name: actual_reads[0][name] for name in settings}, settings,
+              "The complete Native resolved-settings observation differs from its passive read receipt")
+        _same(_sealed_json(settings), settings["value"], "The complete actual Native resolved-settings JSON carrier changed")
+        _same(_native_json(settings["privateValue"], authority, approved_node), settings["value"],
+              "Native resolved settings differ from the actual original property V8 value")
+        actual = {name: settings["value"]["sync"][name] for name in expected}
+        require(all(type(value) is bool for value in actual.values()), "An actual Native sync setting lost its boolean type")
+        _same(actual, expected, "Native actual search/startup/watcher settings differ from the separately frozen V4 profile")
+        _same(settings["modeAdmission"], {"inputKind": case["input"]["kind"], "required": True, "admitted": True},
+              "Native V4 mode admission differs from its actual resolved settings and closed input")
 
 
 def _native_search_effects_v3(case, raw, actors, commands, passive, context, imports, authority, approved_node):
@@ -3272,7 +3444,7 @@ def _sdk_launch_environment(carrier, adapter_root, fixture):
 def _sdk_capture(case, dispatch, result, directory, approved_root, approved_adapter_root=None):
     value = case["input"]
     prefix = _capture_prefix(case)
-    modern_effects = _version(case) == 3
+    modern_effects = _search_effects(case)
     require(dispatch["kind"] == prefix + "-sdk-dispatch" and dispatch["exit"] == {"code": 0}
             and not any(dispatch.get(key) for key in ("timeout", "stdoutParseError", "error")),
             "The original SDK outer process failed or its stdout was replaced")
@@ -3300,7 +3472,7 @@ def _sdk_capture(case, dispatch, result, directory, approved_root, approved_adap
         _same(identity, raw["sourceProvenanceBefore"], "SDK production bytes changed across the complete process dispatch")
     adapter_roots = None
     if modern_effects:
-        adapter_roots = _adapter_inventory(raw["adapterProvenanceBefore"], approved_adapter_root)
+        adapter_roots = _adapter_inventory(raw["adapterProvenanceBefore"], approved_adapter_root, version=_version(case))
         recorded_adapter, _ = adapter_roots
         for identity in (raw["adapterProvenanceAfter"], dispatch["adapterProvenanceBefore"], dispatch["adapterProvenanceAfter"]):
             _same(identity, raw["adapterProvenanceBefore"], "SDK adapter bytes changed across the complete original dispatch")
@@ -3321,7 +3493,7 @@ def _sdk_capture(case, dispatch, result, directory, approved_root, approved_adap
     for process in raw["processes"]:
         require(process["pid"] not in processes and process["pid"] != raw["pid"]
                 and process["exit"] in ({"code": 0}, {"code": -9})
-                and not process.get("cleanupError") and not process.get("reapError")
+                and not process.get("cleanupError") and not process.get("reapError") and not process.get("observationFailures")
                 and _ns(process["startedAtNs"]) < _ns(process["reapedAtNs"]),
                 "An original SDK child was duplicated, failed, or was not actually reaped")
         require(process["argv"] == dispatch["argv"] and process["request"]["directory"] == raw["fixtureRoot"]
@@ -3342,6 +3514,8 @@ def _sdk_capture(case, dispatch, result, directory, approved_root, approved_adap
         for number, (command, wire, response) in enumerate(zip(process["stdinCommands"], process["stdoutLines"], process["stdoutResponses"], strict=True), 1):
             require(command["id"] == response["id"] == number and response["ok"] is True,
                     "An actual SDK child command/response was duplicated or reassigned")
+            require(not response.get("observationInvalid"),
+                    "The SDK observer failed after retaining its actual original command outcome")
             _same(_json(wire), response, "SDK actual response stdout bytes changed")
             require(response["observation"]["pid"] == process["pid"]
                     and response["observation"]["ppid"] == raw["pid"], "An SDK original response borrowed another child/parent PID")

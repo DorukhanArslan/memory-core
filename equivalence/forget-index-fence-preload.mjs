@@ -17,18 +17,19 @@ import {createHook} from 'node:async_hooks';
 const hash=value=>crypto.createHash('sha256').update(value).digest('hex');
 const contextPath=process.env.MEMORY_EQ_RELEASE_CONTEXT;
 if(!contextPath||!path.isAbsolute(contextPath)||fs.realpathSync(contextPath)!==contextPath)throw Error('Owned fence context required');
-const bytes=fs.readFileSync(contextPath),context=JSON.parse(bytes),profile=context.forgetIndexFenceV2Profile;
-const approved={"forget-index-fence-v2-direct-absent-at-plan-retained-source-other-session-forgotten":"4a44ef7d5325e52f2a37c5e306d8d1e3aeb3f88dd0dc3b42d50c70fce5714a9b","forget-index-fence-v2-keyword-worker-before-forget-enrichment-after":"b11017ccae3ba4124c67f8f1c5c8a5819c82fb0d4e61ee42b468d013e1e290e3","forget-index-fence-v2-repeat-existing-tombstone-old-full-pending":"6b099a8cf96a2bf407b19f4452c63e0e5b64c509c0f902f952eb68abb1b3336f","forget-index-fence-v2-shared-clean-dryrun-unresolved-promotion-controls":"1b9acfda1c62857b998cdcd0ecda553d454eab908fa21113eb47bdce9862a35f","forget-index-fence-v2-shared-marker-commit-process-kill":"0c9860ab427b19a7b9bff71dacd969d57277a99fc5243ca21d1b37dada4992d2","forget-index-fence-v2-shared-old-full-complete-forget":"df0166e9b6206c3c9358fae34b74a62ceacffe89767b193067329f6773638180","forget-index-fence-v2-shared-postcheck-pending-forget":"b28624082be718f339fc1c49c25371c0a5824bd9d0f27680d134feefea0e7133","forget-index-fence-v2-split-marker-commit-process-kill":"fbf87d499b7dcc11b034db752c96a88818504062fbe45540496e33bdc8297a72","forget-index-fence-v2-split-old-full-complete-forget":"5f8ae8105407367ada19c9f426c28c4dec584b8c30e8cc55282f828e5d6fb84d","forget-index-fence-v2-split-postcheck-pending-forget":"3ab64950bbabaac2f6da2535e6ab1a72f98cf90869dd935f2e29d5709ac75acd","forget-index-fence-v2-stored-promotion-model-plan-before-forget":"2d04f44d937ae8a33ca14775e620d9ecc998eec455a970f7d3558aa1a16085e1","forget-index-fence-v2-unfenced-on-search-marker-commit-process-kill":"54bcd55182af74d9d40adbc1785b61a1948c89261f10eae3df9aa3a6c77e64e2","forget-index-fence-v2-unfenced-on-search-old-full-complete-forget":"bdbe5dade86046563655d13645f8f7513f624e5cbc8c6fb81146ad456421103d"};
+const bytes=fs.readFileSync(contextPath),context=JSON.parse(bytes),profile=context.forgetIndexFenceV3Profile;
+const approved={"forget-index-fence-v3-direct-absent-at-plan-retained-source-other-session-forgotten":"a28d02cc268762203bc31d13f00ce592ff1a296f9a516694c640ee9a05806115","forget-index-fence-v3-keyword-worker-before-forget-enrichment-after":"7f2b2fbd4a7cee358f095a58732f89633147a171c036b218912f13c520a95c50","forget-index-fence-v3-repeat-existing-tombstone-old-full-pending":"b0ab0dd957a78a530f22951261f5e8755204d576d914b4a425237247c6e58287","forget-index-fence-v3-shared-clean-dryrun-unresolved-promotion-controls":"e80853d8cdc780eb06a577715d34c93e3fd51a536e73d33221122a7b3f33f9b7","forget-index-fence-v3-shared-marker-commit-process-kill":"b6aa0ac7f16c1648955ab197b924b6eab41494362c02c3732e508850e48e04a3","forget-index-fence-v3-shared-old-full-complete-forget":"8484e6cb552a05d4550d19c250d63b6983bc4fcae8e882da4ecf089c94a86678","forget-index-fence-v3-shared-postcheck-pending-forget":"959a7677379f513b3271b6d886258dc26429c7479532597634907bb0d0abcb15","forget-index-fence-v3-split-marker-commit-process-kill":"4ff9d176c30b2390020f715d1280b776010662e70f0b16ff47482d2e77eba114","forget-index-fence-v3-split-old-full-complete-forget":"cae43cd5ffbbaf2514abe76258c4a4b4866bcc9b0ef15a84b6dcca4ba063ba4d","forget-index-fence-v3-split-postcheck-pending-forget":"3c07dedecf3f7faddaff2148d5c9afbe0e836a554d024eb4120f919830eafae2","forget-index-fence-v3-stored-promotion-model-plan-before-forget":"22978effc4196cf8c4202387e4ea15188c31d89703635849216d1f09e493ac7d","forget-index-fence-v3-unfenced-on-search-marker-commit-process-kill":"b47372d03e8216b49e59e3e8d443b38d71d2df836d2013db4a02448de5e962e5","forget-index-fence-v3-unfenced-on-search-old-full-complete-forget":"fb798a36b2309c8ceb421f397e07e67a5d4d367102bc3bbf16bce0410519e0d0"};
 const keys=['schemaVersion','kind','runtime','providerMode','fetchPolicy','approvedNodeRuntime',
- 'forgetIndexFenceV2Profile','allowedLocal','traceDirectory','evidenceDirectory','stateDirectory',
+ 'forgetIndexFenceV3Profile','allowedLocal','traceDirectory','evidenceDirectory','stateDirectory',
  'configPath','gateDirectory','approvedReferenceSources','fixtureSourceCaptures'].sort().join();
-const profileKeys=['kind','operation','caseId','caseWireSha256','actorClocks','gates','nodeRuntime','acceptancePointsAwarded','sourceWriteClock',
+const profileKeys=['kind','operation','caseId','caseWireSha256','actorClocks','gates','nodeRuntime','acceptancePointsAwarded','sourceWriteClock','searchEffects',
  ...(Object.hasOwn(profile??{},'recoveryNowMs')?['recoveryNowMs']:[])].sort().join();
 if(Object.keys(context).sort().join()!==keys||context.schemaVersion!==1||context.kind!=='release-oracle-execution'||
- context.providerMode!=='none'||context.fetchPolicy!=='deny'||profile?.kind!=='forget-index-fence-v2'||
+ context.providerMode!=='none'||context.fetchPolicy!=='deny'||profile?.kind!=='forget-index-fence-v3'||
  Object.keys(profile??{}).sort().join()!==profileKeys||
- profile.operation!=='forget-index-fence-v2-runtime'||profile.acceptancePointsAwarded!==0||
+ profile.operation!=='forget-index-fence-v3-runtime'||profile.acceptancePointsAwarded!==0||
  !Object.hasOwn(approved,profile.caseId)||approved[profile.caseId]!==profile.caseWireSha256||!Array.isArray(profile.gates)||
+ profile.searchEffects?.protocol!=='original-search-effects-v3'||
  profile.sourceWriteClock?.protocol!=='owned-source-write-clock-v2'||!profile.sourceWriteClock.ticksByCall||
  !profile.actorClocks||Object.keys(profile.actorClocks).length>12||
  JSON.stringify(profile.nodeRuntime)!==JSON.stringify(context.approvedNodeRuntime)||
@@ -84,13 +85,13 @@ const permittedClocks=new Set([profile.actorClocks[actor],...(profile.recoveryNo
 if(!permittedClocks.has(actorClock))throw Error('Undeclared wall clock phase');
 mock.timers.enable({apis:['Date'],now:actorClock});
 trace({event:'bootstrap',isMainThread,runtime:actualNode,contextSha256:hash(bytes),preloadSha256:ownRecord.sha256,fetchDenied:true,providerMode:'none'});
-trace({event:'forget-index-fence-v2-bootstrap',profile,clock:{owner:'node:test',apis:['Date'],nowMs:Date.now(),
+trace({event:'forget-index-fence-v3-bootstrap',profile,clock:{owner:'node:test',apis:['Date'],nowMs:Date.now(),
  dateConstructorReplaced:Date!==originalDate,setTimeoutUnchanged:setTimeout===originalTimeout,performanceNowUnchanged:performance.now===originalPerformance}});
 
 const clockModule=await import('./forget-index-fence-source-clock.mjs');
 const passiveStore=clockModule.openThreadEventStore({directory:context.evidenceDirectory,token:hash(bytes)});
 const sleepCell=new Int32Array(new SharedArrayBuffer(4)),fired=new Set();
-let callLabel=null,sequence=0,lastReindexRevisionRead=null,sourceClock=null;
+let callLabel=null,sequence=0,lastReindexRevisionRead=null,sourceClock=null,searchEffects=null;
 const controlFailures=[];
 let activeBrokerRequest=null,heldPublication=null;
 const resourceCloseRequests=new WeakMap(),taskRequests=new Map();
@@ -163,6 +164,7 @@ globalThis[Symbol.for('memory.eq.forgetIndexFence')]=Object.freeze({
  setCallLabel(label){callLabel=label;},event,pause,carrier,flush,setWallClock,
  getReindexRevisionRead(){return lastReindexRevisionRead;},
  get sourceClock(){return sourceClock;},
+ get searchEffects(){return searchEffects;},
  get controlFailures(){return[...controlFailures,...passiveStore.failures().map(failure=>({event:'fixture-control-failure',reason:'shared-passive-buffer-blocked',...failure}))];},
  get passiveChannels(){return passiveStore.snapshot();},
 });
@@ -458,4 +460,19 @@ sourceClock=clockModule.installSourceClock({workspaceDir:path.join(context.state
    caller.package==='node_modules/openclaw'&&caller.path==='dist/short-term-promotion-memory-write-HTLC95gL.mjs'))return caller;
   if(kind==='unlink'&&caller.package==='node_modules/openclaw'&&caller.path==='dist/short-term-promotion-memory-write-HTLC95gL.mjs')return caller;
   throw Error(`Unsupported original source clock ${kind} owner ${caller.package}/${caller.path}`);
+ }});
+
+searchEffects=clockModule.observeOriginalSearchEffects({scope:()=>sourceClock.currentCall(),ref:objectRef,event,
+ maxJobs:profile.searchEffects.maxReferencesPerBarrier,
+ onFailure:error=>controlFailure('original-search-effects-observer-failed',error),
+ qualifyPromise(originalStack){const sourceCaller=releaseCaller(originalStack);if(!sourceCaller)return null;
+  if(sourceCaller.package!=='node_modules/openclaw')return null;
+  if(sourceCaller.path==='dist/tools-DotaQGXh.mjs'&&originalStack.includes('tools-DotaQGXh.mjs:904:')){
+   if(originalStack.includes('at Promise.catch'))return{kind:'recall-catch',sourceCaller,line:904};
+   if(originalStack.includes('at Promise.then'))return{kind:'recall-then',sourceCaller,line:904};
+  }
+  if(sourceCaller.path==='dist/extensions/memory-core/manager-runtime.js'&&
+   originalStack.includes('manager-runtime.js:5068:')&&originalStack.includes('at Promise.finally'))
+   return{kind:'publisher',sourceCaller,line:5068};
+  return null;
  }});

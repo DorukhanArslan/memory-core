@@ -32,7 +32,7 @@ def _stored_event(row):
 
 @pytest.fixture
 def closed(monkeypatch):
-    case = {"id": "labelled-no-engine-protocol", "operation": "forget-index-fence-v2-runtime",
+    case = {"id": "labelled-no-engine-protocol", "operation": "forget-index-fence-v3-runtime",
             "input": {"clock": {"nowMs": 1794614400000, "sourceWriteClock": {
                 "protocol": "owned-source-write-clock-v2", "ticksByCall": {"sync:s": {
                     "ordinal": 1, "actor": "foreground", "wallClockNowMs": 1794614400000,
@@ -41,6 +41,8 @@ def closed(monkeypatch):
                 "boundaries": {"atomic": "before original rename", "inPlace": "before original close"}}},
                       "actors": {"foreground": {"role": "fixture"}},
                       "gates": [], "steps": [{"operation": "original-sync", "actor": "foreground", "label": "s"}]}}
+    case["input"]["observationPolicy"] = {"searchEffects": {
+        "protocol": "original-search-effects-v3", "maxReferencesPerBarrier": 256}}
     recovery = deepcopy(case)
     recovery["id"] = "labelled-no-engine-recovery-protocol"
     recovery["input"]["clock"]["recoveryNowMs"] = case["input"]["clock"]["nowMs"] + 60000
@@ -75,7 +77,7 @@ def test_profile_binds_every_actor_gate_and_declared_clock_without_running_node(
     assert "recoveryNowMs" not in profile
 
 
-@pytest.mark.parametrize("attack", ["kind", "operation", "v1-kind", "v1-operation", "case", "wire", "actor", "clock", "source-clock", "missing-source-clock", "source-clock-extra", "source-clock-bool", "gates", "credit", "credit-bool", "extra", "node"])
+@pytest.mark.parametrize("attack", ["kind", "operation", "v1-kind", "v1-operation", "case", "wire", "actor", "clock", "source-clock", "missing-source-clock", "source-clock-extra", "source-clock-bool", "search-effects", "missing-search-effects", "gates", "credit", "credit-bool", "extra", "node"])
 def test_profile_rejects_borrowed_or_widened_capabilities(closed, attack):
     case, _, authority = closed
     profile = native.prepare_profile(case, authority)
@@ -103,6 +105,10 @@ def test_profile_rejects_borrowed_or_widened_capabilities(closed, attack):
         profile["sourceWriteClock"]["privateWriteOrdinalFallback"] = True
     elif attack == "source-clock-bool":
         profile["sourceWriteClock"]["ticksByCall"]["sync:s"]["ordinal"] = True
+    elif attack == "search-effects":
+        profile["searchEffects"]["maxReferencesPerBarrier"] = True
+    elif attack == "missing-search-effects":
+        del profile["searchEffects"]
     elif attack == "gates":
         profile["gates"] = [{"name": "undeclared"}]
     elif attack == "credit":
@@ -117,16 +123,16 @@ def test_profile_rejects_borrowed_or_widened_capabilities(closed, attack):
         native.validate_profile(profile)
 
 
-def test_transport_contract_import_is_v2_only_without_a_v1_fallback(monkeypatch):
+def test_transport_contract_import_is_v3_only_without_a_v1_fallback(monkeypatch):
     calls = []
     sentinel = object()
     monkeypatch.setattr(native, "import_module", lambda name: calls.append(name) or sentinel)
     assert native._contract() is sentinel
-    assert calls == ["equivalence.forget_index_fence_v2"]
-    assert native.PROFILE_KEY == "forgetIndexFenceV2Profile"
-    assert native.BOOTSTRAP_EVENT == "forget-index-fence-v2-bootstrap"
-    assert native.PROFILE_KIND == "forget-index-fence-v2"
-    assert native.NATIVE_KIND == "official-release-forget-index-fence-v2"
+    assert calls == ["equivalence.forget_index_fence_v3"]
+    assert native.PROFILE_KEY == "forgetIndexFenceV3Profile"
+    assert native.BOOTSTRAP_EVENT == "forget-index-fence-v3-bootstrap"
+    assert native.PROFILE_KIND == "forget-index-fence-v3"
+    assert native.NATIVE_KIND == "official-release-forget-index-fence-v3"
 
 
 def test_profile_copies_the_entire_literal_source_clock_without_shared_nested_values(closed):
@@ -138,14 +144,16 @@ def test_profile_copies_the_entire_literal_source_clock_without_shared_nested_va
     assert case == original
 
 
-def test_sealed_v2_family_has_exact_literal_clock_profiles_without_original_execution():
-    from equivalence import forget_index_fence_v2 as contract
+def test_sealed_v3_family_has_exact_literal_clock_profiles_without_original_execution():
+    from equivalence import forget_index_fence_v3 as contract
 
     authority = {"execPath": "/labelled/no-engine/node", **APPROVED_NODE_RUNTIME}
     cases = contract.build_cases()
     assert len(cases) == 13
     for case in cases:
         profile = native.prepare_profile(case, authority)
+        assert profile["searchEffects"] == case["input"]["observationPolicy"]["searchEffects"]
+        assert profile["searchEffects"] is not case["input"]["observationPolicy"]["searchEffects"]
         assert profile["sourceWriteClock"] == case["input"]["clock"]["sourceWriteClock"]
         assert native.validate_profile(profile) == profile
 

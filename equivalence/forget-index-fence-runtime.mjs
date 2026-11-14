@@ -170,6 +170,7 @@ export async function runForgetIndexFenceRuntime(input,config){
     const operation={'await-sync':'original-sync','await-forget':'original-forget','await-promotion':'original-promotion','await-public-call':'public-memory-search'}[name];
     const key=`${step.actor}:${operation}:${step.label}`,call=pending.get(key);if(!call)throw Error('No retained original call frame');
     collect(await call.promise);pending.delete(key);
+   }else if(name==='await-original-search-effects'){await run(step.actor,name,step.label);
    }else if(name==='capture-physical-state'){
     // A separate read-only observer process avoids waiting on any held actor.
     const forget=raw.children.flatMap(child=>child.commands.filter(command=>command.operation==='original-forget'&&command.originalEntered)
@@ -296,17 +297,18 @@ export async function runForgetIndexFenceActor(request){
   arguments:{env:plain(process.env)},result:pluginStateDbPath,privateReturn:privateValue(pluginStateDbPath)};
  raw.typedConflictClass={classRef:ref(conflictType),prototypeRef:ref(conflictType.prototype),
   module:'dist/manager-db-kernel-DyJADqYu.mjs',export:'t',compiledSha256:hash(fs.readFileSync(path.join(runtimeRoot,'dist/manager-db-kernel-DyJADqYu.mjs')))};
- const originalGet=runtime.MemoryIndexManager.get,observedOwners=new WeakSet();
+ const originalGet=runtime.MemoryIndexManager.get,observedOwners=new WeakSet(),actualOwners=new Set();
  runtime.MemoryIndexManager.get=function(...args){const received=originalGet.apply(this,args),call={
   callLabel:controller().event('original-manager-get-enter').callLabel,receiverRef:ref(this),originalFunctionRef:ref(originalGet),
   args:args.map(params=>({paramsRef:ref(params),cfg:plain(params.cfg),agentId:params.agentId,purpose:params.purpose??'default',
    inspectSources:params.inspectSources??null,memoryFilesRef:ref(params.memoryFiles),maintenanceSourceRef:ref(params.maintenanceSource),
    acquireLocalServiceRef:ref(params.acquireLocalService)})),returnedPromiseRef:ref(received)};raw.getCalls.push(call);
-  received.then(owner=>{call.ownerRef=ref(owner);if(!owner||observedOwners.has(owner))return;observedOwners.add(owner);
+  received.then(owner=>{call.ownerRef=ref(owner);if(!owner||observedOwners.has(owner))return;observedOwners.add(owner);actualOwners.add(owner);
    for(const name of['sync','search','status','close','listSessionCorpusEntries'])codeOwner(`MemoryIndexManager.${name}`,
     'dist/extensions/memory-core/manager-runtime.js',`MemoryIndexManager.prototype.${name}`,owner[name]);
    const actualStatus=owner.status();
-   raw.ownerBindings.push({ownerRef:ref(owner),classRef:ref(runtime.MemoryIndexManager),prototypeRef:ref(Object.getPrototypeOf(owner)),
+   raw.ownerBindings.push({ownerRef:ref(owner),searchEffectsOwnerRef:controller().searchEffects.reference(owner),
+    classRef:ref(runtime.MemoryIndexManager),prototypeRef:ref(Object.getPrototypeOf(owner)),
     databaseRef:ref(owner.publishedDatabase),nativeConnectionRef:ref(owner.publishedDatabase.db),
     dbPath:owner.publishedDatabase.db.location('main'),purpose:owner.purpose,
     providerIdentity:{method:'status',methodRef:ref(owner.status),result:plain(actualStatus),privateReturn:privateValue(actualStatus)},
@@ -323,7 +325,9 @@ export async function runForgetIndexFenceActor(request){
   codeOwner('MemoryIndexManager.sync','dist/extensions/memory-core/manager-runtime.js','MemoryIndexManager.prototype.sync',manager.sync);
   codeOwner('MemoryIndexManager.status','dist/extensions/memory-core/manager-runtime.js','MemoryIndexManager.prototype.status',manager.status);
  }return manager;}
- async function close(){await runtime.closeAllMemoryIndexManagers();manager=null;
+ async function close(){controller().searchEffects.assertDrained();
+  if(manager){const owned=manager;await owned.close();manager=null;}
+  await runtime.closeAllMemoryIndexManagers();
   await(await imp('dist/openclaw-agent-db-lifecycle-B8sSLgPo.mjs')).s(base);
   await(await imp('dist/plugin-state-store-BPUaLoVD.mjs')).u();raw.closed=true;}
  async function sourceDocuments(){const names=new Set([...Object.keys(input.initialFiles),'MEMORY.md','DREAMS.md']);
@@ -339,6 +343,7 @@ export async function runForgetIndexFenceActor(request){
   }return result;
  }
  async function snapshot(label,command){
+  controller().searchEffects.assertDrained();
   const entered=controller().event('physical-snapshot-enter',{label,dbPath});
   const db=new DatabaseSync(dbPath,{readOnly:true});let schema,tables;
   try{db.exec('PRAGMA query_only=ON; BEGIN DEFERRED');schema=db.prepare("SELECT type,name,tbl_name,sql FROM sqlite_schema ORDER BY type,name").all();tables={};
@@ -440,6 +445,9 @@ export async function runForgetIndexFenceActor(request){
   if(sourceKind)sourceClock.beginCall(`${sourceKind}:${label}`,{commandId:command.id,actor,instance,pid:process.pid,
    wallClockNowMs:Date.now(),enteredAtNs:entry.startedAtNs});
   let actual,publicCall,snapshotValue;
+  function searchSettled(status,requiresRecall){try{
+   entry.searchEffectsPublicSettlement=controller().searchEffects.settled(label,{status,requiresRecall},actualOwners);
+  }catch(error){entry.searchEffectsControlError=err(error);}}
   function entering(apiName,args){const observed=controller().event('original-public-owner-enter',{apiName,args:plain(args)});
    const record={type:'original-enter',id:command.id,actor,pid:process.pid,instance,apiName,sequence:observed.sequence,
     atNs:observed.atNs,originalStack:new Error('Actual original public owner invocation').stack};entry.originalEntered=record;
@@ -483,12 +491,14 @@ export async function runForgetIndexFenceActor(request){
     actual=await owner.sync({...params,progress});publicCall={operation:'sync',label,outcome:{status:'fulfilled',isTypedConflict:false}};
    }else if(operation==='public-memory-search'){
     const opts={config:cfg,getConfig:()=>cfg,agentId:input.identity.agentId,agentSessionKey:input.identity.requesterSessionKey};
+    controller().searchEffects.begin(label);
     const tool=tools.createMemorySearchTool(opts);if(!tool)throw Error('Original public memory search tool unavailable');
     const args=plain(input.queries[label]);entry.originalArguments=args;entering('memory_search.execute',args);
     actual=await tool.execute(`forget-index-fence:${label}`,args);
     const envelope=plain(actual),text=envelope.content?.[0]?.text;
     if(typeof text!=='string'||!isDeepStrictEqual(JSON.parse(text),envelope.details))throw Error('Original public envelope/details carrier diverged');
     entry.publicTool={envelope,details:envelope.details,carrierJSON:text,...sealed(envelope)};
+    searchSettled('fulfilled',envelope.details.unavailable!==true);
     publicCall={operation:'search',label,outcome:{status:'fulfilled',result:envelope.details}};
    }else if(operation==='original-forget'){
     const params=plain(input.forgetCalls[label]),opts={agent:input.identity.agentId,session:params.sessionIds,
@@ -527,12 +537,17 @@ export async function runForgetIndexFenceActor(request){
     if(relative.startsWith('../')||path.isAbsolute(relative))throw Error('Original promotion target escaped owned workspace');
     entry.publicPromotionResult=plain(actual);result.memoryPath=`$WORKSPACE/${relative}`;
     publicCall={operation:'promotion',label,outcome:{status:'fulfilled',result}};
+   }else if(operation==='await-original-search-effects'){
+    entry.searchEffectsControlEnter=controller().event('original-search-effects-control-enter',{label,commandId:command.id});
+    controller().flush();persist();
+    entry.searchEffects=await controller().searchEffects.awaitEffects(label,actualOwners);
    }else if(operation==='capture-physical-state'){snapshotValue=await snapshot(label,command);}
    else if(operation==='original-owner-close'){await close();}
    else if(operation==='process-exit'){await close();exiting=true;}
    else throw Error(`Unknown frozen native fixture operation ${operation}`);
    entry.privateReturn=privateValue(actual);entry.returnedUndefined=actual===undefined;
-  }catch(error){entry.error=err(error);entry.privateError=privateValue(error);
+  }catch(error){if(operation==='public-memory-search')searchSettled('rejected',false);
+   entry.error=err(error);entry.privateError=privateValue(error);
    entry.errorType={errorRef:ref(error),originalTypedClassRef:ref(conflictType),originalTypedPrototypeRef:ref(conflictType.prototype),
     constructorName:Object.getPrototypeOf(error)?.constructor?.name??null,
     isError:error instanceof Error,isTypedConflict:error instanceof conflictType,

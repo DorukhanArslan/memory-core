@@ -34,10 +34,10 @@ from equivalence.model_runtime_authority import (
 from equivalence.release_runtime import validate_release_sources
 
 ROOT = Path(__file__).resolve().parents[1]
-PROFILE_KEY = "forgetIndexFenceV2Profile"
-BOOTSTRAP_EVENT = "forget-index-fence-v2-bootstrap"
-PROFILE_KIND = "forget-index-fence-v2"
-NATIVE_KIND = "official-release-forget-index-fence-v2"
+PROFILE_KEY = "forgetIndexFenceV3Profile"
+BOOTSTRAP_EVENT = "forget-index-fence-v3-bootstrap"
+PROFILE_KIND = "forget-index-fence-v3"
+NATIVE_KIND = "official-release-forget-index-fence-v3"
 ENTRY = "forget-index-fence-entry.mjs"
 PRELOAD = "forget-index-fence-preload.mjs"
 ACTOR = "forget-index-fence-runtime.mjs"
@@ -61,7 +61,7 @@ _ALWAYS_MAIN_ARTIFACTS = (
 def _contract():
     # The root integrates the independently frozen input module. Importing this
     # transport alone neither loads that manifest nor launches either engine.
-    return import_module("equivalence.forget_index_fence_v2")
+    return import_module("equivalence.forget_index_fence_v3")
 
 
 def _validated_case(case):
@@ -82,8 +82,12 @@ def prepare_profile(case, authority):
     authority = validate_model_node_authority(authority)
     base = case["input"]["clock"]["nowMs"]
     source_clock = case["input"]["clock"].get("sourceWriteClock")
+    search_effects = case["input"].get("observationPolicy", {}).get("searchEffects")
     actors = case["input"]["actors"]
     if (type(base) is not int or not isinstance(source_clock, dict)
+            or not isinstance(search_effects, dict) or search_effects.get("protocol") != "original-search-effects-v3"
+            or type(search_effects.get("maxReferencesPerBarrier")) is not int
+            or not 1 <= search_effects["maxReferencesPerBarrier"] <= 256
             or source_clock.get("protocol") != "owned-source-write-clock-v2"
             or not isinstance(source_clock.get("ticksByCall"), dict)
             or not isinstance(actors, dict) or not actors
@@ -97,6 +101,7 @@ def prepare_profile(case, authority):
         "actorClocks": {"coordinator": base, "observer": base, **dict.fromkeys(actors, base)},
         "gates": deepcopy(case["input"]["gates"]), "nodeRuntime": authority,
         "sourceWriteClock": deepcopy(source_clock),
+        "searchEffects": deepcopy(search_effects),
         "acceptancePointsAwarded": 0,
     }
     if "recoveryNowMs" in case["input"]["clock"]:
@@ -706,7 +711,7 @@ def validate_traces(directory, context, runtime, authority, *, process_pid, pare
     source_clock_path = str(ROOT / "equivalence" / SOURCE_CLOCK)
     for row in bootstraps:
         if source_clock_path not in local_loads.get((row["pid"], row["threadId"]), set()):
-            raise ValueError("An actual forget/index-fence v2 bootstrap omitted its protected source clock module")
+            raise ValueError("An actual forget/index-fence v3 bootstrap omitted its protected source clock module")
     for pid, identity in graph.items():
         if identity.get("role") == "sqlite-integrity":
             if (local_loads.get((pid, 0), set()) != {source_clock_path}

@@ -19,7 +19,7 @@ from equivalence.reference_bindings import _git
 from equivalence.search_contract_runtime_bindings import _owners
 
 REFERENCE_COMMIT = query.REFERENCE_COMMIT
-OPERATION = "forget-index-fence-v2-runtime"
+OPERATION = "forget-index-fence-v3-runtime"
 
 ADDITIONAL_SOURCE_HASHES = {'extensions/memory-core/src/cli.runtime.ts': 'ec6a2e2676d6a4b5fb2b364866021f88b389bca5946cc40451877cbfbbfdf1ba',
  'extensions/memory-core/src/cli-index-search.runtime.ts': '1cb313da8f2dd7597f03aafb879cdc49d969deed18ae7bfd6fdd1a45e5a9280a',
@@ -242,6 +242,14 @@ SOURCE_ANCHORS = _merged_anchors(
     {path: atomic.SOURCE_ANCHORS[path] for path in _ATOMIC_SOURCE_PATHS},
     ADDITIONAL_SOURCE_ANCHORS,
     {
+        "extensions/memory-core/src/tools.ts": (
+            '                void import("./short-term-promotion-record.js")',
+            '                  .then(({ recordShortTermRecalls }) => recordShortTermRecalls(recall))',
+        ),
+        "extensions/memory-core/src/memory/manager-registry.ts": (
+            '      if (params.purpose !== "default") {',
+            '    // Withdrawn retirement owners still need explicit retry; live transient managers remain caller-owned.',
+        ),
         "extensions/memory-core/src/memory/manager-db-kernel.ts": (
             "export function readMemoryDatabaseRevision(db: DatabaseSync): number {",
             "export class MemoryIndexRevisionConflictError extends Error {",
@@ -303,6 +311,10 @@ COMPILED_ANCHORS = _merged_anchors(
             "\tasync runInPlaceReindex(params) {", "\tasync attachRecallMetadata(results, signal, sourceFilterList) {",
             "\t\t\t\t\t\texpectedRevision: originalRevision,",
             "\t\treturn results.filter((entry) => metadataById.has(entry.id)).map((entry) => {",
+            "\t\t\t\t}).finally(() => {\n\t\t\t\t\tthis.activeBackgroundSearchSyncs.delete(trackedSearchSync);",
+        ),
+        "dist/tools-DotaQGXh.mjs": (
+            'import("./short-term-promotion-record-CEpBdgKW.mjs").then(({ recordShortTermRecalls }) => recordShortTermRecalls(recall)).catch(() => {});',
         ),
         "dist/manager-db-kernel-DyJADqYu.mjs": (
             "function readMemoryDatabaseRevision(db) {", "var MemoryIndexRevisionConflictError = class extends Error {",

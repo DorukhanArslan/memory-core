@@ -5,7 +5,7 @@ import fsp from 'node:fs/promises';
 import path from 'node:path';
 import {createHash} from 'node:crypto';
 import {serialize} from 'node:v8';
-import {AsyncLocalStorage} from 'node:async_hooks';
+import {AsyncLocalStorage,createHook} from 'node:async_hooks';
 import {threadId,getEnvironmentData,setEnvironmentData} from 'node:worker_threads';
 import {deflateRawSync} from 'node:zlib';
 
@@ -17,6 +17,104 @@ const statValue=stat=>Object.fromEntries(Object.getOwnPropertyNames(stat).map(ke
 const same=(left,right)=>left.dev===right.dev&&left.ino===right.ino&&left.nlink===1n&&right.nlink===1n;
 const stable=(left,right)=>same(left,right)&&left.size===right.size&&left.mtimeNs===right.mtimeNs&&left.ctimeNs===right.ctimeNs;
 const PASSIVE_EVENT_CODEC='deflate-raw-native-event-v1',PASSIVE_EVENT_RAW_LIMIT=64*1024*1024;
+
+// V3's explicit observer joins actual work already scheduled by the original
+// search. The hook never invokes a producer or replaces an original Promise.
+export function observeOriginalSearchEffects({scope,qualifyPromise,ref,event=()=>{},onFailure=()=>{},maxJobs=256}){
+ if(!Number.isSafeInteger(maxJobs)||maxJobs<1||maxJobs>256)throw Error('A search-effects observer requires a bounded declared reference capacity');
+ const originalThen=Promise.prototype.then,metadata=new WeakMap(),recalls=new Map(),searches=new Map();
+ let observing=false,nextJob=0;
+ const emit=(name,fields)=>{try{event(name,fields);}catch(error){onFailure(error);}};
+ const fail=message=>{const error=Error(message);onFailure(error);throw error;};
+ const hook=createHook({init(asyncId,type,triggerAsyncId,resource){
+  if(type!=='PROMISE'||observing)return;
+  try{
+   const causal=scope();if(!causal?.key?.startsWith('search:'))return;
+   const originalStack=new Error('Actual original search-effect Promise creation').stack;
+   const owner=qualifyPromise(originalStack);if(!owner)return;
+   const record={jobId:`search-effect-${++nextJob}`,asyncId,triggerAsyncId,promiseRef:ref(resource),
+    promiseConstructorRef:ref(resource.constructor),promisePrototypeRef:ref(Object.getPrototypeOf(resource)),
+    callKey:causal.key,causalFrame:causal.causalFrame,sourceOwner:owner,originalStack,resource};
+   metadata.set(resource,record);
+   if(owner.kind==='recall-then'||owner.kind==='recall-catch'){
+    const rows=recalls.get(causal.key)??[];rows.push(record);recalls.set(causal.key,rows);
+   }
+   emit('original-search-effect-promise-created',Object.fromEntries(Object.entries(record).filter(([key])=>key!=='resource')));
+  }catch(error){onFailure(error);}
+ }}).enable();
+ emit('original-search-effects-observer-installed',{protocol:'original-search-effects-v3',originalThenRef:ref(originalThen),
+  originalThenSource:Function.prototype.toString.call(originalThen),hookRef:ref(hook),maxJobs,
+  promiseClassRef:ref(Promise),promisePrototypeRef:ref(Promise.prototype),setClassRef:ref(Set),setPrototypeRef:ref(Set.prototype),
+  sourceKinds:['recall-then','recall-catch','publisher']});
+ function observe(record){
+  if(record.observed)return record.observed;
+  observing=true;
+  try{record.observed=Reflect.apply(originalThen,record.resource,[value=>{
+    record.settlement={status:'fulfilled',value:valueRecord(value),valueRef:ref(value),valueType:typeof value};
+    emit('original-search-effect-promise-settled',{jobId:record.jobId,promiseRef:record.promiseRef,...record.settlement});
+   },error=>{
+    const object=error!==null&&(typeof error==='object'||typeof error==='function');
+    record.settlement={status:'rejected',error:valueRecord(error),errorRef:ref(error),errorType:typeof error,
+     ...(object?{errorFields:errorValue(error),errorConstructorRef:ref(error.constructor),errorPrototypeRef:ref(Object.getPrototypeOf(error)),
+     errorOwnProperties:Reflect.ownKeys(error).map(key=>{const descriptor=Object.getOwnPropertyDescriptor(error,key);
+      return{key:typeof key==='symbol'?{symbolDescription:key.description}:key,enumerable:descriptor.enumerable,
+       configurable:descriptor.configurable,...(Object.hasOwn(descriptor,'value')?{value:valueRecord(descriptor.value)}:{accessor:true})};})}:{})};
+    emit('original-search-effect-promise-settled',{jobId:record.jobId,promiseRef:record.promiseRef,...record.settlement});
+   }]);}finally{observing=false;}
+  return record.observed;
+ }
+ function queued(key,owners,stage){const records=[],reads=[];
+  for(const owner of owners){if(owner.purpose!=='default')continue;
+   const actualSet=owner.activeBackgroundSearchSyncs;
+   if(!(actualSet instanceof Set))fail('The actual default owner has no original background Promise Set');
+   const members=Array.from(actualSet),read={callKey:key,stage,ownerRef:ref(owner),setRef:ref(actualSet),
+    setConstructorRef:ref(actualSet.constructor),setPrototypeRef:ref(Object.getPrototypeOf(actualSet)),
+    promiseRefs:members.map(ref),atNs:now()};reads.push(read);emit('original-search-effects-queue-read',read);
+   for(const promise of members){const record=metadata.get(promise);
+    if(!record||record.callKey!==key||record.sourceOwner.kind!=='publisher')fail('An actual queued publisher lost its labelled original Promise source');
+    records.push(record);
+   }
+  }
+  return{records,reads};
+ }
+ return{
+  reference:ref,
+  begin(label){const key=`search:${label}`;if(searches.has(key))fail('A V3 search label was entered twice');
+   searches.set(key,{settled:false,awaited:false});},
+  settled(label,{status,requiresRecall},owners=[]){const key=`search:${label}`,entry=searches.get(key);
+   if(!entry||entry.settled)fail('A V3 search lost its actual original settlement');
+   const originalQueue=queued(key,owners,'public-settlement');
+   Object.assign(entry,{settled:true,status,requiresRecall,publishers:originalQueue.records,queueReads:originalQueue.reads});
+   const receipt={callKey:key,status,requiresRecall,queueReads:originalQueue.reads,
+    recallPromiseRefs:(recalls.get(key)??[]).map(row=>row.promiseRef),atNs:now()};
+   emit('original-search-effects-public-settlement',receipt);return receipt;},
+  async awaitEffects(label,owners){const key=`search:${label}`,entry=searches.get(key);
+   if(!entry?.settled||entry.awaited)fail('V3 effects require one already settled original search');
+   const recorded=recalls.get(key)??[],then=recorded.filter(row=>row.sourceOwner.kind==='recall-then'),
+    caught=recorded.filter(row=>row.sourceOwner.kind==='recall-catch');
+   if(then.length!==caught.length||then.length>1||entry.requiresRecall&&then.length!==1||
+    caught.length&&caught[0].triggerAsyncId!==then[0].asyncId)fail('Original recall Promise source/trigger custody is missing or ambiguous');
+   const jobs=new Map([...recorded,...entry.publishers].map(row=>[row.promiseRef,row]));
+   const receipt={protocol:'original-search-effects-v3',callKey:key,searchStatus:entry.status,
+    recallPromiseRefs:recorded.map(row=>row.promiseRef),queueReads:[...entry.queueReads],startedAtNs:now()};
+   emit('original-search-effects-await-enter',receipt);
+   function readQueued(){const added=[],observed=queued(key,owners,'explicit-await');receipt.queueReads.push(...observed.reads);
+    for(const record of observed.records)if(!jobs.has(record.promiseRef)){jobs.set(record.promiseRef,record);added.push(record);}
+    if(jobs.size>maxJobs)fail('Already queued search effects exceed the declared control capacity');
+    return added;
+   }
+   readQueued();let pending=Array.from(jobs.values());
+   while(pending.length){await Promise.all(pending.map(observe));pending=readQueued();}
+   receipt.jobs=Array.from(jobs.values(),record=>({jobId:record.jobId,promiseRef:record.promiseRef,
+    promiseConstructorRef:record.promiseConstructorRef,promisePrototypeRef:record.promisePrototypeRef,
+    asyncId:record.asyncId,triggerAsyncId:record.triggerAsyncId,sourceOwner:record.sourceOwner,
+    originalStack:record.originalStack,settlement:record.settlement}));
+   receipt.finishedAtNs=now();entry.awaited=true;emit('original-search-effects-await-return',receipt);return receipt;
+  },
+  assertDrained(){if(Array.from(searches.values()).some(row=>row.settled&&!row.awaited))fail('An original search has not reached its declared V3 effects boundary');},
+  stop(){hook.disable();},
+ };
+}
 
 export function encodePassiveEvent(row){const raw=Buffer.from(JSON.stringify(row),'utf8');
  if(raw.length>PASSIVE_EVENT_RAW_LIMIT)throw Error('Original passive event exceeds its decoded record capacity');
@@ -288,6 +386,7 @@ export function installSourceClock({workspaceDir,actor,ticksByCall,event=()=>{},
    path:filename,method:name,sourceOwner,originalStack:stack,startedAtNs:entered,finishedAtNs:now(),return:valueRecord(value)};rows.push(row);emit(row.event,row);},()=>{});return result;
  };
  return{
+  currentCall:()=>currentScope(),
   beginCall(key,causalFrame=null){if(currentScope()&&!currentScope().completed){failure('ambiguous-concurrent-call',{requestedCall:key});return;}
    const tick=ticksByCall[key];if(!tick||tick.actor!==actor||!Number.isInteger(tick.ordinal)||(causalFrame&&causalFrame.wallClockNowMs!==tick.wallClockNowMs)||
     ![tick.atimeMs,tick.mtimeMs].every(value=>Number.isSafeInteger(value)&&value%1000===0)){

@@ -13,11 +13,12 @@ from __future__ import annotations
 
 from collections import deque
 from collections.abc import Callable, Collection, Iterator, Sequence
-from concurrent.futures import ThreadPoolExecutor
+from concurrent.futures import Future, ThreadPoolExecutor
 from contextlib import closing, contextmanager, nullcontext
 from copy import deepcopy
 import threading
 import sqlite3
+import time
 from typing import TYPE_CHECKING, Any, Literal
 
 from memory_core.bootstrap._js import js_trim
@@ -119,11 +120,14 @@ class ManagedSQLiteMemoryStore(SQLiteMemoryStore):
         self._memory_job_error: str | None = None
         self._memory_jobs: deque[dict[str, Any]] = deque(maxlen=256)
         self._memory_job_count = 0
+        self._memory_job_futures: dict[int, Future] = {}
         self._memory_watcher: MemoryFileWatcher | None = None
         self._memory_watch_generation = 0
         self._memory_watch_ready_generation = 0
         self._memory_watch_published_generation = 0
         self._memory_watch_error: str | None = None
+        self._memory_watch_facts: deque[dict[str, int]] = deque(maxlen=4096)
+        self._memory_watch_settlements: deque[dict[str, Any]] = deque(maxlen=256)
         super().__init__(config, None, revision_fence=revision_fence, artifact_provenance=artifact_provenance)
         if memory_publication == "on-search" and workspace.is_session_forgotten is None:
             # The opted-in managed producer owns this index database. Read its
@@ -187,6 +191,12 @@ class ManagedSQLiteMemoryStore(SQLiteMemoryStore):
         """Return the actual publication owner, including its catalog and scope."""
         self._assert_workspace(self._workspace)
         return self._workspace
+
+    @property
+    def memory_watcher(self) -> MemoryFileWatcher | None:
+        """Return this owner's actual detector; reading never creates one."""
+        self._assert_workspace(self._workspace)
+        return self._memory_watcher
 
     @staticmethod
     def _error(error: BaseException) -> dict[str, Any]:
@@ -253,6 +263,11 @@ class ManagedSQLiteMemoryStore(SQLiteMemoryStore):
             if self._closing or self._closed:
                 return
             self._memory_watch_generation += 1
+            detector_generation = (self._memory_watcher.delivery_generation
+                                   if self._memory_watcher is not None else None)
+            if detector_generation is not None:
+                self._memory_watch_facts.append({"detectorGeneration": detector_generation,
+                    "watchGeneration": self._memory_watch_generation})
             self._memory_dirty = True
             self._condition.notify_all()
 
@@ -268,11 +283,18 @@ class ManagedSQLiteMemoryStore(SQLiteMemoryStore):
             if self._closing or self._closed:
                 return
             self._memory_watch_ready_generation = self._memory_watch_generation
+            generation = self._memory_watch_ready_generation
+            detector_generation = (self._memory_watcher.settling_generation
+                                   if self._memory_watcher is not None else None)
             self._memory_dirty = True
             self._condition.notify_all()
-        self._queue_memory_watch_publication()
+        job_id = self._queue_memory_watch_publication()
+        with self._condition:
+            self._memory_watch_settlements.append({"detectorGeneration": detector_generation,
+                "watchGeneration": generation, "jobId": job_id})
+            self._condition.notify_all()
 
-    def _queue_memory_watch_publication(self) -> None:
+    def _queue_memory_watch_publication(self) -> int | None:
         # This callback never manufactures source snapshots or writes SQL.
         # The ordinary worker rechecks its source/index selection after actual
         # producer admission, under the same cross-process lease and fences.
@@ -283,9 +305,63 @@ class ManagedSQLiteMemoryStore(SQLiteMemoryStore):
             with self._condition:
                 if not self._closing and not self._closed:
                     self._memory_watch_error = None
+                    previous_job = self._memory_jobs[-1] if self._memory_jobs else None
                     self._submit_memory_publication(revision,
                         needs_rebuild=state["needsRebuild"] or self._automatic_repair_allowed(state["identity"]),
                         reason="watch")
+                    current_job = self._memory_jobs[-1] if self._memory_jobs else None
+                    if current_job is not None and (self._memory_active or current_job is not previous_job):
+                        return current_job["id"]
+        return None
+
+    def wait_for_memory_watches(self, versions: Sequence[dict[str, Any]], *,
+                                timeout: float | None = None) -> dict[str, Any]:
+        """Join delivered versions and their existing publisher, without new work.
+
+        Targets come from ``memory_watcher.capture_versions`` at the caller's
+        original write boundary. This method never recaptures paths, starts a
+        detector, changes a timer, marks a source dirty, or requests a sync.
+        """
+        deadline = None if timeout is None else time.monotonic() + timeout
+
+        def remaining() -> float | None:
+            return None if deadline is None else max(0.0, deadline - time.monotonic())
+
+        with self._operation("wait-memory-watches"):
+            self._assert_workspace(self._workspace)
+            watcher = self._memory_watcher
+            if watcher is None:
+                raise RuntimeError("This managed index has no memory file watcher")
+            if getattr(self._local, "memory_publisher", False) or watcher.owns_current_thread():
+                raise RuntimeError("A memory watch callback or publisher cannot join its own work")
+            delivery = watcher.wait_for_versions(versions, timeout=remaining())
+            with self._condition:
+                generations = {row["generation"] for row in delivery["deliveries"]}
+                facts = [fact for fact in self._memory_watch_facts if fact["detectorGeneration"] in generations]
+                if {fact["detectorGeneration"] for fact in facts} != generations:
+                    raise RuntimeError("The delivered memory watch generation is no longer retained by its owner")
+                target = max(fact["watchGeneration"] for fact in facts)
+                while True:
+                    completed = next((job for job in self._memory_jobs
+                        if job.get("publishedWatchGeneration", -1) >= target and job["state"] == "completed"), None)
+                    failed = next((job for job in reversed(self._memory_jobs)
+                        if job["watchGeneration"] >= target and job["state"] == "failed"), None)
+                    job = completed or (failed if not self._memory_active else None)
+                    if job is not None:
+                        future = self._memory_job_futures.get(job["id"])
+                        if future is None:
+                            raise RuntimeError("The memory watch publication has no retained submitted Future")
+                        break
+                    if self._closed or self._closing and not self._memory_active:
+                        raise RuntimeError("The managed index closed before its delivered memory version published")
+                    wait = remaining()
+                    if wait is not None and wait <= 0:
+                        raise TimeoutError("The delivered memory version has not completed its admitted publication")
+                    self._condition.wait(wait)
+            returned = future.result(timeout=remaining())
+            with self._condition:
+                return {"status": job["state"], "delivery": delivery, "watchGeneration": target,
+                    "job": deepcopy(job), "futureObjectId": str(id(future)), "futureReturned": returned}
 
     def _defer_memory_publication(self, workspace: MemoryWorkspace, *,
                                   sources: Collection[str]) -> bool | None:
@@ -329,11 +405,13 @@ class ManagedSQLiteMemoryStore(SQLiteMemoryStore):
         if self._full_retry_required:
             self._record_rebuild_request()
         self._memory_jobs.append(job)
+        retained = {entry["id"] for entry in self._memory_jobs}
+        self._memory_job_futures = {key: value for key, value in self._memory_job_futures.items() if key in retained}
         token = object()
         self._memory_worker_token = token
         self._memory_active = True
         try:
-            self._memory_executor.submit(self._run_memory_publication, job, token)
+            self._memory_job_futures[job["id"]] = self._memory_executor.submit(self._run_memory_publication, job, token)
         except BaseException as error:
             self._memory_worker_token = None
             self._memory_active = False
@@ -400,6 +478,8 @@ class ManagedSQLiteMemoryStore(SQLiteMemoryStore):
                         self._memory_watch_published_generation = max(
                             self._memory_watch_published_generation, job["watchGeneration"])
                     self._refresh_memory_dirty(acknowledge_watch=True)
+                    with self._condition:
+                        job["publishedWatchGeneration"] = self._memory_watch_published_generation
                 with self._condition:
                     job["returned"] = returned
         except BaseException as caught:
@@ -949,6 +1029,8 @@ class ManagedSQLiteMemoryStore(SQLiteMemoryStore):
                     "watchGeneration": self._memory_watch_generation,
                     "watchReadyGeneration": self._memory_watch_ready_generation,
                     "watchPublishedGeneration": self._memory_watch_published_generation,
+                    "watchFacts": list(self._memory_watch_facts),
+                    "watchSettlements": list(self._memory_watch_settlements),
                     "watchError": self._memory_watch_error})
             if self._memory_watcher is not None:
                 snapshot["memoryPublication"]["watcher"] = self._memory_watcher.status()

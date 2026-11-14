@@ -6,9 +6,12 @@ never decide source admission: the index's ordinary discovery remains authoritat
 """
 from __future__ import annotations
 
-from collections.abc import Callable
+from collections import deque
+from collections.abc import Callable, Collection
+from copy import deepcopy
 import ctypes
 import errno
+import math
 import os
 from pathlib import Path
 import select
@@ -21,6 +24,7 @@ import time
 
 _IGNORED = frozenset({".git", "node_modules", ".pnpm-store", ".venv", "venv", ".tox", "__pycache__"})
 _MAX_PATHS = 1024
+_DELIVERY_HISTORY = 4096
 _IS_DIRECTORY = 0x40000000
 _OVERFLOW = 0x00004000
 _IGNORED_WATCH = 0x00008000
@@ -115,12 +119,14 @@ class _Inotify:
         self.paths: dict[Path, tuple[int, tuple[int, int]]] = {}
         self.descriptors: dict[int, Path] = {}
 
-    def reconcile(self, directories: dict[Path, tuple[int, int]]) -> None:
+    def reconcile(self, directories: dict[Path, tuple[int, int]]) -> bool:
+        changed = False
         for path, (descriptor, identity) in list(self.paths.items()):
             if directories.get(path) != identity:
                 self._remove(self.fd, descriptor)
                 self.paths.pop(path, None)
                 self.descriptors.pop(descriptor, None)
+                changed = True
         for path, identity in directories.items():
             if path in self.paths:
                 continue
@@ -132,6 +138,8 @@ class _Inotify:
                 raise OSError(code, os.strerror(code), str(path))
             self.paths[path] = (descriptor, identity)
             self.descriptors[descriptor] = path
+            changed = True
+        return changed
 
     def read(self) -> tuple[dict[Path, bool], bool]:
         paths: dict[Path, bool] = {}
@@ -189,16 +197,22 @@ class MemoryFileWatcher:
         self._on_dirty, self._on_change, self._on_unavailable = on_dirty, on_change, on_unavailable
         self._debounce, self._poll, self._settle = debounce_ms / 1000, poll_interval_ms / 1000, settle_ms / 1000
         self._lock = threading.RLock()
+        self._condition = threading.Condition(self._lock)
+        self._callback_local = threading.local()
         self._stop = threading.Event()
         self._thread: threading.Thread | None = None
         self._backend: _Inotify | None = None
         self._pipe: tuple[int, int] | None = None
         self._closed = False
+        self._finished = False
         self._signature: dict[str, tuple[int, ...]] | None = None
         self._pending = False
         self._active = False
         self._changes = 0
         self._completed_callbacks = 0
+        self._settled_generation = 0
+        self._delivered_generation = 0
+        self._deliveries: deque[dict[str, object]] = deque(maxlen=_DELIVERY_HISTORY)
         self._overflows = 0
         self._last_error: str | None = None
         self._startup_errors: list[Exception] = []
@@ -217,7 +231,10 @@ class MemoryFileWatcher:
             try:
                 backend = _Inotify()
                 try:
-                    backend.reconcile(directories)
+                    while not self._stop.is_set() and backend.reconcile(directories):
+                        # Files born between enumeration and attachment belong
+                        # to the startup baseline, rather than a lost event.
+                        self._signature, directories = _inventory(self.root)
                 except BaseException:
                     backend.close()
                     raise
@@ -259,16 +276,176 @@ class MemoryFileWatcher:
         with self._lock:
             self._last_error = str(error)
         if self._on_unavailable is not None and not self._stop.is_set():
+            delivery = getattr(self._callback_local, "delivery", None)
+            settling = getattr(self._callback_local, "settling", None)
+            self._callback_local.delivery = self._callback_local.settling = None
             try:
                 self._on_unavailable(error)
             except Exception:
                 pass
+            finally:
+                self._callback_local.delivery, self._callback_local.settling = delivery, settling
 
-    def _dirty(self) -> None:
+    def _dirty(self, generation: int | None = None) -> None:
+        self._callback_local.delivery = generation
         try:
             self._on_dirty()
         except Exception as error:
             self._unavailable(error)
+        finally:
+            self._callback_local.delivery = None
+
+    @property
+    def delivery_generation(self) -> int | None:
+        """The actual accepted generation only inside its on_dirty callback."""
+        return getattr(self._callback_local, "delivery", None)
+
+    @property
+    def settling_generation(self) -> int | None:
+        """The actual accepted generation only inside its on_change callback."""
+        return getattr(self._callback_local, "settling", None)
+
+    def _owned_file(self, value: str | Path, *, absolute: bool = False) -> Path:
+        if not isinstance(value, (str, Path)):
+            raise ValueError("A memory watch target must name an owned eligible file")
+        path = Path(value)
+        if ".." in path.parts or absolute and (not path.is_absolute() or str(path) != value):
+            raise ValueError("A memory watch target must be canonical and owned")
+        if not path.is_absolute():
+            path = self.root / path
+        try:
+            relative = path.relative_to(self.root)
+        except ValueError as error:
+            raise ValueError("A memory watch target is outside its owned workspace") from error
+        parts = relative.parts
+        if parts in {("MEMORY.md",), ("USER.md",)}:
+            return path
+        if (len(parts) < 2 or parts[0] != "memory" or not parts[-1].endswith(".md")
+                or any(part.lower() in _IGNORED or part == ".openclaw-repair" for part in parts[1:-1])):
+            raise ValueError("A memory watch target is not an eligible memory file")
+        return path
+
+    @staticmethod
+    def _version(values: tuple[int, ...] | None) -> dict[str, object] | None:
+        if values is None:
+            return None
+        device, inode, size, mtime, ctime = values
+        return {"device": str(device), "inode": str(inode), "size": size,
+                "mtimeNs": str(mtime), "ctimeNs": str(ctime)}
+
+    def capture_versions(self, paths: Collection[str | Path]) -> list[dict[str, object]]:
+        """Capture physical versions without delivering an event or starting work."""
+        if isinstance(paths, (str, bytes)) or not isinstance(paths, Collection) or not paths:
+            raise ValueError("At least one owned memory watch target is required")
+        targets = []
+        for value in paths:
+            path = self._owned_file(value)
+            relative = path.relative_to(self.root)
+            current = self.root
+            for part in (None, *relative.parts[:-1]):
+                if part is not None:
+                    current /= part
+                try:
+                    info = current.lstat()
+                except (FileNotFoundError, NotADirectoryError):
+                    continue
+                if not stat.S_ISDIR(info.st_mode):
+                    raise ValueError("A memory watch target has a symlink or non-directory ancestor")
+            try:
+                info = path.lstat()
+            except (FileNotFoundError, NotADirectoryError):
+                version = None
+            else:
+                if not stat.S_ISREG(info.st_mode):
+                    raise ValueError("A memory watch target must be a regular file, never a symlink")
+                version = self._version((info.st_dev, info.st_ino, info.st_size, info.st_mtime_ns, info.st_ctime_ns))
+            targets.append({"path": str(path), "exists": version is not None, "version": version})
+        return targets
+
+    def _retained_targets(self, versions: Collection[dict[str, object]]) -> list[dict[str, object]]:
+        if isinstance(versions, (str, bytes, dict)) or not isinstance(versions, Collection) or not versions:
+            raise ValueError("At least one retained memory watch version is required")
+        targets = []
+        fields = {"device", "inode", "size", "mtimeNs", "ctimeNs"}
+        for target in versions:
+            if not isinstance(target, dict) or set(target) != {"path", "exists", "version"}:
+                raise ValueError("A retained watch version has an invalid shape")
+            self._owned_file(target["path"], absolute=True)
+            if type(target["exists"]) is not bool:
+                raise ValueError("A retained watch version must preserve actual existence")
+            version = target["version"]
+            if target["exists"]:
+                if not isinstance(version, dict) or set(version) != fields:
+                    raise ValueError("A retained watch file version is invalid")
+                if type(version["size"]) is not int or version["size"] < 0:
+                    raise ValueError("A retained watch file size is invalid")
+                for name in ("device", "inode", "mtimeNs", "ctimeNs"):
+                    value = version[name]
+                    if not isinstance(value, str):
+                        raise ValueError("Retained watch metadata must use exact decimal strings")
+                    try:
+                        number = int(value)
+                    except ValueError as error:
+                        raise ValueError("Retained watch metadata is not a decimal integer") from error
+                    if str(number) != value or name in {"device", "inode"} and number < 0:
+                        raise ValueError("Retained watch metadata is not canonical")
+            elif version is not None:
+                raise ValueError("An absent retained watch target cannot carry a file version")
+            targets.append(deepcopy(target))
+        return targets
+
+    def wait_for_versions(self, versions: Collection[dict[str, object]], *, timeout: float | None = None) -> dict[str, object]:
+        """Wait only for retained delivery witnesses and completed callbacks.
+
+        This method performs no filesystem I/O, recapture, notification, scan,
+        publication or timer modification. Initial baseline membership is never
+        a delivery witness. Evicted or never observed versions remain unproved.
+        """
+        targets = self._retained_targets(versions)
+        if timeout is not None and (not math.isfinite(timeout) or timeout < 0):
+            raise ValueError("The watch version timeout must be finite and nonnegative")
+        if self.owns_current_thread():
+            raise RuntimeError("A memory watcher cannot wait for its own callback settlement")
+        deadline = time.monotonic() + timeout if timeout is not None else None
+        with self._condition:
+            while True:
+                if self._closed or self._finished or self._thread is None or not self._thread.is_alive():
+                    raise RuntimeError("The memory watcher is closed or is not observing versions")
+                matches = []
+                for target in targets:
+                    delivery = next((row for row in reversed(self._deliveries)
+                        if row["path"] == target["path"] and row["exists"] == target["exists"]
+                        and row["version"] == target["version"]
+                        and (target["exists"] or row["previousVersion"] is not None)), None)
+                    if delivery is None or delivery["generation"] > self._settled_generation:
+                        break
+                    matches.append(delivery)
+                if len(matches) == len(targets):
+                    return {"targets": deepcopy(targets), "deliveries": deepcopy(matches),
+                            "settledGeneration": self._settled_generation}
+                remaining = deadline - time.monotonic() if deadline is not None else None
+                if remaining is not None and remaining <= 0:
+                    raise TimeoutError("The retained memory file versions were not delivered and settled")
+                self._condition.wait(remaining)
+
+    def _deliver(self, previous: dict[str, tuple[int, ...]] | None, current: dict[str, tuple[int, ...]]) -> int:
+        with self._condition:
+            self._pending = True
+            self._changes += 1
+            generation = self._changes
+            if previous is not None:
+                observed = str(time.monotonic_ns())
+                backend = "inotify" if self._backend is not None else "stat"
+                for key in sorted(previous.keys() | current.keys()):
+                    if key.startswith("file:") and previous.get(key) != current.get(key):
+                        version = self._version(current.get(key))
+                        self._deliveries.append({"path": str(self.root / key.removeprefix("file:")),
+                            "exists": version is not None, "version": version,
+                            "previousVersion": self._version(previous.get(key)), "generation": generation,
+                            "backend": backend, "observedAtNs": observed})
+                        self._delivered_generation = generation
+            self._condition.notify_all()
+            return generation
 
     def _run(self) -> None:
         deadline: float | None = None
@@ -310,16 +487,32 @@ class MemoryFileWatcher:
                     continue
                 next_poll = now + self._poll
                 try:
-                    current, directories = _inventory(self.root)
-                    if self._backend is not None:
-                        try:
-                            self._backend.reconcile(directories)
-                        except OSError as error:
-                            self._backend.close()
-                            self._backend = None
-                            self._unavailable(error)
-                    changed = self._signature is None or current != self._signature or overflow
-                    self._signature = current
+                    while not self._stop.is_set():
+                        current, directories = _inventory(self.root)
+                        coverage_changed = False
+                        if self._backend is not None:
+                            try:
+                                coverage_changed = self._backend.reconcile(directories)
+                            except OSError as error:
+                                self._backend.close()
+                                self._backend = None
+                                self._unavailable(error)
+                        previous = self._signature
+                        changed = previous is None or current != previous or overflow
+                        self._signature = current
+                        overflow = False
+                        if changed:
+                            generation = self._deliver(previous, current)
+                            self._dirty(generation)
+                            deadline, baseline = time.monotonic() + self._debounce, None
+                        if not coverage_changed:
+                            break
+                        # Watch additions/replacements leave an enumeration /
+                        # attachment gap. Observe each real intervening version
+                        # immediately, before accepting stable coverage.
+                    if self._stop.is_set():
+                        break
+                    now = time.monotonic()
                 except OSError as error:
                     self._unavailable(error)
                     if deadline is None:
@@ -328,12 +521,6 @@ class MemoryFileWatcher:
                         self._dirty()
                     deadline, baseline = now + self._poll, None
                     continue
-                if changed:
-                    with self._lock:
-                        self._pending = True
-                        self._changes += 1
-                    self._dirty()
-                    deadline, baseline = now + self._debounce, None
                 if deadline is not None and now >= deadline:
                     if baseline is None or baseline != current:
                         baseline, deadline = current, now + self._settle
@@ -342,14 +529,19 @@ class MemoryFileWatcher:
                         with self._lock:
                             self._pending = False
                             self._active = True
+                            settling_generation = self._changes
+                        self._callback_local.settling = settling_generation
                         try:
                             if not self._stop.is_set():
                                 self._on_change()
-                                with self._lock:
+                                with self._condition:
                                     self._completed_callbacks += 1
+                                    self._settled_generation = max(self._settled_generation, settling_generation)
+                                    self._condition.notify_all()
                         except Exception as error:
                             self._unavailable(error)
                         finally:
+                            self._callback_local.settling = None
                             with self._lock:
                                 self._active = False
         except Exception as error:
@@ -357,9 +549,11 @@ class MemoryFileWatcher:
         finally:
             if self._backend is not None:
                 self._backend.close()
-            with self._lock:
+            with self._condition:
                 self._pending = False
                 self._active = False
+                self._finished = True
+                self._condition.notify_all()
 
     def snapshot(self) -> dict[str, object]:
         with self._lock:
@@ -368,7 +562,8 @@ class MemoryFileWatcher:
                     "backend": "inotify" if self._backend is not None else "stat",
                     "pending": self._pending, "active": self._active, "changes": self._changes,
                     "completedCallbacks": self._completed_callbacks, "overflows": self._overflows,
-                    "lastError": self._last_error}
+                    "lastError": self._last_error, "deliveredGeneration": self._delivered_generation,
+                    "settledGeneration": self._settled_generation, "deliveries": deepcopy(list(self._deliveries))}
 
     def status(self) -> dict[str, object]:
         with self._lock:
@@ -376,7 +571,8 @@ class MemoryFileWatcher:
                     "backend": "inotify" if self._backend is not None else "stat",
                     "threadId": self._thread.ident if self._thread is not None else None,
                     "alive": self._thread is not None and self._thread.is_alive(),
-                    "pendingChange": self._pending, "acceptedChanges": self._changes}
+                    "pendingChange": self._pending, "acceptedChanges": self._changes,
+                    "deliveredGeneration": self._delivered_generation, "settledGeneration": self._settled_generation}
 
     def owns_current_thread(self) -> bool:
         return self._thread is threading.current_thread()
@@ -388,6 +584,7 @@ class MemoryFileWatcher:
                 raise RuntimeError("A watcher callback cannot close its own watcher")
             self._closed = True
             self._stop.set()
+            self._condition.notify_all()
             if self._pipe is not None:
                 try:
                     os.write(self._pipe[1], b"x")

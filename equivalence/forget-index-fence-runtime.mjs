@@ -22,6 +22,24 @@ const sleep=ms=>new Promise(resolve=>setTimeout(resolve,ms));
 const safeName=value=>{if(typeof value!=='string'||!/[A-Za-z]/u.test(value)||!/^[a-zA-Z0-9_-]+$/u.test(value))throw Error('Invalid owned actor/gate name');return value;};
 const sqlValue=value=>typeof value==='bigint'?{sqliteInt64:value.toString()}:value instanceof Uint8Array?{sqliteBlobHex:Buffer.from(value).toString('hex')}:value;
 
+// Explicit fixture process stop follows completed original cleanup. An IPC
+// disconnect alone does not end an event loop containing other live handles.
+export async function finishGracefulActorExit(runtime,settlement){
+ if(!runtime.isExiting()||settlement.exiting!==true||settlement.error||settlement.infrastructureError){
+  throw Error('A graceful actor exit requires a completed explicit stop');
+ }
+ runtime.persist();
+ await new Promise((resolve,reject)=>process.send(settlement,error=>error?reject(error):resolve()));
+ controller()?.event('graceful-stop-ipc-acknowledged',{commandId:settlement.id});
+ await Promise.all([process.stdout,process.stderr].map(stream=>new Promise((resolve,reject)=>{
+  stream.write('',error=>error?reject(error):resolve());
+ })));
+ controller()?.event('graceful-stop-output-drained',{commandId:settlement.id});
+ runtime.persist();controller()?.flush();
+ if(process.connected)process.disconnect();
+ process.exit(0);
+}
+
 export function childRequest(input,actor,instance,config){
  if(actor!=='observer'&&!Object.hasOwn(input.actors,actor))throw Error('Undeclared original actor');
  return{kind:'forget-index-fence-child',actor,instance,caseId:config.caseId,input,runtimeRoot:config.runtimeRoot,
@@ -143,7 +161,7 @@ export async function runForgetIndexFenceRuntime(input,config){
      owned.record.kill={signal:'SIGKILL',atNs:process.hrtime.bigint().toString()};
      for(const gate of raw.gates)if(gate.actor===step.actor&&gate.receipt&&!gate.releasedAtNs)gate.killWhileHeld=true;
      owned.child.kill('SIGKILL');
-    }else{await run(step.actor,'process-exit');if(owned.child.connected)owned.child.disconnect();}
+    }else{await run(step.actor,'process-exit');}
    }else if(name==='reap-original-process'){
     const owned=live.get(step.actor);if(!owned)throw Error('No original process to reap');await owned.exited;
     owned.record.reapedAtNs=process.hrtime.bigint().toString();live.delete(step.actor);

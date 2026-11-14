@@ -22,18 +22,20 @@ if(actor==='coordinator'){
  globalThis[Symbol.for('memory.eq.forgetIndexFence')].flush();
  await new Promise((resolve,reject)=>process.stdout.write(JSON.stringify(output)+'\n',error=>error?reject(error):resolve()));
 }else{
- let runtime;
+ let runtime,finishGracefulActorExit;
  process.on('message',async message=>{
   try{
    if(message?.type==='initialize'){
     if(runtime||message.request.actor!==actor||message.request.caseId!==profile.caseId)throw Error('Wrong or repeated original actor initialization');
-    const {runForgetIndexFenceActor}=await import('./forget-index-fence-runtime.mjs');
+    const local=await import('./forget-index-fence-runtime.mjs');
+    const {runForgetIndexFenceActor}=local;finishGracefulActorExit=local.finishGracefulActorExit;
     runtime=await runForgetIndexFenceActor(message.request);
     process.send({type:'ready',actor,pid:process.pid,ppid:process.ppid,instance:Number(process.env.MEMORY_EQ_FIF_INSTANCE)});return;
    }
    if(message?.type!=='command'||!runtime)throw Error('Original actor command before initialization');
    const returned=await runtime.execute(message.command);
-   process.send(returned,()=>{if(runtime.isExiting()){runtime.persist();process.disconnect();}});
+   if(runtime.isExiting())await finishGracefulActorExit(runtime,returned);
+   else process.send(returned);
   }catch(error){process.send?.({type:'fatal',actor,pid:process.pid,error:{name:error.name,message:error.message,stack:error.stack}});process.exitCode=2;}
  });
 }

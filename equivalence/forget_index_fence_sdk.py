@@ -1789,8 +1789,10 @@ class _ActorProcess:
         return response["result"]
 
     def kill(self):
-        self.receipt["kill"] = {"signal": "SIGKILL", "pid": self.child.pid, "pollBefore": self.child.poll()}
-        self.child.kill()
+        self.receipt["kill"] = {"signal": "SIGKILL", "pid": self.child.pid, "pollBefore": self.child.poll(),
+                                "enteredAtNs": str(time.monotonic_ns())}
+        returned = self.child.kill()
+        self.receipt["kill"].update(returnedAtNs=str(time.monotonic_ns()), returnValue=_encode(returned))
 
     def reap(self):
         if self.receipt["exit"] is not None:
@@ -1856,6 +1858,13 @@ def _interrupted_source_call(call_key, call, processes):
         and gate["specification"].get("callLabel") == call["label"]]
     if len(gates) != 1 or not gates[0][1].get("hits"):
         raise RuntimeError("The interrupted source frame is not held at the actual marker-before-purge gate")
+    trigger = gates[0][1]["hits"][0]["triggerSequence"]
+    entered = next((row for row in observation.get("originalCalls", []) if row["sequence"] == trigger), None)
+    kill = process["kill"]
+    if (entered is None or "atNs" not in entered or not kill.get("enteredAtNs") or not kill.get("returnedAtNs")
+            or not int(kill["enteredAtNs"]) <= int(kill["returnedAtNs"]) <= int(process["reapedAtNs"])
+            or int(kill["returnedAtNs"]) >= int(entered["atNs"]) + GATE_TIMEOUT_SECONDS * 1_000_000_000):
+        raise RuntimeError("The original process was not killed inside the captured gate's real hold deadline")
     io = [row for row in observation.get("sourceClockOriginalIO", [])
         if (row.get("scope") or {}).get("kind") == call["kind"]
         and row["scope"].get("label") == call["label"]]

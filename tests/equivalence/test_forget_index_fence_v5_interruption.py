@@ -14,11 +14,12 @@ def _labelled_cutoff():
         "functionalGates": {"marker": {"reached": True, "released": False,
             "specification": {"boundary": "forget.marker-committed-before-purge", "callLabel": "selected"},
             "hits": [{"triggerSequence": 17, "originalFrame": {"qualname": "purge_memory_index"}}]}},
-        "originalCalls": [{"sequence": 17}], "sourceClockReceipts": [],
+        "originalCalls": [{"sequence": 17, "atNs": "90"}], "sourceClockReceipts": [],
         "sourceClockOriginalIO": [{"sequence": 12, "syscall": "read", "returned": {"bytesHex": "6162"},
             "scope": {"kind": "forget", "label": "selected"}}]}
-    process = {"pid": 1234, "kill": {"pid": 1234, "signal": "SIGKILL", "pollBefore": None},
-        "exit": {"code": -9}, "reapedAtNs": "101", "stdoutResponses": [{"id": 9, "observation": observation}]}
+    process = {"pid": 1234, "kill": {"pid": 1234, "signal": "SIGKILL", "pollBefore": None,
+        "enteredAtNs": "100", "returnedAtNs": "101", "returnValue": None},
+        "exit": {"code": -9}, "reapedAtNs": "102", "stdoutResponses": [{"id": 9, "observation": observation}]}
     return call, process
 
 
@@ -34,7 +35,8 @@ def test_interrupted_source_receipt_keeps_pending_frame_gate_and_os_proof_separa
     assert result["sourceIOCutoff"]["originalIO"] == process["stdoutResponses"][0]["observation"]["sourceClockOriginalIO"]
 
 
-@pytest.mark.parametrize("mutation", ["completion", "unreaped", "released-gate", "source-write", "clock-commit"])
+@pytest.mark.parametrize("mutation", ["completion", "unreaped", "released-gate", "source-write", "clock-commit",
+                                      "gate-timeout", "kill-order"])
 def test_missing_or_mutating_interruption_proof_fails_without_fabricating_an_empty_capture(mutation):
     call, process = _labelled_cutoff()
     observation = process["stdoutResponses"][0]["observation"]
@@ -47,8 +49,13 @@ def test_missing_or_mutating_interruption_proof_fails_without_fabricating_an_emp
     elif mutation == "source-write":
         observation["sourceClockOriginalIO"].append({"sequence": 13, "syscall": "unlink",
             "scope": {"kind": "forget", "label": "selected"}, "arguments": ["/actual/source.md"], "returned": None})
-    else:
+    elif mutation == "clock-commit":
         observation["sourceClockReceipts"].append({"callKey": "forget:selected", "committed": True})
+    elif mutation == "gate-timeout":
+        process["kill"]["returnedAtNs"] = "30000000091"
+        process["reapedAtNs"] = "30000000092"
+    else:
+        process["kill"]["enteredAtNs"] = "103"
     with pytest.raises(RuntimeError):
         _interrupted_source_call("forget:selected", call, [process])
     assert "watchTargetCapture" not in call

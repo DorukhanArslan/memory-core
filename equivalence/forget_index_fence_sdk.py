@@ -53,6 +53,50 @@ def _serialized(value):
     return json.dumps(value, ensure_ascii=False, allow_nan=False, separators=(",", ":"))
 
 
+def _capture_dispatch_packet(dispatch):
+    """Use retained V5 stdout instead of serializing its parsed value twice."""
+    packet = dict.copy(dispatch)
+    v5 = dispatch.get("kind") == "forget-index-fence-v5-sdk-dispatch"
+    input_v5 = dispatch.get("input", {}).get("kind") == "forget-index-fence-v5"
+    if v5 != input_v5:
+        raise ValueError("The compact SDK packet requires matching closed V5 identities")
+    if "observationEncoding" in dispatch:
+        raise ValueError("A live SDK dispatch cannot already contain an observation encoding")
+    if not v5 or "observation" not in dispatch:
+        return packet
+    stdout, observation = dispatch.get("stdout"), dispatch["observation"]
+    if not isinstance(stdout, str) or not isinstance(observation, dict):
+        raise ValueError("A compact SDK packet requires its complete UTF8 JSON object")
+    payload = stdout.encode("utf8")
+    def same_json(actual, retained):
+        if type(actual) is not type(retained):
+            return False
+        if isinstance(actual, dict):
+            return actual.keys() == retained.keys() and all(same_json(value, retained[key])
+                                                           for key, value in actual.items())
+        if isinstance(actual, list):
+            return len(actual) == len(retained) and all(same_json(left, right)
+                                                       for left, right in zip(actual, retained, strict=True))
+        return actual == retained
+
+    if not same_json(json.loads(stdout), observation):
+        raise ValueError("The parsed SDK observation differs from its actual retained stdout")
+    del packet["observation"]
+    packet["observationEncoding"] = {"kind": "stdout-json-v1", "field": "stdout",
+        "utf8Bytes": len(payload), "sha256": hashlib.sha256(payload).hexdigest()}
+    return packet
+
+
+def _decode_dispatch_stream(payload, field, dispatch):
+    """Keep invalid UTF8 losslessly as a diagnostic, never a decoded substitute."""
+    try:
+        return payload.decode("utf8")
+    except UnicodeDecodeError as error:
+        dispatch[field + "BytesHex"] = payload.hex()
+        dispatch[field + "DecodeError"] = _error(error)
+        return None
+
+
 def _observation_copy(value, memo=None):
     """Copy each live container's membership before recursively observing it.
 
@@ -2249,25 +2293,40 @@ def run_forget_index_fence_sdk_case(value, *, evidence_directory=None, sdk_root=
         "sourceProvenanceBefore": _sdk_sources(selected_sdk)}
     if value["kind"] in SEARCH_EFFECT_KINDS:
         dispatch["adapterProvenanceBefore"] = _adapter_sources(value["kind"])
+    binary_streams = value["kind"] == "forget-index-fence-v5"
     with subprocess.Popen(argv, cwd=ROOT, env=environment, stdin=subprocess.PIPE,
-        stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True) as child:
+        stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=not binary_streams) as child:
         dispatch["pid"] = child.pid
         try:
-            stdout, stderr = child.communicate(wire + "\n", timeout=PROCESS_TIMEOUT_SECONDS * 4)
+            sent = (wire + "\n").encode("utf8") if binary_streams else wire + "\n"
+            stdout, stderr = child.communicate(sent, timeout=PROCESS_TIMEOUT_SECONDS * 4)
         except subprocess.TimeoutExpired:
             child.kill()
             stdout, stderr = child.communicate()
             dispatch["timeout"] = True
+    if binary_streams:
+        stdout = _decode_dispatch_stream(stdout, "stdout", dispatch)
+        stderr = _decode_dispatch_stream(stderr, "stderr", dispatch)
     dispatch.update(stdout=stdout, stderr=stderr, exit={"code": child.returncode},
                     sourceProvenanceAfter=_sdk_sources(selected_sdk))
     if value["kind"] in SEARCH_EFFECT_KINDS:
         dispatch["adapterProvenanceAfter"] = _adapter_sources(value["kind"])
+    if isinstance(stdout, str):
+        try:
+            dispatch["observation"] = json.loads(stdout)
+        except json.JSONDecodeError as error:
+            dispatch["stdoutParseError"] = _error(error)
     try:
-        dispatch["observation"] = json.loads(stdout)
-    except json.JSONDecodeError as error:
-        dispatch["stdoutParseError"] = _error(error)
-    (destination / "python-raw.json").write_text(_serialized([dispatch]) + "\n", encoding="utf8")
-    if child.returncode or "observation" not in dispatch or "result" not in dispatch["observation"]:
+        packet = _capture_dispatch_packet(dispatch)
+    except (ValueError, TypeError, UnicodeError) as error:
+        # Invalid transport data still keeps every actual stream and parsed
+        # value as a diagnostic; no compact positive encoding is asserted.
+        dispatch["observationEncodingError"] = _error(error)
+        packet = dispatch
+    (destination / "python-raw.json").write_text(_serialized([packet]) + "\n", encoding="utf8")
+    if (child.returncode or "observation" not in dispatch or "result" not in dispatch["observation"]
+            or "stdoutDecodeError" in dispatch or "stderrDecodeError" in dispatch
+            or "observationEncodingError" in dispatch):
         raise RuntimeError("Original SDK forget/index-fence child failed; complete streams retained")
     if not dispatch["observation"].get("complete"):
         raise RuntimeError("Original SDK forget/index-fence schedule failed; complete receipts retained")

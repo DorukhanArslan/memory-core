@@ -75,6 +75,39 @@ const clock=installSourceClock({workspaceDir,actor,ticksByCall,event:(name,row)=
 '''
 
 
+def test_v5_completed_version_is_captured_before_later_writer_without_rereading(node, tmp_path):
+    setup = _SETUP.replace("qualifyStack});", "qualifyStack,captureVersions:true});")
+    _run(node, tmp_path, setup + r'''
+const target=path.join(workspaceDir,'MEMORY.md');
+async function syntheticOwnedWrite(text){const handle=await fsp.open(target,'w');try{await handle.writeFile(text);}finally{await handle.close();}}
+clock.beginCall('promotion:seed');await syntheticOwnedWrite('first committed source');clock.endCall();
+const captured=clock.captureCompletedVersions('promotion:seed');
+assert.equal(captured.versions.length,1);assert.equal(captured.versions[0].sha256,hash(Buffer.from('first committed source')));
+const first=structuredClone(captured);
+clock.beginCall('promotion:other');await syntheticOwnedWrite('later actual source');clock.endCall();
+assert.deepEqual(clock.captureCompletedVersions('promotion:seed'),first);
+assert.equal(clock.captureCompletedVersions('promotion:other').versions[0].sha256,hash(Buffer.from('later actual source')));
+assert.equal(captured.versions[0].stat.mtimeNs,ns(tick).toString());assert.equal(clock.blocked(),false);clock.restore();
+''')
+
+
+def test_v5_real_deletion_and_zero_mutations_are_distinct_completion_facts(node, tmp_path):
+    setup = _SETUP.replace("qualifyStack});", "qualifyStack,captureVersions:true});")
+    _run(node, tmp_path, r'''
+const target=path.join(workspaceDir,'selected.md');await fsp.writeFile(target,'actual original input');
+''' + setup + r'''
+clock.beginCall('promotion:seed');clock.endCall();
+assert.deepEqual(clock.captureCompletedVersions('promotion:seed').versions,[]);
+async function syntheticOwnedDeletion(){return await fsp.unlink(target);}
+clock.beginCall('promotion:other');const originalReturn=await syntheticOwnedDeletion();clock.endCall();
+assert.equal(originalReturn,undefined);const captured=clock.captureCompletedVersions('promotion:other');
+assert.equal(captured.versions.length,1);assert.equal(captured.versions[0].kind,'deleted');
+assert.equal(captured.versions[0].path,target);assert.equal(fs.existsSync(target),false);
+assert.ok(clock.receipts().some(row=>row.event==='source-clock-deletion'&&row.atNs===captured.versions[0].committedAtNs));
+assert.equal(clock.blocked(),false);clock.restore();
+''')
+
+
 def test_atomic_stage_is_dated_after_real_full_write_and_sync_before_original_rename(node, tmp_path):
     _run(node, tmp_path, r'''
 const target=path.join(workspaceDir,'MEMORY.md'),stage=path.join(workspaceDir,'.memory-stage.tmp');

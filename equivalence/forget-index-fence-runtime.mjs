@@ -19,15 +19,16 @@ const sealed=value=>{const serializedJSON=JSON.stringify(value);return{serialize
 const privateValue=value=>{const type=value===undefined?'undefined':value===null?'null':typeof value;
  try{return{type,v8Hex:serialize(value).toString('hex')};}catch(error){return{type,serializationError:{name:error.name,message:error.message}};}};
 export function assertNativeLiteralVersion(input,caseId,operation){
- if(!['forget-index-fence-v3','forget-index-fence-v4'].includes(input?.kind)||
+ if(!['forget-index-fence-v3','forget-index-fence-v4','forget-index-fence-v5'].includes(input?.kind)||
   operation!==undefined&&operation!==input.kind+'-runtime'||
-  /^forget-index-fence-v[34]-/u.test(caseId??'')&&!caseId.startsWith(input.kind+'-'))throw Error('Owned original fixture required');
+  /^forget-index-fence-v[345]-/u.test(caseId??'')&&!caseId.startsWith(input.kind+'-'))throw Error('Owned original fixture required');
  return input.kind;
 }
 export function captureResolvedManagerSettings(owner,inputKind,reference){
  const actual=owner.settings,serializedJSON=JSON.stringify(actual),descriptor=Object.getOwnPropertyDescriptor(owner,'settings');
- const required=inputKind==='forget-index-fence-v4',admitted=!required||
-  actual?.sync?.watch===false&&actual?.sync?.onSearch===true&&actual?.sync?.onSessionStart===false;
+ const required=['forget-index-fence-v4','forget-index-fence-v5'].includes(inputKind),admitted=!required||
+  actual?.sync?.watch===(inputKind==='forget-index-fence-v5')&&actual?.sync?.onSearch===true&&
+  actual?.sync?.onSessionStart===(inputKind==='forget-index-fence-v5');
  return{property:'settings',sourceModule:'dist/extensions/memory-core/manager-runtime.js',sourceSymbol:'MemoryIndexManager.settings',
   receiverRef:reference(owner),constructorRef:reference(owner.constructor),settingsRef:reference(actual),value:plain(actual),
   privateValue:privateValue(actual),serializedJSON,sha256:hash(serializedJSON),readAtNs:process.hrtime.bigint().toString(),
@@ -101,7 +102,7 @@ export async function runForgetIndexFenceRuntime(input,config){
  const raw={schemaVersion:1,kind:'forget-index-fence-native-capture',engine:'native',caseId:config.caseId,
   input:plain(input),fixtureBase:base,pid:process.pid,ppid:process.ppid,config:cfg,children:[],gates:[],snapshots:[],steps:[],completed:false,allChildrenReaped:false};
  const result={provider:null,calls:{},snapshots:{}};
- const live=new Map(),generations=new Map(),pending=new Map();let commandId=0,currentWallClock=input.clock.nowMs,operationFailed=false;
+ const live=new Map(),generations=new Map(),pending=new Map(),sourceVersions=new Map();let commandId=0,currentWallClock=input.clock.nowMs,operationFailed=false;
  const persist=()=>fs.writeFileSync(path.join(config.evidenceDirectory,'native-raw.json'),JSON.stringify([raw])+'\n');
  async function start(actor,wallClockNowMs=currentWallClock){
   safeName(actor);if(live.has(actor))throw Error('Actor already owns a live original process');
@@ -151,6 +152,8 @@ export async function runForgetIndexFenceRuntime(input,config){
   if(message.infrastructureError)throw Error(message.infrastructureError.message);
   if(message.providerIdentity)result.provider=message.providerIdentity.result.provider;
   if(message.publicCall){const call=message.publicCall;result.calls[`${call.operation}:${call.label}`]=call;}
+  if(message.sourceVersions){const key=message.sourceVersions.callKey;if(sourceVersions.has(key))throw Error('Duplicate original source call version receipt');
+   sourceVersions.set(key,message.sourceVersions);}
   if(message.snapshot){raw.snapshots.push(message.snapshot);result.snapshots[message.snapshot.label]=message.snapshot.common;}
   if(message.sourceClockBlocked){(raw.sourceClockFailures??=[]).push({actor:message.actor,pid:message.pid,instance:message.instance,failures:message.sourceClockFailures});
    throw Object.assign(Error('Native source clock control failed; original outcomes retained'),{code:'FIF_SOURCE_CLOCK_CONTROL_FAILED'});}
@@ -191,6 +194,14 @@ export async function runForgetIndexFenceRuntime(input,config){
     const key=`${step.actor}:${operation}:${step.label}`,call=pending.get(key);if(!call)throw Error('No retained original call frame');
     collect(await call.promise);pending.delete(key);
    }else if(name==='await-original-search-effects'){await run(step.actor,name,step.label);
+   }else if(['await-original-watch-ready','await-original-watch-effects'].includes(name)){
+    const versions=(step.afterCalls??[]).map(key=>{const value=sourceVersions.get(key);if(!value)throw Error('Original source call has no completed version receipt: '+key);return value;});
+    const selected=versions.flatMap(value=>value.versions),paths=new Set();
+    for(const version of selected){if(paths.has(version.path))throw Error('Original watcher barrier cannot coalesce or supersede source versions');paths.add(version.path);}
+    for(const name of step.actors){const owned=live.get(name);
+     if(!owned){(observed.watchAbsences??=[]).push({actor:name,reason:'actual-process-unentered-or-reaped',atNs:process.hrtime.bigint().toString()});continue;}
+     await run(name,step.operation,step.label,{sourceVersionReceipts:versions,sourceVersions:selected});
+    }
    }else if(name==='capture-physical-state'){
     // A separate read-only observer process avoids waiting on any held actor.
     const forget=raw.children.flatMap(child=>child.commands.filter(command=>command.operation==='original-forget'&&command.originalEntered)
@@ -332,6 +343,7 @@ export async function runForgetIndexFenceActor(request){
    try{resolvedSettings=captureResolvedManagerSettings(owner,input.kind,ref);}
    catch(error){controller().blockControl('resolved-search-settings-observation-failed',error,{ownerRef:ref(owner)});return;}
    controller().event('original-manager-resolved-settings-read',resolvedSettings);
+   if(controller().watchEffects)try{controller().watchEffects.register(owner);}catch(error){controller().blockControl('original-watch-owner-observation-failed',error,{ownerRef:ref(owner)});}
    raw.ownerBindings.push({ownerRef:ref(owner),resolvedSettings,searchEffectsOwnerRef:controller().searchEffects.reference(owner),
     classRef:ref(runtime.MemoryIndexManager),prototypeRef:ref(Object.getPrototypeOf(owner)),
     databaseRef:ref(owner.publishedDatabase),nativeConnectionRef:ref(owner.publishedDatabase.db),
@@ -567,6 +579,11 @@ export async function runForgetIndexFenceActor(request){
     entry.searchEffectsControlEnter=controller().event('original-search-effects-control-enter',{label,commandId:command.id});
     controller().flush();persist();
     entry.searchEffects=await controller().searchEffects.awaitEffects(label,actualOwners);
+   }else if(['await-original-watch-ready','await-original-watch-effects'].includes(operation)){
+    if(!controller().watchEffects)throw Error('Original watcher controls require their explicit V5 profile');
+    controller().event('original-watch-control-enter',{operation,label,commandId:command.id});controller().flush();persist();
+    entry.watchEffects=operation==='await-original-watch-ready'?await controller().watchEffects.ready(actualOwners,label):
+     await controller().watchEffects.waitForVersions(actualOwners,label,command.sourceVersions);
    }else if(operation==='capture-physical-state'){snapshotValue=await snapshot(label,command);}
    else if(operation==='original-owner-close'){await close();}
    else if(operation==='process-exit'){await close();exiting=true;}
@@ -587,12 +604,13 @@ export async function runForgetIndexFenceActor(request){
    if(publicKind)publicCall={operation:publicKind,label,outcome:operation==='original-sync'?{status:'rejected',isTypedConflict:error instanceof conflictType}:
     {status:'rejected',error:{message:error.message,...(error.code===undefined?{}:{code:error.code})}}};
    else entry.infrastructureError=err(error);
-  }finally{entry.settledAtNs=process.hrtime.bigint().toString();if(sourceKind)sourceClock.endCall();
+  }finally{entry.settledAtNs=process.hrtime.bigint().toString();if(sourceKind){sourceClock.endCall();
+    if(input.kind==='forget-index-fence-v5'&&!sourceClock.blocked())entry.sourceVersions=sourceClock.captureCompletedVersions(`${sourceKind}:${label}`);}
    raw.sourceClock={protocol:input.clock.sourceWriteClock.protocol,receipts:sourceClock.receipts(),failures:sourceClock.failures(),blocked:sourceClock.blocked()};
    raw.controlFailures=controller().controlFailures;
    controller().setCallLabel(null);controller().flush();persist();}
   return{type:'settled',id:command.id,...(publicCall?{publicCall}:{}),...(snapshotValue?{snapshot:snapshotValue}:{}),
-   privateReturn:entry.privateReturn??null,error:entry.error??null,...(entry.infrastructureError?{infrastructureError:entry.infrastructureError}:{}),
+   privateReturn:entry.privateReturn??null,error:entry.error??null,...(entry.sourceVersions?{sourceVersions:entry.sourceVersions}:{}),...(entry.infrastructureError?{infrastructureError:entry.infrastructureError}:{}),
    providerIdentity:raw.ownerBindings.at(-1)?.providerIdentity??null,sourceClockBlocked:sourceClock.blocked(),sourceClockFailures:sourceClock.failures(),
    controlBlocked:controller().controlFailures.length>0,controlFailures:controller().controlFailures,actor,pid:process.pid,instance,exiting};
  }

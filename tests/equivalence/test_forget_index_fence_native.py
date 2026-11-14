@@ -141,9 +141,10 @@ def test_additive_v4_dispatch_is_closed_and_retains_v3_control_protocol(monkeypa
     monkeypatch.setattr(native, "import_module", lambda name: calls.append(name) or name)
     assert native._contract("forget-index-fence-v3-runtime") == "equivalence.forget_index_fence_v3"
     assert native._contract("forget-index-fence-v4-runtime") == "equivalence.forget_index_fence_v4"
+    assert native._contract("forget-index-fence-v5-runtime") == "equivalence.forget_index_fence_v5"
     with pytest.raises(ValueError, match="Unknown"):
-        native._contract("forget-index-fence-v5-runtime")
-    assert len(calls) == 2
+        native._contract("forget-index-fence-v6-runtime")
+    assert len(calls) == 3
     assert native.PROFILE_KEY == "forgetIndexFenceV3Profile"
     assert native.BOOTSTRAP_EVENT == "forget-index-fence-v3-bootstrap"
 
@@ -164,6 +165,20 @@ def test_profile_copies_the_entire_literal_source_clock_without_shared_nested_va
     profile["sourceWriteClock"]["boundaries"]["atomic"] = "changed control"
     profile["sourceWriteClock"]["ticksByCall"]["sync:s"]["atimeMs"] += 1
     assert case == original
+
+
+def test_v5_closed_profiles_bind_whole_watcher_policy_without_original_execution():
+    from equivalence.forget_index_fence_v5 import build_cases
+
+    authority = {"execPath": "/labelled/no-engine/node", **APPROVED_NODE_RUNTIME}
+    for case in build_cases():
+        profile = native.prepare_profile(case, authority)
+        assert profile["watchEffects"] == case["input"]["observationPolicy"]["watchEffects"]
+        assert profile["watchEffects"] is not case["input"]["observationPolicy"]["watchEffects"]
+        assert native.validate_profile(profile) == profile
+        profile["watchEffects"]["maxReferencesPerBarrier"] = True
+        with pytest.raises(ValueError, match="differs"):
+            native.validate_profile(profile)
 
 
 def test_sealed_v3_family_has_exact_literal_clock_profiles_without_original_execution():

@@ -4,8 +4,9 @@ import fs from 'node:fs';
 import fsp from 'node:fs/promises';
 import path from 'node:path';
 import {createHash} from 'node:crypto';
-import {serialize} from 'node:v8';
-import {AsyncLocalStorage,createHook} from 'node:async_hooks';
+import {serialize,deserialize} from 'node:v8';
+import {AsyncLocalStorage,createHook,executionAsyncId} from 'node:async_hooks';
+import {EventEmitter} from 'node:events';
 import {threadId,getEnvironmentData,setEnvironmentData} from 'node:worker_threads';
 import {deflateRawSync} from 'node:zlib';
 
@@ -138,6 +139,210 @@ export function observeOriginalSearchEffects({scope,qualifyPromise,ref,event=()=
   },
   assertDrained(){if(Array.from(searches.values()).some(row=>row.settled&&!row.awaited))fail('An original search has not reached its declared V3 effects boundary');},
   stop(){hook.disable();},
+ };
+}
+
+// A watcher barrier joins facts already admitted by the original watcher. It
+// does not manufacture an event, run a timer, or claim an OS delivery watermark.
+export function observeOriginalWatchEffects({ref,event=()=>{},onFailure=()=>{},qualifyTimer,
+ qualifySync,qualifyNativeWatch,qualifyEmitter,maxReferences=1024}){
+ const originalThen=Promise.prototype.then,originalWatch=fs.watch,originalEmit=EventEmitter.prototype.emit;
+ const owners=new Map(),timers=new Map(),resources=new WeakMap(),promises=new WeakMap(),parents=new Map(),
+  nativeHandles=new WeakMap(),readyEvents=new WeakMap(),waiters=new Set(),sourceReads=[],deliveries=new AsyncLocalStorage();
+ const records=[],restorations=[];let observing=false,nextFact=0,nextDelivery=0;
+ const emit=(name,fields)=>{try{event(name,fields);}catch(error){onFailure(error);}};
+ const fail=message=>{const error=Error(message);onFailure(error);throw error;};
+ function notify(){for(const resolve of waiters)resolve();waiters.clear();}
+ const changed=()=>new Promise(resolve=>waiters.add(resolve));
+ function pass(callback){try{return callback();}catch(error){onFailure(error);return undefined;}}
+ function snapshot(record,stage){const watcher=record.watcher;
+  const row={ownerRef:record.ownerRef,watcherRef:record.watcherRef,stage,atNs:now(),
+   closed:watcher.closed,pendingChange:watcher.pendingChange,
+   startingRef:ref(watcher.starting),reconcilingRef:ref(watcher.reconciling),settlingRef:ref(watcher.settling),
+   timerRef:ref(watcher.watchTimer),pendingPaths:valueRecord(watcher.pendingWatchPaths),
+   pendingReconciliations:valueRecord(watcher.pendingReconciliations),reconcileAll:watcher.reconcileAll};
+  emit('original-watch-state-read',row);return row;
+ }
+ function promiseRecord(promise,kind,record){if(!(promise instanceof Promise))return null;
+  let item=promises.get(promise);if(!item){item={promise,promiseRef:ref(promise),kind,
+   source:'actual-watcher-property',ownerRef:record?.ownerRef??null,createdAtNs:now()};promises.set(promise,item);}
+  if(record){item.ownerRef??=record.ownerRef;item.watcherRef??=record.watcherRef;}return item;
+ }
+ function observePromise(item){if(item.observed)return item.observed;
+  observing=true;try{item.observed=Reflect.apply(originalThen,item.promise,[value=>{
+   item.settlement={status:'fulfilled',value:valueRecord(value),valueRef:ref(value),atNs:now()};
+   emit('original-watch-promise-settlement',{...publicPromise(item),settlement:item.settlement});notify();return item.settlement;
+  },error=>{item.settlement={status:'rejected',error:errorValue(error),privateError:valueRecord(error),errorRef:ref(error),atNs:now()};
+   emit('original-watch-promise-settlement',{...publicPromise(item),settlement:item.settlement});notify();return item.settlement;
+  }]);}finally{observing=false;}return item.observed;
+ }
+ function publicPromise(item){return{promiseRef:item.promiseRef,kind:item.kind,ownerRef:item.ownerRef??null,
+  watcherRef:item.watcherRef??null,asyncId:item.asyncId??null,triggerAsyncId:item.triggerAsyncId??null,
+  sourceOwner:item.sourceOwner??null,originalStack:item.originalStack??null,asyncAncestry:item.asyncAncestry??null,
+  onChangeRef:item.onChangeRef??null,syncMethodRef:item.syncMethodRef??null,
+  promiseConstructorRef:ref(item.promise.constructor),promisePrototypeRef:ref(Object.getPrototypeOf(item.promise))};}
+ function attachTimer(record,timer,stage){if(!timer)return null;const item=resources.get(timer);
+  if(!item||item.kind!=='watch-timer')fail('Actual watcher timer lacks its original source-qualified Timeout resource');
+  if(item.watcherRef&&item.watcherRef!==record.watcherRef)fail('Original Timeout was borrowed by another watcher');
+  item.ownerRef=record.ownerRef;item.watcherRef=record.watcherRef;
+  emit('original-watch-timer-binding',{stage,...item,resource:undefined});return item;
+ }
+ const hook=createHook({init(asyncId,type,triggerAsyncId,resource){parents.set(asyncId,triggerAsyncId);
+  if(observing||type!=='Timeout'&&type!=='PROMISE')return;
+  pass(()=>{const originalStack=new Error('Actual original watcher resource').stack;
+   if(type==='Timeout'){const sourceOwner=qualifyTimer(originalStack);if(!sourceOwner)return;
+    const item={kind:'watch-timer',asyncId,triggerAsyncId,resource,resourceRef:ref(resource),
+     resourceConstructorRef:ref(resource.constructor),resourcePrototypeRef:ref(Object.getPrototypeOf(resource)),
+     callbackRef:ref(resource._onTimeout),callbackSource:Function.prototype.toString.call(resource._onTimeout),
+     sourceOwner,originalStack,createdAtNs:now(),fired:false,destroyed:false,
+     delivery:deliveries.getStore()??null};resources.set(resource,item);timers.set(asyncId,item);
+    emit('original-watch-timer-created',{...item,resource:undefined});notify();
+   }else{const sourceOwner=qualifySync(originalStack);if(!sourceOwner)return;
+    const ancestry=[];let ancestor=triggerAsyncId,owningTimer=null;
+    while(ancestor&&!ancestry.includes(ancestor)&&ancestry.length<maxReferences){ancestry.push(ancestor);
+     if(timers.get(ancestor)?.watcherRef){owningTimer=timers.get(ancestor);break;}ancestor=parents.get(ancestor);}
+    const owner=owningTimer?Array.from(owners.values()).find(record=>record.watcherRef===owningTimer.watcherRef):null;
+    const item={kind:'watch-sync',asyncId,triggerAsyncId,promise:resource,promiseRef:ref(resource),sourceOwner,
+     originalStack,createdAtNs:now(),delivery:deliveries.getStore()??null,asyncAncestry:ancestry,
+     ownerRef:owner?.ownerRef??null,watcherRef:owner?.watcherRef??null,
+     onChangeRef:owner?ref(owner.watcher.callbacks.onChange):null,syncMethodRef:owner?ref(owner.owner.sync):null};promises.set(resource,item);
+    records.push(item);emit('original-watch-promise-created',publicPromise(item));}
+  });
+ },before(asyncId){const item=timers.get(asyncId);if(!item)return;pass(()=>{
+  for(const record of owners.values())if(record.watcher.watchTimer===item.resource)attachTimer(record,item.resource,'actual-timer-before');
+  item.fired=true;item.enteredAtNs=now();emit('original-watch-timer-fire',{...item,resource:undefined});notify();
+ });},after(asyncId){const item=timers.get(asyncId);if(!item)return;pass(()=>{
+  const record=Array.from(owners.values()).find(value=>value.watcherRef===item.watcherRef);
+  if(record){const pending=promiseRecord(record.watcher.settling,'watch-settling',record);
+   if(pending){item.settlingRef=pending.promiseRef;observePromise(pending);}snapshot(record,'actual-timer-after');}
+  item.returnedAtNs=now();emit('original-watch-timer-return',{...item,resource:undefined});notify();
+ });},destroy(asyncId){const item=timers.get(asyncId);if(!item)return;pass(()=>{
+  item.destroyed=true;item.destroyedAtNs=now();emit('original-watch-timer-destroy',{...item,resource:undefined});notify();
+ });}});hook.enable();
+ fs.watch=function(...args){const originalStack=new Error('Actual original fs.watch registration').stack,
+  sourceOwner=pass(()=>qualifyNativeWatch(originalStack));if(!sourceOwner)return Reflect.apply(originalWatch,this,args);
+  const index=args.length-1,listener=args[index];if(typeof listener!=='function')return Reflect.apply(originalWatch,this,args);
+  const registration={sourceOwner,originalStack,originalMethodRef:ref(originalWatch),listenerRef:ref(listener),
+   listenerSource:Function.prototype.toString.call(listener),directory:String(args[0]),
+   arguments:valueRecord(args.slice(0,-1)),registeredAtNs:now()};
+  const wrapped=function(...values){const delivery={deliveryId:`${process.pid}:${threadId}:watch-delivery-${++nextDelivery}`,
+    kind:'native',handleRef:registration.handleRef,registration,arguments:valueRecord(values),atNs:now()};
+   emit('original-watch-delivery-enter',delivery);
+   return deliveries.run(delivery,()=>{try{const result=Reflect.apply(listener,this,values);
+    emit('original-watch-delivery-return',{deliveryId:delivery.deliveryId,return:valueRecord(result),returnRef:ref(result),atNs:now()});return result;
+   }catch(error){emit('original-watch-delivery-throw',{deliveryId:delivery.deliveryId,error:errorValue(error),privateError:valueRecord(error),atNs:now()});throw error;}});
+  };
+  const received=args.slice();received[index]=wrapped;const result=Reflect.apply(originalWatch,this,received);
+  registration.handleRef=ref(result);registration.wrapperRef=ref(wrapped);nativeHandles.set(result,registration);
+  emit('original-watch-handle-created',registration);return result;
+ };
+ EventEmitter.prototype.emit=function(name,...args){
+  if(!['ready','add','change','unlink','unlinkDir'].includes(name))return Reflect.apply(originalEmit,this,[name,...args]);
+  const originalStack=new Error('Actual original watcher emit').stack,sourceOwner=pass(()=>qualifyEmitter(originalStack,this,name));
+  if(!sourceOwner)return Reflect.apply(originalEmit,this,[name,...args]);
+  const delivery={deliveryId:`${process.pid}:${threadId}:watch-delivery-${++nextDelivery}`,kind:'chokidar',
+   emitterRef:ref(this),emitterConstructorRef:ref(this.constructor),emitterPrototypeRef:ref(Object.getPrototypeOf(this)),
+   eventName:name,arguments:valueRecord(args),originalMethodRef:ref(originalEmit),
+   originalStack,sourceOwner,atNs:now()};emit('original-watch-delivery-enter',delivery);
+  let result;try{result=deliveries.run(delivery,()=>Reflect.apply(originalEmit,this,[name,...args]));}
+  catch(error){emit('original-watch-delivery-throw',{deliveryId:delivery.deliveryId,error:errorValue(error),privateError:valueRecord(error),atNs:now()});throw error;}
+  if(name==='ready')readyEvents.set(this,delivery);
+  emit('original-watch-delivery-return',{deliveryId:delivery.deliveryId,return:valueRecord(result),returnRef:ref(result),atNs:now()});notify();return result;
+ };
+ function register(owner){if(owner.purpose!=='default')return{ownerRef:ref(owner),purpose:owner.purpose,absence:'original-transient-owner',closed:owner.closed??false};
+  const watcher=owner.fileWatcher;if(!watcher)return{ownerRef:ref(owner),purpose:owner.purpose,absence:'original-no-local-file-watcher',closed:owner.closed??false};
+  let record=owners.get(watcher);if(record)return record;
+  record={owner,watcher,ownerRef:ref(owner),watcherRef:ref(watcher),facts:[]};owners.set(watcher,record);
+  const original=watcher.markMemoryWatchDirty,body=Function.prototype.toString.call(original);
+  const wrapped=function(...args){const before=this.watchTimer,delivery=deliveries.getStore()??null,
+    fact={factId:`${process.pid}:${threadId}:watch-fact-${++nextFact}`,ownerRef:record.ownerRef,watcherRef:record.watcherRef,
+     path:typeof args[0]==='string'?path.resolve(args[0]):null,arguments:valueRecord(args),argumentValues:args.map(valueRecord),argumentRefs:args.map(ref),delivery,
+     originalMethodRef:ref(original),originalStack:new Error('Actual original watcher dirty fact').stack,enteredAtNs:now()};
+   emit('original-watch-fact-enter',fact);const result=Reflect.apply(original,this,args);
+   pass(()=>{fact.return=valueRecord(result);fact.returnRef=ref(result);fact.returnedAtNs=now();fact.pendingPaths=valueRecord(this.pendingWatchPaths);
+    fact.timerRef=ref(this.watchTimer);record.facts.push(fact);attachTimer(record,this.watchTimer,'actual-fact-return');
+    emit('original-watch-fact-return',fact);
+    if(before&&before!==this.watchTimer)emit('original-watch-timer-replacement',{ownerRef:record.ownerRef,watcherRef:record.watcherRef,
+     previousTimerRef:ref(before),nextTimerRef:ref(this.watchTimer),factId:fact.factId,atNs:now()});notify();});return result;
+  };watcher.markMemoryWatchDirty=wrapped;restorations.push(()=>{watcher.markMemoryWatchDirty=original;});
+  emit('original-watch-owner-binding',{ownerRef:record.ownerRef,watcherRef:record.watcherRef,sourceModule:'dist/file-watcher-DSOr6bb7.mjs',
+   ownerConstructorRef:ref(owner.constructor),watcherConstructorRef:ref(watcher.constructor),watcherPrototypeRef:ref(Object.getPrototypeOf(watcher)),
+   originalDirtyMethodRef:ref(original),observerDirtyMethodRef:ref(wrapped),originalDirtySource:body,originalDirtySha256:digest(Buffer.from(body)),
+   onChangeRef:ref(watcher.callbacks.onChange),onChangeSource:Function.prototype.toString.call(watcher.callbacks.onChange),
+   callbacksRef:ref(watcher.callbacks),syncMethodRef:ref(owner.sync),syncSource:Function.prototype.toString.call(owner.sync),
+   syncSha256:digest(Buffer.from(Function.prototype.toString.call(owner.sync))),settings:valueRecord(owner.settings)});
+  if(watcher.watchTimer)attachTimer(record,watcher.watchTimer,'owner-acquisition');return record;
+ }
+ async function ready(actualOwners,label){const receipt={protocol:'original-watch-effects-v5',label,kind:'ready',startedAtNs:now(),owners:[]};
+  if(!actualOwners.size&&Array.from(actualOwners).length===0)receipt.absence='actual-no-acquired-original-owners';
+  emit('original-watch-ready-enter',{...receipt});
+  for(const owner of actualOwners){const record=register(owner);if(record.absence){receipt.owners.push(record);continue;}
+   const watcher=record.watcher,starting=promiseRecord(watcher.starting,'watch-starting',record);if(!starting)fail('Original watcher startup Promise missing');
+   await observePromise(starting);
+   if(starting.settlement.status==='rejected')fail('Original watcher startup rejected');
+   let ready=null;if(watcher.watcher){while(!(ready=readyEvents.get(watcher.watcher)))await changed();}
+   const handles=watcher.nativeMemoryWatchPairs.flatMap(pair=>[pair.main,pair.parent,...(pair.treeWatchers?.values()??[])].map(value=>value?.watcher??value).filter(Boolean));
+   const native=handles.map(handle=>{const registration=nativeHandles.get(handle);if(!registration)fail('Original native watch handle lacks source registration');return registration;});
+   const row={ownerRef:record.ownerRef,watcherRef:record.watcherRef,starting:publicPromise(starting),
+    chokidarRef:ref(watcher.watcher),ready,nativeHandles:native,capacityDegraded:watcher.capacityDegraded,atNs:now()};
+   if(!ready&&!native.length)fail('No actual original ready watcher coverage');receipt.owners.push(row);record.ready=row;
+  }receipt.finishedAtNs=now();emit('original-watch-ready-return',receipt);return receipt;
+ }
+ function factMatches(record,version){return record.facts.find(fact=>fact.path===version.path&&fact.delivery&&
+  BigInt(fact.returnedAtNs)>=BigInt(version.committedAtNs)&&(
+   version.kind==='deleted'?sourceReads.some(read=>read.path===version.path&&read.error?.code==='ENOENT'&&
+    BigInt(read.finishedAtNs)>=BigInt(fact.enteredAtNs)):
+   sourceReads.some(read=>read.path===version.path&&BigInt(read.finishedAtNs)>=BigInt(fact.enteredAtNs)&&
+    read.size===String(version.stat.size)&&read.ino===String(version.stat.ino)&&read.dev===String(version.stat.dev)&&
+    BigInt(version.stat.mtimeNs)%1_000_000n===0n&&read.mtimeMs===Number(BigInt(version.stat.mtimeNs)/1_000_000n))));}
+ emit('original-watch-observer-installed',{protocol:'original-watch-effects-v5',fsWatchOriginalRef:ref(originalWatch),
+  fsWatchObserverRef:ref(fs.watch),emitOriginalRef:ref(originalEmit),emitObserverRef:ref(EventEmitter.prototype.emit),
+  originalThenRef:ref(originalThen),promiseClassRef:ref(Promise),promisePrototypeRef:ref(Promise.prototype),
+  resourceTypes:['Timeout','PROMISE'],timersInvoked:false,syncMethodsWrapped:false,storage:'shared-per-thread-immutable-jsonl'});
+ return{
+  register,reference:ref,
+  observeSourceRead(row){if(!row.sourceOwner||!row.originalStack.includes('snapshotPath'))return;
+   pass(()=>{if(row.error){const read={...row,asyncId:executionAsyncId()};sourceReads.push(read);
+     emit('original-watch-version-stat-throw',read);notify();return;}
+    const actual=deserialize(Buffer.from(row.return.v8Hex,'hex'));
+    const read={path:row.path,startedAtNs:row.startedAtNs,finishedAtNs:row.finishedAtNs,sourceOwner:row.sourceOwner,
+     originalStack:row.originalStack,return:row.return,size:String(actual.size),ino:String(actual.ino),dev:String(actual.dev),
+     mtimeMs:actual.mtimeMs,ctimeMs:actual.ctimeMs,asyncId:executionAsyncId()};
+    sourceReads.push(read);emit('original-watch-version-stat-return',read);notify();});
+  },
+  ready,
+  async waitForVersions(actualOwners,label,versions){const receipt={protocol:'original-watch-effects-v5',kind:'effects',label,
+    versions:structuredClone(versions),startedAtNs:now(),owners:[]};emit('original-watch-effects-enter',receipt);
+   if(!actualOwners.size&&Array.from(actualOwners).length===0)receipt.absence='actual-no-acquired-original-owners';
+   for(const owner of actualOwners){const record=register(owner);if(record.absence){receipt.owners.push(record);continue;}
+    if(!record.ready)fail('An actual watcher has not reached its declared readiness barrier');
+    const selected=versions.filter(version=>version.path===owner.workspaceDir||version.path.startsWith(owner.workspaceDir+path.sep));
+    const row={ownerRef:record.ownerRef,watcherRef:record.watcherRef,versions:selected,facts:[],states:[],promises:[],timers:[]};
+    if(!selected.length){row.absence='no-actual-declared-source-mutations';receipt.owners.push(row);continue;}
+    for(const version of selected){let fact;while(!(fact=factMatches(record,version)))await changed();
+     row.facts.push({versionId:version.versionId,factId:fact.factId,deliveryId:fact.delivery.deliveryId});}
+    const seen=new Set();
+    for(;;){const state=snapshot(record,'explicit-effects-await');row.states.push(state);
+     const timer=attachTimer(record,record.watcher.watchTimer,'explicit-effects-await');
+     if(timer&&!timer.fired&&!timer.destroyed){const pending=changed();if(!timer.fired&&!timer.destroyed)await pending;continue;}
+     const pending=[record.watcher.reconciling,record.watcher.settling].filter(Boolean);
+     for(const promise of pending){const item=promiseRecord(promise,'watch-owner-pending',record);seen.add(item);}
+     const inner=records.filter(item=>item.kind==='watch-sync'&&item.delivery&&record.facts.some(fact=>fact.delivery?.deliveryId===item.delivery.deliveryId));
+     for(const item of inner){if(item.ownerRef!==record.ownerRef||item.watcherRef!==record.watcherRef||
+       item.onChangeRef!==ref(record.watcher.callbacks.onChange)||item.syncMethodRef!==ref(record.owner.sync))
+       fail('Original watcher sync Promise lacks its actual owner/callback/timer lineage');seen.add(item);}
+     if(seen.size>maxReferences||row.states.length>maxReferences)fail('Actual watcher effects exceed declared reference capacity');
+     const unsettled=Array.from(seen).filter(item=>!item.settlement);if(unsettled.length){await Promise.all(unsettled.map(observePromise));continue;}
+     if(record.watcher.watchTimer||record.watcher.reconciling||record.watcher.settling)continue;
+     if(record.watcher.pendingChange||record.watcher.pendingWatchPaths.size||record.watcher.pendingReconciliations.size||record.watcher.reconcileAll)
+      fail('Original watcher retains admitted work without its original queued timer or Promise');
+     row.promises=Array.from(seen,item=>({...publicPromise(item),settlement:item.settlement}));
+     if(!row.promises.some(item=>item.kind==='watch-sync'))fail('An applicable delivered source version lacks its actual original watch sync Promise');
+     row.timers=Array.from(timers.values()).filter(item=>item.watcherRef===record.watcherRef).map(({resource,...item})=>({...item}));break;
+    }row.finishedAtNs=now();receipt.owners.push(row);
+   }receipt.finishedAtNs=now();emit('original-watch-effects-return',receipt);return receipt;
+  },
+  stop(){hook.disable();fs.watch=originalWatch;EventEmitter.prototype.emit=originalEmit;for(const restore of restorations.reverse())restore();},
  };
 }
 
@@ -274,10 +479,10 @@ export function installOriginalSqlObservation({DatabaseSync,qualifyStack,event,r
   restore(){DatabaseSync.prototype.prepare=prepare;DatabaseSync.prototype.exec=exec;for(const restore of restorations.reverse())restore();}};
 }
 
-export function installSourceClock({workspaceDir,actor,ticksByCall,event=()=>{},qualifyStack}){
+export function installSourceClock({workspaceDir,actor,ticksByCall,event=()=>{},qualifyStack,captureVersions=false}){
  if(!path.isAbsolute(workspaceDir)||!ticksByCall||typeof qualifyStack!=='function')throw Error('A source clock requires explicit owned inputs and source authority');
  const original=Object.fromEntries(['open','writeFile','rename','unlink','stat','lstat','readFile'].map(name=>[name,fsp[name]]));
- const handles=new WeakMap(),stages=new Map(),restorations=[],rows=[],failures=[],versions=new Map();
+ const handles=new WeakMap(),stages=new Map(),restorations=[],rows=[],failures=[],versions=new Map(),completedVersions=new Map();
  const scopes=new AsyncLocalStorage();let nextHandle=0,nextControl=0;
  const currentScope=()=>scopes.getStore();
  function emit(name,row){try{event(name,row);}catch(error){const blocked={event:'source-clock-failure',reason:'receipt-sink-error',actor,callKey:currentScope()?.key??null,atNs:now(),error:errorValue(error)};failures.push(blocked);rows.push(blocked);}}
@@ -408,7 +613,13 @@ export function installSourceClock({workspaceDir,actor,ticksByCall,event=()=>{},
  for(const name of['stat','lstat','readFile'])fsp[name]=function(...args){const filename=owned(args[0]),stack=new Error('Original source read').stack,
   sourceOwner=filename?authority(stack,'read'):null;if(!sourceOwner)return original[name].apply(this,args);
   const entered=now(),callKey=currentScope()?.key??null,result=original[name].apply(this,args);result.then(value=>{const row={event:'source-clock-read',actor,callKey,
-   path:filename,method:name,sourceOwner,originalStack:stack,startedAtNs:entered,finishedAtNs:now(),return:valueRecord(value)};rows.push(row);emit(row.event,row);},()=>{});return result;
+   path:filename,method:name,sourceOwner,originalStack:stack,startedAtNs:entered,finishedAtNs:now(),return:valueRecord(value)};rows.push(row);emit(row.event,row);},error=>{
+    if(!captureVersions)return;const row={event:'source-clock-read-throw',actor,callKey,path:filename,method:name,sourceOwner,
+     originalStack:stack,startedAtNs:entered,finishedAtNs:now(),error:errorValue(error),privateError:valueRecord(error),
+     errorOwnProperties:Reflect.ownKeys(error).map(key=>{const descriptor=Object.getOwnPropertyDescriptor(error,key);return{
+      key:typeof key==='symbol'?{symbolDescription:key.description}:key,enumerable:descriptor.enumerable,configurable:descriptor.configurable,
+      ...(Object.hasOwn(descriptor,'value')?{value:valueRecord(descriptor.value)}:{accessor:true})};})};rows.push(row);emit(row.event,row);
+   });return result;
  };
  return{
   currentCall:()=>currentScope(),
@@ -424,9 +635,25 @@ export function installSourceClock({workspaceDir,actor,ticksByCall,event=()=>{},
     tick:{...active.tick},before:[...active.before].map(([path,value])=>({path,...value})),
     after:[...after].map(([path,value])=>({path,...value})),atNs:now()};
     rows.push(row);emit(row.event,row);
+    if(captureVersions){const captured=[];
+    for(const[filename,control]of active.commits){if(active.deletions.has(filename))continue;const actual=after.get(filename);
+     if(!actual||actual.sha256!==control.after.sha256)throw Error('A completed original source version was superseded before its call boundary');
+     const value={kind:'file',path:filename,sha256:actual.sha256,stat:actual.stat,controlId:control.controlId,
+      committedAtNs:control.rename?.returnedAtNs??control.close?.finishedAtNs??control.finishedAtNs,
+      actor,callKey:active.key,causalFrame:active.causalFrame};value.versionId=digest(Buffer.from(JSON.stringify(value)));captured.push(value);
+    }
+    for(const filename of active.deletions){if(after.has(filename))throw Error('A completed original deletion was replaced before its call boundary');
+     const deletion=rows.findLast(item=>item.event==='source-clock-deletion'&&item.callKey===active.key&&item.path===filename);
+     const value={kind:'deleted',path:filename,committedAtNs:deletion.atNs,actor,callKey:active.key,causalFrame:active.causalFrame};
+     value.versionId=digest(Buffer.from(JSON.stringify(value)));captured.push(value);
+    }
+    completedVersions.set(active.key,{callKey:active.key,actor,causalFrame:active.causalFrame,
+     capturedAtNs:row.atNs,versions:captured,boundary:row});}
    }catch(error){failure('source-clock-exit-read-failed',{error:errorValue(error)});}finally{active.completed=true;scopes.enterWith(null);}
   },
   blocked:()=>failures.length>0,receipts:()=>rows,failures:()=>failures,
+  captureCompletedVersions(key){const actual=completedVersions.get(key);if(!actual)throw Error('Original source call has not reached its actual completion boundary');
+   return structuredClone(actual);},
   restore(){for(const name of Object.keys(original))fsp[name]=original[name];for(const restore of restorations.reverse())restore();},
  };
 }

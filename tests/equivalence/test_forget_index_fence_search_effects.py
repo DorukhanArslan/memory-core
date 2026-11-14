@@ -86,6 +86,32 @@ effects.assertDrained();assert.deepEqual(failures,[]);
 ''')
 
 
+@pytest.mark.parametrize("kind,admitted", [("forget-index-fence-v3", True), ("forget-index-fence-v2", False)])
+def test_real_runtime_entry_admits_only_frozen_v3_before_any_original_import(node, tmp_path, kind, admitted):
+    from equivalence.forget_index_fence_v3 import build_cases
+
+    value = build_cases()[0]["input"]
+    value["kind"] = kind
+    state = tmp_path / "state-is-a-file"
+    state.write_bytes(b"A valid admission must reach fixture directory setup, never an original import.")
+    module = (ROOT / "equivalence/forget-index-fence-runtime.mjs").as_uri()
+    script = ("import {runForgetIndexFenceRuntime} from " + json.dumps(module) + ";\n"
+              "const input=" + json.dumps(value) + ";\n"
+              "try { await runForgetIndexFenceRuntime(input,"
+              + json.dumps({"runtimeRoot": str(tmp_path / "never-imported-original"), "stateDirectory": str(state)})
+              + ");throw Error('Expected a pre-import fixture failure');} catch(error){"
+              "console.log(JSON.stringify({code:error.code??null,message:error.message}));}")
+    finished = subprocess.run([str(node), "--input-type=module", "--eval", script],
+        cwd=tmp_path, capture_output=True, text=True, timeout=10,
+        env={"PATH": os.defpath, "LANG": "C.UTF-8", "TZ": "UTC"}, check=False)
+    assert finished.returncode == 0, finished.stderr
+    error = json.loads(finished.stdout)
+    if admitted:
+        assert error["code"] in {"ENOTDIR", "EEXIST"}
+    else:
+        assert error == {"code": None, "message": "Owned original fixture required"}
+
+
 def test_actual_background_set_preserves_member_identity_and_waits_outer_cleanup(node, tmp_path):
     _run(node, tmp_path, r'''
 const held=deferred(),originalResult={original:'publisher result'};let syncCalls=0,cleanup=false;

@@ -71,7 +71,7 @@ export function childRequest(input,actor,instance,config){
 }
 
 export async function runForgetIndexFenceRuntime(input,config){
- if(input.kind!=='forget-index-fence-v2'||!path.isAbsolute(config.runtimeRoot)||!path.isAbsolute(config.stateDirectory))throw Error('Owned original fixture required');
+ if(input.kind!=='forget-index-fence-v3'||!path.isAbsolute(config.runtimeRoot)||!path.isAbsolute(config.stateDirectory))throw Error('Owned original fixture required');
  const base=config.stateDirectory,workspace=path.join(base,'workspace');
  await fsp.mkdir(workspace,{recursive:true});
  const cfg={agents:{ownership:'explicit',defaults:{workspace},entries:{[input.identity.agentId]:{workspace}}},

@@ -1,6 +1,6 @@
 """Replay only explicitly selected, genuine forget/index-fence packets.
 
-Legacy SDK, V2, and V3 packets have separate explicit selectors.
+Legacy SDK, V2, V3, and V4 packets have separate explicit selectors.
 A failed Native transport cannot become a positive paired baseline. No test
 launches an original engine or modifies a retained capture file.
 """
@@ -23,11 +23,13 @@ from equivalence import forget_index_fence_evidence as guard
 from equivalence.forget_index_fence import build_cases
 from equivalence.forget_index_fence_v2 import build_cases as build_v2_cases
 from equivalence.forget_index_fence_v3 import build_cases as build_v3_cases, validate_registration as validate_v3_registration
+from equivalence.forget_index_fence_v4 import build_cases as build_v4_cases, validate_registration as validate_v4_registration
 
 
 ROOT = Path(__file__).resolve().parents[2]
 CAPTURE_ROOT = os.environ.get("MEMORY_FORGET_INDEX_FENCE_CAPTURE_ROOT")
 V3_CAPTURE_ROOT = os.environ.get("MEMORY_FORGET_INDEX_FENCE_V3_CAPTURE_ROOT")
+V4_CAPTURE_ROOT = os.environ.get("MEMORY_FORGET_INDEX_FENCE_V4_CAPTURE_ROOT")
 V3_REJECTED_NATIVE_RELEASE_ROOT = os.environ.get("MEMORY_FORGET_INDEX_FENCE_V3_REJECTED_NATIVE_RELEASE_ROOT")
 ADAPTER_ROOT = os.environ.get("MEMORY_FORGET_INDEX_FENCE_ADAPTER_ROOT")
 SDK_CAPTURE_ROOT = os.environ.get("MEMORY_FORGET_INDEX_FENCE_SDK_CAPTURE_ROOT")
@@ -38,6 +40,7 @@ REFERENCE_ROOT = Path(os.environ.get("MEMORY_FORGET_INDEX_FENCE_REFERENCE_ROOT",
 CASES = build_cases()
 V2_CASES = build_v2_cases()
 V3_CASES = build_v3_cases()
+V4_CASES = build_v4_cases()
 
 
 def _read(path):
@@ -1551,3 +1554,59 @@ def test_actual_v3_sdk_private_connection_can_keep_distinct_opening_and_current_
     if not statements:
         pytest.skip("The actual selected original did not expose an opening/current-scope handoff; no handoff credit")
     assert guard._sdk_private_database_owners(original, context[6], context[7], recorded, trusted) is None
+
+
+@lru_cache(maxsize=1)
+def _v4_raw_packet(case_id):
+    if V4_CAPTURE_ROOT is None:
+        pytest.skip("No explicitly selected V4 packet; no acceptance credit")
+    assert ADAPTER_ROOT is not None, "Selected V4 replay requires an independently selected adapter root"
+    directory = Path(V4_CAPTURE_ROOT).resolve(strict=True) / case_id
+    native_directory, sdk_directory = directory / "native", directory / "sdk/evidence"
+    native = _read(native_directory / "evidence/native-raw.json")
+    sdk = _read(sdk_directory / "python-raw.json")
+    returned = _read(native_directory / "stdout.json")
+    assert len(native) == len(sdk) == 1 and returned["id"] == case_id and returned["ok"] is True
+    case = next(case for case in V4_CASES if case["id"] == case_id)
+    return case, native[0], sdk[0], returned["result"], sdk[0]["observation"]["result"], native_directory, sdk_directory
+
+
+@pytest.fixture(scope="module", params=V4_CASES, ids=lambda case: case["id"])
+def v4_raw_actual(request):
+    return _v4_raw_packet(request.param["id"])
+
+
+def test_actual_v4_pair_requires_complete_independent_custody(v4_raw_actual):
+    case, native, sdk, native_result, sdk_result, native_directory, sdk_directory = v4_raw_actual
+    assert guard.validate_pair(case, native, sdk, native_result, sdk_result,
+        approved_node=_trusted_node(), approved_sdk_root=SDK_SOURCE_ROOT, approved_reference=REFERENCE_ROOT,
+        approved_adapter_root=Path(ADAPTER_ROOT).resolve(strict=True),
+        native_directory=native_directory, sdk_directory=sdk_directory) is True
+
+
+@pytest.mark.parametrize("case", V4_CASES, ids=lambda case: case["id"])
+def test_v4_changes_only_closed_identity_and_the_explicit_sync_profile(case):
+    assert guard._case(case) == case["input"] and guard._version(case) == 4
+    assert case["input"]["config"]["memory"]["search"]["sync"] == {
+        "onSearch": True, "onSessionStart": False, "watch": False}
+    assert guard._native_profile_key(case) == "forgetIndexFenceV3Profile"
+    assert guard._native_bootstrap_prefix(case) == "forget-index-fence-v3"
+    assert guard._capture_prefix(case) == "forget-index-fence-v4"
+    prior = next(row for row in V3_CASES if row["id"] == case["id"].replace("-v4-", "-v3-", 1))
+    comparable = deepcopy(case)
+    comparable["id"], comparable["operation"] = prior["id"], prior["operation"]
+    comparable["input"]["kind"], comparable["input"]["profile"] = prior["input"]["kind"], prior["input"]["profile"]
+    del comparable["input"]["config"]["memory"]["search"]["sync"]
+    guard._same(comparable, prior, "V4 must preserve all V3 business steps, clocks, barriers and comparison policies")
+
+
+def test_v4_selector_and_closed_family_never_borrow_a_v3_packet(tmp_path, monkeypatch):
+    monkeypatch.setitem(globals(), "V4_CAPTURE_ROOT", None)
+    monkeypatch.setitem(globals(), "V3_CAPTURE_ROOT", str(tmp_path / "labelled-v3-only"))
+    with pytest.raises(pytest.skip.Exception, match="No explicitly selected V4 packet"):
+        _v4_raw_packet.__wrapped__(V4_CASES[0]["id"])
+    with pytest.raises(ValueError):
+        validate_v4_registration(V3_CASES)
+    mixed = {**V4_CASES[0], "operation": "forget-index-fence-v3-runtime"}
+    with pytest.raises(ValueError):
+        guard._case(mixed)

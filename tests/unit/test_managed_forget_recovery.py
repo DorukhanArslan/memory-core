@@ -8,6 +8,8 @@ from pathlib import Path
 import subprocess
 import sys
 
+import pytest
+
 from memory_core.config import MemoryConfig
 from memory_core.consolidation.forget import forget_memory_entries
 from memory_core.consolidation.origins import MemoryEntryOrigin, MemoryEntryOriginLedger
@@ -15,6 +17,7 @@ from memory_core.flags import FeatureFlags
 from memory_core.host.managed_index import ManagedSQLiteMemoryStore
 from memory_core.index.identity import INDEX_SYNC_TABLE, MEMORY_INDEX_META_KEY
 from memory_core.runtime_identity import OPENCLAW_COMPAT_RUNTIME_IDENTITY
+from memory_core.session_catalog import MemorySessionCatalog
 from memory_core.tools.memory_search import MemorySearchToolContext
 from memory_core.tools.search_factory import create_memory_search_tool
 from memory_core.workspace import MemoryWorkspace
@@ -183,4 +186,62 @@ def test_failed_real_recovery_keeps_durable_invalidation_and_actual_error(tmp_pa
         assert len(_query(store)["results"]) == 2
     finally:
         journal.unlink(missing_ok=True)
+        store.close()
+
+
+@pytest.mark.parametrize("publication,explicit_predicate,expected", [
+    ("on-search", None, {"retained-session"}),
+    ("on-search", False, {"selected-session", "retained-session"}),
+    ("on-write", None, {"selected-session", "retained-session"}),
+])
+def test_managed_producer_reads_existing_owned_tombstones_without_catalog_mirroring(
+    tmp_path, publication, explicit_predicate, expected,
+):
+    root = tmp_path / "workspace"
+    root.mkdir()
+    config = _config(root, tmp_path / "index.sqlite")
+    catalog = MemorySessionCatalog(tmp_path / "separate-catalog.sqlite", clock_ms=lambda: NOW)
+    for session_id in ("selected-session", "retained-session"):
+        key = f"agent:main:{session_id}"
+        catalog.upsert_session(key, {"sessionId": session_id, "updatedAt": NOW})
+        catalog.append_message(session_id, {"role": "user", "content": f"Actual {session_id} transcript."},
+            session_key=key, event_id=f"{session_id}:1", now_ms=NOW)
+    callback = None if explicit_predicate is None else lambda _session_id: explicit_predicate
+    workspace = MemoryWorkspace(root, session_catalog=catalog,
+        is_session_forgotten=callback, index_sources=["memory", "sessions"])
+    store = ManagedSQLiteMemoryStore(config, workspace, memory_publication=publication)
+    ledger = MemoryEntryOriginLedger(lambda _agent: store.path)
+    try:
+        ledger.record_session_tombstones("main", ["selected-session"], created_at=NOW)
+        ledger.record_session_tombstones("another-agent", ["retained-session"], created_at=NOW)
+        assert catalog.snapshot().forgotten_session_ids == frozenset()
+        admitted = workspace.discover_session_transcript_files()
+        assert {Path(item.rel_path).stem for item in admitted} == expected
+        assert catalog.read_transcript("selected-session", session_key="agent:main:selected-session") is not None
+        assert catalog.snapshot().forgotten_session_ids == frozenset()
+        store.reindex(workspace)
+        published = store.read_published_index()["chunks"]
+        assert len(published) == len(expected)
+        assert all(any(session_id in row["text"] for row in published) for session_id in expected)
+        if callback is not None:
+            assert workspace.is_session_forgotten is callback
+        if publication == "on-write":
+            assert workspace.is_session_forgotten is None
+    finally:
+        store.close()
+
+
+def test_default_managed_admission_does_not_create_an_origins_table(tmp_path):
+    root = tmp_path / "workspace"
+    root.mkdir()
+    store, workspace = _open(_config(root, tmp_path / "index.sqlite"))
+    try:
+        with closing(store.connect()) as db:
+            before = db.execute("SELECT name,sql FROM sqlite_master ORDER BY name").fetchall()
+        assert workspace.is_session_forgotten("unknown-session") is False
+        assert workspace.discover_session_transcript_files() == []
+        with closing(store.connect()) as db:
+            assert db.execute("SELECT name,sql FROM sqlite_master ORDER BY name").fetchall() == before
+        assert not any(name == "memory_session_tombstones" for name, _sql in before)
+    finally:
         store.close()

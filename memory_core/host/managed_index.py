@@ -117,6 +117,11 @@ class ManagedSQLiteMemoryStore(SQLiteMemoryStore):
         self._memory_jobs: deque[dict[str, Any]] = deque(maxlen=256)
         self._memory_job_count = 0
         super().__init__(config, None, revision_fence=revision_fence, artifact_provenance=artifact_provenance)
+        if memory_publication == "on-search" and workspace.is_session_forgotten is None:
+            # The opted-in managed producer owns this index database. Read its
+            # existing agent tombstones without copying them into the catalog;
+            # an explicit host predicate remains authoritative.
+            workspace.is_session_forgotten = self.is_session_forgotten
 
     @contextmanager
     def _operation(self, name: str) -> Iterator[dict[str, Any]]:

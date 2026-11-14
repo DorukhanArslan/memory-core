@@ -16,7 +16,7 @@ import traceback
 ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT))
 
-from equivalence.forget_index_fence import CASE_HASHES, MANIFEST, POINTS, build_cases  # noqa: E402
+from equivalence.forget_index_fence_v2 import CASE_HASHES, MANIFEST, POINTS, build_cases  # noqa: E402
 from equivalence.forget_index_fence_bindings import prepare_forget_index_fence_bindings  # noqa: E402
 from equivalence.forget_index_fence_evidence import replay_case  # noqa: E402
 from equivalence.forget_index_fence_native import run_native_case  # noqa: E402
@@ -54,7 +54,7 @@ def main():
     args = parser.parse_args()
     output = args.output.resolve()
     output.mkdir(parents=True, exist_ok=False)
-    report = {"kind": "forget-index-fence-comparison", "acceptancePointsAwarded": 0,
+    report = {"kind": "forget-index-fence-v2-comparison", "acceptancePointsAwarded": 0,
               "covers": [], "candidateCoverage": list(POINTS), "fullScopePassed": False,
               "cases": [], "errors": []}
     try:

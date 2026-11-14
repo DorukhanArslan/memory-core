@@ -28,6 +28,8 @@ from equivalence.promotion_apply_family import differences  # noqa: E402
 from memory_core.project_name import PACKAGE_NAME  # noqa: E402
 
 SHA256 = re.compile(r"[0-9a-f]{64}\Z")
+# Full catalog reports are streamed; collector and engine packet limits stay separate.
+SUITE_REPORT_LIMIT = 2 * 1024 * 1024 * 1024
 CALL_RESULT_KEYS = {"validated", "publicMatch", "nativeSnapshots", "sdkSnapshots",
                     "acceptancePointsAwarded", "nativeResult", "sdkResult"}
 FILES = {
@@ -335,8 +337,8 @@ def _admit_suite_report(args, authority, report, frozen):
     definitions, scope, suite = _suite_authority(frozen)
     registered_ids = {case["id"] for case in definitions}
     native_root, sdk_root = _directory(args.native_capture_root), _directory(args.sdk_capture_root)
-    path, before = _file(args.suite_report, limit=1024 * 1024 * 1024)
-    sealed = _seal(path, limit=1024 * 1024 * 1024)
+    path, before = _file(args.suite_report, limit=SUITE_REPORT_LIMIT)
+    sealed = _seal(path, limit=SUITE_REPORT_LIMIT)
     selected, diagnostics, metadata = {}, {}, {}
     case_index = 0
     requirements_index = 0
@@ -424,7 +426,7 @@ def _admit_suite_report(args, authority, report, frozen):
         reader.close()
         raise ValueError("The suite changed before streaming admission")
     reader.top(accept)
-    _, after = _file(path, limit=1024 * 1024 * 1024)
+    _, after = _file(path, limit=SUITE_REPORT_LIMIT)
     if (_fingerprint(before) != _fingerprint(after) or _seal(path) != sealed):
         raise ValueError("The full suite changed during streaming admission")
     del reader  # Release the last decoded wire buffer before opening raw captures.

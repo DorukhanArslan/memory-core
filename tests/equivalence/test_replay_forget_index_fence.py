@@ -10,7 +10,7 @@ from importlib import import_module, util
 import json
 from pathlib import Path
 import sys
-from types import ModuleType
+from types import ModuleType, SimpleNamespace
 
 import pytest
 
@@ -737,3 +737,88 @@ def test_suite_reader_and_discarded_wire_are_released_before_any_raw_capture_acc
     report = json.loads(output.read_text())
     assert report["validCompleteBaseline"] is True
     assert "UNIT_LEGACY_DISCARDED" not in output.read_text()
+
+
+@pytest.mark.parametrize("packet", ["v5"], indirect=True)
+@pytest.mark.parametrize("size_offset", [-1, 0, 1])
+def test_suite_stream_admission_enforces_its_exact_byte_boundary(suite_packet, monkeypatch, size_offset):
+    packet, cli = suite_packet, suite_packet["cli"]
+    path = packet["suite_path"]
+    wire = path.read_bytes()
+    assert wire.endswith(b"\n")
+    limit = len(wire)
+    monkeypatch.setattr(cli, "SUITE_REPORT_LIMIT", limit)
+    path.write_bytes(wire[:-1] if size_offset == -1 else wire + b" " * size_offset)
+    assert path.stat().st_size == limit + size_offset
+    output = packet["tmp"] / "suite-byte-boundary.json"
+
+    assert cli.main(packet["suite_args"](output)) == (2 if size_offset > 0 else 1)
+    result = json.loads(output.read_text())
+    if size_offset > 0:
+        assert packet["calls"] == [] and result["validCompleteBaseline"] is False
+        assert any("bounded" in error["message"] for error in result["errors"])
+    else:
+        assert result["validCompleteBaseline"] is True
+        assert result["summary"] == {"match": 0, "mismatch": 13, "blocked": 0}
+    assert result["acceptancePointsAwarded"] == 0 and result["fullScopePassed"] is False
+
+
+@pytest.mark.parametrize("size_offset", [-1, 0, 1])
+def test_real_suite_ceiling_is_two_gib_before_any_report_read(packet, monkeypatch, size_offset):
+    cli, root = packet["cli"], packet["tmp"]
+    path = root / "sparse-suite.json"
+    with path.open("wb") as stream:
+        stream.truncate(2 * 1024 * 1024 * 1024 + size_offset)
+    monkeypatch.setattr(cli, "_suite_authority", lambda frozen: ([], {"requirements": []}, {}))
+    args = SimpleNamespace(suite_report=path, native_capture_root=root, sdk_capture_root=root)
+    seal_limits = []
+
+    class BeforeReportRead(Exception):
+        pass
+
+    def observe_seal(selected, *, limit):
+        assert selected == path
+        seal_limits.append(limit)
+        raise BeforeReportRead
+
+    monkeypatch.setattr(cli, "_seal", observe_seal)
+    if size_offset > 0:
+        with pytest.raises(ValueError, match="bounded"):
+            cli._admit_suite_report(args, {}, {}, packet["frozen"])
+        assert seal_limits == []
+    else:
+        with pytest.raises(BeforeReportRead):
+            cli._admit_suite_report(args, {}, {}, packet["frozen"])
+        assert seal_limits == [2 * 1024 * 1024 * 1024]
+
+
+@pytest.mark.parametrize("kind,limit", [
+    ("collector", 1024 * 1024 * 1024),
+    ("native", 128 * 1024 * 1024),
+    ("python", 512 * 1024 * 1024),
+])
+def test_suite_ceiling_does_not_expand_collector_or_engine_packet_limits(packet, monkeypatch, kind, limit):
+    cli, root = packet["cli"], packet["tmp"]
+    directory = root / "oversized-packet"
+    filename = "evidence/native-raw.json" if kind == "native" else "python-raw.json"
+    path = directory / filename
+    path.parent.mkdir(parents=True)
+    with path.open("wb") as stream:
+        stream.truncate(limit + 1)
+    original_open = Path.open
+
+    def reject_packet_read(selected, *args, **kwargs):
+        assert selected != path, "An oversized packet must be rejected before any read"
+        return original_open(selected, *args, **kwargs)
+
+    monkeypatch.setattr(Path, "open", reject_packet_read)
+    with pytest.raises(ValueError, match="bounded"):
+        if kind == "collector":
+            cli._read_json(path)
+        else:
+            cli._suite_reference({
+                "id": "UNIT_OVERSIZED_PACKET", "side": kind, "sha256": "0" * 64,
+                "evidenceDirectory": str(directory), "validationStatus": "verified",
+                "rawSnapshotReference": {"directory": str(directory), "file": filename,
+                                         "bytes": limit + 1, "sha256": "0" * 64},
+            }, kind, root)

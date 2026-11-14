@@ -16,7 +16,7 @@ import traceback
 ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT))
 
-from equivalence import forget_index_fence_v2, forget_index_fence_v3  # noqa: E402
+from equivalence import forget_index_fence_v2, forget_index_fence_v3, forget_index_fence_v4  # noqa: E402
 from equivalence.forget_index_fence_bindings import prepare_forget_index_fence_bindings  # noqa: E402
 from equivalence.forget_index_fence_evidence import replay_case  # noqa: E402
 from equivalence.forget_index_fence_native import run_native_case  # noqa: E402
@@ -46,7 +46,7 @@ def error_record(error):
 
 def main():
     parser = argparse.ArgumentParser(description=__doc__)
-    versions = {"v2": forget_index_fence_v2, "v3": forget_index_fence_v3}
+    versions = {"v2": forget_index_fence_v2, "v3": forget_index_fence_v3, "v4": forget_index_fence_v4}
     parser.add_argument("--version", choices=tuple(versions), default="v2")
     parser.add_argument("--reference", type=Path, required=True)
     parser.add_argument("--node", type=Path, required=True)

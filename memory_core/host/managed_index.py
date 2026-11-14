@@ -27,6 +27,7 @@ from memory_core.consolidation.origins import IndexRevisionFence, MemoryIndexRev
 from memory_core.index.sqlite_store import MemoryIndexRequiresFullReindexError, SQLiteMemoryStore
 from memory_core.index.identity import INDEX_SOURCES_TABLE, INDEX_SYNC_TABLE
 from memory_core.index.hybrid import HybridResult
+from memory_core.host.reindex_lease import memory_index_producer_guard
 from memory_core.runtime_identity import MEMORY_CORE_RUNTIME_IDENTITY, RuntimeIdentity
 from memory_core.session_catalog import normalize_session_agent_id
 from memory_core.tools.common import format_error_message
@@ -296,7 +297,7 @@ class ManagedSQLiteMemoryStore(SQLiteMemoryStore):
                 else:
                     # Settle source/error coverage under the publisher guard;
                     # historical worker completion cannot replay a covered error.
-                    with workspace_index_lock(self._workspace.root):
+                    with self._index_producer_guard(self._workspace):
                         try:
                             returned = self.reindex_sources(self._workspace, sources=("memory",))
                         except BaseException as caught:
@@ -440,6 +441,25 @@ class ManagedSQLiteMemoryStore(SQLiteMemoryStore):
         self._update(operation, returned=generation["result"])
         return generation["result"]
 
+    @contextmanager
+    def _index_producer_guard(self, workspace: MemoryWorkspace, *, generation=None):
+        """Queue a genuine producer without blocking this owner's foreground reads."""
+        try:
+            with memory_index_producer_guard(workspace.root, self.path,
+                    enabled=self._memory_publication == "on-search"):
+                yield
+        except BaseException as error:
+            # Acquisition can fail before the generation begins (for example,
+            # an inaccessible real lease database). Its joiners must still
+            # receive the actual failure and permit a later independent call.
+            if generation is not None and not generation["started"]:
+                with self._condition:
+                    generation.update(result=None, error=error, settled=True)
+                    if self._full_sync is generation:
+                        self._full_sync = None
+                    self._condition.notify_all()
+            raise
+
     def reindex(self, workspace: MemoryWorkspace, *, force: bool = False) -> int:
         """Reserve a generation; its first workspace holder executes it once.
 
@@ -471,7 +491,7 @@ class ManagedSQLiteMemoryStore(SQLiteMemoryStore):
                                      reservationOperationId=generation["reservationOperationId"])
             # Every unfinished request acquires the actual publisher guard.
             # No condition wait can retain an external workspace RLock.
-            with workspace_index_lock(workspace.root):
+            with self._index_producer_guard(workspace, generation=generation):
                 if generation is not None:
                     if generation["settled"]:
                         return self._full_sync_result(generation, operation, intent, notice)
@@ -576,7 +596,7 @@ class ManagedSQLiteMemoryStore(SQLiteMemoryStore):
                 revisionBefore=self.index_revision())
             selection = self._validated_source_selection(workspace, sources, paths, force_sources)
             # As in ``reindex``, the outcome is recorded under the publisher's guard.
-            with workspace_index_lock(workspace.root):
+            with self._index_producer_guard(workspace):
                 reservation = None
                 try:
                     with self._session_source_reservation(selection.sources) as reservation:

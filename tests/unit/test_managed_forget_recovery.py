@@ -5,6 +5,7 @@ from contextlib import closing
 import json
 import os
 from pathlib import Path
+import sqlite3
 import subprocess
 import sys
 import threading
@@ -302,4 +303,29 @@ def test_default_managed_admission_does_not_create_an_origins_table(tmp_path):
             assert db.execute("SELECT name,sql FROM sqlite_master ORDER BY name").fetchall() == before
         assert not any(name == "memory_session_tombstones" for name, _sql in before)
     finally:
+        store.close()
+
+
+def test_real_producer_lease_open_failure_settles_reservation_and_keeps_actual_error(tmp_path):
+    root = tmp_path / "workspace"
+    root.mkdir()
+    (root / "MEMORY.md").write_text("A real source retained through lease failure.\n")
+    store, workspace = _open(_config(root, tmp_path / "index.sqlite"))
+    sidecar = Path(f"{store.path.resolve()}.reindex-lock.sqlite")
+    sidecar.mkdir()
+    try:
+        with pytest.raises(sqlite3.OperationalError) as raised:
+            store.reindex(workspace, force=True)
+        assert raised.value.sqlite_errorcode == sqlite3.SQLITE_CANTOPEN
+        assert store._full_sync is None
+        lifecycle = store.lifecycle_snapshot()
+        assert lifecycle["activeOperations"] == 0
+        assert lifecycle["operations"][-1]["error"]["message"] == str(raised.value)
+        assert store.read_published_index()["chunks"] == []
+        sidecar.rmdir()
+        assert store.reindex(workspace, force=True) == 1
+        assert store.read_published_index()["chunks"][0]["text"].startswith("A real source retained")
+    finally:
+        if sidecar.is_dir():
+            sidecar.rmdir()
         store.close()

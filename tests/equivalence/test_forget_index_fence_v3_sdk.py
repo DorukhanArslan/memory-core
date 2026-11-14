@@ -133,6 +133,35 @@ def test_actual_unfinished_future_hits_only_the_bounded_watchdog():
     assert not future.done() and "returnedAtNs" not in receipt
 
 
+def test_real_future_result_return_keeps_verified_entry_receiver_when_stdlib_finally_clears_self():
+    payload = {"actualReturn": [7, None, {"whole": True}]}
+    future = Future()
+    future.set_result(payload)
+    code = Future.result.__code__
+    observer = _OriginalObserver({code: {"name": "Future.result", "receiver": "self", "code": _code_identity(code)}})
+    observer.bind_owner(future, "actual-stdlib-future")
+    previous = sys.getprofile()
+    try:
+        sys.setprofile(observer.profile)
+        with observer.call_scope("actual-query", "search", 1234):
+            returned = future.result(timeout=1)
+    finally:
+        sys.setprofile(previous)
+    assert returned is payload
+    call, result = observer.events
+    assert call["event"] == "original-call" and result["event"] == "original-return"
+    assert result["callSequence"] == call["sequence"] and result["returned"] == payload
+    assert call["receiverObjectId"] == str(id(future)) and result["owner"] == "actual-stdlib-future"
+    lookup = result["returnLookup"]
+    assert lookup["strategy"] == "retained-entry-frame"
+    assert lookup["frameObjectId"] == call["frameObjectId"]
+    assert lookup["entryCallSequence"] == call["sequence"] and lookup["entryCode"] == call["code"]
+    assert lookup["entryReceiverObjectId"] == str(id(future))
+    assert lookup["receiverLocalName"] == "self" and lookup["receiverLocalPresent"] is True
+    assert lookup["receiverLocal"] is None  # The actual stdlib finally block ran unchanged.
+    assert observer.local.stack == ()
+
+
 def _old_factory(config, store, *, context=None):
     raise AssertionError("Capability inspection must never execute a factory")
 

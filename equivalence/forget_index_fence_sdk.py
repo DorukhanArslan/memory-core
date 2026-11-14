@@ -367,11 +367,15 @@ class _OriginalObserver:
             return
         if event not in {"call", "return"}:
             return
-        match = self._match(frame)
+        stack = getattr(self.local, "stack", ())
+        entry = (next((item for item in reversed(stack) if item[0] is frame
+                       and item[4] is frame.f_code), None) if event == "return" else None)
+        # A callee may clear or delete its receiver in finally. Its actual
+        # return still belongs to the exact frame/code/receiver checked on entry.
+        match = entry[3] if entry is not None else self._match(frame) if event == "call" else None
         if match is None:
             return
         specification, receiver, owner_label, scope = match
-        stack = getattr(self.local, "stack", ())
         if event == "call":
             if "context" in frame.f_locals and "store" in frame.f_locals:
                 context, store = frame.f_locals["context"], frame.f_locals["store"]
@@ -379,6 +383,7 @@ class _OriginalObserver:
                     self.contexts[(id(context), id(store))] = (context, store, scope)
             call = self.event("original-call", name=specification["name"],
                 callLabel=scope["label"], callKind=scope["kind"], owner=owner_label,
+                frameObjectId=str(id(frame)),
                 receiverObjectId=str(id(receiver)) if receiver is not None else None,
                 contextObjectId=str(id(frame.f_locals["context"])) if frame.f_locals.get("context") is not None else None,
                 selfObjectId=str(id(frame.f_locals["self"])) if frame.f_locals.get("self") is not None else None,
@@ -391,13 +396,11 @@ class _OriginalObserver:
                 call["contextRecallOwnerObjectId"] = str(id(recall_owner)) if recall_owner is not None else None
             if specification["name"] == "ThreadPoolExecutor.submit":
                 self._remember_submission(frame, scope, call, stack)
-            self.local.stack = (*stack, (id(frame), call, scope))
+            self.local.stack = (*stack, (frame, call, scope, match, frame.f_code))
             if self.gate_callback is not None:
                 self.gate_callback(frame, event, returned, call, scope)
         else:
-            call = next((item[1] for item in reversed(stack) if item[0] == id(frame)), None)
-            if call is None:
-                return
+            call = entry[1]
             submission = self.pending_submissions.pop(id(frame), None)
             if submission is not None and isinstance(returned, Future):
                 task, store, job = submission
@@ -408,8 +411,20 @@ class _OriginalObserver:
             returned_owner = ({"returnedOwnerObjectId": str(id(returned)),
                                "returnedOwnerType": {"module": type(returned).__module__, "name": type(returned).__qualname__}}
                               if specification.get("bindReturnedOwner") and returned is not None else {})
+            receiver_key = specification.get("receiver")
+            lookup = {"strategy": "retained-entry-frame", "frameObjectId": str(id(frame)),
+                      "entryCallSequence": call["sequence"], "entryReceiverObjectId": call["receiverObjectId"],
+                      "entryCode": deepcopy(specification.get("code")), "receiverLocalName": receiver_key,
+                      "receiverLocalPresent": receiver_key is not None and receiver_key in frame.f_locals}
+            if lookup["receiverLocalPresent"]:
+                actual_receiver = frame.f_locals[receiver_key]
+                lookup["receiverLocal"] = (_encode(actual_receiver) if actual_receiver is None
+                    or type(actual_receiver) in (str, bool, int, float) else
+                    {"objectId": str(id(actual_receiver)), "module": type(actual_receiver).__module__,
+                     "className": type(actual_receiver).__qualname__})
             row = self.event("original-return", callSequence=call["sequence"], name=specification["name"],
                 callLabel=scope["label"], owner=owner_label, returned=_encode(returned),
+                returnLookup=lookup,
                 **returned_owner,
                 frameScalars={key: _encode(frame.f_locals[key]) for key in (
                     "live", "expected", "expected_revision", "expected_fence_revision", "current_revision",
@@ -422,7 +437,7 @@ class _OriginalObserver:
                 self.bind_owner(returned, specification["bindReturnedOwner"])
             if self.gate_callback is not None:
                 self.gate_callback(frame, event, returned, row, scope)
-            self.local.stack = tuple(item for item in stack if item[0] != id(frame))
+            self.local.stack = tuple(item for item in stack if item[0] is not frame)
 
     def _bind_connection(self, db, scope, source):
         if self.connections.get(id(db)) is db:

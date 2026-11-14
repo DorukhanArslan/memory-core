@@ -51,7 +51,7 @@ import time
 from collections.abc import Callable, Iterable, Mapping, Sequence
 from dataclasses import dataclass, field
 from functools import cmp_to_key
-from contextlib import closing
+from contextlib import closing, nullcontext
 from pathlib import Path
 from typing import Any
 
@@ -496,11 +496,16 @@ def plan_memory_index(
     session_ids: set[str],
     excluded_session_ids: set[str],
     matches_memory: Callable[[str], bool],
+    db: Any | None = None,
 ) -> IndexPlan:
-    """``planMemoryIndex``: indexed sources and cache rows selected for a purge."""
+    """``planMemoryIndex``: indexed sources and cache rows selected for a purge.
+
+    A supplied connection retains its caller-owned transaction and handle, so
+    the committed forget can select and remove rows under one writer admission.
+    """
     if store is None:
         return IndexPlan()
-    with closing(store.connect()) as db:
+    with (closing(store.connect()) if db is None else nullcontext(db)) as db:
         rows = db.execute("SELECT id, path, source, text FROM chunks").fetchall()
         changed = set(changed_paths)
         # Another workspace agent may already have scrubbed the shared file; its remaining indexed
@@ -538,43 +543,62 @@ def plan_memory_index(
     return IndexPlan(chunks, sources, fts_rows, cache_rows, bool(session_ids))
 
 
-def purge_memory_index(store: Any, plan: IndexPlan) -> bool:
+def purge_memory_index(
+    store: Any,
+    plan: IndexPlan,
+    *,
+    replan: Callable[[Any], IndexPlan] | None = None,
+) -> bool:
     """Purge index rows and unattributed cache vectors in one transaction.
 
     A selected session forget clears the live cache even when its planned count
     is zero: an in-flight provider may have populated it after the plan. Advancing
     the private index generation prevents an older refresh from restoring those
-    vectors or publishing chunks prepared before this purge.
+    vectors or publishing chunks prepared before this purge. The forget flow
+    replans against this writer's actual rows after admission, because a prior
+    publisher may have committed while the forget marker waited for its lock.
+    Reported counts then describe that committed purge, not its earlier plan.
     """
-    if store is None or (not plan.chunks and not plan.sources and not plan.purge_cache):
+    if store is None or (replan is None and not plan.chunks and not plan.sources and not plan.purge_cache):
         return False
+    requested_plan = plan
     with closing(store.connect()) as db, db:
         # Own the write lock before clearing derived state and fencing its
         # next publisher. Older external stores need neither private table.
         db.execute("BEGIN IMMEDIATE")
-        ids = [chunk_id for chunk_id, _path, _source in plan.chunks]
-        for start in range(0, len(ids), 500):
-            batch = ids[start : start + 500]
-            marks = ",".join("?" * len(batch))
-            db.execute(f"DELETE FROM chunks WHERE id IN ({marks})", batch)
-            db.execute(f"DELETE FROM chunks_fts WHERE id IN ({marks})", batch)
-        for path, source in plan.sources:
-            db.execute("DELETE FROM paths_fts WHERE path = ? AND source = ?", (path, source))
-        if _index_table_exists(db, INDEX_SOURCES_TABLE):
-            affected = {*plan.sources, *((path, source) for _id, path, source in plan.chunks)}
-            for path, source in affected:
+        if replan is not None:
+            plan = replan(db)
+        purged = bool(plan.chunks or plan.sources or plan.purge_cache)
+        if purged:
+            ids = [chunk_id for chunk_id, _path, _source in plan.chunks]
+            for start in range(0, len(ids), 500):
+                batch = ids[start : start + 500]
+                marks = ",".join("?" * len(batch))
+                db.execute(f"DELETE FROM chunks WHERE id IN ({marks})", batch)
+                db.execute(f"DELETE FROM chunks_fts WHERE id IN ({marks})", batch)
+            for path, source in plan.sources:
+                db.execute("DELETE FROM paths_fts WHERE path = ? AND source = ?", (path, source))
+            if _index_table_exists(db, INDEX_SOURCES_TABLE):
+                affected = {*plan.sources, *((path, source) for _id, path, source in plan.chunks)}
+                for path, source in affected:
+                    db.execute(
+                        f"DELETE FROM {INDEX_SOURCES_TABLE} WHERE source = ? AND path = ?",
+                        (source, path),
+                    )
+            if plan.purge_cache and _index_table_exists(db, "memory_embedding_cache"):
+                db.execute("DELETE FROM memory_embedding_cache")
+            if _index_table_exists(db, INDEX_SYNC_TABLE):
                 db.execute(
-                    f"DELETE FROM {INDEX_SOURCES_TABLE} WHERE source = ? AND path = ?",
-                    (source, path),
+                    f"UPDATE {INDEX_SYNC_TABLE} SET revision = revision + 1, "
+                    "needs_rebuild = 1 WHERE id = 1"
                 )
-        if plan.purge_cache and _index_table_exists(db, "memory_embedding_cache"):
-            db.execute("DELETE FROM memory_embedding_cache")
-        if _index_table_exists(db, INDEX_SYNC_TABLE):
-            db.execute(
-                f"UPDATE {INDEX_SYNC_TABLE} SET revision = revision + 1, "
-                "needs_rebuild = 1 WHERE id = 1"
-            )
-    return True
+    if replan is not None:
+        requested_plan.chunks = plan.chunks
+        requested_plan.sources = plan.sources
+        requested_plan.fts_rows = plan.fts_rows
+        requested_plan.embedding_cache_rows = plan.embedding_cache_rows
+        requested_plan.purge_cache = plan.purge_cache
+    return purged
 
 
 # --- files ---------------------------------------------------------------------------------
@@ -944,15 +968,20 @@ def _forget_workspace_memory(
                 excluded_session_ids.add(entry.session_id)
 
     changed_paths = {rewrite.relative_path for rewrite in [*memory_rewrites, *corpus_rewrites]}
-    index_plan = plan_memory_index(
-        store,
-        agent_id=agent_id,
-        changed_paths=changed_paths,
-        removed_paths={rewrite.relative_path for rewrite in corpus_rewrites if rewrite.remove},
-        session_ids=session_ids,
-        excluded_session_ids=excluded_session_ids,
-        matches_memory=lambda content: scrub(content).content != content,
-    )
+
+    def current_index_plan(db: Any | None = None) -> IndexPlan:
+        return plan_memory_index(
+            store,
+            agent_id=agent_id,
+            changed_paths=changed_paths,
+            removed_paths={rewrite.relative_path for rewrite in corpus_rewrites if rewrite.remove},
+            session_ids=session_ids,
+            excluded_session_ids=excluded_session_ids,
+            matches_memory=lambda content: scrub(content).content != content,
+            db=db,
+        )
+
+    index_plan = current_index_plan()
     report = MemoryForgetReport(
         agent_id=agent_id,
         dry_run=dry_run,
@@ -1014,7 +1043,12 @@ def _forget_workspace_memory(
     # The marker has committed: a purge failure leaves it durable for the retry.
     if not lineage_is_current(ledger.list(agent_id)):
         return None
-    if purge_memory_index(store, index_plan) and (index_plan.chunks or index_plan.sources):
+    purged = purge_memory_index(store, index_plan, replan=current_index_plan)
+    report.artifacts.update(
+        indexChunks=len(index_plan.chunks), indexSources=len(index_plan.sources),
+        ftsRows=index_plan.fts_rows, embeddingCacheRows=index_plan.embedding_cache_rows,
+    )
+    if purged and (index_plan.chunks or index_plan.sources):
         fence = getattr(store, "revision_fence", None)
         if fence is not None:
             # The chunk and source deletes bump the revision upstream (table triggers).

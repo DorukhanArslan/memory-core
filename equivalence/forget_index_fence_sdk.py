@@ -1075,6 +1075,28 @@ class _ActorProcess:
         return self.receipt["exit"]
 
 
+def _select_snapshot_receiver(actors, requested_actor=None):
+    """Observe through an existing live owner without acquiring another one."""
+    candidates = [{"actor": name, "pid": process.child.pid,
+                   "poll": process.child.poll(), "acquired": process.acquired}
+                  for name, process in actors.items()]
+    available = {row["actor"]: row for row in candidates if row["poll"] is None and row["acquired"]}
+    preferred = requested_actor if requested_actor is not None else "foreground"
+    if preferred in available:
+        selected = preferred
+        reason = "explicit-live-acquired-actor" if requested_actor is not None else "implicit-foreground-live-acquired"
+    elif requested_actor is not None:
+        raise ValueError(f"The selected SDK snapshot actor is not live and acquired: {requested_actor}")
+    elif available:
+        selected = next(iter(available))
+        reason = "implicit-live-acquired-fallback"
+    else:
+        raise ValueError("A physical snapshot requires an already live and acquired SDK actor")
+    return actors[selected], {"requestedActor": requested_actor, "preferredActor": preferred,
+                              "selectedActor": selected, "pid": available[selected]["pid"],
+                              "reason": reason, "candidates": candidates}
+
+
 def _arguments_for(value, kind, label):
     mapping = {"search": "queries", "sync": "syncs", "forget": "forgetCalls", "promotion": "promotions", "recall": "recallCalls"}
     entries = value[mapping[kind]]
@@ -1281,7 +1303,8 @@ def run_forget_index_fence_sdk_host(request):
             elif operation in {"arm-gate", "await-gate", "release-gate"}:
                 record["returned"] = actors[gate_actor(step["gate"])].command(operation, gate=step["gate"])
             elif operation == "capture-physical-state":
-                record["returned"] = actors[actor].command("snapshot", label=label)
+                receiver, record["snapshotReceiver"] = _select_snapshot_receiver(actors, step.get("actor"))
+                record["returned"] = receiver.command("snapshot", label=label)
                 snapshots[label] = record["returned"]
                 capture_path = _safe_path(directory, f"captures/{label}-sdk.json")
                 capture_path.parent.mkdir(parents=True, exist_ok=True)

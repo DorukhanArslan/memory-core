@@ -20,6 +20,7 @@ from equivalence.forget_index_fence_sdk import (
     _files,
     _full_stat,
     _safe_path,
+    _select_snapshot_receiver,
     _validate_actor_command,
 )
 
@@ -46,6 +47,98 @@ def _frame(function, **values):
 
 def _specification(name, receiver):
     return {"name": name, "receiver": receiver, "code": {"source": "labelled-test-only"}}
+
+
+class _LabelledSnapshotProcess:
+    """Only protocol lifecycle state; this receiver runs no memory engine."""
+
+    def __init__(self, actor, pid):
+        self.actor, self.acquired = actor, False
+        self.exit_code = None
+        self.child = SimpleNamespace(pid=pid, poll=lambda: self.exit_code)
+        self.commands = []
+
+    def command(self, operation, **values):
+        if self.exit_code is not None:
+            raise ValueError("I/O operation on closed file.")
+        self.commands.append({"operation": operation, **values})
+        if operation == "acquire":
+            self.acquired = True
+        if operation == "snapshot":
+            return {"actor": self.actor, "pid": self.child.pid, "label": values["label"],
+                    "labelledRawBytes": "unchanged physical receiver return"}
+
+    def reap(self, code=0):
+        self.exit_code = code
+
+
+def test_snapshot_after_retry_uses_live_acquired_receiver_without_restarting_reaped_foreground():
+    foreground = _LabelledSnapshotProcess("foreground", 101)
+    killed_forgetter = _LabelledSnapshotProcess("forgetter", 102)
+    builder = _LabelledSnapshotProcess("builder", 103)
+    for process in (foreground, killed_forgetter, builder):
+        process.command("acquire")
+    killed_forgetter.reap(-9)
+    for process in (builder, foreground):
+        process.command("close")
+        process.command("stop")
+        process.reap()
+    retry_forgetter = _LabelledSnapshotProcess("forgetter", 104)
+    retry_forgetter.command("acquire")
+    retry_forgetter.command("call", kind="forget", label="retry")
+    actors = {"foreground": foreground, "forgetter": retry_forgetter, "builder": builder}
+    command_counts = [len(process.commands) for process in actors.values()]
+
+    receiver, receipt = _select_snapshot_receiver(actors)
+    assert receiver is retry_forgetter
+    assert [len(process.commands) for process in actors.values()] == command_counts
+    returned = receiver.command("snapshot", label="afterRestartedForgetRetry")
+
+    assert returned == {"actor": "forgetter", "pid": 104, "label": "afterRestartedForgetRetry",
+                        "labelledRawBytes": "unchanged physical receiver return"}
+    assert receipt == {"requestedActor": None, "preferredActor": "foreground", "selectedActor": "forgetter",
+                       "pid": 104, "reason": "implicit-live-acquired-fallback", "candidates": [
+                           {"actor": "foreground", "pid": 101, "poll": 0, "acquired": True},
+                           {"actor": "forgetter", "pid": 104, "poll": None, "acquired": True},
+                           {"actor": "builder", "pid": 103, "poll": 0, "acquired": True}]}
+    assert foreground.commands[-1] == {"operation": "stop"}
+    assert sum(command["operation"] == "acquire" for command in retry_forgetter.commands) == 1
+
+
+def test_snapshot_prefers_original_foreground_and_respects_explicit_other_receiver():
+    actors = {name: _LabelledSnapshotProcess(name, pid) for name, pid in (("foreground", 111), ("forgetter", 112))}
+    for process in actors.values():
+        process.command("acquire")
+    selected, receipt = _select_snapshot_receiver(actors)
+    assert selected is actors["foreground"] and receipt["reason"] == "implicit-foreground-live-acquired"
+    selected, receipt = _select_snapshot_receiver(actors, "forgetter")
+    assert selected is actors["forgetter"] and receipt["requestedActor"] == "forgetter"
+    assert receipt["reason"] == "explicit-live-acquired-actor"
+
+
+@pytest.mark.parametrize("state", ["missing", "unacquired", "reaped"])
+def test_snapshot_explicit_unavailable_receiver_never_falls_back(state):
+    live = _LabelledSnapshotProcess("forgetter", 122)
+    live.command("acquire")
+    actors = {"forgetter": live}
+    if state != "missing":
+        actors["foreground"] = _LabelledSnapshotProcess("foreground", 121)
+        if state == "reaped":
+            actors["foreground"].command("acquire")
+            actors["foreground"].reap()
+    with pytest.raises(ValueError, match="selected SDK snapshot actor is not live and acquired"):
+        _select_snapshot_receiver(actors, "foreground")
+    assert live.commands == [{"operation": "acquire"}]
+
+
+def test_snapshot_without_any_live_acquired_receiver_refuses_without_acquiring():
+    unopened = _LabelledSnapshotProcess("foreground", 131)
+    reaped = _LabelledSnapshotProcess("builder", 132)
+    reaped.command("acquire")
+    reaped.reap()
+    with pytest.raises(ValueError, match="already live and acquired"):
+        _select_snapshot_receiver({"foreground": unopened, "builder": reaped})
+    assert unopened.commands == []
 
 
 def test_observer_requires_exact_code_receiver_and_labelled_scope_without_executing_them(monkeypatch):

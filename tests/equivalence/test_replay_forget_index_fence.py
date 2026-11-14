@@ -6,7 +6,7 @@ command-line switch can select a fake guard or bypass production admission.
 """
 from copy import deepcopy
 import hashlib
-from importlib import util
+from importlib import import_module, util
 import json
 from pathlib import Path
 import sys
@@ -14,7 +14,7 @@ from types import ModuleType
 
 import pytest
 
-from equivalence.forget_index_fence_v2 import CASE_HASHES, MANIFEST_SHA256, POINTS, build_cases
+from equivalence.forget_index_fence_v2 import CASE_HASHES, POINTS
 from equivalence.promotion_apply_family import differences
 
 
@@ -22,7 +22,9 @@ SCRIPT = Path(__file__).resolve().parents[2] / "scripts/replay_forget_index_fenc
 
 
 @pytest.fixture
-def packet(monkeypatch, tmp_path):
+def packet(monkeypatch, tmp_path, request):
+    version = getattr(request, "param", "v2")
+    frozen = import_module(f"equivalence.forget_index_fence_{version}")
     spec = util.spec_from_file_location("labelled_forget_replay_cli", SCRIPT)
     cli = util.module_from_spec(spec)
     spec.loader.exec_module(cli)
@@ -85,7 +87,7 @@ def packet(monkeypatch, tmp_path):
 
     guard.replay_case = replay
     monkeypatch.setitem(sys.modules, guard.__name__, guard)
-    cases = build_cases()
+    cases = frozen.build_cases()
     for index, case in enumerate(cases):
         root = roots[0] if index == 4 else roots[1]
         directory = root / case["id"]
@@ -122,26 +124,30 @@ def packet(monkeypatch, tmp_path):
             else:
                 row["custodyPending"] = True
             rows.append(row)
-        source = {"kind": "forget-index-fence-v2-comparison", "finalAuthenticationPassed": True,
+        source = {"kind": f"forget-index-fence-{version}-comparison", "finalAuthenticationPassed": True,
                   "errors": [], "acceptancePointsAwarded": 0, "covers": [],
                   "candidateCoverage": list(POINTS), "fullScopePassed": False,
-                  "literalManifestSha256": MANIFEST_SHA256, "collectorSha256": "d" * 64,
+                  "literalManifestSha256": frozen.MANIFEST_SHA256, "collectorSha256": "d" * 64,
                   "adapterHashes": {"labelled-adapter.py": "e" * 64},
                   "implementationIdentity": {"gitCommit": "f" * 40, "trackedWorkingTreeDirty": False,
                       "sourceSha256": sdk_info["sourceSha256"], "sourceFiles": sdk_info["sourceFiles"]},
                   "node": node_info, "reference": {key: ref_info[key] for key in ("tag", "commit")},
-                  "execution": {"caseOrder": list(CASE_HASHES)}, "cases": rows}
+                  "execution": {"caseOrder": list(frozen.CASE_HASHES),
+                                **({"inputVersion": version} if version == "v3" else {})}, "cases": rows}
         (root / "report.json").write_text(json.dumps(source, indent=2) + "\n")
 
-    def argv(output, selected_roots=None):
+    def argv(output, selected_roots=None, *, selected_version="fixture"):
+        if selected_version == "fixture":
+            selected_version = version if version == "v3" else None
         args = [part for root in (roots if selected_roots is None else selected_roots)
                 for part in ("--capture-root", str(root))]
-        return [*args, "--reference", str(reference), "--node", str(node),
+        return [*args, *(["--version", selected_version] if selected_version is not None else []),
+                "--reference", str(reference), "--node", str(node),
                 "--sdk-source-root", str(sdk), "--output", str(output)]
 
     return {"cli": cli, "roots": roots, "node": node, "reference": reference, "sdk": sdk,
             "guard": guard, "guard_path": guard_path, "calls": calls, "hook": hook,
-            "argv": argv, "tmp": tmp_path}
+            "argv": argv, "tmp": tmp_path, "version": version, "frozen": frozen}
 
 
 def _report(root):
@@ -327,3 +333,78 @@ def test_progress_updates_are_complete_atomic_json_and_no_trusted_fake_mode_is_e
     assert [len(row["cases"]) for row in snapshots] == sorted(len(row["cases"]) for row in snapshots)
     assert all(row["acceptancePointsAwarded"] == 0 and row["covers"] == [] and row["fullScopePassed"] is False
                for row in snapshots)
+
+
+@pytest.mark.parametrize("packet", ["v2", "v3"], indirect=True)
+def test_explicit_version_replays_only_its_own_complete_family(packet):
+    output = packet["tmp"] / "selected-version.json"
+    args = packet["argv"](output, selected_version=packet["version"])
+    assert packet["cli"].main(args) == 1
+    report = json.loads(output.read_text())
+    assert report["kind"] == f"forget-index-fence-{packet['version']}-independent-replay"
+    assert report["validCompleteBaseline"] is True
+    assert report["summary"] == {"match": 0, "mismatch": 13, "blocked": 0}
+    assert [row["id"] for row in report["cases"]] == list(packet["frozen"].CASE_HASHES)
+    assert report["authority"]["manifest"]["sha256"] == packet["frozen"].MANIFEST_SHA256
+    assert report["authority"]["literalModule"]["path"] == packet["frozen"].__file__
+    assert report["acceptancePointsAwarded"] == 0 and report["covers"] == []
+    assert report["fullScopePassed"] is False
+
+
+@pytest.mark.parametrize("packet", ["v2", "v3"], indirect=True)
+def test_wrong_explicit_version_cannot_relabel_a_complete_packet(packet):
+    other = "v3" if packet["version"] == "v2" else "v2"
+    output = packet["tmp"] / "wrong-version.json"
+    assert packet["cli"].main(packet["argv"](output, selected_version=other)) == 2
+    report = json.loads(output.read_text())
+    assert report["kind"] == f"forget-index-fence-{other}-independent-replay"
+    assert packet["calls"] == [] and report["validCompleteBaseline"] is False
+    assert report["errors"] and report["acceptancePointsAwarded"] == 0
+    assert report["covers"] == [] and report["fullScopePassed"] is False
+
+
+@pytest.mark.parametrize("packet", ["v3"], indirect=True)
+def test_v3_is_never_implicitly_selected_from_capture_contents(packet):
+    output = packet["tmp"] / "no-version.json"
+    assert packet["cli"].main(packet["argv"](output, selected_version=None)) == 2
+    report = json.loads(output.read_text())
+    assert report["kind"] == "forget-index-fence-v2-independent-replay"
+    assert packet["calls"] == [] and report["validCompleteBaseline"] is False
+    assert report["acceptancePointsAwarded"] == 0 and report["fullScopePassed"] is False
+
+
+@pytest.mark.parametrize("packet", ["v3"], indirect=True)
+@pytest.mark.parametrize("attack", ["report-kind", "manifest", "missing-version", "wrong-version"])
+def test_v3_report_must_declare_its_frozen_version_and_scope(packet, attack):
+    root = packet["roots"][0]
+    source = _report(root)
+    if attack == "report-kind":
+        source["kind"] = "forget-index-fence-v2-comparison"
+    elif attack == "manifest":
+        source["literalManifestSha256"] = import_module("equivalence.forget_index_fence_v2").MANIFEST_SHA256
+    elif attack == "missing-version":
+        del source["execution"]["inputVersion"]
+    else:
+        source["execution"]["inputVersion"] = "v2"
+    _replace_report(root, source)
+    output = packet["tmp"] / "foreign-scope.json"
+    assert packet["cli"].main(packet["argv"](output)) == 2
+    report = json.loads(output.read_text())
+    assert packet["calls"] == [] and report["validCompleteBaseline"] is False
+    assert report["acceptancePointsAwarded"] == 0 and report["covers"] == []
+    assert report["fullScopePassed"] is False and report["errors"]
+
+
+@pytest.mark.parametrize("packet", ["v2", "v3"], indirect=True)
+def test_mixed_version_members_cannot_borrow_the_selected_family_scope(packet):
+    root = packet["roots"][1]
+    source = _report(root)
+    other = import_module("equivalence.forget_index_fence_" + ("v2" if packet["version"] == "v3" else "v3"))
+    source["cases"][0]["id"] = next(iter(other.CASE_HASHES))
+    _replace_report(root, source)
+    output = packet["tmp"] / "mixed-members.json"
+    assert packet["cli"].main(packet["argv"](output)) == 2
+    report = json.loads(output.read_text())
+    assert packet["calls"] == [] and report["validCompleteBaseline"] is False
+    assert report["acceptancePointsAwarded"] == 0 and report["fullScopePassed"] is False
+    assert any("foreign case" in error["message"] for error in report["errors"])

@@ -1,4 +1,4 @@
-"""Independently replay the exact frozen V2 family from retained collector roots.
+"""Independently replay an explicitly selected frozen family from retained roots.
 
 This diagnostic starts no original engine, repairs no capture and awards no
 acceptance credit. All source roots and the decoder executable are explicit.
@@ -20,9 +20,6 @@ import traceback
 ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT))
 
-from equivalence.forget_index_fence_v2 import (  # noqa: E402
-    CASE_HASHES, MANIFEST, MANIFEST_SHA256, POINTS, build_cases,
-)
 from equivalence.harness import _validate_reference  # noqa: E402
 from equivalence.model_runtime_authority import prepare_model_node_authority  # noqa: E402
 from equivalence.promotion_apply_family import differences  # noqa: E402
@@ -138,23 +135,23 @@ def _reference_authority(reference, node):
     return _validate_reference(reference, node, target)
 
 
-def _authorities(args, guard):
+def _authorities(args, guard, frozen):
     expected_guard = ROOT / "equivalence/forget_index_fence_evidence.py"
     guard_path = Path(guard.__file__).resolve(strict=True)
     if guard_path != expected_guard.resolve(strict=True):
         raise ValueError("Replay attempted to use a guard outside the independently selected program")
     node, _ = _file(args.node)
     reference, sdk = _directory(args.reference), _directory(args.sdk_source_root)
-    module = import_module("equivalence.forget_index_fence_v2")
     return {
         "guard": _seal(guard_path), "script": _seal(Path(__file__).resolve()),
-        "literalModule": _seal(Path(module.__file__).resolve()), "manifest": _seal(MANIFEST),
+        "literalModule": _seal(Path(frozen.__file__).resolve()), "manifest": _seal(frozen.MANIFEST),
         "node": _node_authority(node), "reference": _reference_authority(reference, node),
         "sdk": _sdk_identity(sdk),
     }
 
 
-def _admit_reports(roots, authority, report):
+def _admit_reports(roots, authority, report, frozen, version):
+    CASE_HASHES, MANIFEST_SHA256, POINTS = frozen.CASE_HASHES, frozen.MANIFEST_SHA256, frozen.POINTS
     selected, seals, seen_roots = {}, [], set()
     for value in roots:
         root = _directory(value)
@@ -165,7 +162,7 @@ def _admit_reports(roots, authority, report):
         compact = {"directory": str(root), "report": sealed}
         report["sourceReports"].append(compact)
         seals.append(sealed)
-        if (not isinstance(source, dict) or source.get("kind") != "forget-index-fence-v2-comparison"
+        if (not isinstance(source, dict) or source.get("kind") != f"forget-index-fence-{version}-comparison"
                 or source.get("finalAuthenticationPassed") is not True
                 or source.get("errors") != [] or not isinstance(source.get("errors"), list)
                 or type(source.get("acceptancePointsAwarded")) is not int
@@ -173,7 +170,12 @@ def _admit_reports(roots, authority, report):
                 or source.get("fullScopePassed") is not False
                 or source.get("candidateCoverage") != list(POINTS)
                 or source.get("literalManifestSha256") != MANIFEST_SHA256):
-            raise ValueError("A source collector report lacks complete final authentication or frozen V2 scope")
+            raise ValueError("A source collector report lacks complete final authentication or selected frozen scope")
+        execution = source.get("execution")
+        if (not isinstance(execution, dict)
+                or version == "v3" and execution.get("inputVersion") != version
+                or "inputVersion" in execution and execution["inputVersion"] != version):
+            raise ValueError("A collector report does not belong to the explicitly selected input version")
         identity, node = source.get("implementationIdentity"), source.get("node")
         if (not isinstance(identity, dict) or identity.get("trackedWorkingTreeDirty") is not False
                 or identity.get("sourceSha256") != authority["sdk"]["sourceSha256"]
@@ -286,13 +288,16 @@ def _error(error):
 
 def main(argv=None):
     parser = argparse.ArgumentParser(description=__doc__)
+    parser.add_argument("--version", choices=("v2", "v3"), default="v2")
     parser.add_argument("--capture-root", type=Path, action="append", required=True)
     parser.add_argument("--reference", type=Path, required=True)
     parser.add_argument("--node", type=Path, required=True)
     parser.add_argument("--sdk-source-root", type=Path, required=True)
     parser.add_argument("--output", type=Path, required=True)
     args = parser.parse_args(argv)
-    report = {"schemaVersion": 1, "kind": "forget-index-fence-v2-independent-replay",
+    frozen = import_module(f"equivalence.forget_index_fence_{args.version}")
+    CASE_HASHES, MANIFEST_SHA256, POINTS = frozen.CASE_HASHES, frozen.MANIFEST_SHA256, frozen.POINTS
+    report = {"schemaVersion": 1, "kind": f"forget-index-fence-{args.version}-independent-replay",
               "acceptancePointsAwarded": 0, "covers": [], "candidateCoverage": list(POINTS),
               "fullScopePassed": False, "validCompleteBaseline": False,
               "sourceReports": [], "cases": [], "errors": []}
@@ -303,13 +308,13 @@ def main(argv=None):
         print("Cannot exclusively create replay output: " + str(error), file=sys.stderr)
         return 2
     try:
-        cases = build_cases()
+        cases = frozen.build_cases()
         guard = import_module("equivalence.forget_index_fence_evidence")
-        authority = _authorities(args, guard)
+        authority = _authorities(args, guard, frozen)
         if authority["manifest"]["sha256"] != MANIFEST_SHA256:
-            raise ValueError("The independently frozen V2 manifest changed")
+            raise ValueError("The independently selected frozen manifest changed")
         report["authority"] = authority
-        selected, final_seals = _admit_reports(args.capture_root, authority, report)
+        selected, final_seals = _admit_reports(args.capture_root, authority, report, frozen, args.version)
         output.write(report)
         for case in cases:
             selection = selected[case["id"]]
@@ -358,9 +363,9 @@ def main(argv=None):
         for sealed in final_seals:
             if _seal(sealed["path"]) != sealed:
                 raise ValueError("An original collector report or engine file changed during independent replay")
-        if _authorities(args, guard) != authority:
+        if _authorities(args, guard, frozen) != authority:
             raise ValueError("The independent guard, source inputs or approved authorities changed during replay")
-        build_cases()
+        frozen.build_cases()
         report["finalAuthenticationPassed"] = True
     except Exception as error:
         report["errors"].append(_error(error))

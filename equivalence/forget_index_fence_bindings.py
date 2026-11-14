@@ -225,6 +225,13 @@ _ATOMIC_COMPILED_PATHS = (
     "dist/fs-safe-CHQXnCPk.mjs", "dist/directory-durability-fWp4i1Sl.mjs",
 )
 _SOURCE_MANIFESTS = (query, sessions, promotion, promotion_family, durable)
+ADDITIONAL_SOURCE_HASHES["src/state/openclaw-state-schema.sql"] = (
+    "993e08e70b43a7a52e52eb95eda33c19832df4ee1ec4ef1fe4068a4caf38adc7"
+)
+ADDITIONAL_SOURCE_ANCHORS["src/state/openclaw-state-schema.sql"] = (
+    "CREATE TABLE IF NOT EXISTS plugin_state_entries (",
+    "CREATE TABLE IF NOT EXISTS plugin_blob_entries (",
+)
 SOURCE_HASHES = _merged_hashes(
     *(owner.SOURCE_HASHES for owner in _SOURCE_MANIFESTS),
     {path: atomic.SOURCE_HASHES[path] for path in _ATOMIC_SOURCE_PATHS},
@@ -349,6 +356,7 @@ REQUIRED_MAIN_ARTIFACTS_BY_ROUTE = {
         "dist/extensions/memory-core/runtime-api.js", "dist/plugin-sdk/config-runtime.js",
         "dist/runtime-snapshot-BFi3jxlO.mjs", "dist/plugin-sdk/plugin-state-store-runtime.js",
         "dist/plugin-state-store-BPUaLoVD.mjs", "dist/openclaw-agent-db-lifecycle-B8sSLgPo.mjs",
+        "dist/openclaw-state-db.paths-rJI64Ab5.mjs",
     ),
     "reopen": (
         "dist/extensions/memory-core/manager-runtime.js", "dist/manager-vector-warning-DcyxxT5h.mjs",
@@ -484,6 +492,8 @@ def prepare_forget_index_fence_bindings(checkout: Path, runtime_root: Path) -> d
             "config": {"path": "dist/plugin-sdk/config-runtime.js", "export": "setRuntimeConfigSnapshot"},
             "state": {"path": "dist/extensions/memory-core/runtime-api.js", "export": "configureMemoryCoreDreamingState"},
             "stateFactory": {"path": "dist/plugin-sdk/plugin-state-store-runtime.js", "export": "createPluginStateKeyedStore"},
+            "stateDatabasePath": {"path": "dist/openclaw-state-db.paths-rJI64Ab5.mjs", "export": "s",
+                                  "originalBinding": "resolveOpenClawStateSqlitePath"},
             "tools": {"path": "dist/tools-DotaQGXh.mjs", "exports": ["createMemorySearchTool", "createMemoryGetTool"]},
             "stateClose": {"path": "dist/plugin-state-store-BPUaLoVD.mjs", "export": "u", "originalBinding": "closePluginStateDatabaseAsync"},
             "databaseClose": {"path": "dist/openclaw-agent-db-lifecycle-B8sSLgPo.mjs", "export": "s", "originalBinding": "closeOpenClawAgentDatabasesAsync"},

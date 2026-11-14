@@ -189,6 +189,8 @@ export async function runForgetIndexFenceActor(request){
  const origins=await imp('dist/memory-entry-origins-BCQSIB3X.mjs');
  const paths=await imp('dist/openclaw-agent-db.paths-Dv3PPTNK.mjs');
  const dbPath=paths.c({agentId:input.identity.agentId,env:process.env});
+ const statePaths=await imp('dist/openclaw-state-db.paths-rJI64Ab5.mjs');
+ const pluginStateDbPath=statePaths.s(process.env);
  const originalCli=await imp('dist/cli.runtime-CVRN4xUp.mjs');
  const conflictType=(await imp('dist/manager-db-kernel-DyJADqYu.mjs')).t;
  const runtimeIO=(await imp('dist/runtime-BC29JSZp.mjs')).r;
@@ -214,6 +216,9 @@ export async function runForgetIndexFenceActor(request){
  codeOwner('listMemoryEntryOrigins','dist/memory-entry-origins-BCQSIB3X.mjs','n',origins.n);
  codeOwner('listMemorySessionTombstones','dist/memory-entry-origins-BCQSIB3X.mjs','r',origins.r);
  codeOwner('readShortTermRecallEntries','dist/short-term-promotion-Cy0NJmOU.mjs','readShortTermRecallEntries',promo.readShortTermRecallEntries);
+ codeOwner('resolveOpenClawStateSqlitePath','dist/openclaw-state-db.paths-rJI64Ab5.mjs','s',statePaths.s);
+ raw.pluginStatePathBinding={module:'dist/openclaw-state-db.paths-rJI64Ab5.mjs',export:'s',functionRef:ref(statePaths.s),
+  arguments:{env:plain(process.env)},result:pluginStateDbPath,privateReturn:privateValue(pluginStateDbPath)};
  raw.typedConflictClass={classRef:ref(conflictType),prototypeRef:ref(conflictType.prototype),
   module:'dist/manager-db-kernel-DyJADqYu.mjs',export:'t',compiledSha256:hash(fs.readFileSync(path.join(runtimeRoot,'dist/manager-db-kernel-DyJADqYu.mjs')))};
  const originalGet=runtime.MemoryIndexManager.get,observedOwners=new WeakSet();
@@ -291,6 +296,30 @@ export async function runForgetIndexFenceActor(request){
   const stores={recall:await storeModule.a(workspace,new Date().toISOString()),phase:await storeModule.r(workspace,new Date().toISOString()),
    ingestion:await ingestionModule.l(workspace),preimages:await consolidationModule.o(workspace),
    events:await eventModule.n({workspaceDir:workspace,env:process.env})};
+  // The original keyed stores and host journals persist in the separate shared
+  // state database. Retain every physical table without joining its writable
+  // lifecycle; logical reader results above remain the original public values.
+  const stateEntered=controller().event('physical-plugin-state-read-enter',{label,dbPath:pluginStateDbPath});
+  let stateSchema=[],stateTables={},stateExists=true,stateMissingError=null,stateFileIdentity=null;
+  try{
+   const info=await fsp.lstat(pluginStateDbPath,{bigint:true});
+   if(!info.isFile()||info.isSymbolicLink()||info.nlink!==1n)throw Error('Unowned physical plugin-state database');
+   stateFileIdentity=Object.fromEntries(Object.getOwnPropertyNames(info).map(key=>[key,typeof info[key]==='bigint'?info[key].toString():info[key]]));
+   const stateDb=new DatabaseSync(pluginStateDbPath,{readOnly:true});
+   try{
+    stateDb.exec('PRAGMA query_only=ON; BEGIN DEFERRED');
+    stateSchema=stateDb.prepare('SELECT type,name,tbl_name,sql FROM sqlite_schema ORDER BY type,name').all();
+    for(const table of stateSchema.filter(row=>row.type==='table')){
+     const quoted='"'+table.name.replaceAll('"','""')+'"',columns=stateDb.prepare(`PRAGMA table_info(${quoted})`).all();
+     const rows=stateDb.prepare(`SELECT * FROM ${quoted}`).all().map(row=>Object.fromEntries(Object.entries(row).map(([key,value])=>[key,sqlValue(value)])));
+     stateTables[table.name]={columns:columns.map(column=>column.name),columnInfo:columns,rows,rowCount:rows.length};
+    }
+   }finally{if(stateDb.isTransaction)stateDb.exec('ROLLBACK');stateDb.close();}
+  }catch(error){if(error.code!=='ENOENT')throw error;stateExists=false;stateMissingError=err(error);}
+  const stateReturned=controller().event('physical-plugin-state-read-return',{label,dbPath:pluginStateDbPath});
+  const statePhysical={dbPath:pluginStateDbPath,readOnly:true,exists:stateExists,schema:stateSchema,
+   selectedTables:Object.keys(stateTables),tables:stateTables,...(stateMissingError?{missingError:stateMissingError}:{})};
+  const pluginStatePhysical={...statePhysical,...sealed(statePhysical)};
   const returned=controller().event('physical-snapshot-return',{label,dbPath});
   const physical={dbPath,readOnly:true,schema,selectedTables:Object.keys(tables),tables},common={
    documents:documents.filter(item=>/\.(md|txt)$/iu.test(item.path)&&(item.kind==='file'||Object.hasOwn(input.initialFiles,item.path))).map(item=>({path:item.path,exists:item.kind==='file',
@@ -309,6 +338,9 @@ export async function runForgetIndexFenceActor(request){
    concurrency:{markerVisible:publicState.tombstones.some(row=>row.sessionId===input.forgetCalls.selected.sessionIds[0]),
     forgetSettled:command.concurrency.forgetSettled,oldBuildSettled:command.concurrency.oldBuildSettled}};
   const capture={label,pid:process.pid,actor,instance,documents,publicState,stores,sessions,
+   pluginStatePhysical,pluginStateCapture:{enterSeq:stateEntered.sequence,returnSeq:stateReturned.sequence,
+    startedAtNs:stateEntered.atNs,finishedAtNs:stateReturned.atNs,pathBindingRef:raw.pluginStatePathBinding.functionRef,
+    fileIdentity:stateFileIdentity},
    originalCorpusMembership:{ownerRef:ref(diagnostic),methodRef:ref(diagnostic.listSessionCorpusEntries),entries:corpusEntries,...sealed(corpusEntries)},
    coordinatedCalls:command.coordinatedCalls,
    publicReadReturns:{origins:privateValue(publicState.origins),tombstones:privateValue(publicState.tombstones),

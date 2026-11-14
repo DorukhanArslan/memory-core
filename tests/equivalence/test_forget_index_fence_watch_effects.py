@@ -189,3 +189,42 @@ assert.throws(()=>retainCompletedSourceVersions(store,distinct),/Duplicate origi
 assert.equal(store.get('promotion:seed'),receipt);assert.equal(settled.sourceVersions,receipt);
 assert.throws(()=>retainCompletedSourceVersions(new Map(),{...settled,id:999}),/Invalid original source call/);
 ''')
+
+
+@pytest.mark.parametrize("member", [6, 7, 8])
+def test_crash_reference_is_negative_only_with_pending_marker_and_real_lifecycle_proof(node, tmp_path, member):
+    from equivalence.forget_index_fence_v5 import build_cases
+
+    case = build_cases()[member]
+    marker = next(gate for gate in case["input"]["gates"]
+                  if gate["boundary"] == "forget.marker-committed-before-purge")
+    step = next(step for step in case["input"]["steps"] if step.get("label") == "interruptedWatch")
+    assert step["afterCalls"] == ["forget:selected"]
+    runtime = (ROOT / "equivalence/forget-index-fence-runtime.mjs").as_uri()
+    run(node, tmp_path, "const {interruptedSourceCallReceipt,retainCompletedSourceVersions}=await import("
+        + json.dumps(runtime) + ");\nconst literalMarker=" + json.dumps(marker) + ";\n" + r'''
+// Labelled protocol doubles only; these rows do not claim an original OS run.
+const frame={commandId:10,actor:'forgetter',pid:100,instance:1};
+const cutoff={kind:'original-source-call-cutoff',callKey:'forget:selected',actor:'forgetter',causalFrame:frame,
+ completed:false,cutoffAtNs:'120',before:[],commits:[],deletions:[],handles:[],receipts:[],failures:[]};
+const child={actor:'forgetter',pid:100,instance:1,exit:{code:null,signal:'SIGKILL'},kill:{signal:'SIGKILL',atNs:'200'},reapedAtNs:'300'};
+const command={id:10,operation:'original-forget',label:'selected',originalEntered:{id:10,actor:'forgetter',pid:100,instance:1,
+ apiName:'runMemoryForget',atNs:'100'},termination:{code:null,signal:'SIGKILL',pid:100,reapedAtNs:'300'}};
+const gate={...literalMarker,killWhileHeld:true,receipt:{...literalMarker,pid:100,actor:'forgetter',instance:1,
+ enteredAtNs:'110',commitReturned:true,wasTransaction:true,sql:'COMMIT',sourceOwner:'forgetWorkspaceMemory.marker-transaction',sourceCallCutoff:cutoff}};
+const receipt=interruptedSourceCallReceipt(child,command,gate);
+assert.equal(receipt.kind,'original-interrupted-source-call');assert.equal(Object.hasOwn(receipt,'versions'),false);
+const emptyStore=new Map();assert.throws(()=>retainCompletedSourceVersions(emptyStore,{sourceVersions:receipt}),/Invalid original source call/);
+const joined=await control.waitForVersions([owner],'interruptedWatch',[],[receipt]);
+assert.equal(joined.outcome,'interrupted-before-source-publication');
+assert.equal(joined.owners[0].absence,'original-call-interrupted-before-source-publication');assert.equal(syncCalls,0);
+for(const mutation of [{handles:[{path:'actual-write',writes:[{status:'fulfilled'}]}]},
+ {commits:[{committed:true}]},{deletions:['actual-deletion']},{failures:[{reason:'uncertain'}]}]){
+ const changed=structuredClone(gate);Object.assign(changed.receipt.sourceCallCutoff,mutation);
+ assert.throws(()=>interruptedSourceCallReceipt(child,command,changed),/mutation or uncertainty/);
+}
+assert.throws(()=>interruptedSourceCallReceipt({...child,exit:{code:0,signal:null}},command,gate),/SIGKILL/);
+assert.throws(()=>interruptedSourceCallReceipt(child,{...command,settlement:{actual:'returned'}},gate),/pending original call/);
+assert.throws(()=>interruptedSourceCallReceipt(child,command,{...gate,releasedAtNs:'150'}),/held marker/);
+assert.throws(()=>interruptedSourceCallReceipt(child,command,{...gate,receipt:{...gate.receipt,sourceCallCutoff:{...cutoff,completed:true}}}),/pending original call/);
+''')

@@ -55,6 +55,32 @@ export function retainCompletedSourceVersions(store,message){if(!Object.hasOwn(m
  if(store.has(receipt.callKey))throw Error('Duplicate original source call version receipt');
  store.set(receipt.callKey,receipt);
 }
+export function interruptedSourceCallReceipt(child,command,gate){
+ const cutoff=gate?.receipt?.sourceCallCutoff,entered=command?.originalEntered,frame=cutoff?.causalFrame;
+ if(command?.operation!=='original-forget'||command.settlement||!entered||!command.termination||entered.apiName!=='runMemoryForget'||
+  child.exit?.signal!=='SIGKILL'||child.exit.code!==null||child.kill?.signal!=='SIGKILL'||!child.reapedAtNs||
+  gate?.boundary!=='forget.marker-committed-before-purge'||!gate.killWhileHeld||gate.releasedAtNs||
+  gate.receipt?.pid!==child.pid||gate.receipt.actor!==child.actor||gate.receipt.instance!==child.instance||
+  command.termination.signal!=='SIGKILL'||command.termination.code!==null||command.termination.pid!==child.pid||command.termination.reapedAtNs!==child.reapedAtNs||
+  gate.receipt.commitReturned!==true||!/^COMMIT(?:\s+TRANSACTION)?\s*;?$/iu.test(gate.receipt.sql??'')||gate.receipt.wasTransaction!==true||
+  gate.receipt.sourceOwner!=='forgetWorkspaceMemory.marker-transaction'||
+  cutoff?.kind!=='original-source-call-cutoff'||cutoff.completed!==false||cutoff.callKey!==`forget:${command.label}`||
+  frame?.commandId!==command.id||frame.actor!==child.actor||frame.pid!==child.pid||frame.instance!==child.instance||
+  entered.id!==command.id||entered.pid!==child.pid||entered.actor!==child.actor||entered.instance!==child.instance||
+  !Array.isArray(cutoff.handles)||!Array.isArray(cutoff.commits)||!Array.isArray(cutoff.deletions)||
+  !Array.isArray(cutoff.receipts)||!Array.isArray(cutoff.failures)||
+  !(BigInt(entered.atNs)<=BigInt(gate.receipt.enteredAtNs)&&BigInt(gate.receipt.enteredAtNs)<=BigInt(cutoff.cutoffAtNs)&&
+    BigInt(cutoff.cutoffAtNs)<BigInt(child.kill.atNs)&&BigInt(child.kill.atNs)<BigInt(child.reapedAtNs)))
+  throw Error('Interrupted source absence lacks its actual held marker, pending original call and SIGKILL/reap proof');
+ if(cutoff.handles.length||cutoff.commits.length||cutoff.deletions.length||cutoff.failures.length||
+  cutoff.receipts.some(row=>row.event==='source-clock-control'||row.event==='source-clock-deletion'||row.event==='source-clock-failure'))
+  throw Error('Interrupted original source IO contains mutation or uncertainty; it cannot be recorded as absence');
+ return{kind:'original-interrupted-source-call',callKey:cutoff.callKey,actor:child.actor,instance:child.instance,pid:child.pid,
+  commandId:command.id,originalEntered:plain(entered),markerGate:plain(gate),kill:plain(child.kill),exit:plain(child.exit),
+  termination:plain(command.termination),reapedAtNs:child.reapedAtNs,sourceCallCutoff:plain(cutoff),
+  sourceCallCutoffSeal:sealed(cutoff),sourceMutationState:'no-original-source-write-before-held-marker',
+  capturedAtNs:process.hrtime.bigint().toString()};
+}
 
 // Explicit fixture process stop follows completed original cleanup. An IPC
 // disconnect alone does not end an event loop containing other live handles.
@@ -116,7 +142,7 @@ export async function runForgetIndexFenceRuntime(input,config){
  const raw={schemaVersion:1,kind:'forget-index-fence-native-capture',engine:'native',caseId:config.caseId,
   input:plain(input),fixtureBase:base,pid:process.pid,ppid:process.ppid,config:cfg,children:[],gates:[],snapshots:[],steps:[],completed:false,allChildrenReaped:false};
  const result={provider:null,calls:{},snapshots:{}};
- const live=new Map(),generations=new Map(),pending=new Map(),sourceVersions=new Map();let commandId=0,currentWallClock=input.clock.nowMs,operationFailed=false;
+ const live=new Map(),generations=new Map(),pending=new Map(),sourceVersions=new Map(),interruptedSources=new Map();let commandId=0,currentWallClock=input.clock.nowMs,operationFailed=false;
  const persist=()=>fs.writeFileSync(path.join(config.evidenceDirectory,'native-raw.json'),JSON.stringify([raw])+'\n');
  async function start(actor,wallClockNowMs=currentWallClock){
   safeName(actor);if(live.has(actor))throw Error('Actor already owns a live original process');
@@ -208,12 +234,15 @@ export async function runForgetIndexFenceRuntime(input,config){
     collect(await call.promise);pending.delete(key);
    }else if(name==='await-original-search-effects'){await run(step.actor,name,step.label);
    }else if(['await-original-watch-ready','await-original-watch-effects'].includes(name)){
-    const versions=(step.afterCalls??[]).map(key=>{const value=sourceVersions.get(key);if(!value)throw Error('Original source call has no completed version receipt: '+key);return value;});
+    const interruptions=[],versions=[];
+    for(const key of step.afterCalls??[]){if(sourceVersions.has(key))versions.push(sourceVersions.get(key));
+     else if(interruptedSources.has(key))interruptions.push(interruptedSources.get(key));
+     else throw Error('Original source call has no completed version or proved interruption receipt: '+key);}
     const selected=versions.flatMap(value=>value.versions),paths=new Set();
     for(const version of selected){if(paths.has(version.path))throw Error('Original watcher barrier cannot coalesce or supersede source versions');paths.add(version.path);}
     for(const name of step.actors){const owned=live.get(name);
      if(!owned){(observed.watchAbsences??=[]).push({actor:name,reason:'actual-process-unentered-or-reaped',atNs:process.hrtime.bigint().toString()});continue;}
-     await run(name,step.operation,step.label,{sourceVersionReceipts:versions,sourceVersions:selected});
+     await run(name,step.operation,step.label,{sourceVersionReceipts:versions,sourceVersions:selected,interruptedSourceCalls:interruptions});
     }
    }else if(name==='capture-physical-state'){
     // A separate read-only observer process avoids waiting on any held actor.
@@ -243,6 +272,12 @@ export async function runForgetIndexFenceRuntime(input,config){
       command.termination={...owned.record.exit,reapedAtNs:owned.record.reapedAtNs,pid:owned.record.pid};
       result.calls[`forget:${command.label}`]={operation:'forget',label:command.label,
        outcome:{status:'terminated',signal:owned.record.exit.signal}};
+      if(input.kind==='forget-index-fence-v5'){
+       const gate=raw.gates.find(gate=>gate.actor===step.actor&&gate.boundary==='forget.marker-committed-before-purge'&&gate.killWhileHeld);
+       const receipt=interruptedSourceCallReceipt(owned.record,command,gate),key=receipt.callKey;
+       if(sourceVersions.has(key)||interruptedSources.has(key))throw Error('Duplicate interrupted original source call receipt');
+       interruptedSources.set(key,receipt);(raw.interruptedSourceCalls??=[]).push(receipt);
+      }
      }
     }
    }else if(name==='start-fresh-original-process'){if(live.has(step.actor))throw Error('Fresh process requires actual prior reap');
@@ -596,7 +631,7 @@ export async function runForgetIndexFenceActor(request){
     if(!controller().watchEffects)throw Error('Original watcher controls require their explicit V5 profile');
     controller().event('original-watch-control-enter',{operation,label,commandId:command.id});controller().flush();persist();
     entry.watchEffects=operation==='await-original-watch-ready'?await controller().watchEffects.ready(actualOwners,label):
-     await controller().watchEffects.waitForVersions(actualOwners,label,command.sourceVersions);
+     await controller().watchEffects.waitForVersions(actualOwners,label,command.sourceVersions,command.interruptedSourceCalls);
    }else if(operation==='capture-physical-state'){snapshotValue=await snapshot(label,command);}
    else if(operation==='original-owner-close'){await close();}
    else if(operation==='process-exit'){await close();exiting=true;}

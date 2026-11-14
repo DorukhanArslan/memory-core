@@ -108,6 +108,22 @@ assert.equal(clock.blocked(),false);clock.restore();
 ''')
 
 
+def test_v5_pending_cutoff_preserves_actual_write_admission_without_fabricating_completion(node, tmp_path):
+    setup = _SETUP.replace("qualifyStack});", "qualifyStack,captureVersions:true});")
+    _run(node, tmp_path, setup + r'''
+clock.beginCall('promotion:seed',{commandId:1,actor,instance:1,pid:process.pid,wallClockNowMs:ticksByCall['promotion:seed'].wallClockNowMs});
+const pending=clock.capturePendingSourceState();assert.equal(pending.completed,false);
+assert.deepEqual(pending.handles,[]);assert.deepEqual(pending.commits,[]);
+assert.throws(()=>clock.captureCompletedVersions('promotion:seed'),/completion boundary/);
+async function syntheticOwnedWrite(){const handle=await fsp.open(path.join(workspaceDir,'MEMORY.md'),'w');
+ await handle.writeFile('actual pending source write');const active=clock.capturePendingSourceState();
+ assert.equal(active.handles.length,1);assert.equal(active.handles[0].writes[0].status,'fulfilled');
+ assert.equal(active.completed,false);assert.deepEqual(pending.handles,[]);await handle.close();}
+await syntheticOwnedWrite();clock.endCall();assert.equal(clock.captureCompletedVersions('promotion:seed').versions.length,1);
+assert.throws(()=>clock.capturePendingSourceState(),/pending V5 business call/);assert.equal(clock.blocked(),false);clock.restore();
+''')
+
+
 def test_atomic_stage_is_dated_after_real_full_write_and_sync_before_original_rename(node, tmp_path):
     _run(node, tmp_path, r'''
 const target=path.join(workspaceDir,'MEMORY.md'),stage=path.join(workspaceDir,'.memory-stage.tmp');

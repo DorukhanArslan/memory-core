@@ -311,14 +311,21 @@ export function observeOriginalWatchEffects({ref,event=()=>{},onFailure=()=>{},q
     sourceReads.push(read);emit('original-watch-version-stat-return',read);notify();});
   },
   ready,
-  async waitForVersions(actualOwners,label,versions){const receipt={protocol:'original-watch-effects-v5',kind:'effects',label,
-    versions:structuredClone(versions),startedAtNs:now(),owners:[]};emit('original-watch-effects-enter',receipt);
+  async waitForVersions(actualOwners,label,versions,interruptedSourceCalls=[]){
+   if(!Array.isArray(interruptedSourceCalls)||interruptedSourceCalls.some(value=>value.kind!=='original-interrupted-source-call'||
+     Object.hasOwn(value,'versions')||value.sourceMutationState!=='no-original-source-write-before-held-marker'))
+    fail('An interrupted watcher reference is not a proved negative source-call receipt');
+   const receipt={protocol:'original-watch-effects-v5',kind:'effects',label,versions:structuredClone(versions),
+    interruptedSourceCalls:structuredClone(interruptedSourceCalls),
+    ...(interruptedSourceCalls.length&&!versions.length?{outcome:'interrupted-before-source-publication'}:{}),startedAtNs:now(),owners:[]};
+   emit('original-watch-effects-enter',receipt);
    if(!actualOwners.size&&Array.from(actualOwners).length===0)receipt.absence='actual-no-acquired-original-owners';
    for(const owner of actualOwners){const record=register(owner);if(record.absence){receipt.owners.push(record);continue;}
     if(!record.ready)fail('An actual watcher has not reached its declared readiness barrier');
     const selected=versions.filter(version=>version.path===owner.workspaceDir||version.path.startsWith(owner.workspaceDir+path.sep));
     const row={ownerRef:record.ownerRef,watcherRef:record.watcherRef,versions:selected,facts:[],states:[],promises:[],timers:[]};
-    if(!selected.length){row.absence='no-actual-declared-source-mutations';receipt.owners.push(row);continue;}
+    if(!selected.length){row.absence=interruptedSourceCalls.length?'original-call-interrupted-before-source-publication':'no-actual-declared-source-mutations';
+     receipt.owners.push(row);continue;}
     for(const version of selected){let fact;while(!(fact=factMatches(record,version)))await changed();
      row.facts.push({versionId:version.versionId,factId:fact.factId,deliveryId:fact.delivery.deliveryId});}
     const seen=new Set();
@@ -482,7 +489,7 @@ export function installOriginalSqlObservation({DatabaseSync,qualifyStack,event,r
 export function installSourceClock({workspaceDir,actor,ticksByCall,event=()=>{},qualifyStack,captureVersions=false}){
  if(!path.isAbsolute(workspaceDir)||!ticksByCall||typeof qualifyStack!=='function')throw Error('A source clock requires explicit owned inputs and source authority');
  const original=Object.fromEntries(['open','writeFile','rename','unlink','stat','lstat','readFile'].map(name=>[name,fsp[name]]));
- const handles=new WeakMap(),stages=new Map(),restorations=[],rows=[],failures=[],versions=new Map(),completedVersions=new Map();
+ const handles=new WeakMap(),handleRecords=[],stages=new Map(),restorations=[],rows=[],failures=[],versions=new Map(),completedVersions=new Map();
  const scopes=new AsyncLocalStorage();let nextHandle=0,nextControl=0;
  const currentScope=()=>scopes.getStore();
  function emit(name,row){try{event(name,row);}catch(error){const blocked={event:'source-clock-failure',reason:'receipt-sink-error',actor,callKey:currentScope()?.key??null,atNs:now(),error:errorValue(error)};failures.push(blocked);rows.push(blocked);}}
@@ -551,7 +558,7 @@ export function installSourceClock({workspaceDir,actor,ticksByCall,event=()=>{},
     originalStack:stack,sourceOwner,atNs:now()},original:{}};
   for(const name of['write','writeFile','truncate','sync','close','utimes'])record.original[name]=handle[name];
   if(typeof record.original.utimes!=='function'){failure('missing-original-handle-utimes',{path:filename});return;}
-  handles.set(handle,record);if(record.stage)stages.set(filename,record);
+  handles.set(handle,record);handleRecords.push(record);if(record.stage)stages.set(filename,record);
   for(const name of['write','writeFile','truncate','sync']){
    if(typeof record.original[name]!=='function')continue;
    handle[name]=function(...args){
@@ -623,6 +630,17 @@ export function installSourceClock({workspaceDir,actor,ticksByCall,event=()=>{},
  };
  return{
   currentCall:()=>currentScope(),
+  capturePendingSourceState(){const active=currentScope();if(!captureVersions||!active||active.completed)
+    throw Error('An interrupted source cutoff requires the actual pending V5 business call');
+   return{kind:'original-source-call-cutoff',callKey:active.key,actor,causalFrame:structuredClone(active.causalFrame),
+    completed:false,cutoffAtNs:now(),before:Array.from(active.before,([path,value])=>({path,...structuredClone(value)})),
+    commits:Array.from(active.commits.values(),value=>structuredClone(value)),
+    deletions:Array.from(active.deletions),handles:handleRecords.filter(record=>record.scope===active.key).map(record=>({
+     handleRef:record.handleRef,path:record.path,stage:record.stage,scope:record.scope,open:structuredClone(record.open),
+     writes:structuredClone(record.writes),syncs:structuredClone(record.syncs),close:record.close?structuredClone(record.close):null})),
+    receipts:structuredClone(rows.filter(row=>row.callKey===active.key)),
+    failures:structuredClone(failures.filter(row=>row.callKey===active.key))};
+  },
   beginCall(key,causalFrame=null){if(currentScope()&&!currentScope().completed){failure('ambiguous-concurrent-call',{requestedCall:key});return;}
    const tick=ticksByCall[key];if(!tick||tick.actor!==actor||!Number.isInteger(tick.ordinal)||(causalFrame&&causalFrame.wallClockNowMs!==tick.wallClockNowMs)||
     ![tick.atimeMs,tick.mtimeMs].every(value=>Number.isSafeInteger(value)&&value%1000===0)){

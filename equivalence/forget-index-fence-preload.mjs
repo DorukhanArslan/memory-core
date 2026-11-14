@@ -120,6 +120,10 @@ function pause(boundary,facts={}){
   const receipt={...gate,pid:process.pid,ppid:process.ppid,threadId,actor,sequence:++sequence,
    instance:Number(process.env.MEMORY_EQ_FIF_INSTANCE??0),
    enteredAtNs:process.hrtime.bigint().toString(),originalStack:new Error('Actual original fence control').stack,...facts};
+  if(profile.kind==='forget-index-fence-v5'&&boundary==='forget.marker-committed-before-purge'){
+   receipt.sourceCallCutoff=sourceClock.capturePendingSourceState();
+   event('original-source-call-interrupted-cutoff',{gate:gate.name,gateEnterSequence:receipt.sequence,cutoff:receipt.sourceCallCutoff});
+  }
   if(boundary==='publication.fence-checked-before-table-writes'&&!isMainThread){
    heldPublication={gate:gate.name,boundary,callLabel:gate.callLabel,gateEnterSequence:receipt.sequence,
     brokerRequestId:activeBrokerRequest?.id,requestRef:activeBrokerRequest?processRef(activeBrokerRequest):null,

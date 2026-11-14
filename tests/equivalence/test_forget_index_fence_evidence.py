@@ -1847,3 +1847,51 @@ def test_v5_stdout_codec_diagnostic_inline_data_never_becomes_successful_custody
     dispatch[field] = {'message': 'failed original stream retention'}
     with pytest.raises(ValueError, match='stream decode or retention failed'):
         guard._sdk_capture(V5_CASES[0], dispatch, {}, None, None)
+
+
+@pytest.fixture(scope='module')
+def v5_actual_opaque_reconciliation_return(v5_native_watcher_actual):
+    args = v5_native_watcher_actual
+    for (pid, thread), rows in args[4].items():
+        if pid not in args[2] or thread != 0:
+            continue
+        entered = {row['deliveryId']: row for row in rows if row['event'] == 'original-watch-delivery-enter'}
+        for row in rows:
+            if row['event'] == 'original-watch-delivery-return' and 'serializationError' in row['return']:
+                return row, entered[row['deliveryId']], args[5], pid
+    pytest.skip('Selected genuine Native packet did not exercise an opaque original reconciliation Promise')
+
+
+def test_v5_native_original_callback_promise_remains_opaque(v5_actual_opaque_reconciliation_return):
+    from equivalence.forget_index_fence_native_watch_evidence import _opaque_native_reconciliation_return
+    returned, delivery, context, pid = v5_actual_opaque_reconciliation_return
+    before = deepcopy(returned)
+    _opaque_native_reconciliation_return(returned, delivery, context, pid)
+    assert returned == before and set(returned['return']) == {'serializationError'}
+    assert returned['return']['serializationError']['message'] == '#<Promise> could not be cloned.'
+    assert 'settlement' not in returned
+
+
+@pytest.mark.parametrize('attack', ['message', 'return-ref', 'stack', 'listener', 'emitter', 'source-owner', 'dual', 'observer-source'])
+def test_v5_native_opaque_callback_requires_original_promise_source(v5_actual_opaque_reconciliation_return, attack):
+    from equivalence.forget_index_fence_native_watch_evidence import _opaque_native_reconciliation_return
+    returned, delivery, context, pid = deepcopy(v5_actual_opaque_reconciliation_return)
+    if attack == 'message':
+        returned['return']['serializationError']['message'] = '#<Function> could not be cloned.'
+    elif attack == 'return-ref':
+        returned['returnRef'] = str(pid + 1) + ':0:process-ref-8088'
+    elif attack == 'stack':
+        returned['return']['serializationError']['stack'] = 'Error: guessed Promise'
+    elif attack == 'listener':
+        delivery['registration']['listenerSource'] = '(eventType, filename) => Promise.resolve()'
+    elif attack == 'emitter':
+        delivery['kind'] = 'chokidar'
+    elif attack == 'source-owner':
+        delivery['registration']['sourceOwner']['path'] = 'dist/another-watcher.js'
+    elif attack == 'dual':
+        returned['return']['v8Hex'] = 'ff0f5f'
+    else:
+        context['allowedLocal'] = [row for row in context['allowedLocal']
+                                   if not row['path'].endswith('forget-index-fence-source-clock.mjs')]
+    with pytest.raises(ValueError):
+        _opaque_native_reconciliation_return(returned, delivery, context, pid)

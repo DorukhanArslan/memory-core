@@ -7,6 +7,48 @@ from __future__ import annotations
 
 import json
 from pathlib import Path
+import re
+
+
+
+def _opaque_native_reconciliation_return(returned, delivery, context, pid):
+    """Authenticate an actual uncloneable callback Promise without replacing it.
+
+    Linux subtree callbacks return enqueueReconciliation's real Promise. The
+    callback return is not the Promise's settlement; the watcher drain receipts
+    independently prove the admitted work and original inner sync settlements.
+    """
+    from equivalence.forget_index_fence_evidence import _compiled_text, _digest, require
+
+    carrier = returned["return"]
+    require(isinstance(carrier, dict) and set(carrier) == {"serializationError"}
+            and delivery["kind"] == "native", "Native watcher lost a cloneable callback return or claimed an opaque emitter result")
+    error = carrier["serializationError"]
+    require(isinstance(error, dict) and set(error) == {"name", "message", "stack"}
+            and error["name"] == "Error" and error["message"] == "#<Promise> could not be cloned."
+            and isinstance(error["stack"], str), "Native callback return lost its exact actual Promise clone failure")
+    registration = delivery["registration"]
+    filename = Path(context["runtime"]["runtimeRoot"]) / "dist/file-watcher-DSOr6bb7.mjs"
+    text = _compiled_text(str(filename), _digest(filename))
+    listener = registration["listenerSource"]
+    require(registration["sourceOwner"]["path"] == "dist/file-watcher-DSOr6bb7.mjs"
+            and f"{filename}:552:" in registration["originalStack"]
+            and listener.startswith("(eventType, filename) => this.enqueueReconciliation(") and listener in text
+            and text.count("\tenqueueReconciliation(key, run) {") == 1
+            and "if (this.closed) return Promise.resolve();" in text
+            and "this.reconciling = pending;\n\t\t}\n\t\treturn this.reconciling;" in text,
+            "Native opaque callback return lacks its exact original Promise-returning listener and reconciliation source")
+    helper_paths = [Path(row["path"]) for row in context["allowedLocal"]
+                    if Path(row["path"]).name == "forget-index-fence-source-clock.mjs"]
+    require(len(helper_paths) == 1, "Native opaque callback lost its authenticated observer source")
+    helper_uri = helper_paths[0].as_uri()
+    require("at serialize (node:v8:" in error["stack"]
+            and f"at valueRecord ({helper_uri}:16:" in error["stack"]
+            and f"at FSWatcher.wrapped ({helper_uri}:231:" in error["stack"]
+            and isinstance(returned["returnRef"], str)
+            and re.fullmatch(str(pid) + r":0:process-ref-[1-9][0-9]*", returned["returnRef"]) is not None
+            and returned["returnRef"] not in {registration["handleRef"], registration["listenerRef"], registration["wrapperRef"]},
+            "Native opaque Promise return lost its actual observer serialization boundary or original object identity")
 
 
 def validate_native_watch_v5(case, raw, actors, commands, passive, context, imports, authority, approved_node, clock):
@@ -218,7 +260,10 @@ def validate_native_watch_v5(case, raw, actors, commands, passive, context, impo
             if delivery['deliveryId'] in delivery_returns:
                 returned = delivery_returns[delivery['deliveryId']]
                 require(_ns(delivery['atNs']) < _ns(returned['atNs']), 'Native delivered callback return preceded its actual invocation')
-                wire(returned['return'])
+                if 'v8Hex' in returned['return']:
+                    wire(returned['return'])
+                else:
+                    _opaque_native_reconciliation_return(returned, delivery, context, pid)
         source_probes = [row for row in rows if row['event'] in {'source-clock-read', 'source-clock-read-throw'}
                          and 'snapshotPath' in row['originalStack']]
         watch_probes = selected('original-watch-version-stat-return') + selected('original-watch-version-stat-throw')

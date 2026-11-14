@@ -6,7 +6,7 @@ import path from 'node:path';
 import {createHash} from 'node:crypto';
 import {serialize} from 'node:v8';
 import {AsyncLocalStorage} from 'node:async_hooks';
-import {threadId} from 'node:worker_threads';
+import {threadId,getEnvironmentData,setEnvironmentData} from 'node:worker_threads';
 
 const digest=bytes=>createHash('sha256').update(bytes).digest('hex');
 const now=()=>process.hrtime.bigint().toString();
@@ -15,6 +15,52 @@ const valueRecord=value=>{try{return{v8Hex:serialize(value).toString('hex')};}ca
 const statValue=stat=>Object.fromEntries(Object.getOwnPropertyNames(stat).map(key=>[key,typeof stat[key]==='bigint'?stat[key].toString():stat[key]]));
 const same=(left,right)=>left.dev===right.dev&&left.ino===right.ino&&left.nlink===1n&&right.nlink===1n;
 const stable=(left,right)=>same(left,right)&&left.size===right.size&&left.mtimeNs===right.mtimeNs&&left.ctimeNs===right.ctimeNs;
+
+// One actual Node thread owns each append channel. Shared prefixes survive a
+// Worker.terminate and are persisted only at the caller's explicit checkpoints.
+export function openThreadEventStore({directory,token,environmentKey='memory.eq.fif.shared-passive-events',slotCount=128,
+ initialBytes=64*1024,maxBytes=64*1024*1024}){
+ const protocol='shared-original-event-jsonl-v1';let pool=getEnvironmentData(environmentKey);
+ if(pool===undefined){pool={protocol,token,pid:process.pid,slotCount,initialBytes,maxBytes,
+   slots:Array.from({length:slotCount},()=>({data:new SharedArrayBuffer(initialBytes,{maxByteLength:maxBytes}),state:new SharedArrayBuffer(5*4)}))};
+  setEnvironmentData(environmentKey,pool);
+ }
+ if(pool.protocol!==protocol||pool.token!==token||pool.pid!==process.pid||pool.slotCount!==slotCount||
+  pool.initialBytes!==initialBytes||pool.maxBytes!==maxBytes||pool.slots.length!==slotCount)throw Error('Unqualified shared passive event owner');
+ if(threadId>=slotCount)throw Error('Actual worker thread exceeds passive channel capacity');
+ const channel=pool.slots[threadId],state=new Int32Array(channel.state);
+ if(Atomics.load(state,3)!==0)throw Error('Passive channel already has a thread writer');
+ Atomics.store(state,3,threadId+1);
+ function block(code,requested){Atomics.store(state,2,Math.min(requested,0x7fffffff));Atomics.store(state,1,code);return false;}
+ function append(row){if(Atomics.load(state,1))return false;try{const bytes=Buffer.from(JSON.stringify(row)+'\n'),length=Atomics.load(state,0),required=length+bytes.length;
+   if(required>maxBytes)return block(1,required);
+   if(required>channel.data.byteLength)channel.data.grow(Math.min(maxBytes,Math.max(required,channel.data.byteLength*2)));
+   new Uint8Array(channel.data).set(bytes,length);Atomics.store(state,0,required);return true;
+  }catch{return block(2,Atomics.load(state,0));}
+ }
+ function failures(){return pool.slots.flatMap((slot,index)=>{const info=new Int32Array(slot.state),code=Atomics.load(info,1);
+  return code?[{protocol,pid:process.pid,threadId:index,code,publishedBytes:Atomics.load(info,0),requestedBytes:Atomics.load(info,2),maxBytes}]:[];});}
+ function snapshot(){return pool.slots.flatMap((slot,index)=>{const info=new Int32Array(slot.state),owner=Atomics.load(info,3);
+  if(!owner)return[];const length=Atomics.load(info,0),bytes=Buffer.from(new Uint8Array(slot.data,0,length));
+  return[{protocol,token,pid:process.pid,threadId:owner-1,channelIndex:index,publishedBytes:length,persistedBytes:Atomics.load(info,4),
+   capacityBytes:slot.data.byteLength,maxBytes,failureCode:Atomics.load(info,1),sha256:digest(bytes)}];});}
+ function flush(){const seals=[];
+  for(let index=0;index<pool.slots.length;index++){const slot=pool.slots[index],info=new Int32Array(slot.state),owner=Atomics.load(info,3);
+   if(!owner)continue;const length=Atomics.load(info,0);if(!length)continue;
+   const bytes=Buffer.from(new Uint8Array(slot.data,0,length)),filename=path.join(directory,`${process.pid}-${owner-1}-events.jsonl`);
+   const fd=fs.openSync(filename,fs.constants.O_CREAT|fs.constants.O_RDWR|fs.constants.O_NOFOLLOW,0o600);
+   try{const stat=fs.fstatSync(fd,{bigint:true});if(!stat.isFile()||stat.nlink!==1n)throw Error('Unowned passive event file');
+    let offset=0;while(offset<bytes.length){const written=fs.writeSync(fd,bytes,offset,bytes.length-offset,offset);if(!written)throw Error('Passive prefix write did not advance');offset+=written;}
+   }finally{fs.closeSync(fd);}
+   let previous=Atomics.load(info,4);while(previous<length){const found=Atomics.compareExchange(info,4,previous,length);if(found===previous)break;previous=found;}
+   seals.push({protocol,token,pid:process.pid,threadId:owner-1,channelIndex:index,publishedBytes:length,persistedBytes:Atomics.load(info,4),
+    capacityBytes:slot.data.byteLength,maxBytes,failureCode:Atomics.load(info,1),sha256:digest(bytes)});
+  }
+  const seal={protocol,token,pid:process.pid,flushingThreadId:threadId,atNs:now(),channels:seals,failures:failures()};
+  fs.writeFileSync(path.join(directory,`${process.pid}-${threadId}-passive-seal.json`),JSON.stringify(seal)+'\n',{mode:0o600});return seal;
+ }
+ return{append,flush,failures,snapshot,identity:{protocol,token,pid:process.pid,threadId,channelIndex:threadId,initialBytes,maxBytes,slotCount}};
+}
 
 // A reply hold postpones only its original delivery; no thread waits on Atomics.
 // The intercepted notification has no original return until the real emit runs.
@@ -28,6 +74,73 @@ export function deferOriginalEventDelivery({receiver,originalEmit,eventName,mess
   }catch(error){receipt('delivery-throw',{threwAtNs:now(),error:errorValue(error),privateError:valueRecord(error)});throw error;}
  })();
  return{completion};
+}
+
+export function callOriginalAtCheckpoint({receiver,original,args,before,settled,onControlFailure}){
+ const observe=callback=>{try{callback();}catch(error){onControlFailure(error);}};
+ observe(before);
+ let result;
+ try{result=Reflect.apply(original,receiver,args);}catch(error){observe(()=>settled(undefined,error));throw error;}
+ observe(()=>settled(result));return result;
+}
+
+// Passive SQL custody observes actual method calls and iterator consumption.
+// No query is replayed, iterator advanced, row changed, or filesystem written.
+export function installOriginalSqlObservation({DatabaseSync,qualifyStack,event,ref,onControlFailure}){
+ const prepare=DatabaseSync.prototype.prepare,exec=DatabaseSync.prototype.exec,location=DatabaseSync.prototype.location;
+ const restorations=[],iterators=new WeakSet(),boundMethods=new WeakSet();let nextCall=0;
+ const facts=db=>{let dbPath=null,locationError,transactionActive=null,transactionError;
+  try{dbPath=location.call(db,'main');}catch(error){locationError=errorValue(error);}
+  try{transactionActive=db.isTransaction;}catch(error){transactionError=errorValue(error);}
+  return{databaseRef:ref(db),dbPath,transactionActive,...(locationError?{locationError}:{}),...(transactionError?{transactionError}:{})};};
+ const authority=stack=>{try{return qualifyStack(stack);}catch(error){onControlFailure(error);return null;}};
+ const observe=callback=>{try{return callback();}catch(error){onControlFailure(error);return undefined;}};
+ const failure=error=>({errorRef:ref(error),errorPrototypeRef:error&&Object.getPrototypeOf(error)?ref(Object.getPrototypeOf(error)):null,
+  errorConstructorRef:error&&typeof Object.getPrototypeOf(error)?.constructor==='function'?ref(Object.getPrototypeOf(error).constructor):null,
+  name:error?.name,message:error?.message,stack:error?.stack,
+  privateError:valueRecord(error),ownProperties:Reflect.ownKeys(Object(error)).map(key=>{const descriptor=Object.getOwnPropertyDescriptor(error,key);
+   return{key:typeof key==='symbol'?{symbolDescription:key.description}:key,enumerable:descriptor.enumerable,configurable:descriptor.configurable,
+    ...(Object.hasOwn(descriptor,'value')?{value:valueRecord(descriptor.value)}:{accessor:true})};})});
+ function invoke({db,statement,sql,operation,original,receiver,args,sourceCaller,originalStack}){
+  const callId=`${process.pid}:${threadId}:sql-${++nextCall}`;
+  const common={callId,operation,statementRef:statement?ref(statement):null,sql,sourceCaller,originalStack,
+   originalMethodRef:ref(original),originalMethodName:original.name};
+  observe(()=>{if(!boundMethods.has(original)){boundMethods.add(original);const body=Function.prototype.toString.call(original),prototype=Object.getPrototypeOf(receiver);
+    event('original-sql-method-binding',{functionRef:ref(original),functionName:original.name,functionSource:body,functionSourceSha256:digest(Buffer.from(body)),
+     databaseClassRef:ref(DatabaseSync),databasePrototypeRef:ref(DatabaseSync.prototype),receiverPrototypeRef:prototype?ref(prototype):null,
+     receiverConstructorRef:prototype&&typeof prototype.constructor==='function'?ref(prototype.constructor):null});}});
+  observe(()=>event('original-selected-sql-call',{...common,...facts(db),arguments:valueRecord(args)}));
+  try{const result=Reflect.apply(original,receiver,args);
+   observe(()=>event('original-selected-sql-return',{...common,...facts(db),result:valueRecord(result),resultType:typeof result,
+    resultRef:result&&(typeof result==='object'||typeof result==='function')?ref(result):null,
+    ...(result&&(typeof result==='object'||typeof result==='function')?{resultPrototypeIsNull:Object.getPrototypeOf(result)===null,
+     resultPrototypeRef:Object.getPrototypeOf(result)===null?null:ref(Object.getPrototypeOf(result))}:{})}));return result;
+  }catch(error){observe(()=>event('original-selected-sql-throw',{...common,...facts(db),...failure(error)}));throw error;}
+ }
+ function instrumentIterator(iterator,context){if(!iterator||iterators.has(iterator))return;iterators.add(iterator);
+  for(const name of['next','return','throw']){const original=iterator[name];if(typeof original!=='function')continue;
+   iterator[name]=function(...args){return invoke({...context,operation:'iterate.'+name,original,receiver:this,args,
+    originalStack:new Error('Actual original SQLite iterator consumption').stack});};
+   restorations.push(()=>{iterator[name]=original;});
+  }
+ }
+ DatabaseSync.prototype.prepare=function(...args){const originalStack=new Error('Actual original SQLite prepare custody').stack,sourceCaller=authority(originalStack);
+  if(!sourceCaller)return Reflect.apply(prepare,this,args);
+  const statement=invoke({db:this,sql:args[0],operation:'prepare',original:prepare,receiver:this,args,sourceCaller,originalStack}),db=this,sql=args[0];
+  observe(()=>{for(const name of['get','all','run','iterate','columns','setAllowBareNamedParameters','setAllowUnknownNamedParameters','setReadBigInts','setReturnArrays']){const original=statement[name];if(typeof original!=='function')continue;
+   statement[name]=function(...values){const context={db,statement,sql,operation:name,original,receiver:this,args:values,
+     sourceCaller,originalStack:new Error('Actual original SQLite statement custody').stack};
+    const result=invoke(context);if(name==='iterate')observe(()=>instrumentIterator(result,context));return result;};
+   restorations.push(()=>{statement[name]=original;});
+  }});return statement;
+ };
+ DatabaseSync.prototype.exec=function(...args){const originalStack=new Error('Actual original SQLite exec custody').stack,sourceCaller=authority(originalStack);
+  return sourceCaller?invoke({db:this,sql:args[0],operation:'exec',original:exec,receiver:this,args,sourceCaller,originalStack}):Reflect.apply(exec,this,args);
+ };
+ return{declareInstalled(){event('original-sql-observer-installed',{databaseClassRef:ref(DatabaseSync),databasePrototypeRef:ref(DatabaseSync.prototype),
+   prepareOriginalRef:ref(prepare),execOriginalRef:ref(exec),statementMethods:['get','all','run','iterate','columns','setAllowBareNamedParameters',
+    'setAllowUnknownNamedParameters','setReadBigInts','setReturnArrays'],iteratorMethods:['next','return','throw'],storage:'shared-per-thread-immutable-jsonl'});},
+  restore(){DatabaseSync.prototype.prepare=prepare;DatabaseSync.prototype.exec=exec;for(const restore of restorations.reverse())restore();}};
 }
 
 export function installSourceClock({workspaceDir,actor,ticksByCall,event=()=>{},qualifyStack}){

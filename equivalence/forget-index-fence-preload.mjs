@@ -9,7 +9,7 @@ import {registerHooks,syncBuiltinESMExports} from 'node:module';
 import childProcess from 'node:child_process';
 import {fileURLToPath} from 'node:url';
 import {DatabaseSync} from 'node:sqlite';
-import {Worker,isMainThread,threadId} from 'node:worker_threads';
+import {Worker,isMainThread,threadId,parentPort,MessagePort} from 'node:worker_threads';
 import {serialize,deserialize} from 'node:v8';
 import {mock} from 'node:test';
 import {createHook} from 'node:async_hooks';
@@ -87,13 +87,18 @@ trace({event:'bootstrap',isMainThread,runtime:actualNode,contextSha256:hash(byte
 trace({event:'forget-index-fence-v2-bootstrap',profile,clock:{owner:'node:test',apis:['Date'],nowMs:Date.now(),
  dateConstructorReplaced:Date!==originalDate,setTimeoutUnchanged:setTimeout===originalTimeout,performanceNowUnchanged:performance.now===originalPerformance}});
 
-const sleepCell=new Int32Array(new SharedArrayBuffer(4)),fired=new Set(),passive=[];
+const clockModule=await import('./forget-index-fence-source-clock.mjs');
+const passiveStore=clockModule.openThreadEventStore({directory:context.evidenceDirectory,token:hash(bytes)});
+const sleepCell=new Int32Array(new SharedArrayBuffer(4)),fired=new Set();
 let callLabel=null,sequence=0,lastReindexRevisionRead=null,sourceClock=null;
 const controlFailures=[];
-const event=(name,fields={})=>{const row={event:name,sequence:++sequence,callLabel,atNs:process.hrtime.bigint().toString(),...fields};passive.push(row);return row;};
-function flush(){if(passive.length)fs.appendFileSync(path.join(context.evidenceDirectory,`${process.pid}-${threadId}-events.jsonl`),
- passive.splice(0).map(row=>JSON.stringify({...row,pid:process.pid,ppid:process.ppid,threadId,actor,
-  instance:Number(process.env.MEMORY_EQ_FIF_INSTANCE??0)})).join('\n')+'\n',{mode:0o600});}
+let activeBrokerRequest=null,heldPublication=null;
+const resourceCloseRequests=new WeakMap(),taskRequests=new Map();
+const event=(name,fields={})=>{const row={event:name,sequence:++sequence,callLabel,atNs:process.hrtime.bigint().toString(),...fields,
+ pid:process.pid,ppid:process.ppid,threadId,actor,instance:Number(process.env.MEMORY_EQ_FIF_INSTANCE??0)};passiveStore.append(row);return row;};
+function flush(){try{return passiveStore.flush();}catch(error){controlFailures.push({event:'fixture-control-failure',reason:'passive-flush-failed',
+ pid:process.pid,threadId,error:{name:error.name,message:error.message,stack:error.stack}});return null;}}
+event('passive-channel-register',passiveStore.identity);
 process.once('exit',flush);
 const carrier=value=>{try{return{v8Hex:serialize(value).toString('hex')};}catch(error){return{unserializable:{name:error.name,message:error.message}};}};
 function setWallClock(nowMs){if(!permittedClocks.has(nowMs))throw Error('Undeclared original wall clock advance');
@@ -109,15 +114,22 @@ function pause(boundary,facts={}){
   const receipt={...gate,pid:process.pid,ppid:process.ppid,threadId,actor,sequence:++sequence,
    instance:Number(process.env.MEMORY_EQ_FIF_INSTANCE??0),
    enteredAtNs:process.hrtime.bigint().toString(),originalStack:new Error('Actual original fence control').stack,...facts};
-  fs.writeFileSync(prefix+'.hit.json',JSON.stringify(receipt)+'\n',{flag:'wx',mode:0o600});
-  flush();
+  if(boundary==='publication.fence-checked-before-table-writes'&&!isMainThread){
+   heldPublication={gate:gate.name,boundary,callLabel:gate.callLabel,gateEnterSequence:receipt.sequence,
+    brokerRequestId:activeBrokerRequest?.id,requestRef:activeBrokerRequest?processRef(activeBrokerRequest):null,
+    request:carrier(activeBrokerRequest),requestType:activeBrokerRequest?.type,
+    requestInput:activeBrokerRequest?.input instanceof Uint8Array?passiveObservation(()=>carrier(deserialize(activeBrokerRequest.input))):null};
+  }
   trace({event:'fence-gate-enter',...receipt});
+  if(!flush())return;
+  fs.writeFileSync(prefix+'.hit.json',JSON.stringify(receipt)+'\n',{flag:'wx',mode:0o600});
   if(gate.pause===false)return;
   const deadline=performance.now()+30_000;
   while(!fs.existsSync(prefix+'.release')){if(performance.now()>=deadline)throw Error('Declared fence gate exceeded its real monotonic bound');Atomics.wait(sleepCell,0,0,10);}
   const released=JSON.parse(fs.readFileSync(prefix+'.release','utf8'));
   if(released.wallClockNowMs!==undefined)setWallClock(released.wallClockNowMs);
-  event('fence-gate-release',{gate:gate.name,boundary});
+  event('fence-gate-release',{gate:gate.name,boundary,callLabel:gate.callLabel,gateEnterSequence:receipt.sequence,releaseStep:released});
+  flush(); // A real Worker.terminate need not run this worker's exit listener.
  }
 }
 function controlFailure(reason,error,fields={}){const row=event('fixture-control-failure',{reason,...fields,
@@ -130,7 +142,8 @@ async function pauseAsync(boundary,facts={}){
   const receipt={...gate,pid:process.pid,ppid:process.ppid,threadId,actor,sequence:++sequence,
    instance:Number(process.env.MEMORY_EQ_FIF_INSTANCE??0),mode:'deferred-original-worker-reply',
    enteredAtNs:process.hrtime.bigint().toString(),originalStack:new Error('Actual original asynchronous fence control').stack,...facts};
-  fs.writeFileSync(prefix+'.hit.json',JSON.stringify(receipt)+'\n',{flag:'wx',mode:0o600});flush();trace({event:'fence-gate-enter',...receipt});
+  trace({event:'fence-gate-enter',...receipt});if(!flush())return;
+  fs.writeFileSync(prefix+'.hit.json',JSON.stringify(receipt)+'\n',{flag:'wx',mode:0o600});
   if(gate.pause===false)return;
   // These real callbacks demonstrate that the held notification does not own
   // unrelated IPC, SQLite admission ports, timers or main-loop completions.
@@ -150,7 +163,8 @@ globalThis[Symbol.for('memory.eq.forgetIndexFence')]=Object.freeze({
  setCallLabel(label){callLabel=label;},event,pause,carrier,flush,setWallClock,
  getReindexRevisionRead(){return lastReindexRevisionRead;},
  get sourceClock(){return sourceClock;},
- get controlFailures(){return controlFailures;},
+ get controlFailures(){return[...controlFailures,...passiveStore.failures().map(failure=>({event:'fixture-control-failure',reason:'shared-passive-buffer-blocked',...failure}))];},
+ get passiveChannels(){return passiveStore.snapshot();},
 });
 // Observe the original sleep resource after its held-lock decision. Timers
 // remain unchanged; this is a pending proof, never a timeout-selected outcome.
@@ -164,6 +178,8 @@ createHook({init(asyncId,type,triggerAsyncId,resource){
 }}).enable();
 
 // Observe revision reads and original SQL transactions on their actual connection.
+const sqlObservation=clockModule.installOriginalSqlObservation({DatabaseSync,qualifyStack:releaseCaller,event,
+ ref:value=>objectRef(value),onControlFailure:error=>controlFailure('original-sql-observer-failed',error)});
 const dbStates=new WeakMap();let nextDb=0;
 const originalPrepare=DatabaseSync.prototype.prepare,originalExec=DatabaseSync.prototype.exec,originalLocation=DatabaseSync.prototype.location;
 function dbState(db){if(!dbStates.has(db))dbStates.set(db,{id:`${process.pid}:${threadId}:db-${++nextDb}`,marker:false,lastRevision:null});return dbStates.get(db);}
@@ -205,8 +221,24 @@ DatabaseSync.prototype.exec=function(sql,...args){
 
 // The worker task pool receives the exact original keyword reply; gate only its
 // delivery to existing listeners, retaining the original task id/object/bytes.
-const tasks=new WeakMap(),observedWorkers=new WeakSet(),post=Worker.prototype.postMessage,emit=Worker.prototype.emit;
+const tasks=new WeakMap(),observedWorkers=new WeakSet(),sourceWorkers=new WeakMap(),post=Worker.prototype.postMessage,emit=Worker.prototype.emit;
+const transportMethods=new WeakSet();
+let nextWorkerCall=0;
+function workerPayload(value){return{value:carrier(value),privateJSON:processJSON(value),valueRef:objectRef(value)};}
+function passiveObservation(operation){try{return operation();}catch(error){controlFailure('original-transport-observer-failed',error);return null;}}
+function bindTransportMethod(fn,sourceClass){if(transportMethods.has(fn))return;transportMethods.add(fn);const body=Function.prototype.toString.call(fn);
+ event('original-transport-method-binding',{functionRef:processRef(fn),functionName:fn.name,functionSource:body,functionSourceSha256:hash(body),
+  sourceClassRef:processRef(sourceClass),sourcePrototypeRef:processRef(sourceClass.prototype)});}
+function transportError(error){return{name:error.name,message:error.message,stack:error.stack,errorRef:objectRef(error),
+ ownProperties:Reflect.ownKeys(error).map(key=>{const descriptor=Object.getOwnPropertyDescriptor(error,key);
+  return{key:typeof key==='symbol'?{symbolDescription:key.description}:key,enumerable:descriptor.enumerable,configurable:descriptor.configurable,
+   ...(Object.hasOwn(descriptor,'value')?{value:carrier(descriptor.value)}:{accessor:true})};})};}
 Worker.prototype.postMessage=function(message,...args){
+ const postStack=new Error('Actual original worker command custody').stack,postCaller=releaseCaller(postStack);
+ const commandFacts=postCaller?passiveObservation(()=>{const facts={callId:`${process.pid}:${threadId}:worker-command-${++nextWorkerCall}`,
+   workerRef:processRef(this),workerThreadId:this.threadId,originalPostRef:processRef(post),sourceCaller:postCaller,originalStack:postStack,
+   message:workerPayload(message),arguments:workerPayload([message,...args]),requestId:message?.id??null,taskId:message?.taskId??null};
+  bindTransportMethod(post,Worker);sourceWorkers.set(this,{workerRef:facts.workerRef,sourceCaller:postCaller,originalStack:postStack});return facts;}):null;
  if(!observedWorkers.has(this)){observedWorkers.add(this);event('original-worker-first-dispatch',{
   workerThreadId:this.threadId,wallClockNowMs:Date.now(),request:carrier(message),originalStack:new Error('Original worker dispatch').stack});}
  if(message?.input?.kind==='keyword'&&Number.isSafeInteger(message.taskId)){
@@ -223,9 +255,20 @@ Worker.prototype.postMessage=function(message,...args){
   if(command?.type==='database.publish')event('original-database-publication-command',{brokerRequestId:message.id,command:carrier(command),
    expectedRevision:command.input.expectedRevision,sourcePath:command.input.sourcePath,sourceIdentity:command.input.sourceIdentity});
  }
- return post.call(this,message,...args);
+ return clockModule.callOriginalAtCheckpoint({receiver:this,original:post,args:[message,...args],
+  before:()=>{if(commandFacts)event('original-worker-command-call',commandFacts);},
+  settled:(result,error)=>{if(commandFacts)event(error?'original-worker-command-throw':'original-worker-command-return',{
+   ...commandFacts,...(error?{error:transportError(error),privateError:carrier(error)}:{actualReturn:carrier(result)})});},
+  onControlFailure:error=>controlFailure('original-worker-command-observer-failed',error)});
 };
 Worker.prototype.emit=function(name,message,...args){
+ if(['exit','error','messageerror','online'].includes(name)&&sourceWorkers.has(this))passiveObservation(()=>{
+  event('original-worker-lifecycle-event',{...sourceWorkers.get(this),workerThreadId:this.threadId,eventName:name,arguments:workerPayload([message,...args])});});
+ const workerSource=sourceWorkers.get(this),incoming=name==='message'&&workerSource?passiveObservation(()=>{
+  bindTransportMethod(emit,Worker);
+  const facts={...workerSource,callId:`${process.pid}:${threadId}:worker-reply-${++nextWorkerCall}`,workerThreadId:this.threadId,
+   originalEmitRef:processRef(emit),message:workerPayload(message),arguments:workerPayload([name,message,...args]),
+   requestId:message?.id??null,taskId:message?.taskId??null};event('original-worker-reply-received',facts);return facts;}):null;
  if(name==='message'&&message?.status==='ok'&&message.value?.kind==='keyword'){
   const task=tasks.get(this)?.get(message.taskId);
   if(task){const previous=callLabel;callLabel=task.callLabel;
@@ -235,6 +278,7 @@ Worker.prototype.emit=function(name,message,...args){
      request:task.request,requestInput:task.requestInput,nativeSectionsRef:task.nativeSectionsRef,requestSourceCaller:task.sourceCaller,
      requestOriginalStack:task.originalStack,reply:carrier(message),replyV8Sha256:hash(serialize(message)),eventName:name,
      eventArguments:carrier(args),eventArgumentRefs:args.map(value=>value&&typeof value==='object'?processRef(value):null)};
+    facts.replyCallId=incoming?.callId??null;
     facts.callLabel=task.callLabel;
     facts.requestHeader={taskId:task.requestObject.taskId,interactive:task.requestObject.interactive,sampleMemory:task.requestObject.sampleMemory,
      nativeSections:{constructorName:task.requestObject.nativeSections.constructor.name,byteLength:task.requestObject.nativeSections.byteLength,
@@ -244,7 +288,9 @@ Worker.prototype.emit=function(name,message,...args){
      awaitRelease:()=>pauseAsync(boundary,facts),
      onReceipt:(stage,fields)=>{if(stage==='delivery-enter'&&hash(serialize(message))!==facts.replyV8Sha256)
        controlFailure('held-keyword-message-mutated',Error('Actual held keyword reply changed before original delivery'),facts);
-      event('keyword-reply-'+stage,{...facts,...fields});if(stage!=='delivery-enter'){tasks.get(this).delete(message.taskId);flush();}},
+      event('keyword-reply-'+stage,{...facts,...fields});
+      if(incoming)event(stage==='delivery-enter'?'original-worker-reply-call':stage==='delivery-return'?'original-worker-reply-return':'original-worker-reply-throw',{
+       ...incoming,...fields});if(stage!=='delivery-enter'){tasks.get(this).delete(message.taskId);flush();}},
      onControlFailure:error=>controlFailure('keyword-reply-control-failed',error,facts)});
     held.completion.catch(error=>controlFailure('keyword-reply-deferred-completion-rejected',error,facts));
     callLabel=previous;return; // The original emit has deliberately not run yet.
@@ -252,7 +298,12 @@ Worker.prototype.emit=function(name,message,...args){
    callLabel=previous;tasks.get(this).delete(message.taskId);
   }
  }
- return emit.call(this,name,message,...args);
+ if(!incoming)return emit.call(this,name,message,...args);
+ return clockModule.callOriginalAtCheckpoint({receiver:this,original:emit,args:[name,message,...args],
+  before:()=>event('original-worker-reply-call',incoming),
+  settled:(result,error)=>event(error?'original-worker-reply-throw':'original-worker-reply-return',{
+   ...incoming,...(error?{error:transportError(error),privateError:carrier(error)}:{actualReturn:carrier(result)})}),
+  onControlFailure:error=>controlFailure('original-worker-reply-observer-failed',error)});
 };
 const realpath=fsp.realpath;
 fsp.realpath=async function(...args){const stack=new Error('Original promotion lock target resolution').stack;
@@ -268,13 +319,22 @@ fsp.realpath=async function(...args){const stack=new Error('Original promotion l
 const originalFork=childProcess.fork,originalSpawn=childProcess.spawn;
 const observedChildren=new WeakSet(),processRefs=new WeakMap();let nextProcessRef=0,nextLaunch=0,forkDepth=0;
 const processRef=value=>{if(!processRefs.has(value))processRefs.set(value,`${process.pid}:${threadId}:process-ref-${++nextProcessRef}`);return processRefs.get(value);};
+function objectRef(value){return value&&(typeof value==='object'||typeof value==='function')?processRef(value):null;}
 function processJSON(value,seen=new WeakSet()){
  if(value===undefined)return{privateType:'undefined'};
  if(typeof value==='bigint')return{privateType:'bigint',value:value.toString()};
  if(typeof value==='function')return{privateType:'function',name:value.name,ref:processRef(value)};
  if(value===null||typeof value!=='object')return value;
+ if(value instanceof Error||value instanceof DOMException){if(seen.has(value))return{privateType:'reference',ref:processRef(value)};seen.add(value);
+  return{privateType:'Error',constructorName:value.constructor.name,ref:processRef(value),name:value.name,message:value.message,stack:value.stack,
+   ownProperties:Reflect.ownKeys(value).map(key=>{const descriptor=Object.getOwnPropertyDescriptor(value,key);
+    return{key:typeof key==='symbol'?{symbolDescription:key.description}:key,enumerable:descriptor.enumerable,configurable:descriptor.configurable,
+     ...(Object.hasOwn(descriptor,'value')?{value:processJSON(descriptor.value,seen)}:{accessor:true})};})};}
  if(value instanceof URL)return{privateType:'URL',href:value.href};
  if(value instanceof AbortSignal)return{privateType:'AbortSignal',aborted:value.aborted,reason:processJSON(value.reason,seen),ref:processRef(value)};
+ if(value instanceof MessagePort)return{privateType:'MessagePort',ref:processRef(value)};
+ if(value instanceof ArrayBuffer||value instanceof SharedArrayBuffer)return{privateType:value.constructor.name,
+  byteLength:value.byteLength,hex:Buffer.from(value).toString('hex'),ref:processRef(value)};
  if(ArrayBuffer.isView(value))return{privateType:value.constructor.name,byteLength:value.byteLength,
   hex:Buffer.from(value.buffer,value.byteOffset,value.byteLength).toString('hex')};
  if(seen.has(value))return{privateType:'reference',ref:processRef(value)};
@@ -334,7 +394,55 @@ childProcess.spawn=function(...args){const originalStack=new Error('Original chi
 };
 syncBuiltinESMExports();
 
-const clockModule=await import('./forget-index-fence-source-clock.mjs');
+if(parentPort){
+ // The original broker sends one request at a time. This earlier listener only
+ // retains that same request object; the original receive callback still owns it.
+ parentPort.on('message',request=>{activeBrokerRequest=request;
+  if(request?.closeResource===true&&request.resourcePort instanceof MessagePort)resourceCloseRequests.set(request.resourcePort,request);
+  if(Number.isSafeInteger(request?.taskId)&&request.responseId===undefined&&request.nativeSections instanceof SharedArrayBuffer)taskRequests.set(request.taskId,request);
+ });
+}
+const originalPortPost=MessagePort.prototype.postMessage;
+MessagePort.prototype.postMessage=function(...args){const reply=args[0],originalStack=new Error('Actual original MessagePort custody').stack,
+ sourceCaller=releaseCaller(originalStack);
+ if(!sourceCaller)return originalPortPost.apply(this,args);
+ const facts=passiveObservation(()=>({callId:`${process.pid}:${threadId}:port-${++nextWorkerCall}`,sourceCaller,originalStack,
+  portRef:processRef(this),parentPortRef:parentPort?processRef(parentPort):null,originalPostRef:processRef(originalPortPost),
+  message:workerPayload(reply),arguments:workerPayload(args)}));
+ passiveObservation(()=>bindTransportMethod(originalPortPost,MessagePort));
+ let sqliteTerminal=false;
+ if(this===parentPort&&sourceCaller.package==='node_modules/openclaw'&&sourceCaller.path==='dist/infra/sqlite-store.worker.js'&&
+  reply?.id===activeBrokerRequest?.id&&typeof reply.ok==='boolean'&&reply.input!=='next'){
+  sqliteTerminal=!reply.transfer||reply.transfer==='frame'&&passiveObservation(()=>deserialize(reply.value).done===true)===true;
+ }
+ const taskTerminal=this===parentPort&&sourceCaller.package==='node_modules/openclaw'&&sourceCaller.path==='dist/worker-task-server-CF3aSh39.mjs'&&
+  ['ok','failed'].includes(reply?.status)&&Number.isSafeInteger(reply.taskId);
+ const resourceRequest=resourceCloseRequests.get(this),resourceTerminal=sourceCaller.package==='node_modules/openclaw'&&sourceCaller.path==='dist/worker-task-server-CF3aSh39.mjs'&&
+  resourceRequest?.closeResource===true&&resourceRequest.resourcePort===this&&typeof reply?.ok==='boolean';
+ const terminal=sqliteTerminal||taskTerminal||resourceTerminal,held=sqliteTerminal&&heldPublication&&reply.id===heldPublication.brokerRequestId?heldPublication:null;
+ const terminalRequest=resourceTerminal?resourceRequest:taskTerminal?taskRequests.get(reply.taskId):activeBrokerRequest;
+ if(held)heldPublication=null;
+ const heldFacts=held?{...held,sourceOwner:'SqliteStoreWorker.receive.original-terminal-reply',sourceCaller,originalStack,
+  parentPortRef:processRef(parentPort),originalPostRef:processRef(originalPortPost),replyRef:processRef(reply),
+  reply:carrier(reply),postArguments:carrier(args),transferListRef:objectRef(args[1])}:null;
+ return clockModule.callOriginalAtCheckpoint({receiver:this,original:originalPortPost,args,
+  before:()=>{if(facts)event('original-message-port-call',facts);
+   if(heldFacts)event('held-publication-worker-terminal-reply',heldFacts);
+   if(terminal){event('original-worker-terminal-reply-checkpoint',{sourceCaller,originalStack,
+    request:workerPayload(terminalRequest),requestRef:objectRef(terminalRequest),reply:carrier(reply),replyRef:objectRef(reply),
+    portCallId:facts?.callId??null,terminalKind:sqliteTerminal?'sqlite-command':resourceTerminal?'worker-resource-close':'worker-task'});
+    if(heldFacts||resourceTerminal||sqliteTerminal&&activeBrokerRequest?.type==='close')flush();}},
+  settled:(result,error)=>{const outcome=error?{error:transportError(error),privateError:carrier(error)}:{actualReturn:carrier(result)};
+   if(facts)event(error?'original-message-port-throw':'original-message-port-return',{...facts,...outcome});
+   if(heldFacts)event('held-publication-worker-terminal-post-settled',{...heldFacts,...outcome});
+   if(taskTerminal)taskRequests.delete(reply.taskId);if(resourceTerminal)resourceCloseRequests.delete(this);
+   if(heldFacts||resourceTerminal||sqliteTerminal&&activeBrokerRequest?.type==='close')flush();},
+  onControlFailure:error=>controlFailure('original-message-port-observer-failed',error,heldFacts??{})});
+};
+sqlObservation.declareInstalled();
+event('original-transport-observer-installed',{workerClassRef:processRef(Worker),workerPrototypeRef:processRef(Worker.prototype),
+ workerPostOriginalRef:processRef(post),workerEmitOriginalRef:processRef(emit),portClassRef:processRef(MessagePort),
+ portPrototypeRef:processRef(MessagePort.prototype),portPostOriginalRef:processRef(originalPortPost),storage:'shared-per-thread-immutable-jsonl'});
 sourceClock=clockModule.installSourceClock({workspaceDir:path.join(context.stateDirectory,'workspace'),actor,
  ticksByCall:profile.sourceWriteClock.ticksByCall,event:(name,fields)=>event(name,fields),
  qualifyStack(stack,kind,details){const caller=releaseCaller(stack);if(!caller)return null;

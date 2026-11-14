@@ -35,7 +35,7 @@ export async function finishGracefulActorExit(runtime,settlement){
   stream.write('',error=>error?reject(error):resolve());
  })));
  controller()?.event('graceful-stop-output-drained',{commandId:settlement.id});
- runtime.persist();controller()?.flush();
+ controller()?.flush();runtime.persist();
  if(process.connected)process.disconnect();
  process.exit(0);
 }
@@ -314,7 +314,8 @@ export async function runForgetIndexFenceActor(request){
   },error=>{call.errorRef=ref(error);});return received;
  };
  let manager=null,exiting=false;
- const persist=()=>fs.writeFileSync(path.join(evidenceDirectory,`${safeName(actor)}-${instance}-raw.json`),JSON.stringify(raw)+'\n');
+ const persist=()=>{raw.passiveChannels=controller().passiveChannels;
+  fs.writeFileSync(path.join(evidenceDirectory,`${safeName(actor)}-${instance}-raw.json`),JSON.stringify(raw)+'\n');};
  async function getManager(){if(!manager){manager=await runtime.MemoryIndexManager.get({cfg,agentId:input.identity.agentId,purpose:'cli'});
   if(!manager)throw Error('Original manager unavailable');
   const owner={ownerId:`${actor}:${instance}:manager-${raw.owners.length+1}`,purpose:manager.purpose,

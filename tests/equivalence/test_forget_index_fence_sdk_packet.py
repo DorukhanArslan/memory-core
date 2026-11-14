@@ -72,6 +72,30 @@ def test_independent_json_roundtrip_keeps_unicode_newlines_literal_escapes_and_w
     assert stored["adapterProvenanceAfter"] == dispatch["adapterProvenanceAfter"]
 
 
+@pytest.mark.parametrize("field", ["stdout", "stderr"])
+def test_either_stream_decode_failure_rejects_positive_encoding_and_preserves_all_diagnostic_values(field):
+    dispatch = _dispatch()
+    actual_bytes = b"actual stream bytes\r\n\xff\x80"
+    observation = dispatch["observation"]
+    assert sdk._decode_dispatch_stream(actual_bytes, field, dispatch) is None
+    before = deepcopy(dispatch)
+    with pytest.raises(ValueError, match="failed UTF8 stream"):
+        sdk._capture_dispatch_packet(dispatch)
+    assert dispatch == before and dispatch["observation"] is observation
+    assert dispatch[field + "BytesHex"] == actual_bytes.hex()
+    assert "observationEncoding" not in dispatch
+    assert dispatch["observation"]["result"] == observation["result"]
+
+
+@pytest.mark.parametrize("field", ["stdoutDecodeError", "stdoutBytesHex", "stderrDecodeError", "stderrBytesHex"])
+def test_any_retained_decode_diagnostic_prevents_a_positive_v5_marker(field):
+    dispatch = _dispatch()
+    dispatch[field] = None
+    with pytest.raises(ValueError, match="failed UTF8 stream"):
+        sdk._capture_dispatch_packet(dispatch)
+    assert "observationEncoding" not in dispatch and "observation" in dispatch
+
+
 @pytest.mark.parametrize("version", [1, 2, 3, 4])
 def test_legacy_dispatches_keep_full_observation_and_all_original_fields_without_marker(version):
     dispatch = _dispatch(version)

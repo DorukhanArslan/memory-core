@@ -62,6 +62,9 @@ def _capture_dispatch_packet(dispatch):
         raise ValueError("The compact SDK packet requires matching closed V5 identities")
     if "observationEncoding" in dispatch:
         raise ValueError("A live SDK dispatch cannot already contain an observation encoding")
+    if v5 and any(field in dispatch for field in (
+            "stdoutDecodeError", "stdoutBytesHex", "stderrDecodeError", "stderrBytesHex")):
+        raise ValueError("A failed UTF8 stream cannot assert a positive SDK observation encoding")
     if not v5 or "observation" not in dispatch:
         return packet
     stdout, observation = dispatch.get("stdout"), dispatch["observation"]

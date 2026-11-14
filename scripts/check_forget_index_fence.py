@@ -90,7 +90,8 @@ def main():
             if native_result is not None and sdk_result is not None:
                 try:
                     row["structuralReplay"] = replay_case(case, native_directory, sdk_directory,
-                                                        approved_node=node, approved_sdk_root=ROOT)
+                                                        approved_node=node, approved_sdk_root=ROOT,
+                                                        approved_reference=reference)
                     row["differences"] = differences(native_result, sdk_result)
                     row["status"] = "mismatch" if row["differences"] else "match"
                 except Exception as error:

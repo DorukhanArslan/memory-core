@@ -343,7 +343,7 @@ def run_short_term_promotion(
     on_event: Callable[[dict[str, Any]], None] | None = None,
     lock_observer: Callable[[str, Path], None] | None = None,
 ) -> MemoryPromotionRun:
-    """Promote the top gated recall entries into ``MEMORY.md`` and reindex.
+    """Promote the top gated recall entries into ``MEMORY.md`` and request indexing.
 
     Port of ``rankShortTermPromotionCandidates`` plus ``applyShortTermPromotions``: ranks (or takes
     the host's ``candidates``, upstream's CLI path), applies the apply-stage gates and reports every
@@ -355,7 +355,9 @@ def run_short_term_promotion(
     (entries whose text is gone, or now inside a dreaming fence, are rejected), keys that already
     have a promotion marker are reconciled, one dated section is appended for the rest (dated in
     ``timezone``), older promotion sections are compacted to fit ``memory_file_max_chars``, every
-    committed entry is marked ``promotedAt`` and ``store`` is reindexed when MEMORY.md changed.
+    committed entry is marked ``promotedAt``. When MEMORY.md changes, ordinary stores are
+    reindexed; an explicit managed on-search owner retains the source for its next search's
+    admitted background publication, following the same policy as other curated writes.
 
     Locks, in upstream's order: the sidecar file lock
     ``<state_dir>/locks/memory-promotion-<sha256 of the workspace path>.lock``
@@ -1156,7 +1158,11 @@ def _commit_promotion(
     reindex_error = None
     if (to_append or consolidated) and committed_content is not None:
         try:
-            indexed_files = store.reindex(workspace)
+            defer_publication = getattr(store, "_defer_memory_publication", None)
+            publication_deferred = (defer_publication(workspace, sources=("memory",))
+                                    if defer_publication is not None else None)
+            if publication_deferred is None:
+                indexed_files = store.reindex(workspace)
         except Exception as exc:
             reindex_error = exception_message(exc)
     if consolidation is not None and commit is not None and commit.result is not None:

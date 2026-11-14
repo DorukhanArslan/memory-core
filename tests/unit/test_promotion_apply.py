@@ -14,6 +14,7 @@ import json
 import logging
 import os
 import sqlite3
+import threading
 from dataclasses import replace
 from pathlib import Path
 from typing import Any
@@ -165,7 +166,7 @@ def test_managed_promotion_publishes_through_its_actual_workspace_owner(tmp_path
     config = replace(_workspace(tmp_path), flags=FeatureFlags(vector_search=False, temporal_decay=False))
     catalog = MemorySessionCatalog(tmp_path / "catalog.sqlite", clock_ms=lambda: NOW_MS)
     workspace = MemoryWorkspace(config.workspace_dir, session_catalog=catalog, index_sources=["memory"])
-    store = ManagedSQLiteMemoryStore(config, workspace, memory_publication="on-search",
+    store = ManagedSQLiteMemoryStore(config, workspace, memory_publication="on-write",
         runtime_identity=OPENCLAW_COMPAT_RUNTIME_IDENTITY)
     try:
         store.reindex(workspace)
@@ -183,6 +184,52 @@ def test_managed_promotion_publishes_through_its_actual_workspace_owner(tmp_path
         with pytest.raises(ValueError, match="bound workspace"):
             store.reindex(MemoryWorkspace(config.workspace_dir))
     finally:
+        store.close()
+
+
+def test_on_search_promotion_commits_source_and_leaves_index_for_a_real_search_publisher(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    config = replace(_workspace(tmp_path), flags=FeatureFlags(vector_search=False, temporal_decay=False))
+    catalog = MemorySessionCatalog(tmp_path / "catalog.sqlite", clock_ms=lambda: NOW_MS)
+    workspace = MemoryWorkspace(config.workspace_dir, session_catalog=catalog, index_sources=["memory"])
+    store = ManagedSQLiteMemoryStore(config, workspace, memory_publication="on-search")
+    entered, release = threading.Event(), threading.Event()
+    original = store._run_memory_publication
+
+    def held(*args):
+        entered.set()
+        assert release.wait(5)
+        return original(*args)
+
+    monkeypatch.setattr(store, "_run_memory_publication", held)
+    try:
+        store.reindex(workspace)
+        before = store.read_published_index()
+        run = _run(config, tmp_path, store=store)
+        assert run.reindex_error is None and run.appended == 1 and run.indexed_files == 0
+        assert run.chunks == len(before["chunks"])
+        assert "<!-- openclaw-memory-promotion:" in (workspace.root / "MEMORY.md").read_text()
+        assert store.read_published_index() == before
+        pending = store.lifecycle_snapshot()["memoryPublication"]
+        assert pending["dirty"] is True and pending["active"] is False and pending["jobCount"] == 0
+
+        old = store.search("Alpha fact 1", min_score=0, sources={"memory"})
+        assert entered.wait(5)
+        assert any(hit.path == "memory/2026-05-08.md" for hit in old)
+        assert all("<!-- openclaw-memory-promotion:" not in hit.snippet for hit in old)
+        assert store.read_published_index() == before
+        release.set()
+        with store._condition:
+            assert store._condition.wait_for(lambda: not store._memory_active, timeout=5)
+        published = store.read_published_index()
+        assert published["revision"] > before["revision"]
+        assert any(row["path"] == "MEMORY.md" and "<!-- openclaw-memory-promotion:" in row["text"]
+                   for row in published["chunks"])
+        assert store.bound_workspace is workspace and store.bound_workspace.session_catalog is catalog
+        assert store.lifecycle_snapshot()["memoryPublication"]["dirty"] is False
+    finally:
+        release.set()
         store.close()
 
 

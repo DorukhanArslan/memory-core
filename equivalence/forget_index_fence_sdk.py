@@ -1532,7 +1532,7 @@ class _SdkActor:
                 row["returnSeq"] = self.observer.event("watch-ready-control-return", label=label)["sequence"]
         return _observation_copy(row)
 
-    def _watch_effects(self, label, versions, source_calls):
+    def _watch_effects(self, label, versions, source_calls, interrupted_source_calls=()):
         """Join retained targets through the existing original managed API once."""
         waits = getattr(self, "watch_effect_waits", None)
         if waits is None:
@@ -1541,7 +1541,8 @@ class _SdkActor:
         row = {"label": label, "actor": self.actor, "pid": os.getpid(),
             "ownerObjectId": str(id(owner)) if owner is not None else None, "watcherObjectId": None,
             "ownerClosed": None, "versions": _observation_copy(versions),
-            "sourceCalls": _observation_copy(source_calls), "status": None, "api": None}
+            "sourceCalls": _observation_copy(source_calls),
+            "interruptedSourceCalls": _observation_copy(interrupted_source_calls), "status": None, "api": None}
         waits.append(row)
         with self.observer.call_scope(label, "watch-control"):
             row["enterSeq"] = self.observer.event("watch-effects-control-enter", label=label)["sequence"]
@@ -1560,7 +1561,8 @@ class _SdkActor:
                 row["watcherObjectId"] = str(id(watcher))
                 row["status"] = _observation_copy(watcher.status())
                 if not versions:
-                    row["outcome"] = ({"status": "no-applicable-targets"} if source_calls else
+                    row["outcome"] = ({"status": "interrupted-before-source-publication"} if interrupted_source_calls else
+                        {"status": "no-applicable-targets"} if source_calls else
                         {"status": "absent", "reason": "no-original-source-call-proof"})
                     return row
                 wait = getattr(owner, "wait_for_memory_watches", None)
@@ -1621,7 +1623,8 @@ class _SdkActor:
         if operation == "watch-ready":
             return self._watch_ready(command["label"])
         if operation == "watch-effects":
-            return self._watch_effects(command["label"], command["versions"], command["sourceCalls"])
+            return self._watch_effects(command["label"], command["versions"], command["sourceCalls"],
+                                       command.get("interruptedSourceCalls", ()))
         if operation == "acquire":
             return self.acquire()
         if operation == "seed":
@@ -1823,6 +1826,52 @@ def _select_snapshot_receiver(actors, requested_actor=None):
     return actors[selected], {"requestedActor": requested_actor, "preferredActor": preferred,
                               "selectedActor": selected, "pid": available[selected]["pid"],
                               "reason": reason, "candidates": candidates}
+
+
+def _interrupted_source_call(call_key, call, processes):
+    """Retain an authenticated gate-held interruption, never a completion."""
+    if ("returnSeq" in call or "watchTargetCapture" in call or "apiEntry" not in call or "enterSeq" not in call
+            or call.get("termination", {}).get("signal") != "SIGKILL"):
+        raise RuntimeError("A missing watch target capture is not a proved interrupted original call")
+    process = next((row for row in processes if row["pid"] == call.get("pid")), None)
+    if (process is None or process.get("kill", {}).get("signal") != "SIGKILL"
+            or process.get("kill", {}).get("pid") != call["pid"] or process.get("kill", {}).get("pollBefore") is not None
+            or (process.get("exit") or {}).get("code") != -9 or not process.get("reapedAtNs")):
+        raise RuntimeError("An interrupted source call requires its actual SIGKILL and process reap")
+    responses = process.get("stdoutResponses", [])
+    matching = [(index, row) for index, row in enumerate(responses)
+        if call_key in row.get("observation", {}).get("publicCalls", {})]
+    if not matching:
+        raise RuntimeError("The interrupted original frame has no captured observation")
+    response_index, response = matching[-1]
+    observation = response["observation"]
+    original = observation["publicCalls"][call_key]
+    if "returnSeq" in original or "watchTargetCapture" in original:
+        raise RuntimeError("An actual completed call cannot be relabelled interrupted")
+    if original != {key: value for key, value in call.items() if key != "termination"}:
+        raise RuntimeError("The interrupted source call differs from its actual observed pending frame")
+    gates = [(name, gate) for name, gate in observation.get("functionalGates", {}).items()
+        if gate.get("reached") is True and gate.get("released") is False
+        and gate["specification"].get("boundary") == "forget.marker-committed-before-purge"
+        and gate["specification"].get("callLabel") == call["label"]]
+    if len(gates) != 1 or not gates[0][1].get("hits"):
+        raise RuntimeError("The interrupted source frame is not held at the actual marker-before-purge gate")
+    io = [row for row in observation.get("sourceClockOriginalIO", [])
+        if (row.get("scope") or {}).get("kind") == call["kind"]
+        and row["scope"].get("label") == call["label"]]
+    clocks = [row for row in observation.get("sourceClockReceipts", []) if row.get("callKey") == call_key]
+    if any(row.get("committed") for row in clocks) or any(
+            row.get("syscall") in {"write", "pwrite", "replace", "unlink"} for row in io):
+        raise RuntimeError("An interrupted original call has source mutations requiring retained positive custody")
+    return {"kind": "original-interrupted-source-call", "callKey": call_key,
+        "actor": call["actor"], "pid": call["pid"], "call": _observation_copy(call),
+        "sourceObservation": {"pid": process["pid"], "commandId": response["id"], "stdoutResponseIndex": response_index},
+        "markerGate": {"name": gates[0][0], **_observation_copy(gates[0][1])},
+        "sourceIOCutoff": {"originalIO": _observation_copy(io), "sourceClockReceipts": _observation_copy(clocks),
+            "lastOriginalSequence": max((row["sequence"] for row in observation.get("originalCalls", [])), default=None),
+            "lastSourceIOSequence": max((row["sequence"] for row in observation.get("sourceClockOriginalIO", [])), default=None)},
+        "kill": _observation_copy(process["kill"]),
+        "reap": {"exit": _observation_copy(process["exit"]), "reapedAtNs": process["reapedAtNs"]}}
 
 
 def _arguments_for(value, kind, label):
@@ -2039,16 +2088,20 @@ def run_forget_index_fence_sdk_host(request):
             elif operation == "await-original-search-effects":
                 record["returned"] = actors[actor].command("await-search-effects", label=label)
             elif operation in {"await-original-watch-ready", "await-original-watch-effects"}:
-                source_calls, retained_versions = [], []
+                source_calls, retained_versions, interrupted_source_calls = [], [], []
                 if operation == "await-original-watch-effects":
                     for call_key in step["afterCalls"]:
                         if call_key not in calls:
                             raise ValueError("A watch effects barrier has no actual declared source call: " + call_key)
                         original_call = _observation_copy(calls[call_key])
-                        source_calls.append(original_call)
                         capture = original_call.get("watchTargetCapture")
                         if isinstance(capture, dict):
+                            source_calls.append(original_call)
                             retained_versions.extend(_observation_copy(capture.get("versions", [])))
+                        elif original_call.get("termination"):
+                            interrupted_source_calls.append(_interrupted_source_call(call_key, original_call, processes))
+                        else:
+                            raise RuntimeError("A completed source call has no original completion-time target capture")
                 record["returned"] = []
                 for selected_actor in step["actors"]:
                     process = actors.get(selected_actor)
@@ -2073,11 +2126,13 @@ def run_forget_index_fence_sdk_host(request):
                         result = {"label": label, "actor": selected_actor, "lifecycle": lifecycle,
                             "outcome": {"status": "absent", "reason": reason}}
                         if operation == "await-original-watch-effects":
-                            result.update(versions=_observation_copy(retained_versions), sourceCalls=_observation_copy(source_calls))
+                            result.update(versions=_observation_copy(retained_versions), sourceCalls=_observation_copy(source_calls),
+                                interruptedSourceCalls=_observation_copy(interrupted_source_calls))
                     else:
                         control = "watch-ready" if operation == "await-original-watch-ready" else "watch-effects"
                         options = {} if control == "watch-ready" else {
-                            "versions": _observation_copy(retained_versions), "sourceCalls": _observation_copy(source_calls)}
+                            "versions": _observation_copy(retained_versions), "sourceCalls": _observation_copy(source_calls),
+                            "interruptedSourceCalls": _observation_copy(interrupted_source_calls)}
                         result = process.command(control, label=label, **options)
                         lifecycle["commandId"] = process.counter
                         result = {**result, "lifecycle": lifecycle}

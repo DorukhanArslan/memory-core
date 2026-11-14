@@ -9,6 +9,7 @@ from copy import deepcopy
 import hashlib
 from importlib import import_module
 import json
+import math
 import os
 from pathlib import Path
 import re
@@ -251,6 +252,308 @@ def _required_routes(child):
     return main, workers
 
 
+# Installed source facts: these hashes identify the original helper route, not
+# a fixture child or an authority inferred from a reported parent PID.
+_INTEGRITY_CALLER = "dist/openclaw-agent-db-maintenance-DBuIm8El.mjs"
+_INTEGRITY_ENTRY = "dist/infra/sqlite-integrity.worker.js"
+_INTEGRITY_ARTIFACT_HASHES = {
+    _INTEGRITY_CALLER: "8a582f38f3e2ccbca248409dccf1507009d256843f2b684d7f59b6cbeb7eb09b",
+    _INTEGRITY_ENTRY: "b884b1033d414cea5187d24ee066bce1eddfde6ed3096fadd15e79637f6279df",
+    "dist/node-sqlite-DRQTiYwd.mjs": "5008332cd5a0ba99eae3194a790bff4979b5b05f99c2c8c69312d7471f200504",
+    "dist/sqlite-busy-timeout-DYrW2wFu.mjs": "0fdc74e60a91cbc82e2505e455794bf2c4c211befdbbf38b3714ecce969e1243",
+    "dist/sqlite-file-generation-Z_oSlnyK.mjs": "47fd0d5b69868fb71239992947a1d85f562f107415b75ca2588eb8f6541c5be5",
+    "dist/sqlite-integrity-CkZDPF4-.mjs": "00d460b423d51eb3f0221712d8846199d0e149593aa76b96613be94d7ab265f1",
+    "dist/sqlite-maintenance-cache-AYpxl8JZ.mjs": "ace110d1b2c93624554cedbdaeab1736275f0a933414ca79b520114816b23199",
+    "dist/error-coercion-1P2One0X.mjs": "dc084c616cc292128c5ff39fc77cf2a5cf9487bd0e8339bb0a8aa215110646b6",
+}
+_INTEGRITY_CHILD_ARTIFACTS = tuple(path for path in _INTEGRITY_ARTIFACT_HASHES if path != _INTEGRITY_CALLER)
+_CHILD_EVENTS = {"original-child-spawn", "original-child-message", "original-child-exit",
+                 "original-child-os-exit", "original-child-error"}
+_UNDEFINED = {"privateType": "undefined"}
+
+
+def _same_protocol(left, right):
+    if type(left) is not type(right):
+        return False
+    if isinstance(left, dict):
+        return left.keys() == right.keys() and all(_same_protocol(left[key], right[key]) for key in left)
+    if isinstance(left, list):
+        return len(left) == len(right) and all(_same_protocol(a, b) for a, b in zip(left, right, strict=True))
+    return left == right
+
+
+def _v8_receipt(value):
+    if (not isinstance(value, dict) or set(value) != {"v8Hex"}
+            or not isinstance(value["v8Hex"], str) or not 2 <= len(value["v8Hex"]) <= 32 * 1024 * 1024
+            or len(value["v8Hex"]) % 2 or re.fullmatch(r"[0-9a-f]+", value["v8Hex"]) is None):
+        raise ValueError("Original integrity process lost its complete V8 carrier")
+
+
+def _source_child_record(relative, context):
+    return {"kind": "release", "package": "node_modules/openclaw", "path": relative,
+            "sha256": _INTEGRITY_ARTIFACT_HASHES[relative],
+            "absolutePath": str(Path(context["runtime"]["runtimeRoot"]) / relative)}
+
+
+def _integrity_request(message, context):
+    required = {"pathname", "databaseLabel", "identity", "busyTimeoutMs", "tables"}
+    if (not isinstance(message, dict) or not required <= set(message)
+            or set(message) - required not in (set(), {"reuse"})
+            or not isinstance(message["pathname"], str) or not Path(message["pathname"]).is_absolute()
+            or str(Path(message["pathname"])) != message["pathname"]
+            or ".." in Path(message["pathname"]).parts
+            or not Path(message["pathname"]).is_relative_to(Path(context["stateDirectory"]))
+            or not isinstance(message["databaseLabel"], str) or not message["databaseLabel"]
+            or type(message["busyTimeoutMs"]) is not int or message["busyTimeoutMs"] < 0
+            or ("reuse" in message and message["reuse"] is not True)
+            or not isinstance(message["identity"], dict) or set(message["identity"]) != {"dev", "ino", "size"}):
+        raise ValueError("Original integrity request differs from its source-owned input schema")
+    for value in message["identity"].values():
+        if (not isinstance(value, dict) or set(value) != {"privateType", "value"}
+                or value["privateType"] != "bigint" or not isinstance(value["value"], str)
+                or re.fullmatch(r"0|[1-9][0-9]*", value["value"]) is None):
+            raise ValueError("Original integrity request lost its native file identity")
+    tables = message["tables"]
+    if not _same_protocol(tables, _UNDEFINED):
+        if not isinstance(tables, list) or any(
+                not isinstance(row, dict) or set(row) != {"table", "check"}
+                or not isinstance(row["table"], str) or not row["table"]
+                or row["check"] not in {"integrity_check", "quick_check"} for row in tables):
+            raise ValueError("Original integrity request changed its source-owned table checks")
+
+
+def _integrity_result(message):
+    if (not isinstance(message, dict) or type(message.get("ok")) is not bool
+            or set(message) - {"ok", "checkElapsedMs", "tables", "error"}
+            or (message["ok"] is True and "error" in message)):
+        raise ValueError("Original integrity result differs from its source-owned result schema")
+    if "checkElapsedMs" in message and (type(message["checkElapsedMs"]) not in (int, float)
+            or not math.isfinite(message["checkElapsedMs"]) or message["checkElapsedMs"] < 0):
+        raise ValueError("Original integrity timing is not a retained finite native duration")
+    if message["ok"] is False:
+        error = message.get("error")
+        if (not isinstance(error, dict) or not {"name", "message", "code", "errcode"} <= set(error)
+                or set(error) - {"name", "message", "code", "errcode", "cause"}
+                or not isinstance(error["name"], str) or not isinstance(error["message"], str)):
+            raise ValueError("Original integrity failure lost its native error fields")
+    if "tables" in message:
+        tables = message["tables"]
+        if not isinstance(tables, list) or any(
+                not isinstance(row, dict) or set(row) != {"table", "check", "elapsedMs"}
+                or not isinstance(row["table"], str) or row["check"] not in {"integrity_check", "quick_check"}
+                or type(row["elapsedMs"]) not in (int, float) or not math.isfinite(row["elapsedMs"])
+                or row["elapsedMs"] < 0 for row in tables):
+            raise ValueError("Original integrity result lost its per-table timing schema")
+
+
+def _integrity_message_source(row, context, *, closing):
+    caller = Path(context["runtime"]["runtimeRoot"]) / _INTEGRITY_CALLER
+    paths = "|".join(re.escape(value) for value in (str(caller), caller.as_uri()))
+    frame = r"(?:" + paths + r"):" + ("73" if closing else "293") + r":[1-9][0-9]*"
+    if not isinstance(row.get("originalStack"), str) or re.search(frame, row["originalStack"]) is None:
+        raise ValueError("Original integrity request has no pinned source send/close call site")
+
+
+def _integrity_messages(rows, context):
+    checks, active, phases, closed, previous = [], None, [], False, None
+    for row in rows:
+        _v8_receipt(row.get("message"))
+        message = row.get("messageJSON")
+        if row.get("direction") == "parent-to-child":
+            if _same_protocol(message, {"type": "close"}):
+                _integrity_message_source(row, context, closing=True)
+                if active is not None or not checks or closed or not previous["request"].get("reuse") or previous["result"]["ok"] is not True:
+                    raise ValueError("Original integrity close request has no completed reusable check")
+                closed = True
+                continue
+            if active is not None or closed or (previous is not None and (
+                    previous["request"].get("reuse") is not True or previous["result"]["ok"] is not True)):
+                raise ValueError("Original integrity requests overlap or reuse an unretained process")
+            _integrity_message_source(row, context, closing=False)
+            _integrity_request(message, context)
+            active, phases = {"request": message, "send": row}, []
+        elif row.get("direction") == "child-to-parent":
+            if active is None or closed:
+                raise ValueError("Original integrity reply has no actual outstanding request")
+            if isinstance(message, dict) and message.get("type") == "phase":
+                if (set(message) != {"type", "phase"} or message["phase"] not in {"opening", "checking", "closing"}
+                        or (phases + [message["phase"]]) not in (
+                            ["opening"], ["opening", "checking"], ["opening", "closing"],
+                            ["opening", "checking", "closing"])):
+                    raise ValueError("Original integrity native phases changed order or repeated")
+                phases.append(message["phase"])
+            else:
+                _integrity_result(message)
+                if (not phases or (message["ok"] is True and phases != ["opening", "checking", "closing"])):
+                    raise ValueError("Original integrity result arrived before its native check/close phases")
+                active.update(result=message, receive=row, phases=list(phases))
+                checks.append(active)
+                previous, active, phases = active, None, []
+        else:
+            raise ValueError("Original integrity message has an unowned direction")
+    if active is not None or not checks or (previous["request"].get("reuse") is True
+                                          and previous["result"]["ok"] is True and not closed):
+        raise ValueError("Original integrity process did not finish its actual request and close protocol")
+    return checks
+
+
+def _qualify_integrity_spawn(spawn, context, originals, graph):
+    pid, thread, child_pid = spawn.get("pid"), spawn.get("threadId"), spawn.get("childPid")
+    creator = graph.get(pid)
+    profile = context[PROFILE_KEY]
+    allowed_clocks = {profile["actorClocks"].get(spawn.get("actor"))}
+    if "recoveryNowMs" in profile:
+        allowed_clocks.add(profile["recoveryNowMs"])
+    caller, entry = _source_child_record(_INTEGRITY_CALLER, context), _source_child_record(_INTEGRITY_ENTRY, context)
+    frame_paths = (caller["absolutePath"], Path(caller["absolutePath"]).as_uri())
+    frame = r"at assertSqliteIntegrityWithProcess \((?:" + "|".join(re.escape(value) for value in frame_paths) + r"):172:[1-9][0-9]*\)"
+    if (not creator or "child" not in creator or type(thread) is not int or thread < 0
+            or not _positive_integer(child_pid) or child_pid in graph
+            or spawn.get("actor") != creator["actor"] or spawn.get("instance") != creator["instance"]
+            or spawn.get("method") != "fork" or spawn.get("modulePath") != entry["absolutePath"]
+            or spawn.get("sourceCaller") != caller or spawn.get("sourceEntrypoint") != entry
+            or not isinstance(spawn.get("originalStack"), str) or re.search(frame, spawn["originalStack"]) is None
+            or spawn.get("executable") != profile["nodeRuntime"]["execPath"]
+            or spawn.get("argv") != [profile["nodeRuntime"]["execPath"], entry["absolutePath"]]
+            or spawn.get("execArgv") != [] or spawn.get("cwd") != str(ROOT)
+            or type(spawn.get("wallClockNowMs")) is not int or spawn["wallClockNowMs"] not in allowed_clocks
+            or not isinstance(spawn.get("returnedChildRef"), str) or not spawn["returnedChildRef"]):
+        raise ValueError("Unapproved original OS child: canonical integrity launch provenance is required")
+    for path, expected in _INTEGRITY_ARTIFACT_HASHES.items():
+        if originals.get(("node_modules/openclaw", path)) != expected:
+            raise ValueError("Original integrity child source graph differs from pinned release bytes")
+    environment = {
+        "MEMORY_EQ_RELEASE_CONTEXT": str(Path(context["traceDirectory"]).parent / "context.json"),
+        "MEMORY_EQ_FIF_ACTOR": creator["actor"], "MEMORY_EQ_FIF_INSTANCE": str(creator["instance"]),
+        "MEMORY_EQ_FIF_CLOCK_NOW_MS": str(spawn["wallClockNowMs"]),
+        "NODE_OPTIONS": f'--import={ROOT / "equivalence" / PRELOAD}',
+        "OPENCLAW_STATE_DIR": context["stateDirectory"], "OPENCLAW_CONFIG_PATH": context["configPath"],
+        "HOME": context["stateDirectory"], "OPENCLAW_HOME": context["stateDirectory"],
+    }
+    if not _same_protocol(spawn.get("environment"), environment):
+        raise ValueError("Original integrity child did not inherit the closed actor capability")
+    request = spawn.get("request")
+    if not isinstance(request, dict) or set(request) != {"originalArgs", "argumentsJSON", "options", "optionsJSON"}:
+        raise ValueError("Original integrity fork lost its complete source call arguments")
+    _v8_receipt(request["originalArgs"])
+    _v8_receipt(request["options"])
+    options = request["optionsJSON"]
+    required = {"execArgv", "serialization", "stdio", "timeout", "killSignal"}
+    if (not isinstance(options, dict) or not required <= set(options)
+            or set(options) - required not in (set(), {"signal"})
+            or options["execArgv"] != [] or options["serialization"] != "advanced"
+            or options["stdio"] != ["ignore", "ignore", "ignore", "ipc"] or options["killSignal"] != "SIGKILL"
+            or (not _same_protocol(options["timeout"], _UNDEFINED)
+                and (type(options["timeout"]) is not int or options["timeout"] <= 0))
+            or not _same_protocol(request["argumentsJSON"], [
+                {"privateType": "URL", "href": Path(entry["absolutePath"]).as_uri()}, [], options])):
+        raise ValueError("Original integrity fork options differ from the pinned original call site")
+    if "signal" in options:
+        signal_ = options["signal"]
+        if (not isinstance(signal_, dict) or set(signal_) != {"privateType", "aborted", "reason", "ref"}
+                or signal_["privateType"] != "AbortSignal" or signal_["aborted"] is not False
+                or not _same_protocol(signal_["reason"], _UNDEFINED) or not isinstance(signal_["ref"], str)):
+            raise ValueError("Original integrity fork lost its actual caller signal state")
+    return {"actor": creator["actor"], "ppid": pid, "instance": creator["instance"],
+            "clock": spawn["wallClockNowMs"], "role": "sqlite-integrity", "creatorThreadId": thread,
+            "launch": spawn}
+
+
+def _child_receipt_json(line):
+    def pairs(items):
+        result = {}
+        for key, value in items:
+            if key in result:
+                raise ValueError("Original child receipt JSON contains duplicate members")
+            result[key] = value
+        return result
+
+    def constant(_value):
+        raise ValueError("Original child receipt JSON contains a nonfinite number")
+
+    return json.loads(line, object_pairs_hook=pairs, parse_constant=constant)
+
+
+def _original_children(context, originals, graph):
+    files, groups, all_event_files, total = [], {}, [], 0
+    for filename in sorted(Path(context["evidenceDirectory"]).glob("*-events.jsonl")):
+        if not _regular(filename) or re.fullmatch(r"[1-9][0-9]*-[0-9]+-events\.jsonl", filename.name) is None:
+            raise ValueError("Original child receipts used an unowned passive event file")
+        wire = filename.read_bytes()
+        total += len(wire)
+        if (not wire or not wire.endswith(b"\n") or len(wire) > 64 * 1024 * 1024
+                or total > 256 * 1024 * 1024 or len(all_event_files) >= 1024):
+            raise ValueError("Original child receipts are incomplete or excessive")
+        rows = [_child_receipt_json(line) for line in wire.splitlines()]
+        has_child, last_sequence, last_time = False, 0, -1
+        for row in rows:
+            if (not isinstance(row, dict) or not _positive_integer(row.get("pid"))
+                    or type(row.get("threadId")) is not int or row["threadId"] < 0
+                    or filename.name != f'{row["pid"]}-{row["threadId"]}-events.jsonl'
+                    or not _positive_integer(row.get("sequence")) or row["sequence"] <= last_sequence
+                    or not _monotonic(row.get("atNs")) or int(row["atNs"]) < last_time):
+                raise ValueError("Original child passive receipts lost their actual process/order")
+            last_sequence, last_time = row["sequence"], int(row["atNs"])
+            if str(row.get("event", "")).startswith("original-child-"):
+                if row["event"] not in _CHILD_EVENTS or row["event"] == "original-child-error":
+                    raise ValueError("Unknown or failed original OS child lifecycle")
+                creator = graph.get(row["pid"])
+                if (not creator or "child" not in creator or row.get("ppid") != creator["ppid"]
+                        or row.get("actor") != creator["actor"] or type(row.get("instance")) is not int
+                        or row["instance"] != creator["instance"]
+                        or not int(creator["child"]["startedAtNs"]) <= int(row["atNs"]) <= int(creator["child"]["finishedAtNs"])):
+                    raise ValueError("Original child receipt borrowed an unowned creator process")
+                if not isinstance(row.get("launchId"), str) or not row["launchId"]:
+                    raise ValueError("Original child receipt lost its actual launch object")
+                has_child = True
+                key = row["pid"], row["threadId"], row["launchId"]
+                if row["event"] == "original-child-spawn":
+                    if key in groups:
+                        raise ValueError("Original child launch receipt was duplicated")
+                    groups[key] = {"spawn": row, "messages": [], "exits": [], "osExits": []}
+                else:
+                    if key not in groups:
+                        raise ValueError("Original child message/close has no actual source launch")
+                    group = groups[key]
+                    if row.get("childPid") != group["spawn"].get("childPid"):
+                        raise ValueError("Original child lifecycle changed its actual OS process")
+                    group[{"original-child-message": "messages", "original-child-exit": "exits",
+                           "original-child-os-exit": "osExits"}[row["event"]]].append(row)
+        all_event_files.append((filename, rows))
+        if has_child:
+            files.append({"name": filename.name, "sha256": hashlib.sha256(wire).hexdigest(), "text": wire.decode("utf8")})
+    incidental, processes = {}, []
+    for group in groups.values():
+        spawn = group["spawn"]
+        identity = _qualify_integrity_spawn(spawn, context, originals, graph)
+        child_pid = spawn["childPid"]
+        if child_pid in incidental or len(group["exits"]) != 1 or len(group["osExits"]) > 1:
+            raise ValueError("Original integrity child was duplicated or never actually closed")
+        close = group["exits"][0]
+        for finished in [close, *group["osExits"]]:
+            if (finished.get("code") != 0 or type(finished.get("code")) is not int
+                    or finished.get("signal") is not None or type(finished.get("spawnSequence")) is not int
+                    or finished["spawnSequence"] != spawn["sequence"]
+                    or finished["sequence"] <= spawn["sequence"]
+                    or int(finished["atNs"]) < int(spawn["atNs"])):
+                raise ValueError("Original integrity child lacked an actual clean source-owned close")
+        if group["osExits"] and group["osExits"][0]["sequence"] >= close["sequence"]:
+            raise ValueError("Original integrity OS exit did not precede its actual close")
+        if any(row["sequence"] >= close["sequence"] for row in group["messages"]):
+            raise ValueError("Original integrity message arrived after actual child close")
+        checks = _integrity_messages(group["messages"], context)
+        incidental[child_pid] = identity
+        processes.append({**group, "checks": checks})
+    for filename, rows in all_event_files:
+        for row in rows:
+            identity = graph.get(row["pid"]) or incidental.get(row["pid"])
+            if (not identity or row.get("actor") != identity["actor"]
+                    or row.get("ppid") != identity["ppid"] or type(row.get("instance")) is not int
+                    or row["instance"] != identity["instance"]):
+                raise ValueError("A passive receipt is detached from the qualified original process graph")
+    return incidental, {"processes": processes, "receiptFiles": files}
+
+
 def validate_traces(directory, context, runtime, authority, *, process_pid, parent_pid, raw):
     """Authenticate each actual child/worker import and its unchanged executable."""
     validate_profile(context[PROFILE_KEY])
@@ -263,6 +566,8 @@ def validate_traces(directory, context, runtime, authority, *, process_pid, pare
                  for package in runtime["packages"] for file in package["files"]}
     local = {item["path"]: item["sha256"] for item in context["allowedLocal"]}
     graph = _process_graph(raw, context, process_pid=process_pid, parent_pid=parent_pid)
+    incidental, original_children = _original_children(context, originals, graph)
+    graph.update(incidental)
     files = sorted(Path(directory).iterdir())
     if not files or len(files) > 1024:
         raise ValueError("Missing or excessive actual forget/index-fence traces")
@@ -288,6 +593,8 @@ def validate_traces(directory, context, runtime, authority, *, process_pid, pare
                 or first.get("isMainThread") is not (first["threadId"] == 0)
                 or filename.name != f'{first["pid"]}-{first["threadId"]}.jsonl'):
             raise ValueError("Wrong forget/index-fence process, worker, context or executable")
+        if identity.get("role") == "sqlite-integrity" and first["threadId"] != 0:
+            raise ValueError("Original integrity entry cannot borrow an unqualified worker route")
         bootstraps.append(first)
         own = [row for row in rows if row.get("event") == BOOTSTRAP_EVENT]
         clock = own[0].get("clock") if len(own) == 1 else None
@@ -335,6 +642,15 @@ def validate_traces(directory, context, runtime, authority, *, process_pid, pare
     if len(mains) != len(graph) or {row["pid"] for row in mains} != set(graph):
         raise ValueError("Forget/index-fence omitted or duplicated an actual process bootstrap")
     for pid, identity in graph.items():
+        if identity.get("role") == "sqlite-integrity":
+            if local_loads.get(pid) or not set(_INTEGRITY_CHILD_ARTIFACTS) <= main_loads.get(pid, set()):
+                raise ValueError("Original integrity child omitted its pinned native check/close module graph")
+            creator_thread = identity["creatorThreadId"]
+            creator_imports = (main_loads.get(identity["ppid"], set()) if creator_thread == 0
+                               else worker_loads.get((identity["ppid"], creator_thread), set()))
+            if _INTEGRITY_CALLER not in creator_imports:
+                raise ValueError("Original integrity child has no loaded canonical caller in its actual creator thread")
+            continue
         if not {str(ROOT / "equivalence" / name) for name in (ENTRY, ACTOR)} <= local_loads.get(pid, set()):
             raise ValueError("An actual forget/index-fence process omitted its protected local caller")
         if pid == process_pid:
@@ -358,6 +674,7 @@ def validate_traces(directory, context, runtime, authority, *, process_pid, pare
             raise ValueError("Forget/index-fence gate trace differs from its actual held boundary")
     validate_release_sources(runtime, list(seen.values()))
     return {"bootstraps": bootstraps, "loaded": list(seen.values()), "gates": gate_rows,
+            "originalChildren": original_children,
             "traces": [{"name": filename.name, "sha256": digest(filename), "text": filename.read_text()}
                        for filename in files]}
 

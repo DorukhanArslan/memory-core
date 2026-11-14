@@ -85,3 +85,39 @@ def test_explicit_exit_refuses_unclosed_or_failed_actor(exiting, settlement):
     result = subprocess.run([_node(), "--input-type=module", "-e", script],
                             env=_environment(), text=True, capture_output=True, timeout=10, check=True)
     assert json.loads(result.stdout) == {"message": "A graceful actor exit requires a completed explicit stop"}
+
+
+@pytest.mark.parametrize("finish_after_ack,expected_code,expected_signal,deadline", [
+    (True, 0, None, False),
+    (False, None, "SIGKILL", True),
+])
+def test_observer_teardown_waits_actual_close_and_kills_only_after_real_deadline(
+        tmp_path, finish_after_ack, expected_code, expected_signal, deadline):
+    child = tmp_path / "synthetic-delayed-close-child.mjs"
+    child.write_text("\n".join([
+        "setInterval(()=>{}, 10000);",
+        "process.send({type:'synthetic-close-ack'},()=>{",
+        *([" setTimeout(()=>process.exit(0),30);"] if finish_after_ack else []),
+        "});",
+    ]), encoding="utf8")
+    parent = "\n".join([
+        "import {spawn} from 'node:child_process';",
+        f"import {{awaitActualProcessClose}} from {json.dumps(ACTOR.as_uri())};",
+        f"const child=spawn(process.execPath,[{json.dumps(str(child))}],{{stdio:['ignore','ignore','ignore','ipc']}});",
+        "const closed=new Promise(resolve=>child.once('close',(code,signal)=>resolve({code,signal})));",
+        "await new Promise(resolve=>child.once('message',resolve));",
+        "let deadline=false;const started=performance.now();let exit;",
+        f"try{{exit=await awaitActualProcessClose(closed,{1000 if finish_after_ack else 100});}}",
+        "catch(error){",
+        " if(error.code!=='FIF_PROCESS_CLOSE_TIMEOUT')throw error;",
+        " deadline=true;child.kill('SIGKILL');exit=await closed;",
+        "}",
+        "console.log(JSON.stringify({...exit,deadline,elapsedMs:performance.now()-started}));",
+    ])
+    result = subprocess.run([_node(), "--input-type=module", "-e", parent],
+                            env=_environment(), text=True, capture_output=True, timeout=10, check=True)
+    observed = json.loads(result.stdout)
+    assert {key: observed[key] for key in ("code", "signal", "deadline")} == {
+        "code": expected_code, "signal": expected_signal, "deadline": deadline,
+    }
+    assert observed["elapsedMs"] >= (90 if deadline else 20)

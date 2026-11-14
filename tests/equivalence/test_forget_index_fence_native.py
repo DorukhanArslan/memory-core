@@ -3,6 +3,7 @@ from copy import deepcopy
 import hashlib
 import json
 import os
+from pathlib import Path
 import subprocess
 from types import SimpleNamespace
 
@@ -312,3 +313,190 @@ def test_worker_accepts_only_declared_later_recovery_phase_while_main_startup_st
     value["files"]["102-0.jsonl"][1]["clock"]["nowMs"] = profile["recoveryNowMs"]
     with pytest.raises(ValueError, match="declared Date-only"):
         _validate(value)
+
+
+@pytest.fixture
+def labelled_integrity_child(labelled_trace):
+    """Source-qualified synthetic OS child: no process or original code runs."""
+    value = labelled_trace
+    context, authority = value["context"], value["authority"]
+    runtime = value["runtime"]
+    published = runtime["packages"][0]["files"]
+    published.extend({"path": path, "sha256": digest}
+                     for path, digest in native._INTEGRITY_ARTIFACT_HASHES.items())
+    creator = {"pid": 102, "ppid": 101, "threadId": 7, "actor": "foreground", "instance": 1}
+    entry = native._source_child_record(native._INTEGRITY_ENTRY, context)
+    caller = native._source_child_record(native._INTEGRITY_CALLER, context)
+    options = {"execArgv": [], "serialization": "advanced", "stdio": ["ignore", "ignore", "ignore", "ipc"],
+               "timeout": {"privateType": "undefined"}, "killSignal": "SIGKILL"}
+    launch = {"event": "original-child-spawn", **creator, "sequence": 1, "atNs": "210", "callLabel": "s",
+              "launchId": "102:7:original-child-1", "method": "fork", "childPid": 103,
+              "executable": authority["execPath"], "argv": [authority["execPath"], entry["absolutePath"]],
+              "modulePath": entry["absolutePath"], "execArgv": [], "cwd": str(native.ROOT),
+              "wallClockNowMs": context[native.PROFILE_KEY]["actorClocks"]["foreground"],
+              "originalStack": f"Labelled protocol stack\n    at assertSqliteIntegrityWithProcess ({caller['absolutePath']}:172:17)",
+              "sourceCaller": caller, "sourceEntrypoint": entry, "returnedChildRef": "labelled-process-ref-1",
+              "request": {"originalArgs": {"v8Hex": "ff0f00"}, "options": {"v8Hex": "ff0f00"},
+                          "argumentsJSON": [{"privateType": "URL", "href": Path(entry["absolutePath"]).as_uri()}, [], options],
+                          "optionsJSON": options},
+              "environment": {"MEMORY_EQ_RELEASE_CONTEXT": str(Path(context["traceDirectory"]).parent / "context.json"),
+                              "MEMORY_EQ_FIF_ACTOR": "foreground", "MEMORY_EQ_FIF_INSTANCE": "1",
+                              "MEMORY_EQ_FIF_CLOCK_NOW_MS": str(context[native.PROFILE_KEY]["actorClocks"]["foreground"]),
+                              "NODE_OPTIONS": f'--import={native.ROOT / "equivalence" / native.PRELOAD}',
+                              "OPENCLAW_STATE_DIR": context["stateDirectory"], "OPENCLAW_CONFIG_PATH": context["configPath"],
+                              "HOME": context["stateDirectory"], "OPENCLAW_HOME": context["stateDirectory"]}}
+    identity = {key: {"privateType": "bigint", "value": number}
+                for key, number in (("dev", "1"), ("ino", "2"), ("size", "3"))}
+    request = {"pathname": str(Path(context["stateDirectory"]) / "agents/main/agent.sqlite"),
+               "databaseLabel": "Labelled no-engine check", "identity": identity, "busyTimeoutMs": 5000,
+               "tables": {"privateType": "undefined"}, "reuse": True}
+    rows = [launch]
+
+    def message(direction, body, *, line=None):
+        sequence = len(rows) + 1
+        row = {"event": "original-child-message", **creator, "sequence": sequence, "atNs": str(210 + sequence),
+               "callLabel": "s", "launchId": launch["launchId"], "childPid": 103,
+               "direction": direction, "message": {"v8Hex": "ff0f00"}, "messageJSON": body}
+        if line is not None:
+            row["originalStack"] = f"Labelled source send\n at {caller['absolutePath']}:{line}:20"
+        rows.append(row)
+
+    message("parent-to-child", request, line=293)
+    for phase in ("opening", "checking", "closing"):
+        message("child-to-parent", {"type": "phase", "phase": phase})
+    message("child-to-parent", {"ok": True, "checkElapsedMs": 0.5})
+    message("parent-to-child", {"type": "close"}, line=73)
+    for event in ("original-child-os-exit", "original-child-exit"):
+        sequence = len(rows) + 1
+        rows.append({"event": event, **creator, "sequence": sequence, "atNs": str(210 + sequence),
+                     "callLabel": "s", "launchId": launch["launchId"], "childPid": 103,
+                     "code": 0, "signal": None, "spawnSequence": launch["sequence"]})
+    (Path(context["evidenceDirectory"]) / "102-7-events.jsonl").write_text(
+        "".join(json.dumps(row) + "\n" for row in rows))
+    value["childReceiptRows"] = rows
+    value["childReceiptFile"] = Path(context["evidenceDirectory"]) / "102-7-events.jsonl"
+    value["files"]["102-7.jsonl"].append({"event": "load", **creator, "kind": "release",
+                                           "package": caller["package"], "path": caller["path"], "sha256": caller["sha256"]})
+    identity = {"pid": 103, "ppid": 102, "threadId": 0, "actor": "foreground", "instance": 1}
+    local = {item["path"]: item["sha256"] for item in context["allowedLocal"]}
+    value["files"]["103-0.jsonl"] = [
+        {"event": "bootstrap", **identity, "isMainThread": True, "runtime": authority,
+         "contextSha256": context["_sha256"], "preloadSha256": local[str(native.ROOT / "equivalence" / native.PRELOAD)],
+         "fetchDenied": True, "providerMode": "none"},
+        {"event": native.BOOTSTRAP_EVENT, **identity, "profile": context[native.PROFILE_KEY],
+         "clock": {"owner": "node:test", "apis": ["Date"], "nowMs": launch["wallClockNowMs"],
+                   "dateConstructorReplaced": True, "setTimeoutUnchanged": True, "performanceNowUnchanged": True}},
+        *[{"event": "load", **identity, "kind": "release", "package": "node_modules/openclaw", "path": path,
+           "sha256": native._INTEGRITY_ARTIFACT_HASHES[path]} for path in native._INTEGRITY_CHILD_ARTIFACTS],
+    ]
+    return value
+
+
+def _write_child_receipts(value):
+    value["childReceiptFile"].write_text("".join(json.dumps(row) + "\n" for row in value["childReceiptRows"]))
+
+
+def test_original_integrity_child_requires_source_receipts_native_graph_and_real_close(labelled_integrity_child):
+    value = labelled_integrity_child
+    trace = _validate(value)
+    children = trace["originalChildren"]
+    assert len(children["processes"]) == 1
+    assert children["processes"][0]["spawn"]["childPid"] == 103
+    assert children["processes"][0]["checks"][0]["phases"] == ["opening", "checking", "closing"]
+    assert children["receiptFiles"][0]["sha256"] == hashlib.sha256(value["childReceiptFile"].read_bytes()).hexdigest()
+    assert {row["pid"] for row in trace["bootstraps"]} == {101, 102, 103}
+
+
+@pytest.mark.parametrize("attack", ["no-receipts", "unknown-child", "unapproved-method", "unapproved-entry",
+                                  "unapproved-caller", "changed-entry-hash", "changed-caller-hash", "wrong-call-site",
+                                  "creator-thread", "executable", "argv", "environment", "clock", "fork-options",
+                                  "fork-arguments", "v8-carrier", "message-path", "message-identity", "message-call-site",
+                                  "phase-order", "phase-incomplete", "reply-before-request", "no-result", "no-close-request",
+                                  "no-native-close", "nonzero-exit", "signalled-close", "close-before-message",
+                                  "missing-native-entry", "missing-native-dependency", "missing-caller-import",
+                                  "wrong-child-parent", "wrong-child-instance", "local-actor-import"])
+def test_unqualified_or_detached_original_os_children_fail_closed(labelled_integrity_child, attack):
+    value = labelled_integrity_child
+    rows, files = value["childReceiptRows"], value["files"]
+    spawn = rows[0]
+    if attack == "no-receipts":
+        value["childReceiptFile"].unlink()
+    elif attack == "unknown-child":
+        rows[-1]["childPid"] = 104
+    elif attack == "unapproved-method":
+        spawn["method"] = "spawn"
+    elif attack == "unapproved-entry":
+        spawn["modulePath"] = "/unreviewed/child.js"
+    elif attack == "unapproved-caller":
+        spawn["sourceCaller"]["path"] = "dist/unreviewed.mjs"
+    elif attack == "changed-entry-hash":
+        spawn["sourceEntrypoint"]["sha256"] = "0" * 64
+    elif attack == "changed-caller-hash":
+        spawn["sourceCaller"]["sha256"] = "0" * 64
+    elif attack == "wrong-call-site":
+        spawn["originalStack"] = spawn["originalStack"].replace(":172:", ":173:")
+    elif attack == "creator-thread":
+        for row in rows:
+            row["threadId"] = 8
+        value["childReceiptFile"] = value["childReceiptFile"].with_name("102-8-events.jsonl")
+    elif attack == "executable":
+        spawn["executable"] = "/unapproved/node"
+    elif attack == "argv":
+        spawn["argv"].insert(1, "--eval=unexpected()")
+    elif attack == "environment":
+        spawn["environment"]["NODE_OPTIONS"] += " --import=/unapproved.mjs"
+    elif attack == "clock":
+        spawn["wallClockNowMs"] += 1
+    elif attack == "fork-options":
+        spawn["request"]["optionsJSON"]["serialization"] = "json"
+    elif attack == "fork-arguments":
+        spawn["request"]["argumentsJSON"][1] = ["undeclared"]
+    elif attack == "v8-carrier":
+        rows[1]["message"] = {"v8Hex": "not-v8-hex"}
+    elif attack == "message-path":
+        rows[1]["messageJSON"]["pathname"] = "/unowned/source.sqlite"
+    elif attack == "message-identity":
+        rows[1]["messageJSON"]["identity"]["ino"] = 2
+    elif attack == "message-call-site":
+        rows[1]["originalStack"] = rows[1]["originalStack"].replace(":293:", ":294:")
+    elif attack == "phase-order":
+        rows[2]["messageJSON"]["phase"] = "checking"
+    elif attack == "phase-incomplete":
+        rows[4]["messageJSON"]["phase"] = "checking"
+    elif attack == "reply-before-request":
+        rows[1]["direction"] = "child-to-parent"
+    elif attack == "no-result":
+        rows[5]["messageJSON"] = {"type": "phase", "phase": "closing"}
+    elif attack == "no-close-request":
+        rows.pop(6)
+    elif attack == "no-native-close":
+        rows.pop()
+    elif attack == "nonzero-exit":
+        rows[-1]["code"] = 1
+    elif attack == "signalled-close":
+        rows[-1]["signal"] = "SIGKILL"
+    elif attack == "close-before-message":
+        rows[-1]["sequence"] = 2
+    elif attack == "missing-native-entry":
+        files["103-0.jsonl"] = [row for row in files["103-0.jsonl"] if row.get("path") != native._INTEGRITY_ENTRY]
+    elif attack == "missing-native-dependency":
+        files["103-0.jsonl"] = [row for row in files["103-0.jsonl"] if row.get("path") != "dist/sqlite-integrity-CkZDPF4-.mjs"]
+    elif attack == "missing-caller-import":
+        files["102-7.jsonl"] = [row for row in files["102-7.jsonl"] if row.get("path") != native._INTEGRITY_CALLER]
+    elif attack == "wrong-child-parent":
+        files["103-0.jsonl"][0]["ppid"] = 101
+    elif attack == "wrong-child-instance":
+        files["103-0.jsonl"][0]["instance"] = 2
+    else:
+        files["103-0.jsonl"].append(deepcopy(files["102-0.jsonl"][2]))
+        files["103-0.jsonl"][-1].update(pid=103, ppid=102)
+    if attack != "no-receipts":
+        _write_child_receipts(value)
+    with pytest.raises(ValueError):
+        _validate(value)
+
+
+@pytest.mark.parametrize("wire", ['{"event":"original-child-exit","event":"other"}', '{"elapsed":NaN}', '{"elapsed":Infinity}'])
+def test_original_child_receipt_json_rejects_ambiguous_or_nonfinite_bytes(wire):
+    with pytest.raises(ValueError):
+        native._child_receipt_json(wire)

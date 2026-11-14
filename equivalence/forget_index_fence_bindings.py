@@ -269,6 +269,19 @@ SOURCE_ANCHORS = _merged_anchors(
         "src/plugin-sdk/memory-core-host-engine-sessions.ts": (
             "export function resolveMemorySessionTargets(params: MemorySessionSelectors): MemorySessionTarget[] {",
         ),
+        "src/infra/sqlite-integrity-worker.ts": (
+            "function assertSqliteIntegrityWithProcess(",
+            "    const child = fork(entry, [], {",
+            '      serialization: "advanced",',
+        ),
+        "src/infra/sqlite-integrity.worker.ts": (
+            '    database = openNodeSqliteDatabase(input.pathname, { readOnly: true });',
+            '    await sendPhase("checking");',
+            '      assertSqliteIntegrity(database, input.databaseLabel, "integrity_check", input.tables, timing);',
+        ),
+        "src/config/sessions/session-accessor.sqlite-transcript-write.ts": (
+            "export function replaceTranscriptEventsSync(",
+        ),
     },
 )
 COMPILED_HASHES = _merged_hashes(
@@ -304,6 +317,20 @@ COMPILED_ANCHORS = _merged_anchors(
         "dist/session-accessor-CiKKTlbe.mjs": (" u as loadTranscriptEventsSync,",),
         "dist/session-accessor-WMUIp1Kx.mjs": ("async function persistSessionTranscriptTurn(scope, options) {",),
         "dist/plugin-state-store-BPUaLoVD.mjs": ("async function closePluginStateDatabaseAsync() {",),
+        "dist/openclaw-agent-db-maintenance-DBuIm8El.mjs": (
+            "function assertSqliteIntegrityWithProcess(",
+            "const child = fork(entry, [], {",
+            'serialization: "advanced",',
+        ),
+        "dist/infra/sqlite-integrity.worker.js": (
+            'database = openNodeSqliteDatabase(input.pathname, { readOnly: true });',
+            'await sendPhase("checking");',
+            'assertSqliteIntegrity(database, input.databaseLabel, "integrity_check", input.tables, timing);',
+        ),
+        "dist/session-accessor.sqlite-transcript-write-C5YumkFZ.mjs": (
+            "function replaceTranscriptEventsSync(scope, events) {",
+            "replaceTranscriptEventsSync as l",
+        ),
     },
 )
 
@@ -488,6 +515,8 @@ def prepare_forget_index_fence_bindings(checkout: Path, runtime_root: Path) -> d
             "origins": {"path": "dist/memory-entry-origins-BCQSIB3X.mjs", "export": "a", "originalBinding": "recordMemoryEntryOrigins"},
             "producer": {"path": "dist/plugin-sdk/session-store-runtime.js", "exports": ["upsertSessionEntry", "resolveStorePath"]},
             "append": {"path": "dist/plugin-sdk/session-transcript-runtime.js", "export": "appendSessionTranscriptMessageByIdentityStrict"},
+            "replace": {"path": "dist/session-accessor-CiKKTlbe.mjs", "export": "replaceTranscriptEventsSync",
+                        "sourceOwner": "src/config/sessions/session-accessor.sqlite-transcript-write.ts"},
             "readback": {"path": "dist/session-accessor-CiKKTlbe.mjs", "export": "loadTranscriptEventsSync"},
             "config": {"path": "dist/plugin-sdk/config-runtime.js", "export": "setRuntimeConfigSnapshot"},
             "state": {"path": "dist/extensions/memory-core/runtime-api.js", "export": "configureMemoryCoreDreamingState"},
@@ -503,6 +532,14 @@ def prepare_forget_index_fence_bindings(checkout: Path, runtime_root: Path) -> d
         "requiredMainArtifacts": list(REQUIRED_MAIN_ARTIFACTS),
         "requiredWorkerArtifacts": list(REQUIRED_WORKER_ARTIFACTS),
         "requiredLoadedArtifacts": list(REQUIRED_LOADED_ARTIFACTS),
+        "originalChildProcessAuthority": {
+            "entry": "dist/infra/sqlite-integrity.worker.js",
+            "launchOwner": "src/infra/sqlite-integrity-worker.ts",
+            "compiledLaunchOwner": "dist/openclaw-agent-db-maintenance-DBuIm8El.mjs",
+            "launchMethod": "fork", "sourceFunction": "assertSqliteIntegrityWithProcess",
+            "actualLaunchRequestReplyAndCloseReceiptsRequired": True,
+            "ancestryOnlyAdmissionAllowed": False,
+        },
         "requiredLoadedArtifactsByProfile": {OPERATION: list(REQUIRED_LOADED_ARTIFACTS)},
         "workerRequiredByProfile": {OPERATION: True}, "covers": [],
         "runtimeProofRequirements": {

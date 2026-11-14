@@ -40,6 +40,14 @@ export async function finishGracefulActorExit(runtime,settlement){
  process.exit(0);
 }
 
+export async function awaitActualProcessClose(closed,timeoutMs){
+ let timer;
+ try{return await Promise.race([closed,new Promise((_,reject)=>{
+  timer=setTimeout(()=>reject(Object.assign(Error('Actual fixture process close exceeded its deadline'),
+   {code:'FIF_PROCESS_CLOSE_TIMEOUT',timeoutMs})),timeoutMs);
+ })]);}finally{clearTimeout(timer);}
+}
+
 export function childRequest(input,actor,instance,config){
  if(actor!=='observer'&&!Object.hasOwn(input.actors,actor))throw Error('Undeclared original actor');
  return{kind:'forget-index-fence-child',actor,instance,caseId:config.caseId,input,runtimeRoot:config.runtimeRoot,
@@ -57,7 +65,7 @@ export async function runForgetIndexFenceRuntime(input,config){
  const raw={schemaVersion:1,kind:'forget-index-fence-native-capture',engine:'native',caseId:config.caseId,
   input:plain(input),fixtureBase:base,pid:process.pid,ppid:process.ppid,config:cfg,children:[],gates:[],snapshots:[],steps:[],completed:false,allChildrenReaped:false};
  const result={provider:null,calls:{},snapshots:{}};
- const live=new Map(),generations=new Map(),pending=new Map();let commandId=0,currentWallClock=input.clock.nowMs;
+ const live=new Map(),generations=new Map(),pending=new Map();let commandId=0,currentWallClock=input.clock.nowMs,operationFailed=false;
  const persist=()=>fs.writeFileSync(path.join(config.evidenceDirectory,'native-raw.json'),JSON.stringify([raw])+'\n');
  async function start(actor,wallClockNowMs=currentWallClock){
   safeName(actor);if(live.has(actor))throw Error('Actor already owns a live original process');
@@ -178,14 +186,40 @@ export async function runForgetIndexFenceRuntime(input,config){
    observed.finishedAtNs=process.hrtime.bigint().toString();persist();
   }
   raw.result=result;raw.completed=true;return result;
+ }catch(error){operationFailed=true;raw.failure=err(error);throw error;
  }finally{
+  let teardownFailure=null;
   for(const [name,owned]of live){
-   if(owned.record.exit)continue;
-   // Emergency teardown cannot supply a behavioral result or erase a failure.
-   try{const call=await dispatch(name,'process-exit');await Promise.race([call.promise,sleep(1000)]);}catch{}
-   if(!owned.record.exit)owned.child.kill('SIGKILL');await owned.exited;owned.record.reapedAtNs=process.hrtime.bigint().toString();
+   let acknowledgementError=null;
+   try{
+    const draining=(async()=>{
+     if(!owned.record.exit){
+      try{const call=await dispatch(name,'process-exit'),reply=await call.promise;
+       if(reply.infrastructureError||reply.error||reply.exiting!==true){
+        acknowledgementError=Error(reply.infrastructureError?.message??reply.error?.message??'Actual child did not acknowledge completed close');
+       }
+      }catch(error){acknowledgementError=error;}
+     }
+     // The real close event follows IPC settlement and output pipe closure.
+     return await owned.exited;
+    })();
+    const exit=await awaitActualProcessClose(draining,10_000);
+    if(acknowledgementError)throw acknowledgementError;
+    if(exit.code!==0||exit.signal!==null)throw Error('Actual fixture child did not exit gracefully');
+   }catch(error){
+    teardownFailure??=error;raw.completed=false;
+    (raw.teardownFailures??=[]).push({actor:name,pid:owned.record.pid,instance:owned.record.instance,
+     error:err(error),atNs:process.hrtime.bigint().toString(),acknowledgementError:acknowledgementError?err(acknowledgementError):null});
+    if(error.code==='FIF_PROCESS_CLOSE_TIMEOUT'&&!owned.record.exit){
+     owned.record.teardownKill={signal:'SIGKILL',reason:'actual-close-deadline',atNs:process.hrtime.bigint().toString()};
+     owned.child.kill('SIGKILL');
+    }
+    await owned.exited;
+   }
+   owned.record.reapedAtNs=process.hrtime.bigint().toString();
   }
   raw.allChildrenReaped=raw.children.every(item=>item.exit&&item.reapedAtNs);persist();
+  if(teardownFailure&&!operationFailed)throw teardownFailure;
  }
 }
 
@@ -230,7 +264,9 @@ export async function runForgetIndexFenceActor(request){
  codeOwner('appendSessionTranscriptMessageByIdentityStrict','dist/plugin-sdk/session-transcript-runtime.js','appendSessionTranscriptMessageByIdentityStrict',transcript.appendSessionTranscriptMessageByIdentityStrict);
  codeOwner('createMemorySearchTool','dist/tools-DotaQGXh.mjs','createMemorySearchTool',tools.createMemorySearchTool);
  codeOwner('getSessionEntry','dist/plugin-sdk/session-store-runtime.js','getSessionEntry',session.getSessionEntry);
+ codeOwner('upsertSessionEntry','dist/plugin-sdk/session-store-runtime.js','upsertSessionEntry',session.upsertSessionEntry);
  codeOwner('loadTranscriptEventsSync','dist/session-accessor-CiKKTlbe.mjs','loadTranscriptEventsSync',accessor.loadTranscriptEventsSync);
+ codeOwner('replaceTranscriptEventsSync','dist/session-accessor-CiKKTlbe.mjs','replaceTranscriptEventsSync',accessor.replaceTranscriptEventsSync);
  codeOwner('listMemoryEntryOrigins','dist/memory-entry-origins-BCQSIB3X.mjs','n',origins.n);
  codeOwner('listMemorySessionTombstones','dist/memory-entry-origins-BCQSIB3X.mjs','r',origins.r);
  codeOwner('readShortTermRecallEntries','dist/short-term-promotion-Cy0NJmOU.mjs','readShortTermRecallEntries',promo.readShortTermRecallEntries);
@@ -391,12 +427,12 @@ export async function runForgetIndexFenceActor(request){
      const scope={agentId:fact.agentId,sessionKey:fact.sessionKey,sessionId:fact.sessionId,
       storePath:session.resolveStorePath(undefined,{agentId:fact.agentId})};
      const upsertRequest={...scope,entry:plain(fact.entry)},upsert=await session.upsertSessionEntry(upsertRequest);
-     const receipt={scope,upsertRequest,upsertReturn:privateValue(upsert),messages:[]};raw.producerReceipts.push(receipt);
-     for(const event of fact.events){const params={...scope,message:plain(event.message),eventId:event.id,now:event.message.timestamp,
-      cwd:workspace,config:cfg,updateMode:'inline',runId:`forget-index-fence:${label??'seed'}`};
-      const returned=await transcript.appendSessionTranscriptMessageByIdentityStrict(params);
-      receipt.messages.push({params,result:plain(returned),privateReturn:privateValue(returned)});
-     }
+     const receipt={scope,upsertRequest,upsertReturn:privateValue(upsert)};raw.producerReceipts.push(receipt);
+     const events=plain(fact.events),replacement={method:'replaceTranscriptEventsSync',
+      request:{scope:plain(scope),events:plain(events)},beforeEvents:accessor.loadTranscriptEventsSync(scope)};
+     receipt.transcriptReplacement=replacement;
+     const replaced=accessor.replaceTranscriptEventsSync(scope,events);
+     replacement.result=replaced;replacement.privateReturn=privateValue(replaced);replacement.eventsArgumentAfter=plain(events);
      receipt.events=accessor.loadTranscriptEventsSync(scope);
     }
    }else if(operation==='acquire-original-owner'){await getManager();}

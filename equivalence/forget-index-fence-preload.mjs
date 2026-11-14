@@ -5,7 +5,8 @@ import fsp from 'node:fs/promises';
 import path from 'node:path';
 import crypto from 'node:crypto';
 import {Console} from 'node:console';
-import {registerHooks} from 'node:module';
+import {registerHooks,syncBuiltinESMExports} from 'node:module';
+import childProcess from 'node:child_process';
 import {fileURLToPath} from 'node:url';
 import {DatabaseSync} from 'node:sqlite';
 import {Worker,isMainThread,threadId} from 'node:worker_threads';
@@ -89,7 +90,8 @@ const sleepCell=new Int32Array(new SharedArrayBuffer(4)),fired=new Set(),passive
 let callLabel=null,sequence=0,lastReindexRevisionRead=null;
 const event=(name,fields={})=>{const row={event:name,sequence:++sequence,callLabel,atNs:process.hrtime.bigint().toString(),...fields};passive.push(row);return row;};
 function flush(){if(passive.length)fs.appendFileSync(path.join(context.evidenceDirectory,`${process.pid}-${threadId}-events.jsonl`),
- passive.splice(0).map(row=>JSON.stringify({...row,pid:process.pid,ppid:process.ppid,threadId,actor})).join('\n')+'\n',{mode:0o600});}
+ passive.splice(0).map(row=>JSON.stringify({...row,pid:process.pid,ppid:process.ppid,threadId,actor,
+  instance:Number(process.env.MEMORY_EQ_FIF_INSTANCE??0)})).join('\n')+'\n',{mode:0o600});}
 process.once('exit',flush);
 const carrier=value=>{try{return{v8Hex:serialize(value).toString('hex')};}catch(error){return{unserializable:{name:error.name,message:error.message}};}};
 function setWallClock(nowMs){if(!permittedClocks.has(nowMs))throw Error('Undeclared original wall clock advance');
@@ -205,3 +207,75 @@ fsp.realpath=async function(...args){const stack=new Error('Original promotion l
   sourceOwner:'resolveMemoryPromotionLockTarget.actual-realpath-return',arguments:carrier(args),result:carrier(result),originalStack:stack});
  return result;
 };
+
+// Original integrity inspection owns additional OS children. Observe its
+// actual launch object, request/reply objects and native close, independently
+// of the fixture coordinator's already authenticated actor processes.
+const originalFork=childProcess.fork,originalSpawn=childProcess.spawn;
+const observedChildren=new WeakSet(),processRefs=new WeakMap();let nextProcessRef=0,nextLaunch=0,forkDepth=0;
+const processRef=value=>{if(!processRefs.has(value))processRefs.set(value,`${process.pid}:${threadId}:process-ref-${++nextProcessRef}`);return processRefs.get(value);};
+function processJSON(value,seen=new WeakSet()){
+ if(value===undefined)return{privateType:'undefined'};
+ if(typeof value==='bigint')return{privateType:'bigint',value:value.toString()};
+ if(typeof value==='function')return{privateType:'function',name:value.name,ref:processRef(value)};
+ if(value===null||typeof value!=='object')return value;
+ if(value instanceof URL)return{privateType:'URL',href:value.href};
+ if(value instanceof AbortSignal)return{privateType:'AbortSignal',aborted:value.aborted,reason:processJSON(value.reason,seen),ref:processRef(value)};
+ if(ArrayBuffer.isView(value))return{privateType:value.constructor.name,byteLength:value.byteLength,
+  hex:Buffer.from(value.buffer,value.byteOffset,value.byteLength).toString('hex')};
+ if(seen.has(value))return{privateType:'reference',ref:processRef(value)};
+ seen.add(value);
+ if(Array.isArray(value))return value.map(item=>processJSON(item,seen));
+ return Object.fromEntries(Object.keys(value).map(key=>[key,processJSON(value[key],seen)]));
+}
+function releaseCaller(stack){
+ for(const match of stack.matchAll(/(file:\/\/[^\s)]+?):\d+:\d+/gu)){
+  const filename=fileURLToPath(match[1]),record=permitted.get(filename);
+  if(record?.kind==='release')return{...record,absolutePath:filename};
+ }
+ return null;
+}
+function observeOriginalChild(child,method,args,originalStack){
+ const sourceCaller=releaseCaller(originalStack);
+ if(!sourceCaller||observedChildren.has(child))return child;
+ observedChildren.add(child);
+ const launchId=`${process.pid}:${threadId}:original-child-${++nextLaunch}`;
+ const modulePath=method==='fork'?(args[0] instanceof URL?fileURLToPath(args[0]):path.resolve(args[0])):child.spawnargs?.[1];
+ const entryRecord=typeof modulePath==='string'?permitted.get(modulePath):null;
+ const options=method==='fork'?(Array.isArray(args[1])?args[2]:args[1]):args[2];
+ const selectedOptions=options??{},environment=selectedOptions.env??process.env;
+ const environmentKeys=['MEMORY_EQ_RELEASE_CONTEXT','MEMORY_EQ_FIF_ACTOR','MEMORY_EQ_FIF_INSTANCE',
+  'MEMORY_EQ_FIF_CLOCK_NOW_MS','NODE_OPTIONS','OPENCLAW_STATE_DIR','OPENCLAW_CONFIG_PATH','HOME','OPENCLAW_HOME'];
+ const spawned=event('original-child-spawn',{launchId,method,childPid:child.pid??null,
+  executable:child.spawnfile,argv:[...(child.spawnargs??[])],modulePath,
+  execArgv:processJSON(selectedOptions.execArgv),cwd:selectedOptions.cwd??process.cwd(),wallClockNowMs:Date.now(),
+  originalStack,sourceCaller,sourceEntrypoint:entryRecord?{...entryRecord,absolutePath:modulePath}:null,
+  environment:Object.fromEntries(environmentKeys.map(key=>[key,processJSON(environment[key])])),
+  request:{originalArgs:carrier(args),argumentsJSON:processJSON(args),options:carrier(selectedOptions),optionsJSON:processJSON(selectedOptions)},
+  returnedChildRef:processRef(child)});
+ if(typeof child.send==='function'){
+  const originalSend=child.send;
+  child.send=function(...values){event('original-child-message',{launchId,childPid:child.pid??null,
+   direction:'parent-to-child',message:carrier(values[0]),messageJSON:processJSON(values[0]),originalStack:new Error('Original child request').stack});
+   return originalSend.apply(this,values);
+  };
+ }
+ child.on('message',message=>event('original-child-message',{launchId,childPid:child.pid??null,
+  direction:'child-to-parent',message:carrier(message),messageJSON:processJSON(message)}));
+ child.once('error',error=>event('original-child-error',{launchId,childPid:child.pid??null,error:carrier(error),message:error.message}));
+ child.once('exit',(code,signal)=>event('original-child-os-exit',{launchId,childPid:child.pid??null,code,signal,spawnSequence:spawned.sequence}));
+ child.once('close',(code,signal)=>{
+  event('original-child-exit',{launchId,childPid:child.pid??null,code,signal,spawnSequence:spawned.sequence});
+  flush(); // Actual source-owned process close is a settlement boundary.
+ });
+ return child;
+}
+childProcess.fork=function(...args){const originalStack=new Error('Original child_process.fork call-through').stack;
+ let child;forkDepth++;try{child=originalFork.apply(this,args);}finally{forkDepth--;}
+ return observeOriginalChild(child,'fork',args,originalStack);
+};
+childProcess.spawn=function(...args){const originalStack=new Error('Original child_process.spawn call-through').stack;
+ const child=originalSpawn.apply(this,args);
+ return forkDepth?child:observeOriginalChild(child,'spawn',args,originalStack);
+};
+syncBuiltinESMExports();

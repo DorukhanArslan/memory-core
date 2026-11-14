@@ -121,6 +121,15 @@ def test_unqualified_busy_publisher_fails_without_waiting_or_manufacturing_a_fut
     assert receipt["conditionWaits"] == [] and owner._memory_active is True
 
 
+def test_v5_partition_leaves_an_unrelated_watch_publisher_for_its_declared_frontier():
+    owner, receipt = _LabelledOwner(), {}
+    owner._memory_active = True  # Labelled foreign job, no query-owned Future.
+    returned = _await_existing_search_effects(object(), owner, [], receipt, timeout=1, partition_watch=True)
+    assert returned is receipt and receipt["partition"] == "retained-search-jobs"
+    assert receipt["conditionWaits"] == [] and receipt["publisherFutures"] == []
+    assert owner._memory_active is True
+
+
 def test_actual_unfinished_future_hits_only_the_bounded_watchdog():
     owner, future, receipt = _LabelledOwner(), Future(), {}
 

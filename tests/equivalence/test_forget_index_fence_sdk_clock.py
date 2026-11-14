@@ -91,6 +91,39 @@ def replace_once(clock, root, payload):
     return returned, target
 
 
+def test_original_read_stat_and_delete_receipts_are_passive_and_preserve_actual_returns(tmp_path, monkeypatch):
+    target = tmp_path / "MEMORY.md"
+    payload = b"Actual bytes before the original deletion.\n"
+    target.write_bytes(payload)
+    clock, _ = controller(tmp_path)
+    owner = frame(labelled_atomic, path=target, content=None, expected_content=payload.decode())
+
+    def forbidden(*arguments, **options):
+        raise AssertionError("Passive original read/delete witnesses cannot perform extra source inspection")
+
+    monkeypatch.setattr(clock, "_inspect", forbidden)
+    descriptor = os.open(target, os.O_RDONLY)
+    try:
+        io_return(clock, owner, "open", (target, os.O_RDONLY), descriptor)
+        returned = os.read(descriptor, 65536)
+        io_return(clock, owner, "read", (descriptor, 65536), returned)
+        info = os.fstat(descriptor)
+        io_return(clock, owner, "fstat", (descriptor,), info)
+    finally:
+        closed = os.close(descriptor)
+        io_return(clock, owner, "close", (descriptor,), closed)
+    deleted = os.unlink(target)
+    io_return(clock, owner, "unlink", (target,), deleted)
+    reads = [row for row in clock.original_io if row.get("syscall") == "read"]
+    assert reads[0]["returned"] == {"bytesHex": payload.hex(), "bytes": len(payload)}
+    stats = [row for row in clock.original_io if row.get("syscall") == "fstat"]
+    assert stats[0]["returnedStat"] == _full_stat(info)
+    deletion = clock.original_io[-1]
+    assert deletion["syscall"] == "unlink" and deletion["returned"] is None
+    assert deletion["ownerArguments"] == {"path": str(target), "content": None, "expected_content": payload.decode()}
+    assert not target.exists() and clock.receipts == [] and clock.failures == []
+
+
 def test_narrow_datetime_proxy_returns_original_instances_and_delegates_other_apis():
     wall = [BASE]
     calls = []

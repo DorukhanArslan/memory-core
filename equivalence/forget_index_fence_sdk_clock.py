@@ -62,7 +62,8 @@ class OwnedSourceWriteClock:
         self.committed_versions = {}
         self.sequence = 0
         self.original_os = {name: getattr(os, name) for name in (
-            "open", "write", "pwrite", "fsync", "ftruncate", "close", "replace", "utime")}
+            "open", "write", "pwrite", "fsync", "ftruncate", "close", "replace", "utime",
+            "read", "pread", "lstat", "fstat", "unlink")}
 
     def _event(self, collection, event, **values):
         self.sequence += 1
@@ -226,6 +227,12 @@ class OwnedSourceWriteClock:
         row = self._event(self.original_io, "original-source-io-return", syscall=name,
             arguments=self.encode(tuple(bytes(item) if isinstance(item, memoryview) else item for item in arguments)),
             returned=self.encode(returned), scope=scope, sourceStack=self._stack(frame))
+        if isinstance(returned, os.stat_result):
+            row["returnedStat"] = self.full_stat(returned)
+        if name == "unlink":
+            row["ownerCode"] = deepcopy(self.owners[owner_frame.f_code]["code"])
+            row["ownerArguments"] = {key: self.encode(owner_frame.f_locals[key]) for key in (
+                "path", "content", "expected_content", "expected_hash") if key in owner_frame.f_locals}
         if name == "open" and type(returned) is int and len(arguments) > 1 and arguments[1] & os.O_ACCMODE != os.O_RDONLY:
             self.descriptors[returned] = {"role": role, "path": path, "stage": Path(arguments[0]), "open": row,
                                           "writes": [], "ownerFrameId": id(owner_frame)}

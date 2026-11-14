@@ -44,9 +44,9 @@ BOUNDARIES = frozenset({
     "promotion.source-planned-before-final-lock",
     "forget.marker-commit-or-original-workspace-or-writer-wait",
 })
-SEARCH_EFFECT_KINDS = frozenset({"forget-index-fence-v3", "forget-index-fence-v4"})
+SEARCH_EFFECT_KINDS = frozenset({"forget-index-fence-v3", "forget-index-fence-v4", "forget-index-fence-v5"})
 PROFILE_MODULES = {f"forget-index-fence-v{version}": f"equivalence.forget_index_fence_v{version}"
-                   for version in (2, 3, 4)}
+                   for version in (2, 3, 4, 5)}
 
 
 def _serialized(value):
@@ -318,6 +318,7 @@ class _OriginalObserver:
         self.sql_executions = []
         self.connections = {}
         self.contexts = {}
+        self.watchers = {}
         self.gate_callback = gate_callback
         self.sql_callback = sql_callback
         self.functional_profile, self.functional_trace = functional_profile, functional_trace
@@ -325,6 +326,44 @@ class _OriginalObserver:
 
     def bind_owner(self, owner, label):
         self.owners[id(owner)] = (owner, label)
+
+    def bind_watcher(self, watcher, store):
+        self.watchers[id(watcher)] = (watcher, store)
+        self.bind_owner(watcher, "memory-watcher")
+        self.bind_owner(watcher._condition, "memory-watcher-condition")
+        if watcher._backend is not None:
+            self.bind_owner(watcher._backend, "memory-watcher-inotify")
+
+    def _watch_scope(self):
+        for watcher, store in tuple(self.watchers.values()):
+            thread = watcher._thread
+            if thread is None or thread.ident != threading.get_ident() or thread is not threading.current_thread():
+                continue
+            local = watcher._callback_local
+            generation = getattr(local, "delivery", None)
+            if generation is None:
+                generation = getattr(local, "settling", None)
+            if generation is None:
+                generation = watcher._changes
+            return {"kind": "watch", "label": f"watch:{id(watcher)}:{generation}",
+                "origin": "original-memory-watcher", "watcherObjectId": str(id(watcher)),
+                "storeObjectId": str(id(store)), "detectorGeneration": generation}
+        return None
+
+    def _store_watch_scope(self, store):
+        watcher = getattr(store, "_memory_watcher", None)
+        binding = self.watchers.get(id(watcher))
+        if binding is None or binding[0] is not watcher or binding[1] is not store:
+            return None
+        generation = store._memory_watch_ready_generation
+        fact = next((row for row in reversed(tuple(store._memory_watch_facts))
+                     if row["watchGeneration"] == generation), None)
+        if fact is None:
+            return None
+        detected = fact["detectorGeneration"]
+        return {"kind": "watch", "label": f"watch:{id(watcher)}:{detected}",
+            "origin": "original-memory-watcher", "watcherObjectId": str(id(watcher)),
+            "storeObjectId": str(id(store)), "detectorGeneration": detected}
 
     def event(self, event_name, **values):
         # CPython's call event and list append run under its interpreter lock.
@@ -358,6 +397,8 @@ class _OriginalObserver:
         if receiver_key and (bound is None or bound[0] is not receiver):
             return None
         scope = getattr(self.local, "scope", None)
+        if specification["name"] == "ManagedSQLiteMemoryStore._queue_memory_watch_publication":
+            scope = self._store_watch_scope(receiver)
         context = frame.f_locals.get("context")
         store = frame.f_locals.get("store")
         if scope is None and context is not None and store is not None:
@@ -369,6 +410,8 @@ class _OriginalObserver:
             saved = self.job_scopes.get((id(receiver), id(job)))
             if saved is not None and saved[0] is receiver and saved[1] is job:
                 scope = saved[2]
+        if scope is None:
+            scope = self._watch_scope()
         if scope is None:
             stack = getattr(self.local, "stack", ())
             scope = stack[-1][2] if stack else None
@@ -432,12 +475,15 @@ class _OriginalObserver:
             return
         specification, receiver, owner_label, scope = match
         if event == "call":
+            if specification.get("bindSelfOnCall") and frame.f_locals.get("self") is not None:
+                self.bind_owner(frame.f_locals["self"], specification["bindSelfOnCall"])
             if "context" in frame.f_locals and "store" in frame.f_locals:
                 context, store = frame.f_locals["context"], frame.f_locals["store"]
                 if context is not None and id(store) in self.owners:
                     self.contexts[(id(context), id(store))] = (context, store, scope)
             call = self.event("original-call", name=specification["name"],
                 callLabel=scope["label"], callKind=scope["kind"], owner=owner_label,
+                scope=deepcopy(scope),
                 frameObjectId=str(id(frame)),
                 receiverObjectId=str(id(receiver)) if receiver is not None else None,
                 contextObjectId=str(id(frame.f_locals["context"])) if frame.f_locals.get("context") is not None else None,
@@ -498,19 +544,29 @@ class _OriginalObserver:
                     or type(actual_receiver) in (str, bool, int, float) else
                     {"objectId": str(id(actual_receiver)), "module": type(actual_receiver).__module__,
                      "className": type(actual_receiver).__qualname__})
+            encoded_return = ({"module": type(returned).__module__, "className": type(returned).__qualname__,
+                "objectId": str(id(returned))} if specification.get("returnIdentityOnly") and returned is not None
+                else _encode(returned))
             row = self.event("original-return", callSequence=call["sequence"], name=specification["name"],
-                callLabel=scope["label"], owner=owner_label, returned=_encode(returned),
+                callLabel=scope["label"], owner=owner_label, returned=encoded_return,
                 returnLookup=lookup,
                 **returned_owner,
                 frameScalars={key: _encode(frame.f_locals[key]) for key in (
                     "live", "expected", "expected_revision", "expected_fence_revision", "current_revision",
-                    "expected_fence", "expected_forget_revision", "generation", "mutation_generation")
+                    "expected_fence", "expected_forget_revision", "generation", "mutation_generation",
+                    "detector_generation", "observed_watch_generation", "settling_generation")
                     if key in frame.f_locals and (frame.f_locals[key] is None
                         or type(frame.f_locals[key]) in (bool, int, float, str))})
             if isinstance(returned, sqlite3.Connection):
                 self._bind_connection(returned, scope, specification["name"])
             if specification.get("bindReturnedOwner") and returned is not None:
                 self.bind_owner(returned, specification["bindReturnedOwner"])
+                if specification["name"] == "ManagedSQLiteMemoryStore.memory_watcher":
+                    self.bind_watcher(returned, receiver)
+            if specification.get("bindConditionOnReturn"):
+                condition = getattr(frame.f_locals.get("self"), "_condition", None)
+                if condition is not None:
+                    self.bind_owner(condition, "memory-watcher-condition")
             if self.gate_callback is not None:
                 self.gate_callback(frame, event, returned, row, scope)
             self.local.stack = tuple(item for item in stack if item[0] is not frame)
@@ -596,7 +652,7 @@ def _validate_actor_command(command, declared_gates):
     if not isinstance(command, dict) or type(command.get("id")) is not int:
         raise ValueError("An actor command requires an integer id")
     allowed = {"acquire", "seed", "call", "await-call", "arm-gate", "await-gate", "release-gate", "set-wall-clock",
-               "snapshot", "close", "observe", "stop", "await-search-effects"}
+               "snapshot", "close", "observe", "stop", "await-search-effects", "watch-ready", "watch-effects"}
     if command.get("operation") not in allowed:
         raise ValueError("The actor command is not in the frozen protocol")
     if command["operation"] in {"arm-gate", "await-gate", "release-gate"}:
@@ -638,7 +694,9 @@ def _original_bindings():
         "is_session_forgotten") if hasattr(SQLiteMemoryStore, name)]
     methods += [(ManagedSQLiteMemoryStore, name) for name in (
         "reindex", "reindex_sources", "search", "close", "_on_search_snapshot", "_submit_memory_publication",
-        "_run_memory_publication", "_index_producer_guard") if hasattr(ManagedSQLiteMemoryStore, name)]
+        "_run_memory_publication", "_index_producer_guard", "_memory_watch_dirty", "_memory_watch_changed",
+        "_memory_watch_unavailable", "_queue_memory_watch_publication", "wait_for_memory_watches")
+        if hasattr(ManagedSQLiteMemoryStore, name)]
     methods += [(MemoryEntryOriginLedger, name) for name in (
         "_open_write", "_open_read", "record", "delete", "record_session_tombstones_if_lineage_current",
         "list_session_tombstones", "index_revision")]
@@ -690,6 +748,34 @@ def _original_bindings():
             codes[function.__code__] = {"name": name, "receiver": None, "code": _code_identity(function.__code__)}
             if name == "_lease_for":
                 codes[function.__code__]["bindReturnedOwner"] = "original-reindex-producer-lease"
+    if (SDK_ROOT / "memory_core" / "host" / "memory_watcher.py").is_file():
+        watch_module = importlib.import_module("memory_core.host.memory_watcher")
+        for owner, names in ((watch_module.MemoryFileWatcher, (
+                "__init__", "start", "_run", "_dirty", "_deliver", "_unavailable", "_candidate", "_owned_file",
+                "_version", "capture_versions", "_retained_targets", "wait_for_versions", "status", "snapshot", "close")),
+                (watch_module._Inotify, ("__init__", "reconcile", "read", "close"))):
+            for name in names:
+                function = getattr(owner, name)
+                codes[function.__code__] = {"name": f"{owner.__name__}.{name}",
+                    "receiver": None if name in {"__init__", "start", "_version"} else "self",
+                    "code": _code_identity(function.__code__)}
+                if name == "__init__":
+                    codes[function.__code__]["bindSelfOnCall"] = f"original-{owner.__name__}"
+                    if owner is watch_module.MemoryFileWatcher:
+                        codes[function.__code__]["bindConditionOnReturn"] = True
+        for name in ("_inventory", "_directory_identity"):
+            function = getattr(watch_module, name)
+            codes[function.__code__] = {"name": name, "receiver": None, "code": _code_identity(function.__code__)}
+        for name in ("delivery_generation", "settling_generation"):
+            function = getattr(watch_module.MemoryFileWatcher, name).fget
+            codes[function.__code__] = {"name": function.__qualname__, "receiver": "self",
+                                       "code": _code_identity(function.__code__)}
+        watcher_property = getattr(ManagedSQLiteMemoryStore, "memory_watcher", None)
+        if isinstance(watcher_property, property):
+            function = watcher_property.fget
+            codes[function.__code__] = {"name": function.__qualname__, "receiver": "self",
+                "code": _code_identity(function.__code__), "bindReturnedOwner": "memory-watcher",
+                "returnIdentityOnly": True}
     for function in (SQLiteMemoryStore._reindex_locked, search_module._run_memory_search_tool):
         for code in _nested_codes(function.__code__):
             if code is function.__code__:
@@ -703,7 +789,7 @@ def _original_bindings():
     if sqlite_store.write_prepared_index is not write_prepared_index:
         raise RuntimeError("The SDK index publication owner is not its original imported function")
     for function in (atomic_publication._io, atomic_publication._write_all, atomic_publication._commit,
-        atomic_publication.append_memory_content, atomic_publication._write_existing_in_place,
+        atomic_publication._read_content, atomic_publication.append_memory_content, atomic_publication._write_existing_in_place,
         write_dreams_file_atomic, apply_temporal_decay_to_hybrid_results, read_index_source):
         codes[function.__code__] = {"name": function.__qualname__, "receiver": None,
                                     "code": _code_identity(function.__code__)}
@@ -764,7 +850,8 @@ def _search_factory_capabilities(factory):
             "source": _code_identity(factory.__code__)}
 
 
-def _await_existing_search_effects(tool, owner, tasks, receipt, *, timeout=PROCESS_TIMEOUT_SECONDS):
+def _await_existing_search_effects(tool, owner, tasks, receipt, *, timeout=PROCESS_TIMEOUT_SECONDS,
+                                   partition_watch=False):
     """Join actual submitted effects; this checkpoint cannot admit a producer."""
     deadline = time.monotonic() + timeout
 
@@ -801,7 +888,18 @@ def _await_existing_search_effects(tool, owner, tasks, receipt, *, timeout=PROCE
                     "jobs": _encode(tuple(getattr(owner, "_memory_jobs", ())))}
 
         receipt["publisherBefore"] = state()
-        while owner._memory_active or getattr(owner, "_sync_active", False) or getattr(owner, "_full_sync", None) is not None:
+        if partition_watch:
+            receipt["partition"] = "retained-search-jobs"
+
+        def pending():
+            if partition_watch:
+                return any(task["future"]._state in {"PENDING", "RUNNING"}
+                    and isinstance(task["job"], dict) and task["job"].get("state") in {"queued", "running"}
+                    for task in publications)
+            return (owner._memory_active or getattr(owner, "_sync_active", False)
+                    or getattr(owner, "_full_sync", None) is not None)
+
+        while pending():
             if not any(task["future"]._state in {"PENDING", "RUNNING"} for task in publications):
                 raise RuntimeError("An active publisher has no captured search-origin submission")
             row = {"enteredAtNs": str(time.monotonic_ns()), "stateBefore": state()}
@@ -861,6 +959,7 @@ class _SdkActor:
         self.futures = {}
         self.public_calls = {}
         self.search_tools, self.search_effect_waits = {}, []
+        self.watch_ready_waits, self.watch_effect_waits = [], []
         self.bindings = []
         self.catalog_facts = []
         self.host_events = []
@@ -1050,6 +1149,9 @@ class _SdkActor:
                 memory_publication="on-search")
             self.observer.bind_owner(self.owner, "managed-index")
             self.observer.bind_owner(self.owner._condition, "managed-index-condition")
+            watcher = getattr(self.owner, "memory_watcher", None)
+            if watcher is not None:
+                self.observer.bind_watcher(watcher, self.owner)
             with closing(self.owner.connect()) as db:
                 journal_mode = db.execute("PRAGMA journal_mode=WAL").fetchone()[0]
         record = {"actor": self.actor, "pid": os.getpid(), "storeObjectId": str(id(self.owner)),
@@ -1062,6 +1164,12 @@ class _SdkActor:
         record["classMro"] = _type_identity(type(self.owner))["mro"]
         record["constructorCode"] = _code_identity(ManagedSQLiteMemoryStore.__init__.__code__)
         record["searchMaintenance"] = _search_maintenance_binding(self.owner, config.get("sync"))
+        if self.value["kind"] == "forget-index-fence-v5":
+            record["memoryWatcher"] = {"present": watcher is not None,
+                "objectId": str(id(watcher)) if watcher is not None else None,
+                "classMro": _type_identity(type(watcher))["mro"] if watcher is not None else None,
+                "status": watcher.status() if watcher is not None else None,
+                "root": str(watcher.root) if watcher is not None else None}
         predicate = self.workspace.is_session_forgotten
         predicate_function = getattr(predicate, "__func__", predicate)
         record["effectiveForgottenCallback"] = {"present": predicate is not None,
@@ -1123,6 +1231,56 @@ class _SdkActor:
             self.catalog_facts.append({"operation": "prepare-real-host-inputs", "sessions": deepcopy(rows),
                                        "actualSnapshot": _encode(self.catalog.snapshot())})
         return result
+
+    def _capture_watch_targets(self, call):
+        key = f"{call['kind']}:{call['label']}"
+        captured = {"callKey": key, "actor": self.actor, "pid": os.getpid(),
+            "storeObjectId": str(id(self.owner)), "watcherObjectId": None,
+            "capturedAtNs": str(time.monotonic_ns()), "mutations": [], "versions": [], "absence": None}
+        call["watchTargetCapture"] = captured
+        with self.observer.call_scope(key, "watch-control"):
+            watcher = getattr(self.owner, "memory_watcher", None)
+            captured["watcherObjectId"] = str(id(watcher)) if watcher is not None else None
+            mutations = [("source-write-clock", row, row["absolutePath"])
+                for row in tuple(self.source_clock.receipts) if row.get("callKey") == key and row.get("committed")]
+            mutations.extend(("source-delete", row, row["arguments"][0])
+                for row in tuple(self.source_clock.original_io)
+                if row.get("syscall") == "unlink" and (row.get("scope") or {}).get("kind") == call["kind"]
+                and row["scope"].get("label") == call["label"] and row.get("arguments")
+                and str(row["arguments"][0]).endswith((".md", ".txt")))
+            mutations.sort(key=lambda item: int(item[1]["atNs"]))
+            for receipt_kind, receipt, path in mutations:
+                row = {"receiptKind": receipt_kind, "receiptSequence": receipt["sequence"],
+                    "receipt": _observation_copy(receipt), "capture": None, "applicabilityError": None}
+                captured["mutations"].append(row)
+                if watcher is None:
+                    continue
+                try:
+                    versions = watcher.capture_versions([path])
+                except ValueError as error:
+                    # The real source API owns eligibility. Preserve its
+                    # rejection instead of guessing another watch path.
+                    row["applicabilityError"] = _error(error)
+                    continue
+                row["capture"] = _observation_copy(versions)
+                if receipt_kind == "source-write-clock":
+                    actual = receipt["committedState"]["stat"]
+                    expected = {"device": str(actual["st_dev"]), "inode": str(actual["st_ino"]),
+                        "size": int(actual["st_size"]), "mtimeNs": str(actual["st_mtime_ns"]),
+                        "ctimeNs": str(actual["st_ctime_ns"])}
+                    matches = versions == [{"path": str(path), "exists": True, "version": expected}]
+                else:
+                    matches = versions == [{"path": str(path), "exists": False, "version": None}]
+                if not matches:
+                    self.observer.failures.append({"phase": "watch-target-version", "callKey": key,
+                        "receiptSequence": receipt["sequence"], "capture": _observation_copy(versions)})
+                    continue
+                captured["versions"].extend(_observation_copy(versions))
+            if watcher is None:
+                captured["absence"] = "no-existing-memory-watcher"
+            elif not captured["versions"]:
+                captured["absence"] = "no-applicable-successful-watched-source-mutation"
+        captured["completedAtNs"] = str(time.monotonic_ns())
 
     def _invoke(self, label, kind, arguments):
         from memory_core.consolidation.forget import forget_memory_entries
@@ -1243,6 +1401,12 @@ class _SdkActor:
                 if kind == "sync":
                     call["outcome"] = {"status": "rejected", "isTypedConflict": isinstance(error, MemoryIndexRevisionConflictError)}
             finally:
+                if self.value["kind"] == "forget-index-fence-v5":
+                    try:
+                        self._capture_watch_targets(call)
+                    except BaseException as error:
+                        self.observer.failures.append({"phase": "watch-target-capture", "callKey": f"{kind}:{label}",
+                                                      "error": _error(error)})
                 call["returnSeq"] = self.observer.event("public-call-return", label=label, kind=kind)["sequence"]
                 if kind == "search" and label in self.search_tools:
                     tasks = [task for task in self.observer.submitted_tasks if task["store"] is self.owner
@@ -1301,6 +1465,125 @@ class _SdkActor:
             raise RuntimeError("Settled searches require their declared effects barrier before snapshot or close: "
                                + ", ".join(missing))
 
+    def _watch_ready(self, label):
+        """Inspect only the already constructed original watch owner and resources."""
+        waits = getattr(self, "watch_ready_waits", None)
+        if waits is None:
+            self.watch_ready_waits = waits = []
+        owner = self.owner
+        row = {"label": label, "actor": self.actor, "pid": os.getpid(),
+            "ownerObjectId": str(id(owner)) if owner is not None else None, "watcherObjectId": None,
+            "ownerClosed": None, "status": None, "snapshot": None, "resources": None, "sourceRoles": {}}
+        waits.append(row)
+
+        def registered(value):
+            function = value.fget if isinstance(value, property) else getattr(value, "__func__", value)
+            code = getattr(function, "__code__", None)
+            binding = self.observer.codes.get(code)
+            return {"registered": binding is not None, "module": getattr(function, "__module__", None),
+                "qualname": getattr(function, "__qualname__", None),
+                "code": _observation_copy(binding.get("code")) if binding is not None else None}
+
+        with self.observer.call_scope(label, "watch-control"):
+            row["enterSeq"] = self.observer.event("watch-ready-control-enter", label=label)["sequence"]
+            try:
+                if owner is None:
+                    row["outcome"] = {"status": "absent", "reason": "original-owner-not-acquired"}
+                    return row
+                row["ownerClosed"] = owner.closed
+                row["sourceRoles"]["memoryWatcherProperty"] = registered(getattr(type(owner), "memory_watcher", None))
+                if row["ownerClosed"]:
+                    row["outcome"] = {"status": "absent", "reason": "original-owner-closed"}
+                    return row
+                watcher = getattr(owner, "memory_watcher", None)
+                if watcher is None:
+                    row["outcome"] = {"status": "absent", "reason": "original-owner-has-no-watcher"}
+                    return row
+                row["watcherObjectId"] = str(id(watcher))
+                row["sourceRoles"].update({name: registered(getattr(watcher, name, None))
+                                           for name in ("start", "status", "snapshot")})
+                row["status"] = _observation_copy(watcher.status())
+                row["snapshot"] = _observation_copy(watcher.snapshot())
+                backend = getattr(watcher, "_backend", None)
+                thread = getattr(watcher, "_thread", None)
+                paths = dict.copy(backend.paths) if backend is not None else {}
+                descriptors = dict.copy(backend.descriptors) if backend is not None else {}
+                row["resources"] = {"backendObjectId": str(id(backend)) if backend is not None else None,
+                    "fd": backend.fd if backend is not None else None,
+                    "paths": [{"path": str(path), "watchDescriptor": value[0], "identity": _encode(value[1])}
+                              for path, value in paths.items()],
+                    "descriptors": [{"watchDescriptor": descriptor, "path": str(path)}
+                                    for descriptor, path in descriptors.items()],
+                    "shutdownPipe": _encode(getattr(watcher, "_pipe", None)),
+                    "threadObjectId": str(id(thread)) if thread is not None else None,
+                    "threadId": thread.ident if thread is not None else None,
+                    "threadAlive": thread.is_alive() if thread is not None else False}
+                status = row["status"]
+                ready = (status.get("started") is True and status.get("closed") is False
+                    and status.get("alive") is True and row["resources"]["threadAlive"] is True
+                    and all(role["registered"] for role in row["sourceRoles"].values()))
+                row["outcome"] = ({"status": "ready"} if ready else
+                    {"status": "absent", "reason": "original-watcher-readiness-not-proved"})
+            except BaseException as error:
+                row["error"] = _error(error)
+                row["outcome"] = {"status": "rejected"}
+                raise
+            finally:
+                row["returnSeq"] = self.observer.event("watch-ready-control-return", label=label)["sequence"]
+        return _observation_copy(row)
+
+    def _watch_effects(self, label, versions, source_calls):
+        """Join retained targets through the existing original managed API once."""
+        waits = getattr(self, "watch_effect_waits", None)
+        if waits is None:
+            self.watch_effect_waits = waits = []
+        owner = self.owner
+        row = {"label": label, "actor": self.actor, "pid": os.getpid(),
+            "ownerObjectId": str(id(owner)) if owner is not None else None, "watcherObjectId": None,
+            "ownerClosed": None, "versions": _observation_copy(versions),
+            "sourceCalls": _observation_copy(source_calls), "status": None, "api": None}
+        waits.append(row)
+        with self.observer.call_scope(label, "watch-control"):
+            row["enterSeq"] = self.observer.event("watch-effects-control-enter", label=label)["sequence"]
+            try:
+                if owner is None:
+                    row["outcome"] = {"status": "absent", "reason": "original-owner-not-acquired"}
+                    return row
+                row["ownerClosed"] = owner.closed
+                if row["ownerClosed"]:
+                    row["outcome"] = {"status": "absent", "reason": "original-owner-closed"}
+                    return row
+                watcher = getattr(owner, "memory_watcher", None)
+                if watcher is None:
+                    row["outcome"] = {"status": "absent", "reason": "original-owner-has-no-watcher"}
+                    return row
+                row["watcherObjectId"] = str(id(watcher))
+                row["status"] = _observation_copy(watcher.status())
+                if not versions:
+                    row["outcome"] = ({"status": "no-applicable-targets"} if source_calls else
+                        {"status": "absent", "reason": "no-original-source-call-proof"})
+                    return row
+                wait = getattr(owner, "wait_for_memory_watches", None)
+                if not callable(wait):
+                    row["outcome"] = {"status": "absent", "reason": "original-watch-wait-api-unavailable"}
+                    return row
+                function = getattr(wait, "__func__", wait)
+                binding = self.observer.codes.get(getattr(function, "__code__", None))
+                row["api"] = {"receiverObjectId": str(id(getattr(wait, "__self__", None))),
+                    "registered": binding is not None, "module": getattr(function, "__module__", None),
+                    "qualname": getattr(function, "__qualname__", None),
+                    "code": _observation_copy(binding.get("code")) if binding is not None else None}
+                returned = wait(_observation_copy(versions), timeout=PROCESS_TIMEOUT_SECONDS - 5)
+                row["returned"] = _observation_copy(returned)
+                row["outcome"] = {"status": "fulfilled"}
+            except BaseException as error:
+                row["error"] = _error(error)
+                row["outcome"] = {"status": "rejected"}
+                raise
+            finally:
+                row["returnSeq"] = self.observer.event("watch-effects-control-return", label=label)["sequence"]
+        return _observation_copy(row)
+
     def observation(self):
         return {"actor": self.actor, "pid": os.getpid(), "sourceProvenanceBefore": self.before,
             **({"adapterProvenanceBefore": self.adapter_before, "adapterProvenanceAfter": _adapter_sources(self.value["kind"]),
@@ -1319,7 +1602,13 @@ class _SdkActor:
             "sourceClockOriginalIO": _observation_copy(self.source_clock.original_io),
             "sourceClockReads": _observation_copy(self.source_clock.source_reads),
             "sourceClockFailures": _observation_copy(self.source_clock.failures),
-            "queuedSearchTasks": self.observer.task_receipts(),
+            "queuedSearchTasks": [row for row in self.observer.task_receipts()
+                if self.value["kind"] != "forget-index-fence-v5" or row["scope"]["kind"] == "search"],
+            **({"queuedWatchTasks": [row for row in self.observer.task_receipts() if row["scope"]["kind"] == "watch"],
+                "queuedOriginalTasks": self.observer.task_receipts(),
+                "watchReadyWaits": _observation_copy(self.watch_ready_waits),
+                "watchEffectWaits": _observation_copy(self.watch_effect_waits)}
+               if self.value["kind"] == "forget-index-fence-v5" else {}),
             "searchEffectWaits": _observation_copy(self.search_effect_waits),
             "ppid": os.getppid(), "wallClockNowMs": self.wall_ms,
             "providerIdentity": _encode(self.owner._index_provider()) if self.owner is not None else {"unacquired": True},
@@ -1329,6 +1618,10 @@ class _SdkActor:
     def command(self, command):
         _validate_actor_command(command, self.gates)
         operation = command["operation"]
+        if operation == "watch-ready":
+            return self._watch_ready(command["label"])
+        if operation == "watch-effects":
+            return self._watch_effects(command["label"], command["versions"], command["sourceCalls"])
         if operation == "acquire":
             return self.acquire()
         if operation == "seed":
@@ -1363,7 +1656,8 @@ class _SdkActor:
             try:
                 with self.observer.call_scope(label, "search", self.wall_ms):
                     returned = _await_existing_search_effects(binding["tool"], self.owner, tasks, receipt,
-                                                               timeout=PROCESS_TIMEOUT_SECONDS - 5)
+                        timeout=PROCESS_TIMEOUT_SECONDS - 5,
+                        partition_watch=self.value["kind"] == "forget-index-fence-v5")
                 binding["effectsSettled"] = True
                 return returned
             except BaseException as error:
@@ -1744,6 +2038,50 @@ def run_forget_index_fence_sdk_host(request):
                 record_call(record, returned)
             elif operation == "await-original-search-effects":
                 record["returned"] = actors[actor].command("await-search-effects", label=label)
+            elif operation in {"await-original-watch-ready", "await-original-watch-effects"}:
+                source_calls, retained_versions = [], []
+                if operation == "await-original-watch-effects":
+                    for call_key in step["afterCalls"]:
+                        if call_key not in calls:
+                            raise ValueError("A watch effects barrier has no actual declared source call: " + call_key)
+                        original_call = _observation_copy(calls[call_key])
+                        source_calls.append(original_call)
+                        capture = original_call.get("watchTargetCapture")
+                        if isinstance(capture, dict):
+                            retained_versions.extend(_observation_copy(capture.get("versions", [])))
+                record["returned"] = []
+                for selected_actor in step["actors"]:
+                    process = actors.get(selected_actor)
+                    lifecycle = {"actor": selected_actor, "processPresent": process is not None,
+                        "pid": process.child.pid if process is not None else None,
+                        "poll": process.child.poll() if process is not None else None,
+                        "acquired": process.acquired if process is not None else False}
+                    last_owner_closed = None
+                    if process is not None:
+                        responses = {response.get("id"): response for response in process.receipt["stdoutResponses"]}
+                        for command in process.receipt["stdinCommands"]:
+                            response = responses.get(command["id"], {})
+                            if response.get("ok") is True and command["operation"] == "acquire":
+                                last_owner_closed = False
+                            elif response.get("ok") is True and command["operation"] == "close":
+                                last_owner_closed = response.get("result", {}).get("closed")
+                    lifecycle["ownerClosedFromOriginalReceipt"] = last_owner_closed
+                    if process is None or lifecycle["poll"] is not None or not lifecycle["acquired"] or last_owner_closed is True:
+                        reason = ("actor-never-started" if process is None else "original-process-exited"
+                            if lifecycle["poll"] is not None else "original-owner-not-acquired"
+                            if not lifecycle["acquired"] else "original-owner-closed")
+                        result = {"label": label, "actor": selected_actor, "lifecycle": lifecycle,
+                            "outcome": {"status": "absent", "reason": reason}}
+                        if operation == "await-original-watch-effects":
+                            result.update(versions=_observation_copy(retained_versions), sourceCalls=_observation_copy(source_calls))
+                    else:
+                        control = "watch-ready" if operation == "await-original-watch-ready" else "watch-effects"
+                        options = {} if control == "watch-ready" else {
+                            "versions": _observation_copy(retained_versions), "sourceCalls": _observation_copy(source_calls)}
+                        result = process.command(control, label=label, **options)
+                        lifecycle["commandId"] = process.counter
+                        result = {**result, "lifecycle": lifecycle}
+                    record["returned"].append(result)
             elif operation in {"arm-gate", "await-gate", "release-gate"}:
                 record["returned"] = actors[gate_actor(step["gate"])].command(operation, gate=step["gate"])
             elif operation == "capture-physical-state":

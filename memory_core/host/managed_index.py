@@ -704,8 +704,7 @@ class ManagedSQLiteMemoryStore(SQLiteMemoryStore):
     def _repair_search(self, state: dict[str, Any], operation: dict[str, Any]) -> None:
         repair = self._automatic_repair_allowed(state["identity"])
         request = {"searchOperationId": operation["id"],
-            "reason": ("search-bootstrap" if not state["hasContent"] else
-                       "search-invalidated" if state["needsRebuild"] else "search-identity"),
+            "reason": "search-bootstrap" if not state["hasContent"] else "search-identity",
             "force": repair, "before": state,
             "noticeSequenceBefore": self._automatic_rebuild_notice["sequence"], "state": "requested"}
         with self._condition:
@@ -773,8 +772,7 @@ class ManagedSQLiteMemoryStore(SQLiteMemoryStore):
                 with self._condition:
                     self._provider_initialized = True
                 if (not state["hasContent"] or self._last_sync_error is None
-                        and (self._automatic_repair_allowed(state["identity"])
-                             or state["needsRebuild"] and state["identity"]["status"] == "valid")):
+                        and self._automatic_repair_allowed(state["identity"])):
                     self._repair_search(state, operation)
             with workspace_index_lock(self._workspace.root):
                 self._refresh_memory_dirty()

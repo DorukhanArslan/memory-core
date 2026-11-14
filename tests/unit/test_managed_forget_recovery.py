@@ -7,6 +7,7 @@ import os
 from pathlib import Path
 import subprocess
 import sys
+import threading
 
 import pytest
 
@@ -80,10 +81,10 @@ def _needs_rebuild(store):
         return bool(db.execute(f"SELECT needs_rebuild FROM {INDEX_SYNC_TABLE} WHERE id=1").fetchone()[0])
 
 
-def test_fresh_process_natural_query_repairs_real_forget_without_a_scoped_failure(tmp_path):
+def test_fresh_process_query_pins_the_purged_generation_before_its_full_background_rebuild(tmp_path):
     config = _invalidated(tmp_path)
     source = """
-import json,sys
+import json,sys,threading
 from pathlib import Path
 from memory_core.config import MemoryConfig
 from memory_core.flags import FeatureFlags
@@ -102,14 +103,30 @@ tool=create_memory_search_tool(config,store,context=MemorySearchToolContext(cloc
     runtime_identity=OPENCLAW_COMPAT_RUNTIME_IDENTITY)
 def query(text):
     return tool.execute('actual-search',{'query':text,'corpus':'memory','minScore':0})['details']
+entered,release=threading.Event(),threading.Event()
+original=store._run_memory_publication
+def held(*args):
+    entered.set()
+    assert release.wait(5)
+    return original(*args)
+store._run_memory_publication=held
 try:
     result=query('retainedcedar731')
+    assert entered.wait(5)
+    pending=store.read_published_index()
+    pending_lifecycle=store.lifecycle_snapshot()
+    release.set()
+    with store._condition:
+        assert store._condition.wait_for(lambda:not store._memory_active,timeout=5)
+    current=query('retainedcedar731')
     absent=query('forgottenwillow942')
     with store.connect() as db:
         needs_rebuild=bool(db.execute(f'SELECT needs_rebuild FROM {INDEX_SYNC_TABLE} WHERE id=1').fetchone()[0])
-    print(json.dumps({'result':result,'absent':absent,'needsRebuild':needs_rebuild,
+    print(json.dumps({'result':result,'current':current,'absent':absent,'needsRebuild':needs_rebuild,
+                      'pending':pending,'pendingLifecycle':pending_lifecycle,
                       'lifecycle':store.lifecycle_snapshot()}))
 finally:
+    release.set()
     store.close()
 """
     project = Path(__file__).resolve().parents[2]
@@ -118,14 +135,16 @@ finally:
         stdout=subprocess.PIPE, stderr=subprocess.PIPE, timeout=15)
     assert process.returncode == 0, process.stderr
     actual = json.loads(process.stdout)
-    assert {hit["path"] for hit in actual["result"]["results"]} == {
+    assert [hit["path"] for hit in actual["result"]["results"]] == ["memory/topics/retained.md"]
+    assert {hit["path"] for hit in actual["current"]["results"]} == {
         "MEMORY.md", "memory/topics/retained.md"}
+    assert [row["path"] for row in actual["pending"]["chunks"]] == ["memory/topics/retained.md"]
+    assert actual["pendingLifecycle"]["memoryPublication"]["jobs"][-1]["fullRebuild"] is True
     assert actual["absent"]["results"] == []
     assert not actual["needsRebuild"]
     assert "stale" not in actual["result"] and "action" not in actual["result"]
     assert "warning" not in actual["result"]
-    assert actual["lifecycle"]["repairs"][0]["reason"] == "search-invalidated"
-    assert actual["lifecycle"]["repairs"][0]["state"] == "completed"
+    assert actual["lifecycle"]["repairs"] == []
     assert all(job["state"] == "completed"
                for job in actual["lifecycle"]["memoryPublication"]["jobs"])
 
@@ -142,6 +161,44 @@ def test_on_write_owner_keeps_explicit_recovery_for_a_populated_invalidated_inde
         assert len(_query(store)["results"]) == 2
     finally:
         store.close()
+
+
+def test_only_the_actual_fresh_publication_restores_rows_while_old_query_job_is_held(tmp_path, monkeypatch):
+    config = _invalidated(tmp_path)
+    old, _old_workspace = _open(config)
+    entered, release = threading.Event(), threading.Event()
+    original = old._run_memory_publication
+
+    def held(*args):
+        entered.set()
+        assert release.wait(5)
+        return original(*args)
+
+    monkeypatch.setattr(old, "_run_memory_publication", held)
+    fresh = None
+    try:
+        purged = old.read_published_index()
+        result = _query(old)
+        assert entered.wait(5)
+        assert [hit["path"] for hit in result["results"]] == ["memory/topics/retained.md"]
+        assert old.read_published_index() == purged and _needs_rebuild(old)
+        assert old.lifecycle_snapshot()["repairs"] == []
+
+        fresh, fresh_workspace = _open(config)
+        assert fresh.reindex(fresh_workspace) == 2
+        assert {row["path"] for row in fresh.read_published_index()["chunks"]} == {
+            "MEMORY.md", "memory/topics/retained.md"}
+        assert not _needs_rebuild(fresh)
+        release.set()
+        with old._condition:
+            assert old._condition.wait_for(lambda: not old._memory_active, timeout=5)
+        assert len(_query(old)["results"]) == 2
+        assert "lastSyncError" not in old.status()
+    finally:
+        release.set()
+        if fresh is not None:
+            fresh.close()
+        old.close()
 
 
 def test_durable_invalidation_does_not_overwrite_a_newer_identity(tmp_path):
@@ -169,12 +226,13 @@ def test_failed_real_recovery_keeps_durable_invalidation_and_actual_error(tmp_pa
     journal.symlink_to(tmp_path / "absent-parent" / "journal")
     try:
         actual = _query(store)
-        assert actual["stale"] is True and "unable to open database file" in actual["warning"]
-        assert _needs_rebuild(store)
-        assert store.status()["lastSyncError"] == "unable to open database file"
-        assert store.lifecycle_snapshot()["repairs"][0]["state"] == "failed"
+        assert [hit["path"] for hit in actual["results"]] == ["memory/topics/retained.md"]
+        assert "stale" not in actual and "warning" not in actual
         with store._condition:
             assert store._condition.wait_for(lambda: not store._memory_active, timeout=5)
+        assert _needs_rebuild(store)
+        assert store.status()["lastSyncError"] == "unable to open database file"
+        assert store.lifecycle_snapshot()["repairs"] == []
         assert store._full_retry_required is False  # the journal never opened
         failed = store.lifecycle_snapshot()["memoryPublication"]["jobs"][-1]
         assert failed["fullRebuild"] is True and not failed.get("fullRetry")

@@ -4,13 +4,16 @@ Legacy SDK packets and new V2 paired packets have separate explicit selectors.
 A failed Native transport cannot become a positive paired baseline. No test
 launches an original engine or modifies a retained capture file.
 """
+import base64
 from copy import deepcopy
 from functools import lru_cache
 import hashlib
 import json
+import math
 import os
 from pathlib import Path
 import stat
+import zlib
 
 import pytest
 
@@ -543,3 +546,227 @@ def test_sdk_actual_callable_identity_includes_original_code_location(sdk_actual
         identities = [(row["name"], row["code"]["file"], row["code"]["qualname"],
                        row["code"]["firstLine"], row["code"]["bytecodeSha256"]) for row in owners]
         assert len(identities) == len(set(identities))
+
+
+def _labelled_codec_event():
+    """Pure codec data, never an original-engine fixture or acceptance packet."""
+    return {"event": "labelled-codec-test", "sequence": 1, "pid": 11, "threadId": 0,
+        "numbers": {"integer": 1, "float": 1.0, "boolean": True, "false": False,
+                    "negativeZero": -0.0, "largeInteger": 9007199254740993, "fraction": 0.125},
+        "whole": {"bytesHex": "00017f80ff" * 40, "v8Hex": "ff0f5f", "timestamp": 1794614400000,
+                  "text": "Unicode: 雪 \u2028 \u2029; escaped newline:\n", "warnings": [404, 0, False],
+                  "ordered": [3, 1, 2, {"z": "last-key-first", "a": "first-key-last"}]}}
+
+
+def _codec_raw(value):
+    return json.dumps(value, ensure_ascii=False, separators=(",", ":"), allow_nan=False).encode("utf8")
+
+
+def _codec_frame(raw, compressed=None):
+    if compressed is None:
+        compressor = zlib.compressobj(wbits=-zlib.MAX_WBITS)
+        compressed = compressor.compress(raw) + compressor.flush()
+    return {"codec": "deflate-raw-native-event-v1", "rawBytes": len(raw),
+            "rawSha256": hashlib.sha256(raw).hexdigest(),
+            "dataBase64": base64.b64encode(compressed).decode("ascii")}
+
+
+def _codec_line(frame):
+    return json.dumps(frame, separators=(",", ":"))
+
+
+def test_native_event_codec_preserves_whole_nested_json_types_bytes_and_order():
+    original = _labelled_codec_event()
+    raw = _codec_raw(original)
+    assert b"\n" not in raw and b"\r" not in raw
+    decoded = guard._decode_native_event_line(_codec_line(_codec_frame(raw)))
+    assert guard._decode_native_event_line(_codec_line(_codec_frame(raw)), maximum_raw_bytes=len(raw)) == original
+    assert decoded == original and list(decoded) == list(original)
+    assert list(decoded["whole"]["ordered"][-1]) == ["z", "a"]
+    assert type(decoded["numbers"]["integer"]) is int
+    assert type(decoded["numbers"]["float"]) is float
+    assert type(decoded["numbers"]["boolean"]) is bool
+    assert type(decoded["numbers"]["false"]) is bool
+    assert decoded["whole"]["bytesHex"] == original["whole"]["bytesHex"]
+    assert decoded["numbers"]["largeInteger"] == 9007199254740993
+    assert math.copysign(1.0, decoded["numbers"]["negativeZero"]) == -1.0
+    assert decoded["whole"]["text"] == original["whole"]["text"]
+
+
+@pytest.mark.parametrize("attack", [
+    "codec", "extra-field", "missing-field", "length-short", "length-long", "length-bool",
+    "length-float", "length-negative", "length-nonfinite", "sha", "uppercase-sha", "base64-invalid",
+    "base64-whitespace", "base64-extra-padding",
+])
+def test_native_event_codec_requires_exact_frame_fields_and_byte_seals(attack):
+    frame = _codec_frame(_codec_raw(_labelled_codec_event()))
+    if attack == "codec":
+        frame["codec"] = "labelled-unapproved-codec"
+    elif attack == "extra-field":
+        frame["normalized"] = True
+    elif attack == "missing-field":
+        del frame["dataBase64"]
+    elif attack == "length-short":
+        frame["rawBytes"] -= 1
+    elif attack == "length-long":
+        frame["rawBytes"] += 1
+    elif attack == "length-bool":
+        frame["rawBytes"] = True
+    elif attack == "length-float":
+        frame["rawBytes"] = float(frame["rawBytes"])
+    elif attack == "length-negative":
+        frame["rawBytes"] = -1
+    elif attack == "length-nonfinite":
+        frame["rawBytes"] = float("nan")
+    elif attack == "sha":
+        frame["rawSha256"] = "0" * 64
+    elif attack == "uppercase-sha":
+        frame["rawSha256"] = frame["rawSha256"].upper()
+    elif attack == "base64-invalid":
+        frame["dataBase64"] = "!" + frame["dataBase64"][1:]
+    elif attack == "base64-whitespace":
+        frame["dataBase64"] += " "
+    else:
+        frame["dataBase64"] += "===="
+    with pytest.raises(ValueError):
+        guard._decode_native_event_line(_codec_line(frame))
+
+
+def test_native_event_codec_rejects_noncanonical_base64_with_identical_decoded_bytes():
+    for ordinal in range(10):
+        frame = _codec_frame(_codec_raw({"event": "labelled-codec-test", "padding": "x" * ordinal}))
+        if frame["dataBase64"].endswith("="):
+            break
+    encoded = frame["dataBase64"]
+    assert encoded.endswith("=")
+    alphabet = "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789+/"
+    position = len(encoded.rstrip("=")) - 1
+    index = alphabet.index(encoded[position])
+    changed = encoded[:position] + alphabet[index | 1] + encoded[position + 1:]
+    assert changed != encoded
+    assert base64.b64decode(changed, validate=True) == base64.b64decode(encoded, validate=True)
+    frame["dataBase64"] = changed
+    with pytest.raises(ValueError):
+        guard._decode_native_event_line(_codec_line(frame))
+
+
+@pytest.mark.parametrize("attack", ["truncated", "unfinished", "trailing-bytes", "second-member", "zlib-wrapper"])
+def test_native_event_codec_requires_exactly_one_complete_raw_deflate_stream(attack):
+    raw = _codec_raw(_labelled_codec_event())
+    frame = _codec_frame(raw)
+    compressed = base64.b64decode(frame["dataBase64"])
+    if attack == "truncated":
+        compressed = compressed[:-1]
+    elif attack == "unfinished":
+        compressor = zlib.compressobj(wbits=-zlib.MAX_WBITS)
+        compressed = compressor.compress(raw) + compressor.flush(zlib.Z_SYNC_FLUSH)
+    elif attack == "trailing-bytes":
+        compressed += b"labelled-trailing-bytes"
+    elif attack == "second-member":
+        compressed += compressed
+    else:
+        compressed = zlib.compress(raw)
+    frame["dataBase64"] = base64.b64encode(compressed).decode("ascii")
+    with pytest.raises(ValueError):
+        guard._decode_native_event_line(_codec_line(frame))
+
+
+@pytest.mark.parametrize("raw", [
+    b'{"event":"labelled-codec-test","same":1,"same":2}',
+    b'{"event":"labelled-codec-test","nested":{"same":1,"same":2}}',
+    b'{"event":"labelled-codec-test","number":NaN}',
+    b'{"event":"labelled-codec-test","number":Infinity}',
+    b'{"event":"labelled-codec-test","number":-Infinity}',
+    b'{"event":"labelled-codec-test","number":1e999}',
+    b'{"event":"labelled-codec-test","utf8":"\xff"}',
+    b'{"event":"labelled-codec-test"}\n', b'{\n"event":"labelled-codec-test"}',
+    b'{"event":"labelled-codec-test"}\r', b'{"event":"labelled-codec-test"} {}',
+    b'[]', b'null', b'true', b'1', b'"labelled-codec-test"', b'',
+])
+def test_native_event_codec_rejects_invalid_or_lossy_original_json(raw):
+    with pytest.raises(ValueError):
+        guard._decode_native_event_line(_codec_line(_codec_frame(raw)))
+
+
+def test_native_event_codec_rejects_duplicate_frame_members_and_literal_wire_newlines():
+    frame = _codec_frame(_codec_raw(_labelled_codec_event()))
+    line = _codec_line(frame)
+    changed = line[:-1] + ',"rawBytes":' + str(frame["rawBytes"]) + "}"
+    for wire in (changed, line + "\n", line + "\r"):
+        with pytest.raises(ValueError):
+            guard._decode_native_event_line(wire)
+
+
+@pytest.mark.parametrize("forged_length", [False, True])
+def test_native_event_codec_bounds_decompression_even_with_a_forged_small_length(forged_length):
+    raw = _codec_raw({"event": "labelled-codec-test", "compressedBytes": "x" * (1024 * 1024)})
+    frame = _codec_frame(raw)
+    if forged_length:
+        frame["rawBytes"] = 32
+    with pytest.raises(ValueError):
+        guard._decode_native_event_line(_codec_line(frame), maximum_raw_bytes=1024)
+
+
+def test_native_event_codec_legacy_plain_json_requires_explicit_opt_in():
+    original = _labelled_codec_event()
+    line = _codec_raw(original).decode("utf8")
+    with pytest.raises(ValueError):
+        guard._decode_native_event_line(line)
+    assert guard._decode_native_event_line(line, allow_plain=True) == original
+    for value in ({}, {"event": None}, {"event": 1}, []):
+        with pytest.raises(ValueError):
+            guard._decode_native_event_line(_codec_raw(value).decode("utf8"), allow_plain=True)
+
+
+def test_native_event_files_keep_wire_bytes_and_bound_total_decoded_bytes(tmp_path):
+    directory = tmp_path / "native"
+    evidence = directory / "evidence"
+    evidence.mkdir(parents=True)
+    originals = [_labelled_codec_event(), {"event": "labelled-codec-test", "pid": 12, "threadId": 1,
+                 "sequence": 1, "payload": "x" * 200}]
+    raws = [_codec_raw(event) for event in originals]
+    paths = [evidence / "11-0-events.jsonl", evidence / "12-1-events.jsonl"]
+    wires = [(_codec_line(_codec_frame(raw)) + "\n").encode("utf8") for raw in raws]
+    for path, wire in zip(paths, wires, strict=True):
+        path.write_bytes(wire)
+    decoded = guard._read_native_event_files(directory)
+    assert [row["path"] for row in decoded] == paths
+    for row, original, raw, wire in zip(decoded, originals, raws, wires, strict=True):
+        assert set(row) == {"path", "events", "wireBytes", "decodedBytes"}
+        assert row["events"] == [original] and row["wireBytes"] == len(wire) and row["decodedBytes"] == len(raw)
+    assert all(len(raw) < sum(map(len, raws)) - 1 for raw in raws)
+    assert guard._read_native_event_files(directory, maximum_decoded_bytes=sum(map(len, raws))) == decoded
+    with pytest.raises(ValueError):
+        guard._read_native_event_files(directory, maximum_decoded_bytes=sum(map(len, raws)) - 1)
+
+
+@pytest.mark.parametrize("ending", [b"", b"\r\n", b"\n\n"])
+def test_native_event_files_reject_partial_or_ambiguous_jsonl_records(tmp_path, ending):
+    evidence = tmp_path / "native/evidence"
+    evidence.mkdir(parents=True)
+    line = _codec_line(_codec_frame(_codec_raw(_labelled_codec_event()))).encode("utf8")
+    (evidence / "11-0-events.jsonl").write_bytes(line + ending)
+    with pytest.raises(ValueError):
+        guard._read_native_event_files(evidence.parent)
+
+
+def test_native_event_files_legacy_plain_payloads_never_fall_back_implicitly(tmp_path):
+    evidence = tmp_path / "native/evidence"
+    evidence.mkdir(parents=True)
+    raw = _codec_raw(_labelled_codec_event())
+    (evidence / "11-0-events.jsonl").write_bytes(raw + b"\n")
+    with pytest.raises(ValueError):
+        guard._read_native_event_files(evidence.parent)
+    decoded = guard._read_native_event_files(evidence.parent, allow_plain=True)
+    assert decoded[0]["events"] == [_labelled_codec_event()]
+    assert decoded[0]["decodedBytes"] == len(raw)
+
+
+def test_native_event_files_reject_an_oversized_wire_before_decoding(tmp_path, monkeypatch):
+    evidence = tmp_path / "native/evidence"
+    evidence.mkdir(parents=True)
+    with (evidence / "11-0-events.jsonl").open("wb") as handle:
+        handle.truncate(64 * 1024 * 1024 + 1)
+    monkeypatch.setattr(guard, "_decode_native_event_record", lambda *_args, **_kwargs: pytest.fail("Oversized wire entered decoding"))
+    with pytest.raises(ValueError):
+        guard._read_native_event_files(evidence.parent)

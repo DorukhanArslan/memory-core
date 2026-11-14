@@ -7,6 +7,8 @@ source bytes and the approved Node binary may supply replay authority.
 from __future__ import annotations
 
 import ast
+import base64
+import binascii
 from functools import lru_cache
 import hashlib
 import json
@@ -17,6 +19,7 @@ import re
 import stat
 import subprocess
 from types import CodeType
+import zlib
 
 from equivalence.harness import _same_json
 
@@ -59,6 +62,77 @@ def _json(text):
     def constant(value):
         raise ValueError("Evidence JSON contains a nonfinite number: " + value)
     return json.loads(text, object_pairs_hook=pairs, parse_constant=constant)
+
+
+NATIVE_EVENT_CODEC = "deflate-raw-native-event-v1"
+NATIVE_EVENT_PROTOCOL = "shared-original-event-jsonl-v2"
+MAX_NATIVE_EVENT_RAW_BYTES = 64 * 1024 * 1024
+
+
+def _decode_native_event_record(line, *, allow_plain=False, maximum_raw_bytes=MAX_NATIVE_EVENT_RAW_BYTES):
+    require(type(maximum_raw_bytes) is int and 0 < maximum_raw_bytes <= MAX_NATIVE_EVENT_RAW_BYTES,
+            "Native event decoding requires an explicit bounded record budget")
+    try:
+        require(isinstance(line, (str, bytes)), "Native event wire record must be actual UTF8 text or bytes")
+        wire = line.encode("utf8") if isinstance(line, str) else bytes(line)
+        require(0 < len(wire) <= 64 * 1024 * 1024 and b"\n" not in wire and b"\r" not in wire,
+                "Native event wire record is empty, over its wire bound, or spans multiple JSONL rows")
+        frame = _json(wire.decode("utf8"))
+        fields = {"codec", "rawBytes", "rawSha256", "dataBase64"}
+        if allow_plain and isinstance(frame, dict) and set(frame) != fields and isinstance(frame.get("event"), str):
+            require(len(wire) <= maximum_raw_bytes and _finite(frame), "Legacy diagnostic Native event exceeds its raw budget or finite JSON domain")
+            return frame, len(wire)
+        require(isinstance(frame, dict) and set(frame) == fields and frame["codec"] == NATIVE_EVENT_CODEC,
+                "Native original event lacks the exact lossless codec envelope")
+        require(type(frame["rawBytes"]) is int and 0 < frame["rawBytes"] <= maximum_raw_bytes
+                and isinstance(frame["rawSha256"], str) and re.fullmatch(r"[0-9a-f]{64}", frame["rawSha256"])
+                and isinstance(frame["dataBase64"], str), "Native original event declares an invalid decoded length/digest/carrier")
+        encoded = frame["dataBase64"].encode("ascii")
+        compressed = base64.b64decode(encoded, validate=True)
+        require(base64.b64encode(compressed) == encoded, "Native event base64 carrier is not canonical")
+        decoder = zlib.decompressobj(-15)
+        raw = decoder.decompress(compressed, frame["rawBytes"] + 1)
+        require(decoder.eof and not decoder.unused_data and not decoder.unconsumed_tail
+                and len(raw) == frame["rawBytes"] and _sha(raw) == frame["rawSha256"],
+                "Native event deflate stream is truncated, extended, over budget, or differs from its exact original bytes")
+        require(b"\n" not in raw and b"\r" not in raw, "Decoded Native event contains more than one original JSONL row")
+        event = _json(raw.decode("utf8"))
+        require(isinstance(event, dict) and _finite(event), "Decoded Native original event is not one complete finite JSON object")
+        return event, len(raw)
+    except (UnicodeError, binascii.Error, zlib.error, json.JSONDecodeError, TypeError) as error:
+        raise ValueError("Native original event codec is malformed: " + str(error)) from error
+
+
+def _decode_native_event_line(line, *, allow_plain=False, maximum_raw_bytes=MAX_NATIVE_EVENT_RAW_BYTES):
+    return _decode_native_event_record(line, allow_plain=allow_plain, maximum_raw_bytes=maximum_raw_bytes)[0]
+
+
+def _read_native_event_files(directory, *, allow_plain=False, maximum_decoded_bytes=1024 * 1024 * 1024):
+    require(type(maximum_decoded_bytes) is int and 0 < maximum_decoded_bytes <= 1024 * 1024 * 1024,
+            "Native event transport requires a bounded independent decoded-byte budget")
+    directory = Path(directory).resolve(strict=True)
+    paths = sorted((directory / "evidence").glob("*-events.jsonl"))
+    require(len(paths) <= 1024, "Native event transport exceeded its retained wire-file count bound")
+    files, wire_total, raw_total = [], 0, 0
+    for path in paths:
+        path = _owned(path, directory)
+        size = path.stat().st_size
+        wire_total += size
+        require(0 < size <= 64 * 1024 * 1024 and wire_total <= 256 * 1024 * 1024,
+                "Native event transport exceeded its original wire-byte bounds")
+        wire = path.read_bytes()
+        require(len(wire) == size and wire.endswith(b"\n"), "Native event wire file changed or lost its final complete JSONL row")
+        rows, file_raw = [], 0
+        for line in wire.split(b"\n")[:-1]:
+            remaining = maximum_decoded_bytes - raw_total
+            require(remaining > 0, "Native event transport exceeded its separate decoded-byte budget")
+            row, decoded = _decode_native_event_record(line, allow_plain=allow_plain,
+                maximum_raw_bytes=min(MAX_NATIVE_EVENT_RAW_BYTES, remaining))
+            raw_total += decoded
+            file_raw += decoded
+            rows.append(row)
+        files.append({"path": path, "events": rows, "wireBytes": size, "decodedBytes": file_raw})
+    return files
 
 
 def _regular(filename):
@@ -554,8 +628,8 @@ def _native_authority(case, raw, directory, approved_node, trusted_archive, appr
         by_pid[pid, thread] = {"bootstrap": boot, "loaded": loaded, "releaseImports": release_imports,
                               "clock": clock[0]["clock"], "gates": gates}
     require((raw["pid"], 0) in by_pid, "Native actual coordinator never imported the authenticated actor")
-    for path in sorted((directory / "evidence").glob("*-events.jsonl")):
-        rows = [_json(line) for line in _owned(path, directory).read_text().splitlines()]
+    for observed in _read_native_event_files(directory, allow_plain=not _v2(case)):
+        path, rows = observed["path"], observed["events"]
         if rows:
             pid, thread = rows[0]["pid"], rows[0]["threadId"]
             require((pid, thread) in by_pid and path.name == f"{pid}-{thread}-events.jsonl",
@@ -1443,7 +1517,7 @@ def _native_observed_value(row, authority, approved_node, *, opaque=False):
 
 
 def _native_ram_channels(directory, process, imports, passive):
-    protocol, token = "shared-original-event-jsonl-v1", process["contextSha256"]
+    protocol, token = NATIVE_EVENT_PROTOCOL, process["contextSha256"]
     files, claimed = {}, {}
     for key in imports:
         pid, thread = key
@@ -1453,6 +1527,7 @@ def _native_ram_channels(directory, process, imports, passive):
         files[key] = data
         registered = [row for row in passive[key] if row["event"] == "passive-channel-register"]
         require(len(registered) == 1 and registered[0]["protocol"] == protocol
+                and registered[0]["codec"] == NATIVE_EVENT_CODEC
                 and registered[0]["token"] == token and registered[0]["channelIndex"] == thread
                 and registered[0]["initialBytes"] == 64 * 1024 and registered[0]["maxBytes"] == 64 * 1024 * 1024
                 and registered[0]["slotCount"] == 128,
@@ -1460,6 +1535,7 @@ def _native_ram_channels(directory, process, imports, passive):
     def channel(row, owner_pid):
         key = row["pid"], row["threadId"]
         require(key in files and row["pid"] == owner_pid and row["protocol"] == protocol and row["token"] == token
+                and row["codec"] == NATIVE_EVENT_CODEC
                 and row["channelIndex"] == row["threadId"] and row["failureCode"] == 0,
                 "A Native RAM seal borrowed another process/thread/context or hid a buffer failure")
         names = ("publishedBytes", "persistedBytes", "capacityBytes", "maxBytes", "failureCode", "channelIndex")
@@ -1476,6 +1552,7 @@ def _native_ram_channels(directory, process, imports, passive):
     for filename in seals:
         seal = _read(filename, directory)
         require(seal["protocol"] == protocol and seal["token"] == token and seal["failures"] == []
+                and seal["codec"] == NATIVE_EVENT_CODEC
                 and (seal["pid"], seal["flushingThreadId"]) in imports
                 and filename.name == f'{seal["pid"]}-{seal["flushingThreadId"]}-passive-seal.json',
                 "Native passive checkpoint seal lost its actual flushing thread/source context")
@@ -1758,8 +1835,9 @@ def _native_transport_custody(raw, context, imports, passive, authority, approve
             if event.endswith("-return"):
                 value = row.get("actualReturn", row.get("result"))
                 returned = _native_observed_value(value, authority, approved_node)
-                require((function_name == "postMessage" and returned == {"privateType": "undefined"})
-                        or (function_name == "emit" and type(returned) is bool),
+                require((family == "original-message-port" and type(returned) is bool)
+                        or (family == "original-worker-command" and returned == {"privateType": "undefined"})
+                        or (family == "original-worker-reply" and type(returned) is bool),
                         "A Native original transport lost its actual void/boolean return type")
             else:
                 error = _native_observed_value(row["privateError"], authority, approved_node)

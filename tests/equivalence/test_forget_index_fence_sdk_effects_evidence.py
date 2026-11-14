@@ -1,4 +1,4 @@
-"""Read-only positive/adversarial replay of an explicitly selected V3 SDK run."""
+"""Read-only replay of explicitly selected V3/V4 SDK runs and frozen inputs."""
 
 from copy import deepcopy
 from functools import lru_cache
@@ -8,24 +8,54 @@ from pathlib import Path
 
 import pytest
 
-from equivalence.forget_index_fence_sdk_effects_evidence import validate_sdk_effects_v3
+from equivalence.forget_index_fence_sdk_effects_evidence import _closed_effects_case, validate_sdk_effects_v3
 from equivalence.forget_index_fence_v3 import build_cases
+from equivalence.forget_index_fence_v4 import build_cases as build_v4_cases
 
 
 ROOT = Path(__file__).resolve().parents[2]
 
 
+@pytest.mark.parametrize("case", build_v4_cases(), ids=lambda case: case["id"])
+def test_exact_frozen_v4_inputs_reuse_only_the_existing_effects_protocol(case):
+    assert _closed_effects_case(case) == 4
+    assert case["input"]["observationPolicy"]["searchEffects"]["protocol"] == "original-search-effects-v3"
+
+
+@pytest.mark.parametrize("attack", ["unknown-kind", "renamed-operation", "changed-input", "changed-coverage"])
+def test_v4_effects_admission_rejects_unfrozen_or_relabelled_inputs(attack):
+    case = build_v4_cases()[0]
+    if attack == "unknown-kind":
+        case["input"]["kind"] = "forget-index-fence-v4-unregistered"
+    elif attack == "renamed-operation":
+        case["operation"] = "forget-index-fence-v3-runtime"
+    elif attack == "changed-input":
+        case["input"]["config"]["memory"]["search"]["sync"]["onSearch"] = False
+    else:
+        case["covers"] = []
+    with pytest.raises(ValueError):
+        _closed_effects_case(case)
+
+
+def test_exact_frozen_v3_effects_admission_remains_available():
+    assert all(_closed_effects_case(case) == 3 for case in build_cases())
+
+
 @lru_cache(maxsize=1)
 def _actual():
-    selected = os.environ.get("MEMORY_FORGET_INDEX_FENCE_V3_SDK_CAPTURE")
+    selected_v3 = os.environ.get("MEMORY_FORGET_INDEX_FENCE_V3_SDK_CAPTURE")
+    selected_v4 = os.environ.get("MEMORY_FORGET_INDEX_FENCE_V4_SDK_CAPTURE")
+    assert not (selected_v3 and selected_v4), "Select exactly one independently approved SDK packet"
+    selected = selected_v4 or selected_v3
     if selected is None:
-        pytest.skip("No independently selected actual V3 SDK capture; no acceptance credit")
+        pytest.skip("No independently selected actual V3/V4 SDK capture; no acceptance credit")
     filename = Path(selected).resolve(strict=True)
     assert filename.is_file() and not filename.is_symlink() and filename.stat().st_nlink == 1
     values = json.loads(filename.read_bytes())
     assert isinstance(values, list) and len(values) == 1
     dispatch = values[0]
-    case = next(case for case in build_cases() if case["input"] == dispatch["input"])
+    family = build_v4_cases() if selected_v4 else build_cases()
+    case = next(case for case in family if case["input"] == dispatch["input"])
     processes = dispatch["observation"]["processes"]
     return case, processes
 

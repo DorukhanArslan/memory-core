@@ -21,6 +21,21 @@ _STDLIB = {"ThreadPoolExecutor.submit": ThreadPoolExecutor.submit,
            "Future.result": Future.result, "Condition.wait": threading.Condition.wait}
 
 
+def _closed_effects_case(case):
+    """Admit only the exact frozen V3/V4 inputs sharing effects protocol V3."""
+    kind = case.get("input", {}).get("kind") if isinstance(case, dict) else None
+    if kind == "forget-index-fence-v3":
+        from equivalence.forget_index_fence_v3 import validate_case
+        version = 3
+    elif kind == "forget-index-fence-v4":
+        from equivalence.forget_index_fence_v4 import validate_case
+        version = 4
+    else:
+        raise ValueError("SDK effects require an exact frozen V3 or V4 case")
+    validate_case(case)
+    return version
+
+
 def validate_sdk_effects_v3(case, observation, process, events, returns, *, recorded_root,
                             approved_sdk_root, recorded_adapter_root, approved_adapter_root):
     """Authenticate existing work and return the labelled actual wait receipts."""
@@ -30,8 +45,9 @@ def validate_sdk_effects_v3(case, observation, process, events, returns, *, reco
     adapter, trusted_adapter = Path(recorded_adapter_root), Path(approved_adapter_root)
     require(trusted_adapter.is_absolute() and trusted_adapter.resolve(strict=True) == trusted_adapter,
             "SDK effects need an independently selected fixture source root")
+    _closed_effects_case(case)
     value, pid, actor = case["input"], observation["pid"], observation["actor"]
-    require(value["kind"] == "forget-index-fence-v3" and pid == process["pid"] and actor == process["actor"],
+    require(pid == process["pid"] and actor == process["actor"],
             "SDK effects borrowed another frozen profile or process")
     policy = value["observationPolicy"]["searchEffects"]
     require(policy["protocol"] == "original-search-effects-v3", "SDK effects protocol changed")

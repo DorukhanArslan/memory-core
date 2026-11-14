@@ -5,6 +5,8 @@ import sys
 import traceback
 
 from equivalence.forget_index_fence_sdk import (
+    ROOT,
+    _configure_sdk_root,
     run_forget_index_fence_sdk_actor,
     run_forget_index_fence_sdk_host,
 )
@@ -13,6 +15,9 @@ from equivalence.forget_index_fence_sdk import (
 def main():
     try:
         request = json.loads(sys.stdin.readline())
+        if "adapterRoot" in request and request["adapterRoot"] != str(ROOT):
+            raise ValueError("The requested adapter root differs from the actual loaded driver")
+        _configure_sdk_root(request.get("sdkRoot", ROOT))
         if request.get("mode") == "actor":
             run_forget_index_fence_sdk_actor(request)
             return

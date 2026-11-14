@@ -1,10 +1,12 @@
 """Labelled Python protocol fixtures only: no Node or original engine executes."""
 from copy import deepcopy
+import base64
 import hashlib
 import json
 import os
 from pathlib import Path
 import subprocess
+import zlib
 from types import SimpleNamespace
 
 import pytest
@@ -16,6 +18,16 @@ from equivalence.model_runtime_authority import APPROVED_NODE_RUNTIME
 def _wire(case):
     return json.dumps({key: case[key] for key in ("id", "operation", "input")},
                       sort_keys=True, separators=(",", ":")).encode()
+
+
+def _stored_event(row):
+    """Labelled protocol bytes only; no engine output or expected API value."""
+    raw = json.dumps(row, ensure_ascii=False, separators=(",", ":")).encode()
+    compressor = zlib.compressobj(wbits=-15)
+    data = compressor.compress(raw) + compressor.flush()
+    return json.dumps({"codec": native.PASSIVE_EVENT_CODEC, "rawBytes": len(raw),
+                       "rawSha256": hashlib.sha256(raw).hexdigest(),
+                       "dataBase64": base64.b64encode(data).decode()}) + "\n"
 
 
 @pytest.fixture
@@ -454,7 +466,7 @@ def labelled_integrity_child(labelled_trace):
                      "callLabel": "s", "launchId": launch["launchId"], "childPid": 103,
                      "code": 0, "signal": None, "spawnSequence": launch["sequence"]})
     (Path(context["evidenceDirectory"]) / "102-7-events.jsonl").write_text(
-        "".join(json.dumps(row) + "\n" for row in rows))
+        "".join(_stored_event(row) for row in rows))
     value["childReceiptRows"] = rows
     value["childReceiptFile"] = Path(context["evidenceDirectory"]) / "102-7-events.jsonl"
     value["files"]["102-7.jsonl"].append({"event": "load", **creator, "kind": "release",
@@ -477,7 +489,7 @@ def labelled_integrity_child(labelled_trace):
 
 
 def _write_child_receipts(value):
-    value["childReceiptFile"].write_text("".join(json.dumps(row) + "\n" for row in value["childReceiptRows"]))
+    value["childReceiptFile"].write_text("".join(_stored_event(row) for row in value["childReceiptRows"]))
 
 
 def test_original_integrity_child_requires_source_receipts_native_graph_and_real_close(labelled_integrity_child):

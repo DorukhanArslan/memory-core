@@ -5,6 +5,8 @@ capture validation owns race semantics; this transport awards no acceptance.
 """
 from __future__ import annotations
 
+import base64
+import binascii
 from copy import deepcopy
 import hashlib
 from importlib import import_module
@@ -17,6 +19,7 @@ import signal
 import stat
 import subprocess
 import time
+import zlib
 
 from equivalence.forget_index_fence_bindings import (
     REQUIRED_MAIN_ARTIFACTS_BY_ROUTE,
@@ -485,8 +488,51 @@ def _child_receipt_json(line):
     return json.loads(line, object_pairs_hook=pairs, parse_constant=constant)
 
 
+PASSIVE_EVENT_CODEC = "deflate-raw-native-event-v1"
+PASSIVE_RAW_RECORD_LIMIT = 64 * 1024 * 1024
+PASSIVE_RAW_TOTAL_LIMIT = 1024 * 1024 * 1024
+
+
+def decode_passive_event(line, *, allow_legacy_plain=False, max_raw_bytes=PASSIVE_RAW_RECORD_LIMIT):
+    """Decode storage only; plain events are an explicit diagnostic capability."""
+    frame = _child_receipt_json(line)
+    if not isinstance(frame, dict) or frame.get("codec") != PASSIVE_EVENT_CODEC:
+        if allow_legacy_plain and isinstance(frame, dict) and "codec" not in frame:
+            raw = line.encode("utf8") if isinstance(line, str) else line
+            if len(raw) > max_raw_bytes:
+                raise ValueError("Diagnostic passive event exceeds its decoded record bound")
+            return frame, len(raw)
+        raise ValueError("Native passive event requires its lossless storage codec")
+    if (set(frame) != {"codec", "rawBytes", "rawSha256", "dataBase64"}
+            or type(frame.get("rawBytes")) is not int
+            or not 0 < frame["rawBytes"] <= min(PASSIVE_RAW_RECORD_LIMIT, max_raw_bytes)
+            or not isinstance(frame.get("rawSha256"), str)
+            or re.fullmatch(r"[0-9a-f]{64}", frame["rawSha256"]) is None
+            or not isinstance(frame.get("dataBase64"), str)):
+        raise ValueError("Native passive event codec envelope is malformed or excessive")
+    try:
+        compressed = base64.b64decode(frame["dataBase64"], validate=True)
+        if base64.b64encode(compressed).decode("ascii") != frame["dataBase64"]:
+            raise ValueError("Native passive event base64 is not canonical")
+        inflater = zlib.decompressobj(wbits=-15)
+        raw = inflater.decompress(compressed, frame["rawBytes"] + 1)
+    except (binascii.Error, UnicodeError, zlib.error) as error:
+        raise ValueError("Native passive event storage payload is corrupt") from error
+    if (not inflater.eof or inflater.unused_data or inflater.unconsumed_tail
+            or len(raw) != frame["rawBytes"]
+            or hashlib.sha256(raw).hexdigest() != frame["rawSha256"]):
+        raise ValueError("Native passive event storage payload lost its exact bytes")
+    try:
+        result = _child_receipt_json(raw.decode("utf8"))
+    except (UnicodeError, json.JSONDecodeError) as error:
+        raise ValueError("Native passive event original JSON bytes are invalid") from error
+    if not isinstance(result, dict):
+        raise ValueError("Native passive event original record is not an object")
+    return result, len(raw)
+
+
 def _original_children(context, originals, graph):
-    files, groups, all_event_files, total = [], {}, [], 0
+    files, groups, all_event_files, total, decoded_total = [], {}, [], 0, 0
     for filename in sorted(Path(context["evidenceDirectory"]).glob("*-events.jsonl")):
         if not _regular(filename) or re.fullmatch(r"[1-9][0-9]*-[0-9]+-events\.jsonl", filename.name) is None:
             raise ValueError("Original child receipts used an unowned passive event file")
@@ -495,15 +541,21 @@ def _original_children(context, originals, graph):
         if (not wire or not wire.endswith(b"\n") or len(wire) > 64 * 1024 * 1024
                 or total > 256 * 1024 * 1024 or len(all_event_files) >= 1024):
             raise ValueError("Original child receipts are incomplete or excessive")
-        rows = [_child_receipt_json(line) for line in wire.splitlines()]
+        identity = None
         has_child, last_sequence, last_time = False, 0, -1
-        for row in rows:
+        for line in wire.splitlines():
+            row, decoded_bytes = decode_passive_event(line, max_raw_bytes=PASSIVE_RAW_TOTAL_LIMIT - decoded_total)
+            decoded_total += decoded_bytes
             if (not isinstance(row, dict) or not _positive_integer(row.get("pid"))
                     or type(row.get("threadId")) is not int or row["threadId"] < 0
                     or filename.name != f'{row["pid"]}-{row["threadId"]}-events.jsonl'
                     or not _positive_integer(row.get("sequence")) or row["sequence"] <= last_sequence
                     or not _monotonic(row.get("atNs")) or int(row["atNs"]) < last_time):
                 raise ValueError("Original child passive receipts lost their actual process/order")
+            actual_identity = {key: row.get(key) for key in ("pid", "ppid", "threadId", "actor", "instance")}
+            if identity is not None and not _same_protocol(actual_identity, identity):
+                raise ValueError("A passive event file mixed its actual process identity")
+            identity = actual_identity
             last_sequence, last_time = row["sequence"], int(row["atNs"])
             if str(row.get("event", "")).startswith("original-child-"):
                 if row["event"] not in _CHILD_EVENTS or row["event"] == "original-child-error":
@@ -530,7 +582,7 @@ def _original_children(context, originals, graph):
                         raise ValueError("Original child lifecycle changed its actual OS process")
                     group[{"original-child-message": "messages", "original-child-exit": "exits",
                            "original-child-os-exit": "osExits"}[row["event"]]].append(row)
-        all_event_files.append((filename, rows))
+        all_event_files.append(identity)
         if has_child:
             files.append({"name": filename.name, "sha256": hashlib.sha256(wire).hexdigest(), "text": wire.decode("utf8")})
     incidental, processes = {}, []
@@ -555,13 +607,12 @@ def _original_children(context, originals, graph):
         checks = _integrity_messages(group["messages"], context)
         incidental[child_pid] = identity
         processes.append({**group, "checks": checks})
-    for filename, rows in all_event_files:
-        for row in rows:
-            identity = graph.get(row["pid"]) or incidental.get(row["pid"])
-            if (not identity or row.get("actor") != identity["actor"]
-                    or row.get("ppid") != identity["ppid"] or type(row.get("instance")) is not int
-                    or row["instance"] != identity["instance"]):
-                raise ValueError("A passive receipt is detached from the qualified original process graph")
+    for row in all_event_files:
+        identity = graph.get(row["pid"]) or incidental.get(row["pid"])
+        if (not identity or row.get("actor") != identity["actor"]
+                or row.get("ppid") != identity["ppid"] or type(row.get("instance")) is not int
+                or row["instance"] != identity["instance"]):
+            raise ValueError("A passive receipt is detached from the qualified original process graph")
     return incidental, {"processes": processes, "receiptFiles": files}
 
 

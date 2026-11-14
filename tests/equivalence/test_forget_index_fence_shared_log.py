@@ -22,8 +22,13 @@ import assert from 'node:assert/strict';
 import fs from 'node:fs';
 import path from 'node:path';
 import {{Worker,threadId}} from 'node:worker_threads';
+import {{inflateRawSync}} from 'node:zlib';
+import {{createHash,randomBytes}} from 'node:crypto';
 import {{openThreadEventStore}} from {json.dumps(HELPER.as_uri())};
 const options={json.dumps(options)},store=openThreadEventStore(options);
+const decodeLine=line=>{{const frame=JSON.parse(line);assert.equal(frame.codec,'deflate-raw-native-event-v1');
+ const raw=inflateRawSync(Buffer.from(frame.dataBase64,'base64'));assert.equal(raw.length,frame.rawBytes);
+ assert.equal(createHash('sha256').update(raw).digest('hex'),frame.rawSha256);return JSON.parse(raw);}};
 {body}
 process.stdout.write(JSON.stringify({{kind:'builtin-only-shared-log',originalReleaseModulesImported:false}})+'\\n');
 """
@@ -50,7 +55,7 @@ const message=await new Promise((resolve,reject)=>{{worker.once('message',resolv
 await worker.terminate();
 const filename=path.join(options.directory,`${{process.pid}}-${{message.threadId}}-events.jsonl`);
 assert.equal(fs.existsSync(filename),false); // the worker never performed any checkpoint IO
-const seal=store.flush(),rows=fs.readFileSync(filename,'utf8').trim().split('\\n').map(JSON.parse);
+const seal=store.flush(),rows=fs.readFileSync(filename,'utf8').trim().split('\\n').map(decodeLine);
 assert.equal(rows.length,1);assert.equal(rows[0].threadId,message.threadId);assert.equal(rows[0].text.length,1000);
 assert.equal(seal.channels.length,2);assert.equal(store.failures().length,0);
 assert(seal.channels.find(row=>row.threadId===message.threadId).capacityBytes>options.initialBytes);
@@ -63,7 +68,7 @@ const value={event:'first',body:{text:'actual 🦊 source'}};
 store.append(value);value.body.text='mutated after append';
 store.flush();store.append({event:'second'});const second=store.flush();
 store.flush();const filename=path.join(options.directory,`${process.pid}-${threadId}-events.jsonl`);
-const rows=fs.readFileSync(filename,'utf8').trim().split('\\n').map(JSON.parse);
+const rows=fs.readFileSync(filename,'utf8').trim().split('\\n').map(decodeLine);
 assert.equal(rows[0].body.text,'actual 🦊 source');assert.equal(rows[1].event,'second');
 assert.equal(fs.statSync(filename).size,second.channels[0].publishedBytes);
 assert.equal(second.channels[0].publishedBytes,second.channels[0].persistedBytes);
@@ -74,11 +79,11 @@ assert.equal(store.failures().length,0);
 def test_capacity_failure_is_independent_bounded_and_preserves_all_preceding_rows(tmp_path):
     _run(tmp_path, """
 assert.equal(store.append({event:'retained'}),true);
-assert.equal(store.append({event:'oversized',text:'x'.repeat(options.maxBytes)}),false);
+assert.equal(store.append({event:'oversized',text:randomBytes(options.maxBytes*2).toString('hex')}),false);
 assert.equal(store.append({event:'later'}),false);
 const failures=store.failures();assert.equal(failures.length,1);assert.equal(failures[0].code,1);
 const seal=store.flush(),filename=path.join(options.directory,`${process.pid}-${threadId}-events.jsonl`);
-assert.deepEqual(fs.readFileSync(filename,'utf8').trim().split('\\n').map(JSON.parse),[{event:'retained'}]);
+assert.deepEqual(fs.readFileSync(filename,'utf8').trim().split('\\n').map(decodeLine),[{event:'retained'}]);
 assert.equal(seal.failures.length,1);assert.equal(seal.channels[0].failureCode,1);
 """)
 
@@ -102,7 +107,7 @@ fs.openSync=function(...args){{
  return Reflect.apply(open,this,args);
 }};
 try{{store.flush();}}finally{{fs.openSync=open;}}
-const rows=fs.readFileSync(filename,'utf8').trim().split('\\n').map(JSON.parse);
+const rows=fs.readFileSync(filename,'utf8').trim().split('\\n').map(decodeLine);
 assert.deepEqual(rows.map(row=>row.event),['first','newer']);assert.equal(interleaved,true);
 const channel=store.snapshot().find(row=>row.threadId===ready.threadId);
 assert.equal(channel.publishedBytes,fs.statSync(filename).size);assert.equal(channel.persistedBytes,channel.publishedBytes);

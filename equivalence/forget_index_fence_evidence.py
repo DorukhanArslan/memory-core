@@ -456,7 +456,7 @@ def _release_inventory(runtime, trusted_archive=None):
     return root, inventories
 
 
-def _native_authority(case, raw, directory, approved_node, trusted_archive):
+def _native_authority(case, raw, directory, approved_node, trusted_archive, approved_reference):
     directory = Path(directory).resolve(strict=True)
     context_path, process_path = directory / "context.json", directory / "process.json"
     context, process = _read(context_path, directory), _read(process_path, directory)
@@ -504,7 +504,7 @@ def _native_authority(case, raw, directory, approved_node, trusted_archive):
             and environment["OPENCLAW_CONFIG_PATH"] == context["configPath"]
             and environment["NODE_OPTIONS"] == f'--import={program_root / "equivalence/forget-index-fence-preload.mjs"}',
             "Native actual process environment borrowed another actor, config, or preload")
-    _native_declarations(process, context, directory)
+    _native_declarations(process, context, directory, approved_reference)
     package_root, inventories = _release_inventory(context["runtime"], trusted_archive)
     by_pid, passive = {}, {}
     for path in sorted(_owned_trace_directory(context["traceDirectory"], directory).glob("*.jsonl")):
@@ -560,11 +560,11 @@ def _native_authority(case, raw, directory, approved_node, trusted_archive):
     return context, process, authority, by_pid, passive
 
 
-def _native_declarations(process, context, directory):
+def _native_declarations(process, context, directory, approved_reference):
     from equivalence.forget_index_fence_bindings import (
         SOURCE_HASHES, SOURCE_ANCHORS, COMPILED_HASHES, COMPILED_ANCHORS, REFERENCE_COMMIT,
     )
-    source = Path(os.environ.get("MEMORY_EQ_REFERENCE_CHECKOUT", ROOT / "work/openclaw-v2026.9.9")).resolve(strict=True)
+    source = Path(approved_reference or os.environ.get("MEMORY_EQ_REFERENCE_CHECKOUT", ROOT / "work/openclaw-v2026.9.9")).resolve(strict=True)
     require(process["sourceCheckout"] == str(source), "Native original source checkout differs from independent source authority")
     head = subprocess.run(["git", "rev-parse", "HEAD"], cwd=source, capture_output=True, text=True, timeout=10, check=False)
     require(head.returncode == 0 and head.stdout.strip() == REFERENCE_COMMIT,
@@ -610,6 +610,18 @@ def _document_rows(value, rows):
             require(data.hex() == row["hex"] and data.decode("utf8", "replace") == row["text"]
                     and row["sha256"] == _sha(data) and isinstance(row["mtimeNs"], str)
                     and row["mtimeNs"].isdigit(), "Actual source bytes/stat/digest were dropped or substituted")
+            if "rawStat" in row:
+                info = row["rawStat"]
+                require({"dev", "ino", "mode", "nlink", "size", "mtimeNs", "ctimeNs"} <= set(info)
+                        and str(info["mtimeNs"]) == row["mtimeNs"] and int(info["size"]) == len(data),
+                        "Native complete original source stat fingerprints were stripped")
+            else:
+                info, after = row["stat"], row["statAfter"]
+                require({"st_dev", "st_ino", "st_mode", "st_nlink", "st_size", "st_mtime_ns", "st_ctime_ns"} <= set(info)
+                        and set(info) == set(after) and info["st_mtime_ns"] == row["mtimeNs"]
+                        and int(info["st_size"]) == len(data)
+                        and all(info[key] == after[key] for key in ("st_dev", "st_ino", "st_mode", "st_nlink", "st_size", "st_mtime_ns", "st_ctime_ns")),
+                        "SDK complete original source stat fingerprints changed during the actual source read")
     names = {name for name, row in records.items() if row["kind"] == "file" and name.lower().endswith((".md", ".txt"))}
     names |= {name for name in value["initialFiles"] if name.lower().endswith((".md", ".txt"))}
     result = []
@@ -1149,7 +1161,7 @@ def _common_events(rows, workspace):
     return result
 
 
-def _native_capture(case, raw, result, directory, approved_node, trusted_archive):
+def _native_capture(case, raw, result, directory, approved_node, trusted_archive, approved_reference):
     require(raw["kind"] == "forget-index-fence-native-capture" and raw["schemaVersion"] == 1
             and raw["engine"] == "native" and raw["caseId"] == case["id"]
             and raw["completed"] is raw["allChildrenReaped"] is True
@@ -1158,7 +1170,7 @@ def _native_capture(case, raw, result, directory, approved_node, trusted_archive
     _same(raw["input"], case["input"], "The original Native received another frozen input")
     _same(raw["result"], result, "Native raw capture lost its whole public result")
     directory = Path(directory or Path(raw["fixtureBase"]).parent).resolve(strict=True)
-    context, process, authority, imports, passive = _native_authority(case, raw, directory, approved_node, trusted_archive)
+    context, process, authority, imports, passive = _native_authority(case, raw, directory, approved_node, trusted_archive, approved_reference)
     approved_node = authority["execPath"]
     returned = _read(process["stdoutPath"], directory)
     require(returned["id"] == case["id"] and returned["ok"] is True, "The actual Native coordinator did not return its complete result")
@@ -1245,6 +1257,7 @@ def _native_capture(case, raw, result, directory, approved_node, trusted_archive
         events = _events(passive[snapshot["pid"], 0])
         _interval(snapshot, events, "physical-snapshot-enter", "physical-snapshot-return")
         database = _physical_database(snapshot["physical"], raw["fixtureBase"])
+        _native_plugin_state(snapshot, actor, events, raw["fixtureBase"], authority, approved_node)
         require(set(database["selectedTables"]) == {row["name"] for row in database["schema"]
                     if row["type"] == "table" and row["name"].startswith(("memory_", "session_"))},
                 "A source-selected Native physical table was dropped")
@@ -1267,6 +1280,34 @@ def _native_capture(case, raw, result, directory, approved_node, trusted_archive
         snapshots[label] = common
     _same(snapshots, result["snapshots"], "Native common snapshot stages were omitted or repaired")
     return True
+
+
+def _native_plugin_state(snapshot, actor, events, fixture, authority, approved_node):
+    binding = actor["pluginStatePathBinding"]
+    require(binding["module"] == "dist/openclaw-state-db.paths-rJI64Ab5.mjs" and binding["export"] == "s"
+            and binding["result"] == str(Path(fixture) / "state/openclaw.sqlite")
+            and binding["arguments"]["env"]["OPENCLAW_STATE_DIR"] == fixture,
+            "Native plugin-state physical capture borrowed another original path owner or state root")
+    require(any(owner["name"] == "resolveOpenClawStateSqlitePath" and owner["functionRef"] == binding["functionRef"]
+                for owner in actor["codeOwners"]), "Native plugin-state path lost its actual original callable identity")
+    _same(_native_value(binding["privateReturn"], authority, approved_node), binding["result"],
+          "The Native plugin-state path differs from its actual original return")
+    capture = snapshot["pluginStateCapture"]
+    _interval(capture, events, "physical-plugin-state-read-enter", "physical-plugin-state-read-return")
+    require(snapshot["enterSeq"] < capture["enterSeq"] < capture["returnSeq"] < snapshot["returnSeq"]
+            and capture["pathBindingRef"] == binding["functionRef"],
+            "Native plugin-state SQL observation lost its source-qualified physical capture interval")
+    database = _physical_database(snapshot["pluginStatePhysical"], fixture)
+    require(database["dbPath"] == binding["result"]
+            and set(database["tables"]) == {row["name"] for row in database["schema"] if row["type"] == "table"},
+            "A Native physical plugin-state table was omitted or added")
+    if database["exists"] is False:
+        require(capture["fileIdentity"] is None and database["missingError"]["code"] == "ENOENT"
+                and not database["schema"] and not database["tables"],
+                "Absent Native plugin-state SQL lacks its actual original missing-file proof")
+        return
+    require(capture["fileIdentity"] is not None and int(capture["fileIdentity"]["nlink"]) == 1,
+            "Native plugin-state SQL lost its actual independent physical file identity")
 
 
 def _native_concurrency(case, snapshot, commands):
@@ -1528,11 +1569,11 @@ def _sdk_gates(case, raw, processes, observations, recorded, trusted):
 
 
 def validate_capture(case, capture, result, *, native, approved_node=None, approved_sdk_root=None,
-                     trusted_archive=None, directory=None):
+                     trusted_archive=None, directory=None, approved_reference=None):
     """Authenticate one actual engine independently; no policy match is required."""
     try:
         validate_result(case, result)
-        return (_native_capture(case, capture, result, directory, approved_node, trusted_archive)
+        return (_native_capture(case, capture, result, directory, approved_node, trusted_archive, approved_reference)
                 if native else _sdk_capture(case, capture, result, directory, approved_sdk_root))
     except (KeyError, IndexError, TypeError, AttributeError, StopIteration, OSError, UnicodeError,
             json.JSONDecodeError) as error:
@@ -1540,17 +1581,18 @@ def validate_capture(case, capture, result, *, native, approved_node=None, appro
 
 
 def validate_pair(case, native_raw, sdk_raw, native_result, sdk_result, *, approved_node=None,
-                  approved_sdk_root=None, trusted_archive=None, native_directory=None, sdk_directory=None):
+                  approved_sdk_root=None, trusted_archive=None, native_directory=None, sdk_directory=None,
+                  approved_reference=None):
     """Custody precedes parity; genuine original differences remain differences."""
     validate_capture(case, native_raw, native_result, native=True, approved_node=approved_node,
-                     trusted_archive=trusted_archive, directory=native_directory)
+                     trusted_archive=trusted_archive, directory=native_directory, approved_reference=approved_reference)
     validate_capture(case, sdk_raw, sdk_result, native=False, approved_sdk_root=approved_sdk_root,
                      directory=sdk_directory)
     return True
 
 
 def replay_case(case, native_directory, sdk_directory=None, *, approved_node=None,
-                approved_sdk_root=None, trusted_archive=None):
+                approved_sdk_root=None, trusted_archive=None, approved_reference=None):
     """Replay explicit retained transports; the SDK directory contains its raw file.
 
     A full-pair transport is a mapping with exactly ``nativeDirectory`` and
@@ -1574,7 +1616,8 @@ def replay_case(case, native_directory, sdk_directory=None, *, approved_node=Non
     native_result, sdk_result = returned["result"], sdk_values[0]["observation"]["result"]
     validate_pair(case, native_values[0], sdk_values[0], native_result, sdk_result,
                   approved_node=approved_node, approved_sdk_root=approved_sdk_root,
-                  trusted_archive=trusted_archive, native_directory=native_directory, sdk_directory=sdk_directory)
+                  trusted_archive=trusted_archive, native_directory=native_directory, sdk_directory=sdk_directory,
+                  approved_reference=approved_reference)
     return {"validated": True, "publicMatch": _same_json(native_result, sdk_result),
             "nativeSnapshots": len(native_result["snapshots"]), "sdkSnapshots": len(sdk_result["snapshots"]),
             "acceptancePointsAwarded": 0}

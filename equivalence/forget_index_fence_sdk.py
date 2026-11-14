@@ -150,7 +150,7 @@ def _loaded_sdk():
 
 
 def _literal(value):
-    from equivalence.forget_index_fence import build_cases
+    from equivalence.forget_index_fence_v2 import build_cases
 
     for case in build_cases():
         if case.get("input") == value:
@@ -197,7 +197,8 @@ class _OriginalObserver:
     worker scope. Strong owner/context references prevent object-id reuse.
     """
 
-    def __init__(self, codes, *, gate_callback=None, sql_callback=None):
+    def __init__(self, codes, *, gate_callback=None, sql_callback=None,
+                 functional_profile=None, functional_trace=None):
         self.codes = dict(codes)
         self.owners = {}
         self.local = threading.local()
@@ -207,6 +208,7 @@ class _OriginalObserver:
         self.contexts = {}
         self.gate_callback = gate_callback
         self.sql_callback = sql_callback
+        self.functional_profile, self.functional_trace = functional_profile, functional_trace
         self._sequence = 0
 
     def bind_owner(self, owner, label):
@@ -222,9 +224,11 @@ class _OriginalObserver:
         return row
 
     @contextmanager
-    def call_scope(self, label, kind):
+    def call_scope(self, label, kind, wall_ms=None):
         previous = getattr(self.local, "scope", None)
         self.local.scope = {"label": label, "kind": kind}
+        if wall_ms is not None:
+            self.local.scope["wallClockNowMs"] = wall_ms
         try:
             yield
         finally:
@@ -254,6 +258,8 @@ class _OriginalObserver:
         return specification, receiver, bound[1] if bound else None, scope
 
     def profile(self, frame, event, returned):
+        if self.functional_profile is not None:
+            self.functional_profile(frame, event, returned)
         if event in {"c_call", "c_return", "c_exception"}:
             self._profile_sql(frame, event, returned)
             return
@@ -348,6 +354,8 @@ class _OriginalObserver:
             self.local.sql_stack = stack[:-1]
 
     def exception_trace(self, frame, event, argument):
+        if self.functional_trace is not None:
+            self.functional_trace(frame, event, argument)
         match = self._match(frame)
         if match is None:
             return None
@@ -389,12 +397,15 @@ def _original_bindings():
     from memory_core.consolidation.recall import record_short_term_recalls
     from memory_core.consolidation import promotion
     from memory_core.host.managed_index import ManagedSQLiteMemoryStore
-    from memory_core.index.sqlite_store import SQLiteMemoryStore
+    from memory_core.index.sqlite_store import SQLiteMemoryStore, read_index_source
     from memory_core.index import sqlite_store
     from memory_core.index.publication import write_prepared_index
     from memory_core.session_catalog import MemorySessionCatalog
     from memory_core.tools.memory_search import execute_memory_search_tool, _run_memory_search_tool
     from memory_core.tools.search_factory import MemorySearchTool
+    from memory_core import atomic_publication
+    from memory_core.consolidation.artifacts import write_dreams_file_atomic
+    from memory_core.index.temporal_decay import apply_temporal_decay_to_hybrid_results
 
     methods = [(SQLiteMemoryStore, name) for name in (
         "connect", "reindex", "reindex_sources", "_reindex_locked", "publish_prepared_index",
@@ -426,6 +437,11 @@ def _original_bindings():
     # The imported publication function must be the original used by the store.
     if sqlite_store.write_prepared_index is not write_prepared_index:
         raise RuntimeError("The SDK index publication owner is not its original imported function")
+    for function in (atomic_publication._io, atomic_publication._write_all, atomic_publication._commit,
+        atomic_publication.append_memory_content, atomic_publication._write_existing_in_place,
+        write_dreams_file_atomic, apply_temporal_decay_to_hybrid_results, read_index_source):
+        codes[function.__code__] = {"name": function.__qualname__, "receiver": None,
+                                    "code": _code_identity(function.__code__)}
     return codes
 
 
@@ -519,6 +535,8 @@ class _SdkActor:
             raise ValueError("An undeclared SDK source boundary was requested")
         self.observer = _OriginalObserver(_original_bindings(), gate_callback=self._boundary,
                                            sql_callback=self._sql_progress)
+        self.datetime_clock_calls = []
+        self._install_clock_fixtures()
         if _sdk_sources() != self.before:
             raise RuntimeError("SDK sources changed while loading original actors")
         # Only Date/time.time is frozen. Monotonic clocks, SQLite waits, Events,
@@ -529,6 +547,51 @@ class _SdkActor:
         threading.setprofile(self.observer.profile)
         sys.settrace(self.observer.exception_trace)
         threading.settrace(self.observer.exception_trace)
+
+    def _active_scope(self):
+        scope = getattr(self.observer.local, "scope", None)
+        stack = getattr(self.observer.local, "stack", ())
+        return scope if scope is not None else stack[-1][2] if stack else None
+
+    def _install_clock_fixtures(self):
+        from memory_core import atomic_publication
+        from memory_core.consolidation.artifacts import write_dreams_file_atomic
+        from memory_core.index import temporal_decay
+        from memory_core.index.sqlite_store import read_index_source
+        from equivalence.forget_index_fence_sdk_clock import DatetimeClockProxy, OwnedSourceWriteClock
+
+        roles = {atomic_publication._io: "io", atomic_publication._write_all: "write-all",
+            atomic_publication._commit: "atomic", atomic_publication.append_memory_content: "append",
+            atomic_publication._write_existing_in_place: "in-place", write_dreams_file_atomic: "dreams",
+            read_index_source: "source-read"}
+        owners = {function.__code__: {"role": role, "code": deepcopy(self.observer.codes[function.__code__]["code"])}
+                  for function, role in roles.items()}
+        self.source_clock = OwnedSourceWriteClock(root=self.root, actor=self.actor,
+            policy=self.value["clock"]["sourceWriteClock"], owners=owners, scope=self._active_scope,
+            encode=_encode, full_stat=_full_stat)
+        self.observer.functional_profile = self.source_clock.profile
+        self.observer.functional_trace = self.source_clock.trace
+        declaration = self.value["clock"]["sdkDatetimeClock"]
+        if declaration["module"] != temporal_decay.__name__ or declaration["binding"] != "datetime" or declaration["controlledApi"] != "now":
+            raise ValueError("The declared datetime clock is not the narrow original temporal-decay binding")
+        original_datetime = temporal_decay.datetime
+        self.datetime_clock_source = deepcopy(self.observer.codes[temporal_decay.apply_temporal_decay_to_hybrid_results.__code__]["code"])
+
+        def record_datetime(receipt, frame):
+            if frame.f_code is not temporal_decay.apply_temporal_decay_to_hybrid_results.__code__:
+                raise ValueError("The narrow datetime fallback was invoked outside its original declared source")
+            self.datetime_clock_calls.append({**receipt, "scope": deepcopy(self._active_scope()),
+                "sourceCode": deepcopy(self.datetime_clock_source), "pid": os.getpid(), "actor": self.actor})
+
+        self.datetime_proxy = DatetimeClockProxy(original_datetime, lambda: self.wall_ms, record_datetime)
+        temporal_decay.datetime = self.datetime_proxy
+        self.clock_bindings = {"datetime": {"declaration": deepcopy(declaration),
+            "module": temporal_decay.__name__, "binding": "datetime", "originalClassObjectId": str(id(original_datetime)),
+            "originalClass": _type_identity(original_datetime), "proxyObjectId": str(id(self.datetime_proxy)),
+            "proxyClass": _type_identity(type(self.datetime_proxy)), "sourceCode": deepcopy(self.datetime_clock_source),
+            "bindingIsExactProxy": temporal_decay.datetime is self.datetime_proxy},
+            "sourceWrites": {"declaration": deepcopy(self.value["clock"]["sourceWriteClock"]),
+                "owners": list(owners.values()), "syscallsReplaced": False, "extraFsync": False}}
 
     def _boundary(self, frame, event, returned, row, scope):
         name = self.observer.codes[frame.f_code]["name"]
@@ -729,7 +792,7 @@ class _SdkActor:
         call = {"label": label, "kind": kind, "arguments": deepcopy(arguments), "actor": self.actor,
                 "pid": os.getpid(), "storeObjectId": str(id(self.owner))}
         self.public_calls[f"{kind}:{label}"] = call
-        with self.observer.call_scope(label, kind):
+        with self.observer.call_scope(label, kind, self.wall_ms):
             call["enterSeq"] = self.observer.event("public-call-enter", label=label, kind=kind)["sequence"]
             try:
                 if kind == "search":
@@ -868,6 +931,12 @@ class _SdkActor:
             "functionalGates": {key: gate.snapshot() for key, gate in self.gates.items()},
             "publicCalls": deepcopy(self.public_calls), "catalogSourceFacts": deepcopy(self.catalog_facts),
             "hostEvents": deepcopy(self.host_events), "hostEventReceipts": deepcopy(self.host_event_receipts),
+            "clockBindings": deepcopy(self.clock_bindings), "datetimeClockCalls": deepcopy(self.datetime_clock_calls),
+            "datetimeClockFailures": deepcopy(self.datetime_proxy.failures),
+            "sourceClockReceipts": deepcopy(self.source_clock.receipts),
+            "sourceClockOriginalIO": deepcopy(self.source_clock.original_io),
+            "sourceClockReads": deepcopy(self.source_clock.source_reads),
+            "sourceClockFailures": deepcopy(self.source_clock.failures),
             "ppid": os.getppid(), "wallClockNowMs": self.wall_ms,
             "providerIdentity": _encode(self.owner._index_provider()) if self.owner is not None else {"unacquired": True},
             "process": {"cwd": str(Path.cwd()), "executable": sys.executable, "version": sys.version,
@@ -1116,7 +1185,7 @@ def run_forget_index_fence_sdk_host(request):
     actors, processes, steps, snapshots, calls = {}, [], [], {}, {}
     common_snapshots = {}
     wall_ms = value["clock"]["nowMs"]
-    raw = {"kind": "forget-index-fence-sdk-host", "input": deepcopy(value), "pid": os.getpid(),
+    raw = {"kind": "forget-index-fence-v2-sdk-host", "input": deepcopy(value), "pid": os.getpid(),
         "fixtureRoot": str(directory), "sourceProvenanceBefore": before, "processes": processes,
         "steps": steps, "physicalSnapshots": snapshots, "publicCalls": calls}
 
@@ -1265,7 +1334,13 @@ def run_forget_index_fence_sdk_host(request):
             except BaseException as error:
                 process.receipt["reapError"] = _error(error)
         raw["sourceProvenanceAfter"] = _sdk_sources()
-    raw["complete"] = "error" not in raw
+    clock_failures = [{"actor": process["actor"], "pid": process["pid"],
+        "sourceClockFailures": process["observation"].get("sourceClockFailures", []),
+        "datetimeClockFailures": process["observation"].get("datetimeClockFailures", [])}
+        for process in processes if process.get("observation") and (
+            process["observation"].get("sourceClockFailures") or process["observation"].get("datetimeClockFailures"))]
+    raw["observationInvalid"] = clock_failures
+    raw["complete"] = "error" not in raw and not clock_failures
     raw["result"] = {"provider": "none", "calls": _common_calls(calls, directory / "workspace"),
                      "snapshots": common_snapshots}
     return raw
@@ -1284,7 +1359,7 @@ def run_forget_index_fence_sdk_case(value, *, evidence_directory=None):
     environment = {"PATH": str(Path(sys.executable).parent) + os.pathsep + os.defpath,
         "PYTHONPATH": str(ROOT), "LANG": "C.UTF-8", "TZ": "UTC",
         "OPENCLAW_HOME": str(directory), "OPENCLAW_STATE_DIR": str(directory / "state")}
-    dispatch = {"kind": "forget-index-fence-sdk-dispatch", "input": deepcopy(value), "request": request,
+    dispatch = {"kind": "forget-index-fence-v2-sdk-dispatch", "input": deepcopy(value), "request": request,
         "requestJson": wire, "requestSha256": hashlib.sha256(wire.encode()).hexdigest(),
         "argv": argv, "environmentKeys": sorted(environment), "coordinatorPid": os.getpid(),
         "sourceProvenanceBefore": _sdk_sources()}

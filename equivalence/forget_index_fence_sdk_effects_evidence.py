@@ -272,12 +272,43 @@ def validate_sdk_effects_v3(case, observation, process, events, returns, *, reco
                         and row["arguments"]["job"]["id"] == task["job"]["id"]]
             require(len(matching) == 1, "SDK search wait borrowed an unauthenticated watcher worker")
             original_tasks[fid], original_workers[fid] = task, matching[0]
+            job, worker = task["job"], matching[0]
+            if job["state"] == "completed":
+                require(type(job.get("fullRebuild")) is bool
+                        and type(job.get("fullRetry", False)) is bool,
+                        "SDK completed watcher replan lost its actual boolean route flags")
+                stopped = _ns(settled(worker)["atNs"])
+                routes = [row for row in calls
+                          if row["name"] in {"ManagedSQLiteMemoryStore.reindex", "ManagedSQLiteMemoryStore.reindex_sources"}
+                          and row["receiverObjectId"] == task["storeObjectId"]
+                          and row["threadId"] == worker["threadId"] and row.get("scope") == task["scope"]
+                          and _ns(worker["atNs"]) < _ns(row["atNs"]) < stopped]
+                # A publication may contain a nested repair. Only the actual
+                # outer route selected by this worker witnesses its job flags.
+                routes = [row for row in routes if not any(
+                    parent["sequence"] != row["sequence"]
+                    and _ns(parent["atNs"]) < _ns(row["atNs"])
+                    < _ns(settled(parent)["atNs"])
+                    for parent in routes)]
+                route_name = ("ManagedSQLiteMemoryStore.reindex" if job["fullRebuild"] or job.get("fullRetry", False)
+                              else "ManagedSQLiteMemoryStore.reindex_sources")
+                require(routes and all(row["name"] == route_name for row in routes),
+                        "SDK settled watcher replan flags differ from its actual source-owned publication route")
+                for route in routes:
+                    source(route["code"], "memory_core/host/managed_index.py", route_name)
+                _same(settled(routes[-1])["returned"], job["returned"],
+                      "SDK settled watcher job changed its actual publication return")
 
     waits = {}
     for wait in observation["searchEffectWaits"]:
-        require(set(wait) == {"label", "actor", "pid", "publicReturnSequence", "factoryCapabilities", "enteredAtNs",
+        fields = {"label", "actor", "pid", "publicReturnSequence", "factoryCapabilities", "enteredAtNs",
                 "toolObjectId", "storeObjectId", "conditionObjectId", "tasksAtEntry", "conditionWaits", "recall",
-                "publisherBefore", "publisherAfter", "publisherFutures", "returnedAtNs", "tasksAtReturn"},
+                "publisherBefore", "publisherAfter", "publisherFutures", "returnedAtNs", "tasksAtReturn"}
+        if version == 5:
+            fields.add("partition")
+            require(wait.get("partition") == "retained-search-jobs",
+                    "SDK V5 search barrier changed its actual source-qualified queue partition")
+        require(set(wait) == fields,
                 "SDK effects barrier lost complete actual custody fields")
         label = wait["label"]
         require(label in searches and label not in waits and wait["actor"] == actor and wait["pid"] == pid
@@ -317,7 +348,7 @@ def validate_sdk_effects_v3(case, observation, process, events, returns, *, reco
             require(wait["recall"] == {"supported": False, "futureObjectIds": []},
                     "SDK legacy capability absence was replaced with an invented wait result")
         after = wait["publisherAfter"]
-        def publisher_state(state):
+        def publisher_state(state, observed_at):
             require(set(state) == {"memoryActive", "syncActivePresent", "syncActive", "fullSyncObjectId", "jobs"}
                     and all(type(state[key]) is bool for key in ("memoryActive", "syncActivePresent", "syncActive"))
                     and isinstance(state["jobs"], list), "SDK publisher wait state was truncated or coerced")
@@ -327,14 +358,35 @@ def validate_sdk_effects_v3(case, observation, process, events, returns, *, reco
                 admitted = [task for task in original_tasks.values() if task["kind"] == "memory-publication"
                             and task["storeObjectId"] == wait["storeObjectId"] and task["job"]["id"] == job["id"]]
                 require(len(admitted) == 1, "SDK publisher condition state borrowed an unadmitted original job")
-                submitted_job = events[admitted[0]["submitSequence"]]["arguments"]["args"][0]
-                require(all(job[key] == item for key, item in submitted_job.items() if key != "state"),
+                task = admitted[0]
+                submitted_job = events[task["submitSequence"]]["arguments"]["args"][0]
+                changed = {key for key, item in submitted_job.items()
+                           if key != "state" and job.get(key) != item}
+                if version == 5 and task["scope"]["kind"] == "watch":
+                    worker = original_workers[task["futureObjectId"]]
+                    if _ns(settled(worker)["atNs"]) < observed_at:
+                        _same(job, task["job"], "SDK settled watcher condition state differs from its retained actual job")
+                if version == 5 and task["scope"]["kind"] == "watch" and changed:
+                    # The original watcher worker replans fullRebuild after its
+                    # actual producer lease admits it. It is not an immutable
+                    # submission epoch. Bind the settled value to the retained
+                    # job and the actual source-owned publication route.
+                    worker = original_workers[task["futureObjectId"]]
+                    stopped = _ns(settled(worker)["atNs"])
+                    require(changed == {"fullRebuild"} and type(job["fullRebuild"]) is bool
+                            and stopped < observed_at,
+                            "SDK watch replan changed a stable admitted job epoch or lacks a settled original worker")
+                    _same(job, task["job"], "SDK watch replan differs from its actual settled retained job")
+                    require(job["fullRebuild"] is False and job.get("fullRetry", False) is False,
+                            "SDK changed watcher replan is not the supported actual incremental route")
+                    changed.clear()
+                require(not changed,
                         "SDK publisher condition state changed its admitted original job epoch")
                 if "threadId" in job:
                     require(job["threadId"] == original_workers[admitted[0]["futureObjectId"]]["threadId"],
                             "SDK publisher condition state borrowed another worker thread")
-        for state in (wait["publisherBefore"], after):
-            publisher_state(state)
+        for state, observed_at in ((wait["publisherBefore"], begin), (after, end)):
+            publisher_state(state, observed_at)
         for task in own.values():
             if task["kind"] == "memory-publication":
                 observed_jobs = [job for job in after["jobs"] if job["id"] == task["job"]["id"]]
@@ -348,8 +400,8 @@ def validate_sdk_effects_v3(case, observation, process, events, returns, *, reco
         for condition in wait["conditionWaits"]:
             require(set(condition) == {"enteredAtNs", "returnedAtNs", "returned", "stateBefore", "stateAfter"},
                     "SDK original condition wait receipt was truncated")
-            publisher_state(condition["stateBefore"])
-            publisher_state(condition["stateAfter"])
+            publisher_state(condition["stateBefore"], _ns(condition["enteredAtNs"]))
+            publisher_state(condition["stateAfter"], _ns(condition["returnedAtNs"]))
             require(condition["stateBefore"]["memoryActive"] or condition["stateBefore"]["syncActive"]
                     or condition["stateBefore"]["fullSyncObjectId"] is not None,
                     "SDK condition wait fabricated an inactive original publisher predicate")

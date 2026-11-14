@@ -16,7 +16,7 @@ import traceback
 ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT))
 
-from equivalence.forget_index_fence_v2 import CASE_HASHES, MANIFEST, POINTS, build_cases  # noqa: E402
+from equivalence import forget_index_fence_v2, forget_index_fence_v3  # noqa: E402
 from equivalence.forget_index_fence_bindings import prepare_forget_index_fence_bindings  # noqa: E402
 from equivalence.forget_index_fence_evidence import replay_case  # noqa: E402
 from equivalence.forget_index_fence_native import run_native_case  # noqa: E402
@@ -46,24 +46,31 @@ def error_record(error):
 
 def main():
     parser = argparse.ArgumentParser(description=__doc__)
+    versions = {"v2": forget_index_fence_v2, "v3": forget_index_fence_v3}
+    parser.add_argument("--version", choices=tuple(versions), default="v2")
     parser.add_argument("--reference", type=Path, required=True)
     parser.add_argument("--node", type=Path, required=True)
     parser.add_argument("--release-runtime", type=Path, required=True)
     parser.add_argument("--output", type=Path, required=True)
-    parser.add_argument("--case", choices=tuple(CASE_HASHES), action="append",
+    parser.add_argument("--case", choices=tuple(case_id for version in versions.values()
+                                               for case_id in version.CASE_HASHES), action="append",
                         help="Select cases in this explicit order; repeated IDs are rejected")
     parser.add_argument("--stop-on-blocked", action="store_true",
                         help="Retain the first invalid measurement and stop; ordinary mismatches continue")
     parser.add_argument("--defer-custody", action="store_true",
                         help="Capture originals only; retain blocked status and award no credit until independent replay")
     args = parser.parse_args()
+    frozen = versions[args.version]
+    CASE_HASHES, MANIFEST, POINTS, build_cases = frozen.CASE_HASHES, frozen.MANIFEST, frozen.POINTS, frozen.build_cases
+    if args.case and any(case_id not in CASE_HASHES for case_id in args.case):
+        parser.error("Selected cases must belong to the explicitly selected input version")
     if args.case and len(set(args.case)) != len(args.case):
         parser.error("Each independently frozen case may be selected only once")
     if args.defer_custody and args.stop_on_blocked:
         parser.error("Deferred custody remains blocked and cannot be combined with --stop-on-blocked")
     output = args.output.resolve()
     output.mkdir(parents=True, exist_ok=False)
-    report = {"kind": "forget-index-fence-v2-comparison", "acceptancePointsAwarded": 0,
+    report = {"kind": f"forget-index-fence-{args.version}-comparison", "acceptancePointsAwarded": 0,
               "covers": [], "candidateCoverage": list(POINTS), "fullScopePassed": False,
               "cases": [], "errors": []}
     try:
@@ -79,6 +86,7 @@ def main():
         available = {case["id"]: case for case in build_cases()}
         ordered = [available[case_id] for case_id in (args.case or CASE_HASHES)]
         report["execution"] = {"caseOrder": [case["id"] for case in ordered],
+                               "inputVersion": args.version,
                                "stopOnBlocked": args.stop_on_blocked,
                                "deferCustody": args.defer_custody}
         for case in ordered:

@@ -2084,6 +2084,8 @@ def run_suite(*, checkout: Path, node: Path, smoke: bool = False,
                     # Reject non-JSON outputs and non-finite values explicitly.
                     python = _json(json.dumps(python, ensure_ascii=False, allow_nan=False))
                     row["status"] = "matched" if _same_json(python, native["result"]) else "mismatched"
+                    if case["operation"] == "forget-index-fence-v5-runtime":
+                        row.update(python=python, openclaw=native["result"])
                     if row["status"] == "mismatched":
                         row.update(operation=case["operation"], input=case["input"],
                                    python=python, openclaw=native["result"])

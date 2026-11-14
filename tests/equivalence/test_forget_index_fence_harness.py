@@ -604,3 +604,74 @@ def test_final_original_authority_seal_binds_external_roots_and_blocks_changed_o
         assert calls[1] == ("node", node)
     assert report["cases"][-1] is old and old == {"id": "OLD_INLINE_UNIT", "operation": "echo", "status": "matched"}
     assert report["forgetIndexFenceBindings"] == declared and declared["sourceBuildReproduced"] is False
+
+
+@pytest.mark.parametrize("mismatch", [False, True])
+def test_actual_suite_assembly_keeps_whole_matched_v5_results_and_atomic_eligibility(monkeypatch, tmp_path, mismatch):
+    """Run the real coordinator with labelled transports, never original engines."""
+    from equivalence import model_runtime_authority, release_runtime
+
+    bindings = ModuleType("equivalence.forget_index_fence_bindings")
+    native_module = ModuleType(NATIVE_MODULE)
+    guard = ModuleType(GUARD_MODULE)
+    declarations = {"label": "UNIT_BINDINGS_ONLY", "sourceBuildReproduced": False}
+    bindings.prepare_forget_index_fence_bindings = lambda *args: deepcopy(declarations)
+    native_module.NATIVE_KIND = UNIT_NATIVE_KIND
+    guard.validate_pair = lambda *args, **kwargs: True
+    monkeypatch.setitem(sys.modules, bindings.__name__, bindings)
+    monkeypatch.setitem(sys.modules, native_module.__name__, native_module)
+    monkeypatch.setitem(sys.modules, guard.__name__, guard)
+    monkeypatch.setattr(harness, "ROOT", tmp_path)
+    (tmp_path / "equivalence").mkdir()
+    (tmp_path / "equivalence/release-oracle.mjs").write_text("// UNIT_ONLY: never executed\n")
+    reference = {"tag": "UNIT_REFERENCE_ONLY", "commit": "1" * 40}
+    monkeypatch.setattr(harness, "_validate_reference", lambda *args: deepcopy(reference))
+    monkeypatch.setattr(harness, "_implementation_identity", lambda: {"sourceSha256": "2" * 64})
+    monkeypatch.setattr(harness, "_adapter_identity", lambda: {"UNIT_ADAPTER_ONLY": "3" * 64})
+    monkeypatch.setattr(model_runtime_authority, "prepare_model_node_authority",
+                        lambda *args: {"label": "UNIT_NODE_ONLY"})
+    monkeypatch.setattr(release_runtime, "prepare_release_runtime", lambda *args: {
+        "runtimeRoot": str(tmp_path / "unit-runtime"), "packages": [], "reference": reference})
+    cases, dispatched = build_cases(), []
+
+    def result(case):
+        return {"provider": "none", "calls": {"UNIT_WHOLE": {"extra": [False, 0, None], "id": case["id"]}},
+                "snapshots": {"UNIT_WHOLE": {"extra": {"retained": True}}}}
+
+    def native(case, node, runtime, directory, *, timeout, checkout):
+        dispatched.append(case["id"])
+        raw = [{"label": "UNIT_NATIVE_CAPTURE_ONLY", "caseId": case["id"]}]
+        (directory / "evidence").mkdir(parents=True)
+        (directory / "evidence/native-raw.json").write_text(json.dumps(raw) + "\n")
+        return {"kind": UNIT_NATIVE_KIND, "results": [{"id": case["id"], "ok": True, "result": result(case)}],
+                "releaseSources": [], "releaseTrace": {"label": "UNIT_TRACE_ONLY"},
+                "runtimeDiagnostics": raw, "evidenceDirectory": str(directory)}
+
+    def sdk(case):
+        directory = case["_diagnosticDirectory"]
+        directory.mkdir(parents=True, exist_ok=True)
+        (directory / "python-raw.json").write_text('[{"label":"UNIT_SDK_CAPTURE_ONLY"}]\n')
+        value = result(case)
+        if mismatch and case["id"] == cases[0]["id"]:
+            value["calls"]["UNIT_WHOLE"]["actualDifference"] = "retained"
+        return value
+
+    native_module.run_native_case = native
+    report, code = harness.run_suite(
+        checkout=tmp_path / "unit-reference", node=tmp_path / "unit-node", smoke=True,
+        reference_path=ROOT / "equivalence/reference.json", scope_path=ROOT / "equivalence/scope.json",
+        oracle_path=ROOT / "equivalence/release-oracle.mjs", cases=cases, python_runner=sdk)
+    assert not report["errors"], report["errors"]
+    assert dispatched == list(CASE_HASHES) and len(report["cases"]) == 13
+    assert code == (1 if mismatch else 0)
+    for case, row in zip(cases, report["cases"], strict=True):
+        assert row["operation"] == case["operation"] and row["input"] == case["input"]
+        assert row["openclaw"] == result(case)
+        assert row["python"]["snapshots"] == result(case)["snapshots"]
+        assert row["python"]["calls"]["UNIT_WHOLE"]["extra"] == [False, 0, None]
+        assert row["runtimeEvidenceValidated"] is True
+    assert _forget_index_fence_family_complete(report["cases"]) is (not mismatch)
+    requirement = next(item for item in report["requirements"] if item["id"] == "forget.index-fence")
+    assert all(item["matchedCaseIds"] == ([] if mismatch else list(CASE_HASHES))
+               for item in requirement["acceptance"])
+    assert report["fullScopePassed"] is False  # Labelled smoke is never real acceptance.

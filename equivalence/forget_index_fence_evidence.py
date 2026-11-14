@@ -313,7 +313,7 @@ def _adapter_path(filename, recorded_root, approved_root):
 
 
 def _adapter_inventory(identity, approved_root, *, version=3):
-    require(version in {3, 4}, "An undeclared SDK adapter contract version was selected")
+    require(version in {3, 4, 5}, "An undeclared SDK adapter contract version was selected")
     recorded, approved = Path(identity["root"]), Path(approved_root or ROOT).resolve(strict=True)
     require(recorded.is_absolute(), "The actual adapter source root was omitted")
     names = ("equivalence/forget_index_fence_sdk.py", "equivalence/forget_index_fence_sdk_cli.py",
@@ -541,7 +541,7 @@ def _sdk_v4_maintenance(value, observation, events, returns, recorded, trusted):
         policy = owner["searchMaintenance"]
         require(set(policy) == {"declaredNativeSync", "constructorParameters", "actualSdk", "sourceRoles"},
                 "A V4 SDK maintenance observation lost its complete actual policy/source fields")
-        _same(policy["declaredNativeSync"], value["config"]["memory"]["search"]["sync"],
+        _same(policy["declaredNativeSync"], value["config"]["memory"]["search"].get("sync"),
               "The SDK declared Native profile differs from the frozen V4 input")
         _same(policy["constructorParameters"], parameters, "The actual SDK constructor signature differs from approved source")
         require(set(policy["sourceRoles"]) == set(roles), "V4 SDK on-search policy omitted an original source owner")
@@ -657,7 +657,9 @@ SNAPSHOT_FIELDS = {"documents", "origins", "tombstones", "recall", "phaseSignals
 
 
 def _case(case):
-    if isinstance(case, dict) and case.get("operation") == "forget-index-fence-v4-runtime":
+    if isinstance(case, dict) and case.get("operation") == "forget-index-fence-v5-runtime":
+        from equivalence.forget_index_fence_v5 import validate_case
+    elif isinstance(case, dict) and case.get("operation") == "forget-index-fence-v4-runtime":
         from equivalence.forget_index_fence_v4 import validate_case
     elif isinstance(case, dict) and case.get("operation") == "forget-index-fence-v3-runtime":
         from equivalence.forget_index_fence_v3 import validate_case
@@ -675,23 +677,24 @@ def _v2(case):
 
 def _version(case):
     operations = {"forget-index-fence-runtime": 1, "forget-index-fence-v2-runtime": 2,
-                  "forget-index-fence-v3-runtime": 3, "forget-index-fence-v4-runtime": 4}
+                  "forget-index-fence-v3-runtime": 3, "forget-index-fence-v4-runtime": 4,
+                  "forget-index-fence-v5-runtime": 5}
     require(case["operation"] in operations, "An undeclared forget/index-fence runtime version was selected")
     return operations[case["operation"]]
 
 
 def _native_profile_key(case):
     return {1: "forgetIndexFenceProfile", 2: "forgetIndexFenceV2Profile",
-            3: "forgetIndexFenceV3Profile", 4: "forgetIndexFenceV3Profile"}[_version(case)]
+            3: "forgetIndexFenceV3Profile", 4: "forgetIndexFenceV3Profile", 5: "forgetIndexFenceV3Profile"}[_version(case)]
 
 
 def _search_effects(case):
-    return _version(case) in {3, 4}
+    return _version(case) in {3, 4, 5}
 
 
 def _native_bootstrap_prefix(case):
     return {1: "forget-index-fence", 2: "forget-index-fence-v2",
-            3: "forget-index-fence-v3", 4: "forget-index-fence-v3"}[_version(case)]
+            3: "forget-index-fence-v3", 4: "forget-index-fence-v3", 5: "forget-index-fence-v3"}[_version(case)]
 
 
 def _capture_prefix(case):
@@ -949,6 +952,9 @@ def _native_authority(case, raw, directory, approved_node, trusted_archive, appr
     if _search_effects(case):
         _same(profile["searchEffects"], case["input"]["observationPolicy"]["searchEffects"],
               "The Native queued-search-effects capability differs from its frozen input")
+    if _version(case) == 5:
+        _same(profile["watchEffects"], case["input"]["observationPolicy"]["watchEffects"],
+              "The Native watch-effects capability differs from its separately frozen V5 input")
     environment = process["environment"]
     require(set(environment) == {"PATH", "LANG", "TZ", "NODE_OPTIONS", "MEMORY_EQ_RELEASE_CONTEXT",
                 "MEMORY_EQ_FIF_ACTOR", "OPENCLAW_STATE_DIR", "OPENCLAW_CONFIG_PATH"}
@@ -1673,14 +1679,16 @@ def _native_source_clock_v2(case, raw, actors, imports, passive, context, author
     all_clock_events = [row for rows in passive.values() for row in rows if row["event"].startswith("source-clock-")]
     require(not raw.get("sourceClockFailures") and not any(row["event"] == "source-clock-failure" for row in all_clock_events),
             "A Native functional source clock failed while original results were retained")
+    selected_names = {"source-clock-control", "source-clock-call-boundary", "source-clock-read", "source-clock-deletion"}
+    if _version(case) == 5:
+        selected_names.add("source-clock-read-throw")
     for pid, (child, actor) in actors.items():
         clock = actor["sourceClock"]
         require(clock["protocol"] == policy["protocol"] and clock["blocked"] is False and clock["failures"] == [],
                 "Native source-clock control was missing, blocked, or retrospectively cleared")
         rows = clock["receipts"]
         actor_events = [row for row in all_clock_events if row["pid"] == pid]
-        selected = [row for row in actor_events if row["event"] in {
-            "source-clock-control", "source-clock-call-boundary", "source-clock-read", "source-clock-deletion"}]
+        selected = [row for row in actor_events if row["event"] in selected_names]
         if child["exit"] == {"code": None, "signal": "SIGKILL"}:
             # A process killed inside the original marker gate cannot execute
             # its public-call finally/persist. Its last raw JSON snapshot is
@@ -1705,12 +1713,12 @@ def _native_source_clock_v2(case, raw, actors, imports, passive, context, author
                     and prefix_rows[-1]["sequence"] == pending["originalEntered"]["sequence"]
                     and prefix_rows[-1]["atNs"] == pending["originalEntered"]["atNs"],
                     "A killed Native actor invented an earlier/later RAM cutoff instead of its actual persisted public entry")
-            before = {(row["threadId"], row["sequence"]) for row in prefix_rows if row["event"] in {
-                "source-clock-control", "source-clock-call-boundary", "source-clock-read", "source-clock-deletion"}}
+            before = {(row["threadId"], row["sequence"]) for row in prefix_rows if row["event"] in selected_names}
             prior = [row for row in selected if (row["threadId"], row["sequence"]) in before]
             extra = [row for row in selected if (row["threadId"], row["sequence"]) not in before]
             require(len(rows) == len(prior) and len(before) == len(prior)
-                    and all(row["event"] == "source-clock-read" for row in extra)
+                    and all(row["event"] in ({"source-clock-read", "source-clock-read-throw"}
+                            if _version(case) == 5 else {"source-clock-read"}) for row in extra)
                     and any(gate.get("killWhileHeld") and gate["receipt"]["pid"] == pid
                             and gate["boundary"] == "forget.marker-committed-before-purge" for gate in raw["gates"]),
                     "A killed Native snapshot omitted prior evidence or claimed unobserved post-marker mutations")
@@ -1734,7 +1742,7 @@ def _native_source_clock_v2(case, raw, actors, imports, passive, context, author
                 if commit is not None:
                     commits.append(commit)
                 continue
-            require(event in {"source-clock-call-boundary", "source-clock-read", "source-clock-deletion"},
+            require(event in selected_names,
                     "An unknown Native clock receipt acquired custody")
             identity = ("atNs",) if "atNs" in receipt else ("startedAtNs", "finishedAtNs", "path", "method")
             matching = [row for row in actor_events if row["event"] == event
@@ -1749,6 +1757,18 @@ def _native_source_clock_v2(case, raw, actors, imports, passive, context, author
             else:
                 _native_clock_owner(receipt["sourceOwner"], receipt["originalStack"], context, imports, pid)
                 _clock_path(receipt["path"], Path(raw["fixtureBase"]) / "workspace")
+                if event == "source-clock-read-throw":
+                    require(_version(case) == 5 and _ns(receipt["startedAtNs"]) < _ns(receipt["finishedAtNs"]),
+                            "An original Native source-read error lost its actual IO lifetime")
+                    error = _native_value(receipt["privateError"], authority, approved_node)
+                    require(error["name"] == receipt["error"]["name"] and error["message"] == receipt["error"]["message"],
+                            "An original Native source-read error differs from its complete actual V8 exception")
+                    for descriptor in receipt["errorOwnProperties"]:
+                        if "value" in descriptor:
+                            actual = _native_value(descriptor["value"], authority, approved_node)
+                            if descriptor["key"] in receipt["error"]:
+                                _same(actual, receipt["error"][descriptor["key"]], "An original Native source-read error property was rewritten")
+                    continue
                 value = _native_value(receipt["return"], authority, approved_node)
                 if event == "source-clock-read":
                     require(_ns(receipt["startedAtNs"]) < _ns(receipt["finishedAtNs"]), "A Native source reader lost its actual IO lifetime")
@@ -2580,7 +2600,7 @@ def _sdk_observation(observation, process, value, approved_root, *, adapter_root
         source = _source_path(module["path"], recorded, trusted)
         require(_digest(source) == module["sha256"], "An actually imported SDK module differs from the trusted source seal")
     if adapter_roots:
-        adapter_version = {"forget-index-fence-v3": 3, "forget-index-fence-v4": 4}[value["kind"]]
+        adapter_version = {"forget-index-fence-v3": 3, "forget-index-fence-v4": 4, "forget-index-fence-v5": 5}[value["kind"]]
         actual_adapter = _adapter_inventory(observation["adapterProvenanceBefore"], adapter_roots[1], version=adapter_version)
         require(actual_adapter == adapter_roots, "An SDK child borrowed another approved adapter tree")
         _same(observation["adapterProvenanceBefore"], observation["adapterProvenanceAfter"],
@@ -2684,7 +2704,7 @@ def _sdk_observation(observation, process, value, approved_root, *, adapter_root
                     "An original SDK C execution lost its actual return or exception")
     if adapter_roots:
         _sdk_private_database_owners(observation, events, returns, recorded, trusted)
-        if value["kind"] == "forget-index-fence-v4":
+        if value["kind"] in {"forget-index-fence-v4", "forget-index-fence-v5"}:
             _sdk_v4_maintenance(value, observation, events, returns, recorded, trusted)
             _sdk_v4_forget_plans(observation, events, returns, recorded, trusted)
     return recorded, trusted, events, returns
@@ -2910,7 +2930,7 @@ def _native_capture(case, raw, result, directory, approved_node, trusted_archive
         if _v2(case):
             require(actor["controlFailures"] == [], "A Native deferred fixture control failed outside the original public outcome")
         _native_code_owners(actor, imports[child["pid"], 0]["loaded"], context)
-        if _version(case) == 4:
+        if _version(case) in {4, 5}:
             _native_v4_settings(case, actor, child, passive[child["pid"], 0], authority, approved_node)
         _native_producers(case, actor, authority, approved_node)
         actors[child["pid"]] = child, actor
@@ -2924,7 +2944,13 @@ def _native_capture(case, raw, result, directory, approved_node, trusted_archive
             commands[command["id"]] = child, actor, command, entries[command["id"]]
             entry = entries[command["id"]]
             _same(_sealed_json(command["requestSeal"]), command["request"], "A Native command request carrier was rewritten")
-            _same({key: entry[key] for key in command["request"]}, command["request"], "An actual Native actor received different command arguments")
+            if _version(case) == 5:
+                _same(entry["arguments"], command["request"], "A Native V5 actual command lost its whole original argument carrier")
+                _same({key: entry[key] for key in command["request"] if key != "sourceVersions"},
+                      {key: item for key, item in command["request"].items() if key != "sourceVersions"},
+                      "An actual Native V5 actor received different command arguments")
+            else:
+                _same({key: entry[key] for key in command["request"]}, command["request"], "An actual Native actor received different command arguments")
             if command["operation"] in CALL_KINDS:
                 kind, label = CALL_KINDS[command["operation"]], command["label"]
                 key = kind + ":" + label
@@ -2963,7 +2989,10 @@ def _native_capture(case, raw, result, directory, approved_node, trusted_archive
         _decode_v8_views(authority, wires, approved_node)
         _native_sql_custody(raw, context, imports, passive, authority, approved_node)
         _native_transport_custody(raw, context, imports, passive, authority, approved_node)
-        _native_source_clock_v2(case, raw, actors, imports, passive, context, authority, approved_node)
+        clock_proof = _native_source_clock_v2(case, raw, actors, imports, passive, context, authority, approved_node)
+        if _version(case) == 5:
+            from equivalence.forget_index_fence_native_watch_evidence import validate_native_watch_v5
+            validate_native_watch_v5(case, raw, actors, commands, passive, context, imports, authority, approved_node, clock_proof)
         for pid, (_, actor) in actors.items():
             entries = [row["sequence"] for row in passive[pid, 0] if row["event"] == "original-transcript-export-read-enter"]
             require([row["enterSeq"] for row in actor["sessionTranscriptExportReads"]] == entries,
@@ -3011,7 +3040,8 @@ def _native_capture(case, raw, result, directory, approved_node, trusted_archive
 
 def _native_v4_settings(case, actor, child, rows, authority, approved_node):
     """Use actual original owners' resolved settings, never fixture config alone."""
-    expected = case["input"]["config"]["memory"]["search"]["sync"]
+    expected = ({"onSearch": True, "onSessionStart": True, "watch": True} if _version(case) == 5 else
+                case["input"]["config"]["memory"]["search"]["sync"])
     reads = [row for row in rows if row["event"] == "original-manager-resolved-settings-read"]
     require(len(reads) == len(actor["ownerBindings"]), "A V4 actual manager settings read was omitted or duplicated")
     for owner in actor["ownerBindings"]:
@@ -3489,7 +3519,7 @@ def _sdk_capture(case, dispatch, result, directory, approved_root, approved_adap
                 "The SDK fixture root escaped the independently selected SDK transport directory")
     if _v2(case):
         require(raw["observationInvalid"] == [], "SDK clock custody was invalidated outside the original public outcomes")
-    processes, observations, reconstructed, effect_waits = {}, {}, {}, {}
+    processes, observations, reconstructed, effect_waits, watch_proofs = {}, {}, {}, {}, {}
     for process in raw["processes"]:
         require(process["pid"] not in processes and process["pid"] != raw["pid"]
                 and process["exit"] in ({"code": 0}, {"code": -9})
@@ -3530,6 +3560,8 @@ def _sdk_capture(case, dispatch, result, directory, approved_root, approved_adap
             checked_effects = validate_sdk_effects_v3(case, observation, process, events, returns,
                 recorded_root=recorded, approved_sdk_root=trusted,
                 recorded_adapter_root=adapter_roots[0], approved_adapter_root=adapter_roots[1])
+            if _version(case) == 5:
+                watch_proofs[process["pid"]] = checked_effects["watchProof"]
             for label, receipt in checked_effects["waits"].items():
                 require(label not in effect_waits, "An SDK search-effects barrier borrowed another process epoch")
                 effect_waits[label] = process, receipt
@@ -3539,7 +3571,9 @@ def _sdk_capture(case, dispatch, result, directory, approved_root, approved_adap
                                   approved_sdk_root=trusted, fixture_root=fixture,
                                   recorded_adapter_root=adapter_roots[0] if adapter_roots else None,
                                   approved_adapter_root=adapter_roots[1] if adapter_roots else None,
-                                  source_read_workers=checked_effects["workers"] if checked_effects else ())
+                                  source_read_workers=checked_effects["workers"] if checked_effects else (),
+                                  source_read_watch_workers=checked_effects.get("watchProof", {}).get("workers", ()) if checked_effects else (),
+                                  source_read_watch_scopes=checked_effects.get("watchProof", {}).get("workerScopes") if checked_effects else None)
         if observation["ownerBindings"]:
             require(observation["providerIdentity"] is None and result["provider"] == "none",
                     "SDK provider-none was predicted instead of using its actual original provider identity")
@@ -3552,6 +3586,9 @@ def _sdk_capture(case, dispatch, result, directory, approved_root, approved_adap
                                               recorded_adapter_root=adapter_roots[0] if adapter_roots else None)
     _same(reconstructed, result["calls"], "SDK common outcomes dropped, predicted, or repaired original public calls")
     _sdk_gates(case, raw, processes, observations, recorded_root, trusted_root)
+    if _version(case) == 5:
+        from equivalence.forget_index_fence_sdk_watch_transport_evidence import validate_sdk_watch_transport_v5
+        validate_sdk_watch_transport_v5(case, raw, processes, observations, watch_proofs)
     require(len(raw["steps"]) == len(value["steps"]), "The original SDK schedule omitted a declared step")
     snapshots, matched_effects = {}, set()
     previous = -1

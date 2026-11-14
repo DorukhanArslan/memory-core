@@ -24,6 +24,7 @@ from equivalence.forget_index_fence import build_cases
 from equivalence.forget_index_fence_v2 import build_cases as build_v2_cases
 from equivalence.forget_index_fence_v3 import build_cases as build_v3_cases, validate_registration as validate_v3_registration
 from equivalence.forget_index_fence_v4 import build_cases as build_v4_cases, validate_registration as validate_v4_registration
+from equivalence.forget_index_fence_v5 import build_cases as build_v5_cases
 
 
 ROOT = Path(__file__).resolve().parents[2]
@@ -1610,3 +1611,115 @@ def test_v4_selector_and_closed_family_never_borrow_a_v3_packet(tmp_path, monkey
     mixed = {**V4_CASES[0], "operation": "forget-index-fence-v3-runtime"}
     with pytest.raises(ValueError):
         guard._case(mixed)
+
+
+V5_CAPTURE_ROOT = os.environ.get('MEMORY_FORGET_INDEX_FENCE_V5_CAPTURE_ROOT')
+V5_NATIVE_CAPTURE = os.environ.get('MEMORY_FORGET_INDEX_FENCE_V5_NATIVE_CAPTURE')
+V5_CASES = build_v5_cases()
+
+
+@lru_cache(maxsize=1)
+def _v5_raw_packet(case_id):
+    if V5_CAPTURE_ROOT is None:
+        pytest.skip('No explicitly selected V5 packet; no acceptance credit')
+    assert ADAPTER_ROOT is not None, 'V5 replay requires an independently selected adapter root'
+    case = next(row for row in V5_CASES if row['id'] == case_id)
+    directory = Path(V5_CAPTURE_ROOT).resolve(strict=True) / case_id
+    native_directory, sdk_directory = directory / 'native', directory / 'sdk/evidence'
+    native, sdk = _read(native_directory / 'evidence/native-raw.json'), _read(sdk_directory / 'python-raw.json')
+    returned = _read(native_directory / 'stdout.json')
+    assert len(native) == len(sdk) == 1 and returned['id'] == case_id and returned['ok'] is True
+    return case, native[0], sdk[0], returned['result'], sdk[0]['observation']['result'], native_directory, sdk_directory
+
+
+@pytest.mark.parametrize('case', V5_CASES, ids=lambda case: case['id'])
+def test_actual_v5_pair_requires_complete_independent_custody(case):
+    case, native, sdk, native_result, sdk_result, native_directory, sdk_directory = _v5_raw_packet(case['id'])
+    assert guard.validate_pair(case, native, sdk, native_result, sdk_result,
+        approved_node=_trusted_node(), approved_sdk_root=SDK_SOURCE_ROOT, approved_reference=REFERENCE_ROOT,
+        approved_adapter_root=Path(ADAPTER_ROOT).resolve(strict=True),
+        native_directory=native_directory, sdk_directory=sdk_directory) is True
+
+
+@pytest.mark.parametrize('case', V5_CASES, ids=lambda case: case['id'])
+def test_v5_closed_business_family_preserves_original_control_protocols(case):
+    assert guard._case(case) == case['input'] and guard._version(case) == 5
+    assert guard._native_profile_key(case) == 'forgetIndexFenceV3Profile'
+    assert guard._native_bootstrap_prefix(case) == 'forget-index-fence-v3'
+    assert guard._capture_prefix(case) == 'forget-index-fence-v5'
+    assert 'sync' not in case['input']['config']['memory']['search']
+    assert case['input']['observationPolicy']['watchEffects']['protocol'] == 'original-watch-effects-v5'
+    assert case['input']['observationPolicy']['searchEffects']['protocol'] == 'original-search-effects-v3'
+    mixed = {**case, 'operation': 'forget-index-fence-v4-runtime'}
+    with pytest.raises(ValueError):
+        guard._case(mixed)
+
+
+def test_v5_selector_never_borrows_a_v4_packet(tmp_path, monkeypatch):
+    monkeypatch.setitem(globals(), 'V5_CAPTURE_ROOT', None)
+    monkeypatch.setitem(globals(), 'V4_CAPTURE_ROOT', str(tmp_path / 'labelled-v4-only'))
+    with pytest.raises(pytest.skip.Exception, match='No explicitly selected V5 packet'):
+        _v5_raw_packet.__wrapped__(V5_CASES[0]['id'])
+
+
+@pytest.fixture(scope='module')
+def v5_native_watcher_actual():
+    if V5_NATIVE_CAPTURE is None:
+        pytest.skip('No explicitly selected genuine V5 Native watcher packet; no acceptance credit')
+    assert ADAPTER_ROOT is not None
+    from unittest.mock import patch
+    from equivalence import forget_index_fence_native_watch_evidence as watcher
+    directory = Path(V5_NATIVE_CAPTURE).resolve(strict=True)
+    values, returned = _read(directory / 'evidence/native-raw.json'), _read(directory / 'stdout.json')
+    assert len(values) == 1 and returned['ok'] is True
+    case = next(row for row in V5_CASES if row['id'] == returned['id'])
+    with patch.object(watcher, 'validate_native_watch_v5', wraps=watcher.validate_native_watch_v5) as observed:
+        assert guard.validate_capture(case, values[0], returned['result'], native=True,
+            approved_node=_trusted_node(), approved_reference=REFERENCE_ROOT,
+            approved_adapter_root=Path(ADAPTER_ROOT).resolve(strict=True), directory=directory) is True
+        assert observed.call_count == 1
+        return observed.call_args.args
+
+
+def test_actual_v5_native_watcher_positive_is_independently_authenticated(v5_native_watcher_actual):
+    assert v5_native_watcher_actual[0]['input']['kind'] == 'forget-index-fence-v5'
+
+
+@pytest.mark.parametrize('attack', ['sync-wrapper', 'missing-delivery', 'wrong-stat', 'timer-fire', 'sync-owner', 'version-sha'])
+def test_v5_native_watcher_rejects_changed_actual_delivery_proof(v5_native_watcher_actual, attack):
+    from equivalence.forget_index_fence_native_watch_evidence import validate_native_watch_v5
+    args = list(v5_native_watcher_actual)
+    passive = {key: list(rows) for key, rows in args[4].items()}
+    target_name = {'sync-wrapper': 'original-watch-observer-installed', 'missing-delivery': 'original-watch-delivery-enter',
+                   'wrong-stat': 'original-watch-version-stat-return', 'timer-fire': 'original-watch-timer-fire',
+                   'sync-owner': 'original-watch-promise-created'}
+    if attack == 'version-sha':
+        commands = dict(args[3])
+        key, original = next((key, row) for key, row in commands.items() if row[3].get('sourceVersions', {}).get('versions'))
+        row = list(original)
+        row[3] = deepcopy(row[3])
+        row[3]['sourceVersions']['versions'][0]['sha256'] = '0' * 64
+        commands[key] = tuple(row)
+        args[3] = commands
+    else:
+        key, number, original = next((key, i, row) for key, rows in passive.items() for i, row in enumerate(rows)
+                                    if key[0] in args[2] and key[1] == 0 and row['event'] == target_name[attack])
+        row = deepcopy(original)
+        if attack == 'sync-wrapper':
+            row['syncMethodsWrapped'] = True
+        elif attack == 'wrong-stat':
+            row['mtimeMs'] += 1
+        elif attack == 'sync-owner':
+            row['syncMethodRef'] += '-other'
+        else:
+            del passive[key][number]
+        if attack not in {'missing-delivery', 'timer-fire'}:
+            passive[key][number] = row
+        args[4] = passive
+    cache = {'sourceIndexes': {}, 'verifiedFiles': {}, 'terminated': {}, 'decoderAuthorities': {}, 'v8': {}}
+    token = guard._VALIDATION_CACHE.set(cache)
+    try:
+        with pytest.raises((ValueError, KeyError)):
+            validate_native_watch_v5(*args)
+    finally:
+        guard._VALIDATION_CACHE.reset(token)

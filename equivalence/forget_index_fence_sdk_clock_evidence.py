@@ -29,7 +29,7 @@ _STAT = {"st_dev", "st_ino", "st_mode", "st_nlink", "st_size", "st_uid", "st_gid
 
 def validate_sdk_clock_v2(case, observation, process, events, returns, *, recorded_root,
                           approved_sdk_root, fixture_root, recorded_adapter_root=None, approved_adapter_root=None,
-                          source_read_workers=()):
+                          source_read_workers=(), source_read_watch_workers=(), source_read_watch_scopes=None):
     """Return independently authenticated commits/reads for cross-process replay."""
     # Import only here: the main guard invokes this helper during SDK replay.
     from equivalence.forget_index_fence_evidence import (
@@ -387,9 +387,15 @@ def validate_sdk_clock_v2(case, observation, process, events, returns, *, record
         code(row["sourceCode"], "source-read")
         call, key = None, None
         if row["scope"] is not None:
-            key, _, public = scope(row["scope"])
+            watch = row["scope"].get("kind") == "watch"
+            if watch:
+                require(value["kind"] == "forget-index-fence-v5", "An SDK legacy read acquired an undeclared watcher scope")
+                public = None
+            else:
+                key, _, public = scope(row["scope"])
             candidates = [call for call in originals if call["code"] == owners["source-read"]
-                          and call["callLabel"] == row["scope"]["label"] and call["sequence"] in returns
+                          and call["callLabel"] == row["scope"]["label"] and call["callKind"] == row["scope"]["kind"]
+                          and call["sequence"] in returns
                           and _ns(call["atNs"]) < _ns(row["atNs"]) < _ns(returns[call["sequence"]]["atNs"])]
             require(len(candidates) == 1, "SDK source read lacks a unique original invocation")
             call = candidates[0]
@@ -397,7 +403,17 @@ def validate_sdk_clock_v2(case, observation, process, events, returns, *, record
             read_frames.add(call["sequence"])
             _same(returns[call["sequence"]]["returned"], row["returned"], "SDK source read altered its original complete return")
             _same(call["arguments"]["file"], row["arguments"]["file"], "SDK source read borrowed another original file")
-            if value["kind"] in {"forget-index-fence-v3", "forget-index-fence-v4"} and "returnSeq" in public and _ns(row["atNs"]) >= _ns(events[public["returnSeq"]]["atNs"]):
+            if watch:
+                workers = [worker for worker in source_read_watch_workers
+                           if worker["callLabel"] == call["callLabel"] and worker["callKind"] == call["callKind"] == "watch"
+                           and worker["threadId"] == call["threadId"] and worker["sequence"] in returns
+                           and _ns(worker["atNs"]) < _ns(call["atNs"])
+                           < _ns(returns[call["sequence"]]["atNs"]) < _ns(returns[worker["sequence"]]["atNs"])]
+                require(len(workers) == 1 and source_read_watch_scopes is not None,
+                        "SDK watch source read lost its independently authenticated original worker")
+                _same(row["scope"], source_read_watch_scopes[workers[0]["sequence"]],
+                      "SDK watcher read borrowed another detector generation or invented a public tick")
+            elif value["kind"] in {"forget-index-fence-v3", "forget-index-fence-v4", "forget-index-fence-v5"} and "returnSeq" in public and _ns(row["atNs"]) >= _ns(events[public["returnSeq"]]["atNs"]):
                 workers = [worker for worker in source_read_workers if worker["callLabel"] == call["callLabel"]
                            and worker["callKind"] == call["callKind"] == "search"
                            and worker["threadId"] == call["threadId"] and worker["sequence"] in returns

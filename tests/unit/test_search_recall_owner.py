@@ -230,6 +230,28 @@ def test_host_kit_explicit_policy_records_once_and_returns_settled_event_state(m
     assert entry["recallCount"] == 1 and len(events) == 1
 
 
+def test_host_kit_uses_the_actual_bound_fence_ledger_for_recall_lineage(memory, tmp_path, monkeypatch):
+    ledger = MemoryEntryOriginLedger(lambda agent: tmp_path / "actual-split-ledger.sqlite")
+    fence = ledger.revision_fence("main")
+    fenced = Memory.from_workspace(tmp_path, config=memory.config, initialize=False, revision_fence=fence)
+    original_search = fenced.store.search
+
+    def annotated(*arguments, **options):
+        return [{**hit.to_payload(), "sessionOrigin": {"agentId": "main", "sessionId": "actual-source"}}
+                for hit in original_search(*arguments, **options)]
+
+    monkeypatch.setattr(fenced.store, "search", annotated)
+    events = []
+    kit = HostKit(fenced, now_ms=lambda: NOW, dreaming_enabled=True, on_event=events.append)
+    result = kit.dispatch("memory_search", {"query": "cedar"},
+                          session=SessionState.new(session_key=REQUESTER, session_id="requester"))
+    assert result["results"] and len(events) == 1
+    assert fence.ledger is ledger
+    row, = ledger.list("main")
+    assert row.session_id == "actual-source" and row.entry_key in _entries(fenced)
+    assert next(iter(_entries(fenced).values()))["recallCount"] == 1
+
+
 def test_real_ledger_failure_leaves_no_staged_recall_or_search_failure(memory, tmp_path, monkeypatch):
     ledger = MemoryEntryOriginLedger(lambda agent: tmp_path / "split-ledger.sqlite")
     original_search = memory.store.search

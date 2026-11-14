@@ -105,6 +105,10 @@ def test_declaration_result_does_not_claim_execution_or_acceptance(monkeypatch, 
     assert result["entrypoints"]["forget"]["directForgetExportAvailable"] is False
     assert result["entrypoints"]["forget"]["export"] == "runMemoryForget"
     assert result["entrypoints"]["append"]["export"] == "appendSessionTranscriptMessageByIdentityStrict"
+    assert result["entrypoints"]["observationReadback"] == {
+        "path": "dist/session-accessor-CiKKTlbe.mjs", "export": "readTranscriptExportSnapshotReadOnlySync",
+        "readOnly": True, "retainedResult": "whole original export snapshot",
+    }
     assert result["requiredWorkerArtifactsByRoute"]["publication"] != result["requiredWorkerArtifactsByRoute"]["retrieval"]
     assert result["workerRequiredByProfile"] == {bindings.OPERATION: True}
 

@@ -48,6 +48,22 @@ export async function awaitActualProcessClose(closed,timeoutMs){
  })]);}finally{clearTimeout(timer);}
 }
 
+// Observation reads use the original export API's explicit read-only lifecycle.
+// Retain its whole actual result before selecting events for the frozen facts.
+export function captureOriginalTranscriptExportRead({accessor,scope,ref,event,receipts}){
+ const method='readTranscriptExportSnapshotReadOnlySync',fn=accessor[method];
+ if(typeof fn!=='function')throw Error('Original read-only transcript export callable unavailable');
+ const entered=event('original-transcript-export-read-enter',{method,methodRef:ref(fn),ownerRef:ref(accessor)});
+ const receipt={method,methodRef:ref(fn),ownerRef:ref(accessor),scope:plain(scope),enterSeq:entered.sequence,
+  startedAtNs:entered.atNs,originalStack:new Error('Actual original read-only transcript export').stack};receipts.push(receipt);
+ try{const result=fn.call(accessor,scope);receipt.privateReturn=privateValue(result);receipt.returnedUndefined=result===undefined;
+  if(result!==undefined)receipt.result=plain(result);return result;
+ }catch(error){receipt.error=err(error);receipt.privateError=privateValue(error);throw error;
+ }finally{const returned=event('original-transcript-export-read-return',{method,methodRef:receipt.methodRef,
+   enteredSeq:receipt.enterSeq,returnedUndefined:receipt.returnedUndefined??null,threw:Object.hasOwn(receipt,'error')});
+  receipt.returnSeq=returned.sequence;receipt.finishedAtNs=returned.atNs;}
+}
+
 export function childRequest(input,actor,instance,config){
  if(actor!=='observer'&&!Object.hasOwn(input.actors,actor))throw Error('Undeclared original actor');
  return{kind:'forget-index-fence-child',actor,instance,caseId:config.caseId,input,runtimeRoot:config.runtimeRoot,
@@ -229,7 +245,7 @@ export async function runForgetIndexFenceActor(request){
  const{input,actor,instance,fixtureBase:base,runtimeRoot,configPath,evidenceDirectory}=request;
  const workspace=path.join(base,'workspace'),cfg=JSON.parse(await fsp.readFile(configPath,'utf8'));
  const raw={schemaVersion:1,kind:'forget-index-fence-actor',actor,instance,pid:process.pid,ppid:process.ppid,request,
-  config:cfg,calls:[],snapshots:[],producerReceipts:[],codeOwners:[],owners:[],ownerBindings:[],getCalls:[],closed:false};
+  config:cfg,calls:[],snapshots:[],producerReceipts:[],sessionTranscriptExportReads:[],codeOwners:[],owners:[],ownerBindings:[],getCalls:[],closed:false};
  const imp=name=>import(pathToFileURL(path.join(runtimeRoot,name)).href);
  const configRuntime=await imp('dist/plugin-sdk/config-runtime.js');configRuntime.setRuntimeConfigSnapshot(cfg);
  const runtime=await imp('dist/extensions/memory-core/manager-runtime.js');
@@ -268,6 +284,7 @@ export async function runForgetIndexFenceActor(request){
  codeOwner('getSessionEntry','dist/plugin-sdk/session-store-runtime.js','getSessionEntry',session.getSessionEntry);
  codeOwner('upsertSessionEntry','dist/plugin-sdk/session-store-runtime.js','upsertSessionEntry',session.upsertSessionEntry);
  codeOwner('loadTranscriptEventsSync','dist/session-accessor-CiKKTlbe.mjs','loadTranscriptEventsSync',accessor.loadTranscriptEventsSync);
+ codeOwner('readTranscriptExportSnapshotReadOnlySync','dist/session-accessor-CiKKTlbe.mjs','readTranscriptExportSnapshotReadOnlySync',accessor.readTranscriptExportSnapshotReadOnlySync);
  codeOwner('replaceTranscriptEventsSync','dist/session-accessor-CiKKTlbe.mjs','replaceTranscriptEventsSync',accessor.replaceTranscriptEventsSync);
  codeOwner('listMemoryEntryOrigins','dist/memory-entry-origins-BCQSIB3X.mjs','n',origins.n);
  codeOwner('listMemorySessionTombstones','dist/memory-entry-origins-BCQSIB3X.mjs','r',origins.r);
@@ -331,9 +348,14 @@ export async function runForgetIndexFenceActor(request){
   const documents=await sourceDocuments();
   const publicState={origins:origins.n({agentId:input.identity.agentId}),tombstones:origins.r({agentId:input.identity.agentId}),
    recallEntries:await promo.readShortTermRecallEntries({workspaceDir:workspace,nowMs:Date.now()})};
+  const transcriptReadStart=raw.sessionTranscriptExportReads.length;
   const sessions=input.sessionFacts.sessions.map(fact=>{const scope={agentId:fact.agentId,sessionKey:fact.sessionKey,sessionId:fact.sessionId,
    storePath:session.resolveStorePath(undefined,{agentId:fact.agentId})};
-   return{agentId:fact.agentId,sessionKey:fact.sessionKey,sessionId:fact.sessionId,entry:session.getSessionEntry(scope),events:accessor.loadTranscriptEventsSync(scope)};});
+   const entry=session.getSessionEntry(scope),exportSnapshot=captureOriginalTranscriptExportRead({accessor,scope,ref,
+    event:controller().event,receipts:raw.sessionTranscriptExportReads});
+   if(!exportSnapshot||!Array.isArray(exportSnapshot.events))throw Error('Original read-only transcript export unavailable during observation');
+   return{agentId:fact.agentId,sessionKey:fact.sessionKey,sessionId:fact.sessionId,entry,events:exportSnapshot.events};});
+  const sessionTranscriptExportReads=raw.sessionTranscriptExportReads.slice(transcriptReadStart);
   const diagnostic=await runtime.MemoryIndexManager.get({cfg,agentId:input.identity.agentId,purpose:'status'});
   if(!diagnostic)throw Error('Original read-only producer membership owner unavailable');
   const corpusEntries=await diagnostic.listSessionCorpusEntries();
@@ -393,7 +415,7 @@ export async function runForgetIndexFenceActor(request){
     .sort((left,right)=>left.path.localeCompare(right.path)||left.source.localeCompare(right.source)||left.startLine-right.startLine||left.endLine-right.endLine||left.text.localeCompare(right.text)),
    concurrency:{markerVisible:publicState.tombstones.some(row=>row.sessionId===input.forgetCalls.selected.sessionIds[0]),
     forgetSettled:command.concurrency.forgetSettled,oldBuildSettled:command.concurrency.oldBuildSettled}};
-  const capture={label,pid:process.pid,actor,instance,documents,publicState,stores,sessions,
+  const capture={label,pid:process.pid,actor,instance,documents,publicState,stores,sessions,sessionTranscriptExportReads,
    pluginStatePhysical,pluginStateCapture:{enterSeq:stateEntered.sequence,returnSeq:stateReturned.sequence,
     startedAtNs:stateEntered.atNs,finishedAtNs:stateReturned.atNs,pathBindingRef:raw.pluginStatePathBinding.functionRef,
     fileIdentity:stateFileIdentity},

@@ -282,6 +282,11 @@ SOURCE_ANCHORS = _merged_anchors(
         "src/config/sessions/session-accessor.sqlite-transcript-write.ts": (
             "export function replaceTranscriptEventsSync(",
         ),
+        "src/config/sessions/session-accessor.sqlite-read.ts": (
+            "export function readTranscriptExportSnapshotReadOnlySync(",
+            "          const sessionKey =\n            resolved.sessionKey ??",
+            '        { operationLabel: "session transcript export snapshot" },',
+        ),
     },
 )
 COMPILED_HASHES = _merged_hashes(
@@ -314,7 +319,9 @@ COMPILED_ANCHORS = _merged_anchors(
             "\tconst promotionLockTarget = await resolveMemoryPromotionLockTarget(workspaceDir);",
         ),
         "dist/dreaming-state-VYUvbU-n.mjs": ("function configureMemoryCoreDreamingState(openKeyedStore) {",),
-        "dist/session-accessor-CiKKTlbe.mjs": (" u as loadTranscriptEventsSync,",),
+        "dist/session-accessor-CiKKTlbe.mjs": (
+            " u as loadTranscriptEventsSync,", "x as readTranscriptExportSnapshotReadOnlySync",
+        ),
         "dist/session-accessor-WMUIp1Kx.mjs": ("async function persistSessionTranscriptTurn(scope, options) {",),
         "dist/plugin-state-store-BPUaLoVD.mjs": ("async function closePluginStateDatabaseAsync() {",),
         "dist/openclaw-agent-db-maintenance-DBuIm8El.mjs": (
@@ -330,6 +337,11 @@ COMPILED_ANCHORS = _merged_anchors(
         "dist/session-accessor.sqlite-transcript-write-C5YumkFZ.mjs": (
             "function replaceTranscriptEventsSync(scope, events) {",
             "replaceTranscriptEventsSync as l",
+        ),
+        "dist/session-accessor.sqlite-read-BsSfe2AE.mjs": (
+            "function readTranscriptExportSnapshotReadOnlySync(scope, options = {}) {",
+            "\tconst result = withOpenClawAgentDatabaseReadOnly((database) => runSqliteDeferredTransactionSync(database.db, () => {",
+            '\t}, { operationLabel: "session transcript export snapshot" }), toDatabaseOptions(resolved));',
         ),
     },
 )
@@ -518,6 +530,9 @@ def prepare_forget_index_fence_bindings(checkout: Path, runtime_root: Path) -> d
             "replace": {"path": "dist/session-accessor-CiKKTlbe.mjs", "export": "replaceTranscriptEventsSync",
                         "sourceOwner": "src/config/sessions/session-accessor.sqlite-transcript-write.ts"},
             "readback": {"path": "dist/session-accessor-CiKKTlbe.mjs", "export": "loadTranscriptEventsSync"},
+            "observationReadback": {"path": "dist/session-accessor-CiKKTlbe.mjs",
+                                    "export": "readTranscriptExportSnapshotReadOnlySync",
+                                    "readOnly": True, "retainedResult": "whole original export snapshot"},
             "config": {"path": "dist/plugin-sdk/config-runtime.js", "export": "setRuntimeConfigSnapshot"},
             "state": {"path": "dist/extensions/memory-core/runtime-api.js", "export": "configureMemoryCoreDreamingState"},
             "stateFactory": {"path": "dist/plugin-sdk/plugin-state-store-runtime.js", "export": "createPluginStateKeyedStore"},

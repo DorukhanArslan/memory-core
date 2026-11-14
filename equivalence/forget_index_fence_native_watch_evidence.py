@@ -11,14 +11,14 @@ import re
 
 
 
-def _opaque_native_reconciliation_return(returned, delivery, context, pid):
+def _opaque_native_reconciliation_return(returned, delivery, context, pid, *, approved_adapter_root=None):
     """Authenticate an actual uncloneable callback Promise without replacing it.
 
     Linux subtree callbacks return enqueueReconciliation's real Promise. The
     callback return is not the Promise's settlement; the watcher drain receipts
     independently prove the admitted work and original inner sync settlements.
     """
-    from equivalence.forget_index_fence_evidence import _compiled_text, _digest, require
+    from equivalence.forget_index_fence_evidence import ROOT, _adapter_path, _compiled_text, _digest, _sha, require
 
     carrier = returned["return"]
     require(isinstance(carrier, dict) and set(carrier) == {"serializationError"}
@@ -38,20 +38,47 @@ def _opaque_native_reconciliation_return(returned, delivery, context, pid):
             and "if (this.closed) return Promise.resolve();" in text
             and "this.reconciling = pending;\n\t\t}\n\t\treturn this.reconciling;" in text,
             "Native opaque callback return lacks its exact original Promise-returning listener and reconciliation source")
-    helper_paths = [Path(row["path"]) for row in context["allowedLocal"]
-                    if Path(row["path"]).name == "forget-index-fence-source-clock.mjs"]
-    require(len(helper_paths) == 1, "Native opaque callback lost its authenticated observer source")
-    helper_uri = helper_paths[0].as_uri()
+    helpers = [row for row in context["allowedLocal"]
+               if Path(row["path"]).name == "forget-index-fence-source-clock.mjs"]
+    require(len(helpers) == 1, "Native opaque callback lost its authenticated observer source")
+    recorded = Path(helpers[0]["path"])
+    require(recorded.is_absolute() and ".." not in recorded.parts and recorded.parent.name == "equivalence",
+            "Native opaque callback borrowed another observer source location")
+    selected = _adapter_path(recorded, recorded.parent.parent,
+                             Path(approved_adapter_root or ROOT).resolve(strict=True))
+    helper_bytes = selected.read_bytes()
+    require(_sha(helper_bytes) == helpers[0]["sha256"],
+            "Native opaque callback observer bytes differ from the independently selected source")
+    lines = helper_bytes.decode("utf8").splitlines()
+    anchors = {
+        "value": "const valueRecord=value=>{try{return{v8Hex:serialize(value).toString('hex')};}catch(error){return{serializationError:errorValue(error)};}};",
+        "wrapped": "return deliveries.run(delivery,()=>{try{const result=Reflect.apply(listener,this,values);",
+        "returned": "emit('original-watch-delivery-return',{deliveryId:delivery.deliveryId,return:valueRecord(result),returnRef:ref(result),atNs:now()});return result;",
+    }
+    sites = {}
+    for name, anchor in anchors.items():
+        matches = [index + 1 for index, line in enumerate(lines) if line.strip() == anchor]
+        require(len(matches) == 1,
+                "Native opaque callback observer lacks its unique exact serialization call site")
+        sites[name] = matches[0]
+    require(sites["returned"] == sites["wrapped"] + 1
+            and sites["wrapped"] >= 4
+            and lines[sites["wrapped"] - 4].strip()
+            == "const wrapped=function(...values){const delivery={deliveryId:`${process.pid}:${threadId}:watch-delivery-${++nextDelivery}`,",
+            "Native opaque callback serialization escaped its actual native watcher wrapper")
+    helper_uri = recorded.as_uri()
     require("at serialize (node:v8:" in error["stack"]
-            and f"at valueRecord ({helper_uri}:16:" in error["stack"]
-            and f"at FSWatcher.wrapped ({helper_uri}:231:" in error["stack"]
+            and f'at valueRecord ({helper_uri}:{sites["value"]}:' in error["stack"]
+            and f'at {helper_uri}:{sites["returned"]}:' in error["stack"]
+            and f'at FSWatcher.wrapped ({helper_uri}:{sites["wrapped"]}:' in error["stack"]
             and isinstance(returned["returnRef"], str)
             and re.fullmatch(str(pid) + r":0:process-ref-[1-9][0-9]*", returned["returnRef"]) is not None
             and returned["returnRef"] not in {registration["handleRef"], registration["listenerRef"], registration["wrapperRef"]},
             "Native opaque Promise return lost its actual observer serialization boundary or original object identity")
 
 
-def validate_native_watch_v5(case, raw, actors, commands, passive, context, imports, authority, approved_node, clock):
+def validate_native_watch_v5(case, raw, actors, commands, passive, context, imports, authority, approved_node, clock,
+                             *, approved_adapter_root=None):
     from equivalence.forget_index_fence_evidence import (
         CALL_KINDS, _clock_path, _clock_stat, _compiled_text, _decode_v8, _digest, _native_clock_owner, _native_value,
         _sealed_json,
@@ -263,7 +290,8 @@ def validate_native_watch_v5(case, raw, actors, commands, passive, context, impo
                 if 'v8Hex' in returned['return']:
                     wire(returned['return'])
                 else:
-                    _opaque_native_reconciliation_return(returned, delivery, context, pid)
+                    _opaque_native_reconciliation_return(returned, delivery, context, pid,
+                                                          approved_adapter_root=approved_adapter_root)
         source_probes = [row for row in rows if row['event'] in {'source-clock-read', 'source-clock-read-throw'}
                          and 'snapshotPath' in row['originalStack']]
         watch_probes = selected('original-watch-version-stat-return') + selected('original-watch-version-stat-throw')

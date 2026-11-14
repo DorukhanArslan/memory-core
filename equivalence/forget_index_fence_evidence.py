@@ -3129,7 +3129,8 @@ def _native_capture(case, raw, result, directory, approved_node, trusted_archive
         clock_proof = _native_source_clock_v2(case, raw, actors, imports, passive, context, authority, approved_node)
         if _version(case) == 5:
             from equivalence.forget_index_fence_native_watch_evidence import validate_native_watch_v5
-            validate_native_watch_v5(case, raw, actors, commands, passive, context, imports, authority, approved_node, clock_proof)
+            validate_native_watch_v5(case, raw, actors, commands, passive, context, imports, authority, approved_node, clock_proof,
+                                     approved_adapter_root=approved_adapter_root)
         for pid, (_, actor) in actors.items():
             entries = [row["sequence"] for row in passive[pid, 0] if row["event"] == "original-transcript-export-read-enter"]
             require([row["enterSeq"] for row in actor["sessionTranscriptExportReads"]] == entries,

@@ -1840,7 +1840,7 @@ def test_v5_native_watcher_rejects_changed_actual_delivery_proof(v5_native_watch
     token = guard._VALIDATION_CACHE.set(cache)
     try:
         with pytest.raises((ValueError, KeyError)):
-            validate_native_watch_v5(*args)
+            validate_native_watch_v5(*args, approved_adapter_root=ADAPTER_ROOT)
     finally:
         guard._VALIDATION_CACHE.reset(token)
 
@@ -1986,7 +1986,7 @@ def test_v5_native_original_callback_promise_remains_opaque(v5_actual_opaque_rec
     from equivalence.forget_index_fence_native_watch_evidence import _opaque_native_reconciliation_return
     returned, delivery, context, pid = v5_actual_opaque_reconciliation_return
     before = deepcopy(returned)
-    _opaque_native_reconciliation_return(returned, delivery, context, pid)
+    _opaque_native_reconciliation_return(returned, delivery, context, pid, approved_adapter_root=ADAPTER_ROOT)
     assert returned == before and set(returned['return']) == {'serializationError'}
     assert returned['return']['serializationError']['message'] == '#<Promise> could not be cloned.'
     assert 'settlement' not in returned
@@ -2014,7 +2014,7 @@ def test_v5_native_opaque_callback_requires_original_promise_source(v5_actual_op
         context['allowedLocal'] = [row for row in context['allowedLocal']
                                    if not row['path'].endswith('forget-index-fence-source-clock.mjs')]
     with pytest.raises(ValueError):
-        _opaque_native_reconciliation_return(returned, delivery, context, pid)
+        _opaque_native_reconciliation_return(returned, delivery, context, pid, approved_adapter_root=ADAPTER_ROOT)
 
 
 @pytest.fixture(scope='module')
@@ -2098,6 +2098,6 @@ def test_v5_native_interrupted_source_rejects_false_absence(v5_native_interrupte
     token = guard._VALIDATION_CACHE.set(cache)
     try:
         with pytest.raises((ValueError, KeyError)):
-            validate_native_watch_v5(*args)
+            validate_native_watch_v5(*args, approved_adapter_root=ADAPTER_ROOT)
     finally:
         guard._VALIDATION_CACHE.reset(token)

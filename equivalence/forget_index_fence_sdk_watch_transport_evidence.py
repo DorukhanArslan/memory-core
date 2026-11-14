@@ -6,6 +6,8 @@ a memory operation, file version, completion or delivery witness.
 """
 from __future__ import annotations
 
+import os
+
 
 HOLD_NS = 30_000_000_000
 
@@ -16,6 +18,39 @@ def _held_kill_interval(trigger, entered, returned, reaped, frontier):
     trigger, entered, returned, reaped, frontier = map(_ns, (trigger, entered, returned, reaped, frontier))
     require(trigger <= entered <= returned <= reaped <= frontier and returned < trigger + HOLD_NS,
             "SDK interruption was not killed and reaped inside the actual gate hold deadline")
+
+
+def _no_interrupted_source_mutations(io, events, *, label):
+    """Check authenticated source fragments; this alone proves no capture."""
+    from equivalence.forget_index_fence_evidence import require
+
+    def readonly_open(arguments):
+        require(isinstance(arguments, list) and len(arguments) >= 2
+                and type(arguments[1]) is int and arguments[1] >= 0,
+                "SDK interrupted source open lost its exact original integer flags")
+        flags = arguments[1]
+        require(flags & os.O_ACCMODE == os.O_RDONLY and not flags & (os.O_TRUNC | os.O_CREAT),
+                "SDK interrupted source retained a writable or filesystem-mutating open admission")
+
+    mutations = {"write", "pwrite", "replace", "unlink", "ftruncate"}
+    for row in io:
+        require(row.get("syscall") not in mutations and row.get("event") != "original-full-write-return",
+                "SDK interrupted source discarded a successful or uncertain source mutation")
+        if row.get("syscall") == "open":
+            readonly_open(row["arguments"])
+    for event in events.values():
+        if (event["event"] == "original-call" and event.get("name") == "_io"
+                and event["callLabel"] == label and event["callKind"] == "forget"):
+            arguments = event["arguments"]
+            function = arguments["function"]
+            require(function["qualname"] not in mutations,
+                    "SDK interruption omitted a real source write attempt or rejected-publication uncertainty")
+            if function["qualname"] == "open":
+                require(function["module"] in {"posix", "os"},
+                        "SDK interrupted source open borrowed another callable")
+                # Entry is authoritative even when os.open raises or its
+                # return has not been observed at the interruption cutoff.
+                readonly_open(arguments["args"])
 
 
 def _interrupted_source(case, stopped, *, raw, processes, observations, frontier):
@@ -108,14 +143,7 @@ def _interrupted_source(case, stopped, *, raw, processes, observations, frontier
           "SDK interrupted source cut omitted or replaced actual recorded operations")
     require(not any(row.get("committed") for row in clocks),
             "SDK interrupted source discarded an actual committed filesystem version")
-    mutations = {"write", "pwrite", "replace", "unlink", "ftruncate"}
-    require(not any(row.get("syscall") in mutations or row.get("event") == "original-full-write-return" for row in io),
-            "SDK interrupted source discarded a successful or uncertain source mutation")
-    for event in events.values():
-        if (event["event"] == "original-call" and event.get("name") == "_io"
-                and event["callLabel"] == call["label"] and event["callKind"] == "forget"):
-            require(event["arguments"]["function"]["qualname"] not in mutations,
-                    "SDK interruption omitted a real source write attempt or rejected-publication uncertainty")
+    _no_interrupted_source_mutations(io, events, label=call["label"])
     return True
 
 

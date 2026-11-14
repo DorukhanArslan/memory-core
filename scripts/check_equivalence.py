@@ -41,7 +41,8 @@ def main() -> int:
         args.report.parent.mkdir(parents=True, exist_ok=True)
         # Original JavaScript strings may contain lone UTF-16 surrogates. JSON
         # escapes retain those exact code units while keeping the file UTF-8.
-        args.report.write_text(json.dumps(report, ensure_ascii=True, indent=2, allow_nan=False) + "\n",
+        args.report.write_text(json.dumps(report, ensure_ascii=True, separators=(",", ":"),
+                                          allow_nan=False) + "\n",
                                encoding="utf-8")
     except (OSError, ValueError):
         print("Equivalence report could not be retained.", file=sys.stderr)

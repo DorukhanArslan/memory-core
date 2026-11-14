@@ -50,6 +50,37 @@ def _serialized(value):
     return json.dumps(value, ensure_ascii=False, allow_nan=False, separators=(",", ":"))
 
 
+def _observation_copy(value, memo=None):
+    """Copy each live container's membership before recursively observing it.
+
+    Journals can grow while an original worker runs. Builtin container copies
+    avoid iterating a live dict without adding a worker/observer mutex. This is
+    an observation of those containers, not one atomic multi-thread snapshot.
+    """
+    memo = {} if memo is None else memo
+    identity = id(value)
+    if identity in memo:
+        return memo[identity]
+    if isinstance(value, dict):
+        members = dict.copy(value)
+        copied = {}
+        memo[identity] = copied
+        for key, item in members.items():
+            copied[_observation_copy(key, memo)] = _observation_copy(item, memo)
+        return copied
+    if isinstance(value, list):
+        members = list.copy(value)
+        copied = []
+        memo[identity] = copied
+        copied.extend(_observation_copy(item, memo) for item in members)
+        return copied
+    if isinstance(value, tuple):
+        copied = tuple(_observation_copy(item, memo) for item in value)
+        memo[identity] = copied
+        return copied
+    return deepcopy(value, memo)
+
+
 def _encode(value):
     """Retain values, including raw scalar types, without invoking callbacks."""
     if value is None or type(value) in (bool, int, str):
@@ -241,7 +272,7 @@ class _FunctionalGate:
 
     def snapshot(self):
         return {"specification": deepcopy(self.specification), "armed": self.armed,
-                "reached": self.reached.is_set(), "released": self.released.is_set(), "hits": deepcopy(self.hits)}
+                "reached": self.reached.is_set(), "released": self.released.is_set(), "hits": _observation_copy(self.hits)}
 
 
 class _OriginalObserver:
@@ -1222,20 +1253,20 @@ class _SdkActor:
             **({"adapterProvenanceBefore": self.adapter_before, "adapterProvenanceAfter": _adapter_sources(),
                 "loadedFixtureModules": _loaded_fixtures()} if self.adapter_before is not None else {}),
             "sourceProvenanceAfter": _sdk_sources(), "importedBefore": self.imported_before, "loadedSdk": _loaded_sdk(),
-            "codeOwners": list(self.observer.codes.values()), "ownerBindings": deepcopy(self.bindings),
-            "originalCalls": deepcopy(self.observer.events), "originalExceptions": deepcopy(self.observer.exceptions),
-            "sqlStatements": deepcopy(self.observer.sql), "sqlExecutions": deepcopy(self.observer.sql_executions),
+            "codeOwners": list(self.observer.codes.values()), "ownerBindings": _observation_copy(self.bindings),
+            "originalCalls": _observation_copy(self.observer.events), "originalExceptions": _observation_copy(self.observer.exceptions),
+            "sqlStatements": _observation_copy(self.observer.sql), "sqlExecutions": _observation_copy(self.observer.sql_executions),
             "functionalGates": {key: gate.snapshot() for key, gate in self.gates.items()},
-            "publicCalls": deepcopy(self.public_calls), "catalogSourceFacts": deepcopy(self.catalog_facts),
-            "hostEvents": deepcopy(self.host_events), "hostEventReceipts": deepcopy(self.host_event_receipts),
-            "clockBindings": deepcopy(self.clock_bindings), "datetimeClockCalls": deepcopy(self.datetime_clock_calls),
-            "datetimeClockFailures": deepcopy(self.datetime_proxy.failures),
-            "sourceClockReceipts": deepcopy(self.source_clock.receipts),
-            "sourceClockOriginalIO": deepcopy(self.source_clock.original_io),
-            "sourceClockReads": deepcopy(self.source_clock.source_reads),
-            "sourceClockFailures": deepcopy(self.source_clock.failures),
+            "publicCalls": _observation_copy(self.public_calls), "catalogSourceFacts": _observation_copy(self.catalog_facts),
+            "hostEvents": _observation_copy(self.host_events), "hostEventReceipts": _observation_copy(self.host_event_receipts),
+            "clockBindings": _observation_copy(self.clock_bindings), "datetimeClockCalls": _observation_copy(self.datetime_clock_calls),
+            "datetimeClockFailures": _observation_copy(self.datetime_proxy.failures),
+            "sourceClockReceipts": _observation_copy(self.source_clock.receipts),
+            "sourceClockOriginalIO": _observation_copy(self.source_clock.original_io),
+            "sourceClockReads": _observation_copy(self.source_clock.source_reads),
+            "sourceClockFailures": _observation_copy(self.source_clock.failures),
             "queuedSearchTasks": self.observer.task_receipts(),
-            "searchEffectWaits": deepcopy(self.search_effect_waits),
+            "searchEffectWaits": _observation_copy(self.search_effect_waits),
             "ppid": os.getppid(), "wallClockNowMs": self.wall_ms,
             "providerIdentity": _encode(self.owner._index_provider()) if self.owner is not None else {"unacquired": True},
             "process": {"cwd": str(Path.cwd()), "executable": sys.executable, "version": sys.version,
@@ -1333,7 +1364,12 @@ def run_forget_index_fence_sdk_actor(request):
             response = {"id": command["id"], "ok": True, "result": _encode(result)}
         except BaseException as error:
             response = {"id": command.get("id"), "ok": False, "error": _error(error)}
-        response["observation"] = actor.observation()
+        try:
+            response["observation"] = actor.observation()
+        except BaseException as error:
+            # A codec/observer failure is not an error of the original command.
+            # Keep its already captured result/error and identify the control failure.
+            response["observationInvalid"] = {"phase": "actor-observation", "error": _error(error)}
         sys.stdout.write(_serialized(response) + "\n")
         sys.stdout.flush()
         if command.get("operation") == "stop":
@@ -1381,12 +1417,20 @@ class _ActorProcess:
         if not line:
             self.reap()
             raise RuntimeError(f"The original SDK actor {self.actor} exited before its command receipt")
-        response = json.loads(line)
         self.receipt["stdoutLines"].append(line)
+        response = json.loads(line)
         self.receipt["stdoutResponses"].append(deepcopy(response))
-        self.receipt["observation"] = deepcopy(response.get("observation"))
+        if isinstance(response.get("observation"), dict):
+            self.receipt["observation"] = deepcopy(response["observation"])
+        if "fatal" in response:
+            self.receipt.setdefault("observationFailures", []).append({"commandId": command["id"], "fatal": response["fatal"]})
+            raise RuntimeError("The original SDK actor emitted a fatal control failure: " + _serialized(response["fatal"]))
         if response.get("id") != command["id"]:
             raise RuntimeError("The original actor returned another command's receipt")
+        if "observationInvalid" in response:
+            self.receipt.setdefault("observationFailures", []).append({"commandId": command["id"],
+                                                                       **response["observationInvalid"]})
+            raise RuntimeError("The SDK observer failed after the actual command settlement; complete result retained")
         if not response.get("ok"):
             raise RuntimeError(f"Original SDK actor command failed: {_serialized(response.get('error'))}")
         if operation == "acquire":
@@ -1710,8 +1754,10 @@ def run_forget_index_fence_sdk_host(request):
         "datetimeClockFailures": process["observation"].get("datetimeClockFailures", [])}
         for process in processes if process.get("observation") and (
             process["observation"].get("sourceClockFailures") or process["observation"].get("datetimeClockFailures"))]
-    raw["observationInvalid"] = clock_failures
-    raw["complete"] = "error" not in raw and not clock_failures
+    observation_failures = [{"actor": process["actor"], "pid": process["pid"], "failures": process["observationFailures"]}
+                            for process in processes if process.get("observationFailures")]
+    raw["observationInvalid"] = [*clock_failures, *observation_failures]
+    raw["complete"] = "error" not in raw and not raw["observationInvalid"]
     raw["result"] = {"provider": "none", "calls": _common_calls(calls, directory / "workspace"),
                      "snapshots": common_snapshots}
     return raw

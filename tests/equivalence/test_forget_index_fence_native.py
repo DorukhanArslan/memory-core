@@ -20,8 +20,14 @@ def _wire(case):
 
 @pytest.fixture
 def closed(monkeypatch):
-    case = {"id": "labelled-no-engine-protocol", "operation": "forget-index-fence-runtime",
-            "input": {"clock": {"nowMs": 1794614400000}, "actors": {"foreground": {"role": "fixture"}},
+    case = {"id": "labelled-no-engine-protocol", "operation": "forget-index-fence-v2-runtime",
+            "input": {"clock": {"nowMs": 1794614400000, "sourceWriteClock": {
+                "protocol": "owned-source-write-clock-v2", "ticksByCall": {"sync:s": {
+                    "ordinal": 1, "actor": "foreground", "wallClockNowMs": 1794614400000,
+                    "atimeMs": 1794528001000, "mtimeMs": 1794528001000}},
+                "scope": "Labelled protocol only; no original source or engine executes",
+                "boundaries": {"atomic": "before original rename", "inPlace": "before original close"}}},
+                      "actors": {"foreground": {"role": "fixture"}},
                       "gates": [], "steps": [{"operation": "original-sync", "actor": "foreground", "label": "s"}]}}
     recovery = deepcopy(case)
     recovery["id"] = "labelled-no-engine-recovery-protocol"
@@ -48,13 +54,16 @@ def test_profile_binds_every_actor_gate_and_declared_clock_without_running_node(
                                       "foreground": 1794614400000}
     assert profile["acceptancePointsAwarded"] == 0
     assert profile["caseWireSha256"] == hashlib.sha256(_wire(case)).hexdigest()
+    assert profile["sourceWriteClock"] == case["input"]["clock"]["sourceWriteClock"]
+    assert profile["sourceWriteClock"] is not case["input"]["clock"]["sourceWriteClock"]
+    assert profile["sourceWriteClock"]["ticksByCall"] is not case["input"]["clock"]["sourceWriteClock"]["ticksByCall"]
     assert native.validate_profile(profile) == profile
     recovered = native.prepare_profile(recovery, authority)
     assert recovered["recoveryNowMs"] == 1794614460000
     assert "recoveryNowMs" not in profile
 
 
-@pytest.mark.parametrize("attack", ["kind", "operation", "case", "wire", "actor", "clock", "gates", "credit", "credit-bool", "extra", "node"])
+@pytest.mark.parametrize("attack", ["kind", "operation", "v1-kind", "v1-operation", "case", "wire", "actor", "clock", "source-clock", "missing-source-clock", "source-clock-extra", "source-clock-bool", "gates", "credit", "credit-bool", "extra", "node"])
 def test_profile_rejects_borrowed_or_widened_capabilities(closed, attack):
     case, _, authority = closed
     profile = native.prepare_profile(case, authority)
@@ -62,6 +71,10 @@ def test_profile_rejects_borrowed_or_widened_capabilities(closed, attack):
         profile["kind"] = "query-sync-cold-retry"
     elif attack == "operation":
         profile["operation"] = "query-sync-cold-retry-runtime"
+    elif attack == "v1-kind":
+        profile["kind"] = "forget-index-fence"
+    elif attack == "v1-operation":
+        profile["operation"] = "forget-index-fence-runtime"
     elif attack == "case":
         profile["caseId"] = "unapproved"
     elif attack == "wire":
@@ -70,6 +83,14 @@ def test_profile_rejects_borrowed_or_widened_capabilities(closed, attack):
         profile["actorClocks"]["borrowed"] = profile["actorClocks"]["coordinator"]
     elif attack == "clock":
         profile["actorClocks"]["foreground"] += 1
+    elif attack == "source-clock":
+        profile["sourceWriteClock"]["ticksByCall"]["sync:s"]["mtimeMs"] += 1000
+    elif attack == "missing-source-clock":
+        del profile["sourceWriteClock"]
+    elif attack == "source-clock-extra":
+        profile["sourceWriteClock"]["privateWriteOrdinalFallback"] = True
+    elif attack == "source-clock-bool":
+        profile["sourceWriteClock"]["ticksByCall"]["sync:s"]["ordinal"] = True
     elif attack == "gates":
         profile["gates"] = [{"name": "undeclared"}]
     elif attack == "credit":
@@ -82,6 +103,39 @@ def test_profile_rejects_borrowed_or_widened_capabilities(closed, attack):
         profile["nodeRuntime"]["sha256"] = "0" * 64
     with pytest.raises(ValueError):
         native.validate_profile(profile)
+
+
+def test_transport_contract_import_is_v2_only_without_a_v1_fallback(monkeypatch):
+    calls = []
+    sentinel = object()
+    monkeypatch.setattr(native, "import_module", lambda name: calls.append(name) or sentinel)
+    assert native._contract() is sentinel
+    assert calls == ["equivalence.forget_index_fence_v2"]
+    assert native.PROFILE_KEY == "forgetIndexFenceV2Profile"
+    assert native.BOOTSTRAP_EVENT == "forget-index-fence-v2-bootstrap"
+    assert native.PROFILE_KIND == "forget-index-fence-v2"
+    assert native.NATIVE_KIND == "official-release-forget-index-fence-v2"
+
+
+def test_profile_copies_the_entire_literal_source_clock_without_shared_nested_values(closed):
+    case, _, authority = closed
+    original = deepcopy(case)
+    profile = native.prepare_profile(case, authority)
+    profile["sourceWriteClock"]["boundaries"]["atomic"] = "changed control"
+    profile["sourceWriteClock"]["ticksByCall"]["sync:s"]["atimeMs"] += 1
+    assert case == original
+
+
+def test_sealed_v2_family_has_exact_literal_clock_profiles_without_original_execution():
+    from equivalence import forget_index_fence_v2 as contract
+
+    authority = {"execPath": "/labelled/no-engine/node", **APPROVED_NODE_RUNTIME}
+    cases = contract.build_cases()
+    assert len(cases) == 13
+    for case in cases:
+        profile = native.prepare_profile(case, authority)
+        assert profile["sourceWriteClock"] == case["input"]["clock"]["sourceWriteClock"]
+        assert native.validate_profile(profile) == profile
 
 
 def test_changed_input_is_denied_before_executable_authentication_or_process_launch(closed, monkeypatch, tmp_path):
@@ -163,6 +217,9 @@ def labelled_trace(closed, monkeypatch, tmp_path):
         if thread == 0:
             rows.extend({"event": "load", **identity, "kind": "oracle", "path": str(native.ROOT / "equivalence" / name),
                          "sha256": locals_[str(native.ROOT / "equivalence" / name)]} for name in (native.ENTRY, native.ACTOR))
+        rows.append({"event": "load", **identity, "kind": "oracle",
+                     "path": str(native.ROOT / "equivalence" / native.SOURCE_CLOCK),
+                     "sha256": locals_[str(native.ROOT / "equivalence" / native.SOURCE_CLOCK)]})
         if pid == 102:
             rows.append({"event": "load", **identity, "kind": "release", "package": "node_modules/openclaw",
                          "path": "dist/labelled-main.mjs" if thread == 0 else "dist/labelled-worker.mjs",
@@ -185,6 +242,31 @@ def test_labelled_multiprocess_protocol_keeps_separate_mains_and_worker_roles(la
     trace = _validate(labelled_trace)
     assert {(row["pid"], row["threadId"]) for row in trace["bootstraps"]} == {(101, 0), (102, 0), (102, 7)}
     assert len(trace["loaded"]) == 2
+
+
+@pytest.mark.parametrize("stream", ["101-0.jsonl", "102-0.jsonl", "102-7.jsonl"])
+@pytest.mark.parametrize("attack", ["missing", "changed-hash", "resolved-only"])
+def test_every_process_and_worker_requires_its_actual_fourth_local_module_load(labelled_trace, stream, attack):
+    value = labelled_trace
+    source_clock = str(native.ROOT / "equivalence" / native.SOURCE_CLOCK)
+    rows = value["files"][stream]
+    clock_row = next(row for row in rows if row.get("path") == source_clock)
+    if attack == "missing":
+        rows.remove(clock_row)
+    elif attack == "changed-hash":
+        clock_row["sha256"] = "0" * 64
+    else:
+        clock_row["event"] = "resolve-native"
+    with pytest.raises(ValueError):
+        _validate(value)
+
+
+def test_trace_context_does_not_accept_the_v1_profile_key(labelled_trace):
+    value = labelled_trace
+    value["context"]["forgetIndexFenceProfile"] = value["context"].pop(native.PROFILE_KEY)
+    with pytest.raises(ValueError):
+        native.validate_traces(value["directory"], value["context"], value["runtime"], value["authority"],
+                               process_pid=101, parent_pid=99, raw=value["raw"])
 
 
 @pytest.mark.parametrize("attack", ["ppid", "actor", "clock", "worker-context", "missing-worker", "release-hash", "unknown-event", "child-pid", "child-request", "child-seal", "not-reaped", "step", "result", "incomplete", "gate", "coordinator-instance", "main-instance", "worker-instance", "event-instance", "boolean-instance"])
@@ -386,6 +468,8 @@ def labelled_integrity_child(labelled_trace):
         {"event": native.BOOTSTRAP_EVENT, **identity, "profile": context[native.PROFILE_KEY],
          "clock": {"owner": "node:test", "apis": ["Date"], "nowMs": launch["wallClockNowMs"],
                    "dateConstructorReplaced": True, "setTimeoutUnchanged": True, "performanceNowUnchanged": True}},
+        {"event": "load", **identity, "kind": "oracle", "path": str(native.ROOT / "equivalence" / native.SOURCE_CLOCK),
+         "sha256": local[str(native.ROOT / "equivalence" / native.SOURCE_CLOCK)]},
         *[{"event": "load", **identity, "kind": "release", "package": "node_modules/openclaw", "path": path,
            "sha256": native._INTEGRITY_ARTIFACT_HASHES[path]} for path in native._INTEGRITY_CHILD_ARTIFACTS],
     ]
@@ -414,7 +498,7 @@ def test_original_integrity_child_requires_source_receipts_native_graph_and_real
                                   "phase-order", "phase-incomplete", "reply-before-request", "no-result", "no-close-request",
                                   "no-native-close", "nonzero-exit", "signalled-close", "close-before-message",
                                   "missing-native-entry", "missing-native-dependency", "missing-caller-import",
-                                  "wrong-child-parent", "wrong-child-instance", "local-actor-import"])
+                                  "wrong-child-parent", "wrong-child-instance", "local-actor-import", "missing-source-clock"])
 def test_unqualified_or_detached_original_os_children_fail_closed(labelled_integrity_child, attack):
     value = labelled_integrity_child
     rows, files = value["childReceiptRows"], value["files"]
@@ -487,6 +571,9 @@ def test_unqualified_or_detached_original_os_children_fail_closed(labelled_integ
         files["103-0.jsonl"][0]["ppid"] = 101
     elif attack == "wrong-child-instance":
         files["103-0.jsonl"][0]["instance"] = 2
+    elif attack == "missing-source-clock":
+        files["103-0.jsonl"] = [row for row in files["103-0.jsonl"]
+                                if row.get("path") != str(native.ROOT / "equivalence" / native.SOURCE_CLOCK)]
     else:
         files["103-0.jsonl"].append(deepcopy(files["102-0.jsonl"][2]))
         files["103-0.jsonl"][-1].update(pid=103, ppid=102)

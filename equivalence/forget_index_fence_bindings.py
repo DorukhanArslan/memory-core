@@ -19,7 +19,7 @@ from equivalence.reference_bindings import _git
 from equivalence.search_contract_runtime_bindings import _owners
 
 REFERENCE_COMMIT = query.REFERENCE_COMMIT
-OPERATION = "forget-index-fence-runtime"
+OPERATION = "forget-index-fence-v2-runtime"
 
 ADDITIONAL_SOURCE_HASHES = {'extensions/memory-core/src/cli.runtime.ts': 'ec6a2e2676d6a4b5fb2b364866021f88b389bca5946cc40451877cbfbbfdf1ba',
  'extensions/memory-core/src/cli-index-search.runtime.ts': '1cb313da8f2dd7597f03aafb879cdc49d969deed18ae7bfd6fdd1a45e5a9280a',
@@ -543,7 +543,7 @@ def prepare_forget_index_fence_bindings(checkout: Path, runtime_root: Path) -> d
         "requiredLoadedArtifactsByProfile": {OPERATION: list(REQUIRED_LOADED_ARTIFACTS)},
         "workerRequiredByProfile": {OPERATION: True}, "covers": [],
         "runtimeProofRequirements": {
-            "sourceProducer": "Actual original upsert and strict append settlements plus native transcript readback",
+            "sourceProducer": "Actual original upsert and exact raw replaceTranscriptEventsSync settlements plus native transcript readback",
             "stalePublication": "Actual original prepared shadow and captured expected revision, committed forget, and original publication settlement",
             "searchFreshness": "Actual original worker snapshot and later live chunk metadata enrichment are separate observations",
             "promotion": "Original caller lock-time candidate and tombstone/origin rechecks; no candidate result replacement",

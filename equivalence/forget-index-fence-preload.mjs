@@ -17,23 +17,24 @@ import {createHook} from 'node:async_hooks';
 const hash=value=>crypto.createHash('sha256').update(value).digest('hex');
 const contextPath=process.env.MEMORY_EQ_RELEASE_CONTEXT;
 if(!contextPath||!path.isAbsolute(contextPath)||fs.realpathSync(contextPath)!==contextPath)throw Error('Owned fence context required');
-const bytes=fs.readFileSync(contextPath),context=JSON.parse(bytes),profile=context.forgetIndexFenceProfile;
-const approved={"forget-index-fence-direct-absent-at-plan-retained-source-other-session-forgotten":"25d61b2395527a2cb7b4d59234ce353b65e91510e6edd8413aa3648c5f336dae","forget-index-fence-keyword-worker-before-forget-enrichment-after":"6f18402d42c354682a18a77d39b7136bb5f4dab0220d3cdbcf4bc6c1d62b8c9b","forget-index-fence-repeat-existing-tombstone-old-full-pending":"32991073589bed868e38493b3b74ff32bd9951c3fddb75de5e12785b61f34de9","forget-index-fence-shared-clean-dryrun-unresolved-promotion-controls":"3c6f2bd032e85accd26cf98c0aac2a645cdb44f51db192b597a54f64fc4f10fc","forget-index-fence-shared-marker-commit-process-kill":"3b8411319dff5a22c171545f1ceafcc6c72ca8856373ca4faf01cf15d471b850","forget-index-fence-shared-old-full-complete-forget":"a50a4ba713d0dcc1dfc61de5bf71dc66a53501c66db8e9c6a6350bfa1bfb0aad","forget-index-fence-shared-postcheck-pending-forget":"15301b52e2c21a39184dca488d1461bb588d37e837361f2fc2239f1467cfd276","forget-index-fence-split-marker-commit-process-kill":"ede638ba25b32ce6285bd2cfe4085c838f2a4dae7bf133ebe8f94b4ee429a7f8","forget-index-fence-split-old-full-complete-forget":"43aa72fd2f30bfcfaf2c773d02f38e2f681cce79b8ab41eaf15d749530291563","forget-index-fence-split-postcheck-pending-forget":"52e6b235cdbcd0304a677de3f69b032be9453470ea8fdb3c7b870ea27c1f48be","forget-index-fence-stored-promotion-model-plan-before-forget":"285755a010826810830b0711678d54522a69beaf30b1f4034e7b2793d8def747","forget-index-fence-unfenced-on-search-marker-commit-process-kill":"d2d79892afd9b7a12fa3d10f2307a9ba215ebaaa42aa796b6addf9507b1b1df5","forget-index-fence-unfenced-on-search-old-full-complete-forget":"0a44f139e39d2e6088475b3a279f3bfc48dbd3744765d7bf5b83f77280e0ba76"};
+const bytes=fs.readFileSync(contextPath),context=JSON.parse(bytes),profile=context.forgetIndexFenceV2Profile;
+const approved={"forget-index-fence-v2-direct-absent-at-plan-retained-source-other-session-forgotten":"4a44ef7d5325e52f2a37c5e306d8d1e3aeb3f88dd0dc3b42d50c70fce5714a9b","forget-index-fence-v2-keyword-worker-before-forget-enrichment-after":"b11017ccae3ba4124c67f8f1c5c8a5819c82fb0d4e61ee42b468d013e1e290e3","forget-index-fence-v2-repeat-existing-tombstone-old-full-pending":"6b099a8cf96a2bf407b19f4452c63e0e5b64c509c0f902f952eb68abb1b3336f","forget-index-fence-v2-shared-clean-dryrun-unresolved-promotion-controls":"1b9acfda1c62857b998cdcd0ecda553d454eab908fa21113eb47bdce9862a35f","forget-index-fence-v2-shared-marker-commit-process-kill":"0c9860ab427b19a7b9bff71dacd969d57277a99fc5243ca21d1b37dada4992d2","forget-index-fence-v2-shared-old-full-complete-forget":"df0166e9b6206c3c9358fae34b74a62ceacffe89767b193067329f6773638180","forget-index-fence-v2-shared-postcheck-pending-forget":"b28624082be718f339fc1c49c25371c0a5824bd9d0f27680d134feefea0e7133","forget-index-fence-v2-split-marker-commit-process-kill":"fbf87d499b7dcc11b034db752c96a88818504062fbe45540496e33bdc8297a72","forget-index-fence-v2-split-old-full-complete-forget":"5f8ae8105407367ada19c9f426c28c4dec584b8c30e8cc55282f828e5d6fb84d","forget-index-fence-v2-split-postcheck-pending-forget":"3ab64950bbabaac2f6da2535e6ab1a72f98cf90869dd935f2e29d5709ac75acd","forget-index-fence-v2-stored-promotion-model-plan-before-forget":"2d04f44d937ae8a33ca14775e620d9ecc998eec455a970f7d3558aa1a16085e1","forget-index-fence-v2-unfenced-on-search-marker-commit-process-kill":"54bcd55182af74d9d40adbc1785b61a1948c89261f10eae3df9aa3a6c77e64e2","forget-index-fence-v2-unfenced-on-search-old-full-complete-forget":"bdbe5dade86046563655d13645f8f7513f624e5cbc8c6fb81146ad456421103d"};
 const keys=['schemaVersion','kind','runtime','providerMode','fetchPolicy','approvedNodeRuntime',
- 'forgetIndexFenceProfile','allowedLocal','traceDirectory','evidenceDirectory','stateDirectory',
+ 'forgetIndexFenceV2Profile','allowedLocal','traceDirectory','evidenceDirectory','stateDirectory',
  'configPath','gateDirectory','approvedReferenceSources','fixtureSourceCaptures'].sort().join();
-const profileKeys=['kind','operation','caseId','caseWireSha256','actorClocks','gates','nodeRuntime','acceptancePointsAwarded',
+const profileKeys=['kind','operation','caseId','caseWireSha256','actorClocks','gates','nodeRuntime','acceptancePointsAwarded','sourceWriteClock',
  ...(Object.hasOwn(profile??{},'recoveryNowMs')?['recoveryNowMs']:[])].sort().join();
 if(Object.keys(context).sort().join()!==keys||context.schemaVersion!==1||context.kind!=='release-oracle-execution'||
- context.providerMode!=='none'||context.fetchPolicy!=='deny'||profile?.kind!=='forget-index-fence'||
+ context.providerMode!=='none'||context.fetchPolicy!=='deny'||profile?.kind!=='forget-index-fence-v2'||
  Object.keys(profile??{}).sort().join()!==profileKeys||
- profile.operation!=='forget-index-fence-runtime'||profile.acceptancePointsAwarded!==0||
+ profile.operation!=='forget-index-fence-v2-runtime'||profile.acceptancePointsAwarded!==0||
  !Object.hasOwn(approved,profile.caseId)||approved[profile.caseId]!==profile.caseWireSha256||!Array.isArray(profile.gates)||
+ profile.sourceWriteClock?.protocol!=='owned-source-write-clock-v2'||!profile.sourceWriteClock.ticksByCall||
  !profile.actorClocks||Object.keys(profile.actorClocks).length>12||
  JSON.stringify(profile.nodeRuntime)!==JSON.stringify(context.approvedNodeRuntime)||
  context.approvedReferenceSources?.length!==0||context.fixtureSourceCaptures?.length!==0)throw Error('Closed fence capability required');
 const own=fs.realpathSync(fileURLToPath(import.meta.url)),folder=path.dirname(own);
-const localNames=['forget-index-fence-preload.mjs','forget-index-fence-entry.mjs','forget-index-fence-runtime.mjs'];
+const localNames=['forget-index-fence-preload.mjs','forget-index-fence-entry.mjs','forget-index-fence-runtime.mjs','forget-index-fence-source-clock.mjs'];
 const permitted=new Map();
 function regular(filename){const info=fs.lstatSync(filename);return info.isFile()&&!info.isSymbolicLink()&&info.nlink===1&&fs.realpathSync(filename)===filename;}
 if(!Array.isArray(context.allowedLocal)||context.allowedLocal.length!==localNames.length)throw Error('Closed local fence authority required');
@@ -83,11 +84,11 @@ const permittedClocks=new Set([profile.actorClocks[actor],...(profile.recoveryNo
 if(!permittedClocks.has(actorClock))throw Error('Undeclared wall clock phase');
 mock.timers.enable({apis:['Date'],now:actorClock});
 trace({event:'bootstrap',isMainThread,runtime:actualNode,contextSha256:hash(bytes),preloadSha256:ownRecord.sha256,fetchDenied:true,providerMode:'none'});
-trace({event:'forget-index-fence-bootstrap',profile,clock:{owner:'node:test',apis:['Date'],nowMs:Date.now(),
+trace({event:'forget-index-fence-v2-bootstrap',profile,clock:{owner:'node:test',apis:['Date'],nowMs:Date.now(),
  dateConstructorReplaced:Date!==originalDate,setTimeoutUnchanged:setTimeout===originalTimeout,performanceNowUnchanged:performance.now===originalPerformance}});
 
 const sleepCell=new Int32Array(new SharedArrayBuffer(4)),fired=new Set(),passive=[];
-let callLabel=null,sequence=0,lastReindexRevisionRead=null;
+let callLabel=null,sequence=0,lastReindexRevisionRead=null,sourceClock=null;
 const event=(name,fields={})=>{const row={event:name,sequence:++sequence,callLabel,atNs:process.hrtime.bigint().toString(),...fields};passive.push(row);return row;};
 function flush(){if(passive.length)fs.appendFileSync(path.join(context.evidenceDirectory,`${process.pid}-${threadId}-events.jsonl`),
  passive.splice(0).map(row=>JSON.stringify({...row,pid:process.pid,ppid:process.ppid,threadId,actor,
@@ -121,6 +122,7 @@ function pause(boundary,facts={}){
 globalThis[Symbol.for('memory.eq.forgetIndexFence')]=Object.freeze({
  setCallLabel(label){callLabel=label;},event,pause,carrier,flush,setWallClock,
  getReindexRevisionRead(){return lastReindexRevisionRead;},
+ get sourceClock(){return sourceClock;},
 });
 // Observe the original sleep resource after its held-lock decision. Timers
 // remain unchanged; this is a pending proof, never a timeout-selected outcome.
@@ -279,3 +281,21 @@ childProcess.spawn=function(...args){const originalStack=new Error('Original chi
  return forkDepth?child:observeOriginalChild(child,'spawn',args,originalStack);
 };
 syncBuiltinESMExports();
+
+const clockModule=await import('./forget-index-fence-source-clock.mjs');
+sourceClock=clockModule.installSourceClock({workspaceDir:path.join(context.stateDirectory,'workspace'),actor,
+ ticksByCall:profile.sourceWriteClock.ticksByCall,event:(name,fields)=>event(name,fields),
+ qualifyStack(stack,kind,details){const caller=releaseCaller(stack);if(!caller)return null;
+  if(kind==='read'||kind==='write')return caller;
+  const fsSafe=caller.package==='node_modules/@openclaw/fs-safe';
+  if(kind==='open'){
+   if(fsSafe&&caller.path==='dist/replace-file-descriptor.js'&&stack.includes('writeTempFile'))return{...caller,publicationRole:'stage'};
+   if(caller.package==='node_modules/openclaw'&&caller.path==='dist/short-term-promotion-memory-write-HTLC95gL.mjs'&&stack.includes('writeExistingMemoryInPlace'))return{...caller,publicationRole:'inPlace'};
+   if(fsSafe&&(caller.path==='dist/root-impl.js'||caller.path==='dist/regular-file.js'&&stack.includes('appendRegularFile')))return{...caller,publicationRole:'inPlace'};
+   if(!/\.(?:md|txt)$/iu.test(details.path))return null;
+  }
+  if(kind==='rename'&&((fsSafe&&caller.path==='dist/replace-file.js')||
+   caller.package==='node_modules/openclaw'&&caller.path==='dist/short-term-promotion-memory-write-HTLC95gL.mjs'))return caller;
+  if(kind==='unlink'&&caller.package==='node_modules/openclaw'&&caller.path==='dist/short-term-promotion-memory-write-HTLC95gL.mjs')return caller;
+  throw Error(`Unsupported original source clock ${kind} owner ${caller.package}/${caller.path}`);
+ }});

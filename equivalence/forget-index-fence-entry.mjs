@@ -2,7 +2,7 @@ import fs from 'node:fs';
 import {createHash} from 'node:crypto';
 import {isDeepStrictEqual} from 'node:util';
 const context=JSON.parse(fs.readFileSync(process.env.MEMORY_EQ_RELEASE_CONTEXT,'utf8'));
-const profile=context.forgetIndexFenceProfile;
+const profile=context.forgetIndexFenceV2Profile;
 const actor=process.env.MEMORY_EQ_FIF_ACTOR??'coordinator';
 if(actor==='coordinator'){
  let stdin='';for await(const part of process.stdin){stdin+=part;if(Buffer.byteLength(stdin)>4*1024*1024)throw Error('Excessive frozen fence input');}
@@ -13,7 +13,7 @@ if(actor==='coordinator'){
   if(Object.keys(testCase).sort().join()!=='id,input,operation'||testCase.id!==profile.caseId||testCase.operation!==profile.operation)throw Error('Wrong original fence input');
   const expectedClocks=Object.fromEntries(['coordinator','observer',...Object.keys(testCase.input.actors)].map(name=>[name,testCase.input.clock.nowMs]));
   if(!isDeepStrictEqual(testCase.input.gates,profile.gates)||!isDeepStrictEqual(profile.actorClocks,expectedClocks)||
-   profile.recoveryNowMs!==testCase.input.clock.recoveryNowMs)throw Error('Fence capability substituted declared controls or wall phases');
+   profile.recoveryNowMs!==testCase.input.clock.recoveryNowMs||!isDeepStrictEqual(profile.sourceWriteClock,testCase.input.clock.sourceWriteClock))throw Error('Fence capability substituted declared controls or wall phases');
   const {runForgetIndexFenceRuntime}=await import('./forget-index-fence-runtime.mjs');
   const result=await runForgetIndexFenceRuntime(testCase.input,{caseId:testCase.id,runtimeRoot:context.runtime.runtimeRoot,
    evidenceDirectory:context.evidenceDirectory,stateDirectory:context.stateDirectory,configPath:context.configPath,gateDirectory:context.gateDirectory});

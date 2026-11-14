@@ -31,14 +31,15 @@ from equivalence.model_runtime_authority import (
 from equivalence.release_runtime import validate_release_sources
 
 ROOT = Path(__file__).resolve().parents[1]
-PROFILE_KEY = "forgetIndexFenceProfile"
-BOOTSTRAP_EVENT = "forget-index-fence-bootstrap"
-PROFILE_KIND = "forget-index-fence"
-NATIVE_KIND = "official-release-forget-index-fence"
+PROFILE_KEY = "forgetIndexFenceV2Profile"
+BOOTSTRAP_EVENT = "forget-index-fence-v2-bootstrap"
+PROFILE_KIND = "forget-index-fence-v2"
+NATIVE_KIND = "official-release-forget-index-fence-v2"
 ENTRY = "forget-index-fence-entry.mjs"
 PRELOAD = "forget-index-fence-preload.mjs"
 ACTOR = "forget-index-fence-runtime.mjs"
-LOCAL = (ENTRY, PRELOAD, ACTOR)
+SOURCE_CLOCK = "forget-index-fence-source-clock.mjs"
+LOCAL = (ENTRY, PRELOAD, ACTOR, SOURCE_CLOCK)
 _CONTEXT_KEYS = frozenset({
     "schemaVersion", "kind", "runtime", "providerMode", "fetchPolicy", "approvedNodeRuntime",
     PROFILE_KEY, "allowedLocal", "traceDirectory", "evidenceDirectory", "stateDirectory",
@@ -57,7 +58,7 @@ _ALWAYS_MAIN_ARTIFACTS = (
 def _contract():
     # The root integrates the independently frozen input module. Importing this
     # transport alone neither loads that manifest nor launches either engine.
-    return import_module("equivalence.forget_index_fence")
+    return import_module("equivalence.forget_index_fence_v2")
 
 
 def _validated_case(case):
@@ -77,8 +78,12 @@ def prepare_profile(case, authority):
     case, wire = _validated_case(case)
     authority = validate_model_node_authority(authority)
     base = case["input"]["clock"]["nowMs"]
+    source_clock = case["input"]["clock"].get("sourceWriteClock")
     actors = case["input"]["actors"]
-    if (type(base) is not int or not isinstance(actors, dict) or not actors
+    if (type(base) is not int or not isinstance(source_clock, dict)
+            or source_clock.get("protocol") != "owned-source-write-clock-v2"
+            or not isinstance(source_clock.get("ticksByCall"), dict)
+            or not isinstance(actors, dict) or not actors
             or len(actors) > 10 or {"coordinator", "observer"} & set(actors)
             or any(not isinstance(actor, str) or not re.fullmatch(r"[a-zA-Z0-9_-]+", actor)
                    for actor in actors)):
@@ -88,6 +93,7 @@ def prepare_profile(case, authority):
         "caseWireSha256": hashlib.sha256(wire).hexdigest(),
         "actorClocks": {"coordinator": base, "observer": base, **dict.fromkeys(actors, base)},
         "gates": deepcopy(case["input"]["gates"]), "nodeRuntime": authority,
+        "sourceWriteClock": deepcopy(source_clock),
         "acceptancePointsAwarded": 0,
     }
     if "recoveryNowMs" in case["input"]["clock"]:
@@ -105,7 +111,12 @@ def validate_profile(profile):
     if profile.get("caseId") not in cases:
         raise ValueError("Forget/index-fence profile names an unapproved frozen case")
     expected = prepare_profile(cases[profile["caseId"]], profile.get("nodeRuntime"))
-    if profile != expected or type(profile.get("acceptancePointsAwarded")) is not int:
+    try:
+        exact = json.dumps(profile, sort_keys=True, separators=(",", ":"), allow_nan=False)
+    except (TypeError, ValueError) as error:
+        raise ValueError("Forget/index-fence profile is not an exact JSON capability") from error
+    if (exact != json.dumps(expected, sort_keys=True, separators=(",", ":"), allow_nan=False)
+            or type(profile.get("acceptancePointsAwarded")) is not int):
         raise ValueError("Forget/index-fence profile differs from its exact frozen capability")
     return deepcopy(profile)
 
@@ -556,7 +567,7 @@ def _original_children(context, originals, graph):
 
 def validate_traces(directory, context, runtime, authority, *, process_pid, parent_pid, raw):
     """Authenticate each actual child/worker import and its unchanged executable."""
-    validate_profile(context[PROFILE_KEY])
+    validate_profile(context.get(PROFILE_KEY))
     if (set(context) != _CONTEXT_KEYS | {"_sha256"}
             or context["runtime"] != runtime or context["approvedNodeRuntime"] != authority
             or context[PROFILE_KEY]["nodeRuntime"] != authority
@@ -634,16 +645,21 @@ def validate_traces(directory, context, runtime, authority, *, process_pid, pare
                 target = main_loads if first["isMainThread"] else worker_loads
                 target.setdefault(first["pid"] if first["isMainThread"] else (first["pid"], first["threadId"]), set()).add(row["path"])
             elif row.get("kind") == "oracle" and local.get(row.get("path")) == row.get("sha256"):
-                if first["isMainThread"]:
-                    local_loads.setdefault(first["pid"], set()).add(row["path"])
+                if row["event"] == "load":
+                    local_loads.setdefault((first["pid"], first["threadId"]), set()).add(row["path"])
             else:
                 raise ValueError("Forget/index-fence imported an undeclared local or source substitution")
     mains = [row for row in bootstraps if row["isMainThread"]]
     if len(mains) != len(graph) or {row["pid"] for row in mains} != set(graph):
         raise ValueError("Forget/index-fence omitted or duplicated an actual process bootstrap")
+    source_clock_path = str(ROOT / "equivalence" / SOURCE_CLOCK)
+    for row in bootstraps:
+        if source_clock_path not in local_loads.get((row["pid"], row["threadId"]), set()):
+            raise ValueError("An actual forget/index-fence v2 bootstrap omitted its protected source clock module")
     for pid, identity in graph.items():
         if identity.get("role") == "sqlite-integrity":
-            if local_loads.get(pid) or not set(_INTEGRITY_CHILD_ARTIFACTS) <= main_loads.get(pid, set()):
+            if (local_loads.get((pid, 0), set()) != {source_clock_path}
+                    or not set(_INTEGRITY_CHILD_ARTIFACTS) <= main_loads.get(pid, set())):
                 raise ValueError("Original integrity child omitted its pinned native check/close module graph")
             creator_thread = identity["creatorThreadId"]
             creator_imports = (main_loads.get(identity["ppid"], set()) if creator_thread == 0
@@ -651,7 +667,7 @@ def validate_traces(directory, context, runtime, authority, *, process_pid, pare
             if _INTEGRITY_CALLER not in creator_imports:
                 raise ValueError("Original integrity child has no loaded canonical caller in its actual creator thread")
             continue
-        if not {str(ROOT / "equivalence" / name) for name in (ENTRY, ACTOR)} <= local_loads.get(pid, set()):
+        if not {str(ROOT / "equivalence" / name) for name in (ENTRY, ACTOR)} <= local_loads.get((pid, 0), set()):
             raise ValueError("An actual forget/index-fence process omitted its protected local caller")
         if pid == process_pid:
             continue

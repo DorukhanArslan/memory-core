@@ -164,3 +164,28 @@ emitOriginalSource('unlink',deleted.path);while(syncCalls===0)await turn();asser
 const result=await waiting;assert.equal(result.owners[0].facts[0].versionId,deleted.versionId);
 assert.ok(rows.some(row=>row.event==='original-watch-version-stat-throw'&&row.error.code==='ENOENT'));
 ''')
+
+
+def test_watch_target_input_never_becomes_a_completed_business_receipt(node, tmp_path):
+    runtime = (ROOT / "equivalence/forget-index-fence-runtime.mjs").as_uri()
+    run(node, tmp_path, "const {originalCallEntry,retainCompletedSourceVersions}=await import("
+        + json.dumps(runtime) + ");\n" + r'''
+const store=new Map(),targets=[{kind:'file',path:'/builtin/actual-path',versionId:'unchanged-target'}];
+for(const operation of ['await-original-watch-ready','await-original-watch-effects']){
+ const command={id:4,operation,label:'actual-barrier',sourceVersions:targets,sourceVersionReceipts:[{callKey:'promotion:seed'}]};
+ const entry=originalCallEntry(command);assert.equal(Object.hasOwn(entry,'sourceVersions'),false);
+ assert.deepEqual(entry.arguments,command);assert.deepEqual(command.sourceVersions,targets);
+ retainCompletedSourceVersions(store,{id:4,actor:'foreground',pid:100,instance:1});
+}
+assert.equal(store.size,0);
+assert.throws(()=>retainCompletedSourceVersions(store,{sourceVersions:[]}),/Invalid original source call/);
+const frame={commandId:3,actor:'foreground',pid:100,instance:1};
+const receipt={callKey:'promotion:seed',causalFrame:frame,versions:[{versionId:'actual-version',sha256:'original-private-bytes'}]};
+const settled={id:3,actor:'foreground',pid:100,instance:1,sourceVersions:receipt};
+retainCompletedSourceVersions(store,settled);assert.equal(store.get('promotion:seed'),receipt);
+assert.throws(()=>retainCompletedSourceVersions(store,settled),/Duplicate original source call/);
+const distinct={...settled,sourceVersions:{...receipt,versions:[{versionId:'different-version',sha256:'different-bytes'}]}};
+assert.throws(()=>retainCompletedSourceVersions(store,distinct),/Duplicate original source call/);
+assert.equal(store.get('promotion:seed'),receipt);assert.equal(settled.sourceVersions,receipt);
+assert.throws(()=>retainCompletedSourceVersions(new Map(),{...settled,id:999}),/Invalid original source call/);
+''')

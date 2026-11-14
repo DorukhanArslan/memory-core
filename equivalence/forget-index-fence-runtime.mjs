@@ -42,6 +42,20 @@ const sleep=ms=>new Promise(resolve=>setTimeout(resolve,ms));
 const safeName=value=>{if(typeof value!=='string'||!/[A-Za-z]/u.test(value)||!/^[a-zA-Z0-9_-]+$/u.test(value))throw Error('Invalid owned actor/gate name');return value;};
 const sqlValue=value=>typeof value==='bigint'?{sqliteInt64:value.toString()}:value instanceof Uint8Array?{sqliteBlobHex:Buffer.from(value).toString('hex')}:value;
 
+// Watch commands carry target versions as inputs. Only the completed original
+// business call may supply a sourceVersions receipt in its settlement.
+export function originalCallEntry(command){const{sourceVersions:targets,...fields}=command;
+ return{...fields,startedAtNs:process.hrtime.bigint().toString(),arguments:plain(command)};
+}
+export function retainCompletedSourceVersions(store,message){if(!Object.hasOwn(message,'sourceVersions'))return;
+ const receipt=message.sourceVersions;
+ if(!receipt||Array.isArray(receipt)||typeof receipt.callKey!=='string'||!receipt.callKey||!Array.isArray(receipt.versions)||
+  receipt.causalFrame?.commandId!==message.id||receipt.causalFrame?.actor!==message.actor||receipt.causalFrame?.pid!==message.pid||
+  receipt.causalFrame?.instance!==message.instance)throw Error('Invalid original source call version receipt');
+ if(store.has(receipt.callKey))throw Error('Duplicate original source call version receipt');
+ store.set(receipt.callKey,receipt);
+}
+
 // Explicit fixture process stop follows completed original cleanup. An IPC
 // disconnect alone does not end an event loop containing other live handles.
 export async function finishGracefulActorExit(runtime,settlement){
@@ -152,8 +166,7 @@ export async function runForgetIndexFenceRuntime(input,config){
   if(message.infrastructureError)throw Error(message.infrastructureError.message);
   if(message.providerIdentity)result.provider=message.providerIdentity.result.provider;
   if(message.publicCall){const call=message.publicCall;result.calls[`${call.operation}:${call.label}`]=call;}
-  if(message.sourceVersions){const key=message.sourceVersions.callKey;if(sourceVersions.has(key))throw Error('Duplicate original source call version receipt');
-   sourceVersions.set(key,message.sourceVersions);}
+  retainCompletedSourceVersions(sourceVersions,message);
   if(message.snapshot){raw.snapshots.push(message.snapshot);result.snapshots[message.snapshot.label]=message.snapshot.common;}
   if(message.sourceClockBlocked){(raw.sourceClockFailures??=[]).push({actor:message.actor,pid:message.pid,instance:message.instance,failures:message.sourceClockFailures});
    throw Object.assign(Error('Native source clock control failed; original outcomes retained'),{code:'FIF_SOURCE_CLOCK_CONTROL_FAILED'});}
@@ -477,7 +490,7 @@ export async function runForgetIndexFenceActor(request){
   const{operation,label}=command;
   if(command.wallClockNowMs!==undefined&&command.wallClockNowMs!==Date.now())controller().setWallClock(command.wallClockNowMs);
   controller().setCallLabel(label??operation);
-  const entry={...command,startedAtNs:process.hrtime.bigint().toString(),arguments:plain(command)};raw.calls.push(entry);
+  const entry=originalCallEntry(command);raw.calls.push(entry);
   const sourceKind={'original-sync':'sync','original-forget':'forget','original-promotion':'promotion','public-memory-search':'search','original-record-short-term-recalls':'recall'}[operation];
   const sourceClock=controller().sourceClock;
   if(sourceKind)sourceClock.beginCall(`${sourceKind}:${label}`,{commandId:command.id,actor,instance,pid:process.pid,
@@ -610,7 +623,7 @@ export async function runForgetIndexFenceActor(request){
    raw.controlFailures=controller().controlFailures;
    controller().setCallLabel(null);controller().flush();persist();}
   return{type:'settled',id:command.id,...(publicCall?{publicCall}:{}),...(snapshotValue?{snapshot:snapshotValue}:{}),
-   privateReturn:entry.privateReturn??null,error:entry.error??null,...(entry.sourceVersions?{sourceVersions:entry.sourceVersions}:{}),...(entry.infrastructureError?{infrastructureError:entry.infrastructureError}:{}),
+   privateReturn:entry.privateReturn??null,error:entry.error??null,...(sourceKind&&entry.sourceVersions?{sourceVersions:entry.sourceVersions}:{}),...(entry.infrastructureError?{infrastructureError:entry.infrastructureError}:{}),
    providerIdentity:raw.ownerBindings.at(-1)?.providerIdentity??null,sourceClockBlocked:sourceClock.blocked(),sourceClockFailures:sourceClock.failures(),
    controlBlocked:controller().controlFailures.length>0,controlFailures:controller().controlFailures,actor,pid:process.pid,instance,exiting};
  }

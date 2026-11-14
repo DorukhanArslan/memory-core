@@ -28,7 +28,8 @@ _STAT = {"st_dev", "st_ino", "st_mode", "st_nlink", "st_size", "st_uid", "st_gid
 
 
 def validate_sdk_clock_v2(case, observation, process, events, returns, *, recorded_root,
-                          approved_sdk_root, fixture_root):
+                          approved_sdk_root, fixture_root, recorded_adapter_root=None, approved_adapter_root=None,
+                          source_read_workers=()):
     """Return independently authenticated commits/reads for cross-process replay."""
     # Import only here: the main guard invokes this helper during SDK replay.
     from equivalence.forget_index_fence_evidence import (
@@ -386,7 +387,7 @@ def validate_sdk_clock_v2(case, observation, process, events, returns, *, record
         code(row["sourceCode"], "source-read")
         call, key = None, None
         if row["scope"] is not None:
-            key, _, _ = scope(row["scope"])
+            key, _, public = scope(row["scope"])
             candidates = [call for call in originals if call["code"] == owners["source-read"]
                           and call["callLabel"] == row["scope"]["label"] and call["sequence"] in returns
                           and _ns(call["atNs"]) < _ns(row["atNs"]) < _ns(returns[call["sequence"]]["atNs"])]
@@ -396,6 +397,13 @@ def validate_sdk_clock_v2(case, observation, process, events, returns, *, record
             read_frames.add(call["sequence"])
             _same(returns[call["sequence"]]["returned"], row["returned"], "SDK source read altered its original complete return")
             _same(call["arguments"]["file"], row["arguments"]["file"], "SDK source read borrowed another original file")
+            if value["kind"] == "forget-index-fence-v3" and "returnSeq" in public and _ns(row["atNs"]) >= _ns(events[public["returnSeq"]]["atNs"]):
+                workers = [worker for worker in source_read_workers if worker["callLabel"] == call["callLabel"]
+                           and worker["callKind"] == call["callKind"] == "search"
+                           and worker["threadId"] == call["threadId"] and worker["sequence"] in returns
+                           and _ns(worker["atNs"]) < _ns(call["atNs"])
+                           < _ns(returns[call["sequence"]]["atNs"]) < _ns(returns[worker["sequence"]]["atNs"])]
+                require(len(workers) == 1, "A late SDK source read lost its authenticated original queued-worker frame")
         source = owned(row["arguments"]["file"]["abs_path"], source=True)
         returned = row["returned"]
         require(returned["source"] == "memory" and returned["path"] == source.relative_to(workspace).as_posix(),
@@ -437,14 +445,15 @@ def validate_sdk_clock_v2(case, observation, process, events, returns, *, record
                 require(call["sequence"] in read_frames,
                         "SDK clock channel omitted an actual completed original source read")
 
-    _validate_datetime(value, observation, originals, returns, recorded, approved, ROOT,
+    _validate_datetime(value, observation, originals, returns, recorded, approved, approved_adapter_root or ROOT,
+                       recorded_adapter=recorded_adapter_root,
                        scope=scope, require=require, same=_same, code_owner=_sdk_code_owner,
                        digest=_digest, regular=_regular, ns=_ns)
     return {"commits": commits, "reads": reads}
 
 
 def _validate_datetime(value, observation, originals, returns, recorded, approved, root, *,
-                       scope, require, same, code_owner, digest, regular, ns):
+                       scope, require, same, code_owner, digest, regular, ns, recorded_adapter=None):
     binding = observation["clockBindings"]["datetime"]
     same(binding["declaration"], value["clock"]["sdkDatetimeClock"], "SDK datetime clock declaration changed")
     require(binding["module"] == "memory_core.index.temporal_decay" and binding["binding"] == "datetime"
@@ -468,7 +477,7 @@ def _validate_datetime(value, observation, originals, returns, recorded, approve
             and len(proxy["mro"]) == 2, "SDK datetime clock used another fixture proxy")
     cls = proxy["mro"][0]
     require(cls["module"] == proxy["module"] and cls["name"] == proxy["name"]
-            and cls["sourceFile"] == str(recorded / "equivalence/forget_index_fence_sdk_clock.py")
+            and cls["sourceFile"] == str(Path(recorded_adapter or recorded) / "equivalence/forget_index_fence_sdk_clock.py")
             and cls["sourceSha256"] == digest(regular(root / "equivalence/forget_index_fence_sdk_clock.py")),
             "SDK datetime proxy differs from its independently selected fixture source")
     temporal = [call for call in originals if call["code"] == source]

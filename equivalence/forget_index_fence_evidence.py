@@ -9,6 +9,7 @@ from __future__ import annotations
 import ast
 import base64
 import binascii
+from concurrent.futures import Future, ThreadPoolExecutor
 from contextvars import ContextVar
 from functools import lru_cache
 import hashlib
@@ -19,6 +20,7 @@ from pathlib import Path, PurePosixPath
 import re
 import stat
 import subprocess
+import threading
 from types import CodeType
 import zlib
 
@@ -293,10 +295,40 @@ def _sdk_inventory(identity, approved_root):
         relative, data = path.relative_to(source_root).as_posix(), path.read_bytes()
         digest.update(relative.encode() + b"\0" + data + b"\0")
         expected.append({"path": relative, "bytes": len(data), "sha256": _sha(data)})
+        if (cache := _VALIDATION_CACHE.get()) is not None:
+            cache["verifiedFiles"][str(path)] = _sha(data)
     require(identity["sourceFiles"] == len(expected) and identity["sourceSha256"] == digest.hexdigest(),
             "The complete SDK production source seal changed")
     _same(identity["files"], expected, "The SDK source inventory was truncated or substituted")
     return recorded_root, source_root
+
+
+def _adapter_path(filename, recorded_root, approved_root):
+    path = Path(filename)
+    require(path.is_absolute() and path.is_relative_to(recorded_root),
+            "An actual fixture source escaped its independently selected adapter tree")
+    relative = _relative(path.relative_to(recorded_root).as_posix())
+    require(relative.parts[0] in {"equivalence", "docs"}, "An adapter source borrowed a production module")
+    return _regular(Path(approved_root) / relative)
+
+
+def _adapter_inventory(identity, approved_root):
+    recorded, approved = Path(identity["root"]), Path(approved_root or ROOT).resolve(strict=True)
+    require(recorded.is_absolute(), "The actual adapter source root was omitted")
+    names = ("equivalence/forget_index_fence_sdk.py", "equivalence/forget_index_fence_sdk_cli.py",
+             "equivalence/forget_index_fence_sdk_clock.py", "equivalence/forget_index_fence_v3.py",
+             "docs/forget_index_fence_v3_literals.json", "docs/forget_index_fence_v3_plan.md")
+    digest, rows = hashlib.sha256(), []
+    for name in names:
+        path = _adapter_path(recorded / name, recorded, approved)
+        data = path.read_bytes()
+        digest.update(name.encode() + b"\0" + data + b"\0")
+        rows.append({"path": name, "bytes": len(data), "sha256": _sha(data)})
+        if (cache := _VALIDATION_CACHE.get()) is not None:
+            cache["verifiedFiles"][str(path)] = _sha(data)
+    _same(identity["files"], rows, "The complete SDK adapter source inventory changed")
+    require(identity["sourceSha256"] == digest.hexdigest(), "The SDK adapter source seal changed")
+    return recorded, approved
 
 
 @lru_cache(maxsize=1024)
@@ -337,11 +369,57 @@ def _sdk_code_owner(row, recorded_root, approved_root):
     return source
 
 
-def _observer_exception(error, recorded_root):
+def _sdk_callable_owner(row, recorded_root, approved_root, *, role=None):
+    standard = {"ThreadPoolExecutor.submit": ThreadPoolExecutor.submit,
+                "Future.result": Future.result, "Condition.wait": threading.Condition.wait}
+    if role not in standard:
+        return _sdk_code_owner(row, recorded_root, approved_root)
+    original = standard[role].__code__
+    source = _regular(Path(original.co_filename).resolve(strict=True))
+    require(row["file"] == str(source) and row["qualname"] == original.co_qualname
+            and row["firstLine"] == original.co_firstlineno and row["sourceSha256"] == _digest(source)
+            and row["bytecodeSha256"] == _sha(original.co_code),
+            "An actual wait callable differs from the independently installed standard library")
+    if (cache := _VALIDATION_CACHE.get()) is not None:
+        cache["verifiedFiles"][str(source)] = row["sourceSha256"]
+    return source
+
+
+def _sdk_effective_predicate(owner, recorded, trusted, adapter_roots):
+    effective = owner["effectiveForgottenCallback"]
+    require(set(effective) == {"present", "callable", "boundReceiverObjectId", "code"}
+            and type(effective["present"]) is bool, "The SDK effective workspace predicate lost its actual binding")
+    if not effective["present"]:
+        require(not owner["forgottenCallback"] and all(effective[key] is None for key in (
+            "callable", "boundReceiverObjectId", "code")), "An absent SDK workspace predicate manufactured a callable")
+        return
+    function, code = effective["callable"], effective["code"]
+    require(function["callable"] is True and function["objectId"] and code is not None,
+            "An effective SDK workspace predicate omitted its actual callable and source")
+    if owner["forgottenCallback"]:
+        source = _adapter_path(code["file"], *adapter_roots)
+        digest = _digest(source)
+        require(code["sourceSha256"] == digest and code["bytecodeSha256"] in _bytecodes(str(source), digest).get(
+            (code["qualname"], code["firstLine"]), set())
+                and function["module"] == "equivalence.forget_index_fence_sdk"
+                and function["qualname"] == code["qualname"] == "_SdkActor.acquire.<locals>.<lambda>"
+                and effective["boundReceiverObjectId"] is None,
+                "The SDK declared external predicate borrowed another fixture function")
+    else:
+        source = _sdk_code_owner(code, recorded, trusted)
+        require(source == trusted / "memory_core/index/sqlite_store.py"
+                and code["qualname"] == function["qualname"] == "SQLiteMemoryStore.is_session_forgotten"
+                and function["module"] == "memory_core.index.sqlite_store"
+                and effective["boundReceiverObjectId"] == owner["storeObjectId"],
+                "An SDK default forgotten-session predicate lost its actual same-index store receiver")
+
+
+def _observer_exception(error, recorded_root, recorded_adapter_root=None):
     trace = error.get("traceback", "")
     require(isinstance(trace, str), "An actual SDK exception traceback was removed")
     frames = re.findall(r'^\s*File "([^"]+)", line \d+', trace, flags=re.MULTILINE)
-    require(frames and not Path(frames[-1]).is_relative_to(recorded_root / "equivalence"),
+    observer_roots = {Path(recorded_root) / "equivalence", Path(recorded_adapter_root or recorded_root) / "equivalence"}
+    require(frames and not any(Path(frames[-1]).is_relative_to(root) for root in observer_roots),
             "An observer-origin exception contaminated the original operation")
 
 
@@ -358,7 +436,9 @@ SNAPSHOT_FIELDS = {"documents", "origins", "tombstones", "recall", "phaseSignals
 
 
 def _case(case):
-    if isinstance(case, dict) and case.get("operation") == "forget-index-fence-v2-runtime":
+    if isinstance(case, dict) and case.get("operation") == "forget-index-fence-v3-runtime":
+        from equivalence.forget_index_fence_v3 import validate_case
+    elif isinstance(case, dict) and case.get("operation") == "forget-index-fence-v2-runtime":
         from equivalence.forget_index_fence_v2 import validate_case
     else:
         from equivalence.forget_index_fence import validate_case
@@ -367,7 +447,23 @@ def _case(case):
 
 
 def _v2(case):
-    return case["operation"] == "forget-index-fence-v2-runtime"
+    return _version(case) >= 2
+
+
+def _version(case):
+    operations = {"forget-index-fence-runtime": 1, "forget-index-fence-v2-runtime": 2, "forget-index-fence-v3-runtime": 3}
+    require(case["operation"] in operations, "An undeclared forget/index-fence runtime version was selected")
+    return operations[case["operation"]]
+
+
+def _native_profile_key(case):
+    version = _version(case)
+    return f"forgetIndexFenceV{version}Profile" if version >= 2 else "forgetIndexFenceProfile"
+
+
+def _capture_prefix(case):
+    version = _version(case)
+    return f"forget-index-fence-v{version}" if version >= 2 else "forget-index-fence"
 
 
 def _expected_calls(value):
@@ -573,7 +669,7 @@ def _release_inventory(runtime, trusted_archive=None):
     return root, inventories
 
 
-def _native_authority(case, raw, directory, approved_node, trusted_archive, approved_reference):
+def _native_authority(case, raw, directory, approved_node, trusted_archive, approved_reference, approved_adapter_root=None):
     directory = Path(directory).resolve(strict=True)
     context_path, process_path = directory / "context.json", directory / "process.json"
     context, process = _read(context_path, directory), _read(process_path, directory)
@@ -597,7 +693,7 @@ def _native_authority(case, raw, directory, approved_node, trusted_archive, appr
     require(context["providerMode"] == "none" and context["fetchPolicy"] == "deny"
             and context["stateDirectory"] == raw["fixtureBase"] == str(directory / "state"),
             "Native original process borrowed ambient provider or fixture state")
-    profile = context["forgetIndexFenceV2Profile" if _v2(case) else "forgetIndexFenceProfile"]
+    profile = context[_native_profile_key(case)]
     require(profile["kind"] == case["input"]["kind"] and profile["operation"] == case["operation"]
             and profile["caseId"] == case["id"] and profile["acceptancePointsAwarded"] == 0
             and profile["caseWireSha256"] == _digest(request_path),
@@ -612,7 +708,14 @@ def _native_authority(case, raw, directory, approved_node, trusted_archive, appr
     require(len(allowed) == len(local_names) and set(allowed) == {str(program_root / "equivalence" / f"forget-index-fence-{name}.mjs")
                 for name in local_names}, "Native execution allowed an undeclared local program")
     for filename, digest in allowed.items():
-        require(_digest(filename) == digest, "An actual Native observer/actor program changed after execution")
+        source = (_adapter_path(filename, program_root, Path(approved_adapter_root or ROOT).resolve(strict=True))
+                  if _version(case) == 3 or approved_adapter_root is not None else filename)
+        require(_digest(source) == digest, "An actual Native observer/actor program differs from independently approved source")
+        if (cache := _VALIDATION_CACHE.get()) is not None:
+            cache["verifiedFiles"][str(source)] = digest
+    if _version(case) == 3:
+        _same(profile["searchEffects"], case["input"]["observationPolicy"]["searchEffects"],
+              "The Native queued-search-effects capability differs from its frozen input")
     environment = process["environment"]
     require(set(environment) == {"PATH", "LANG", "TZ", "NODE_OPTIONS", "MEMORY_EQ_RELEASE_CONTEXT",
                 "MEMORY_EQ_FIF_ACTOR", "OPENCLAW_STATE_DIR", "OPENCLAW_CONFIG_PATH"}
@@ -622,7 +725,7 @@ def _native_authority(case, raw, directory, approved_node, trusted_archive, appr
             and environment["OPENCLAW_CONFIG_PATH"] == context["configPath"]
             and environment["NODE_OPTIONS"] == f'--import={program_root / "equivalence/forget-index-fence-preload.mjs"}',
             "Native actual process environment borrowed another actor, config, or preload")
-    _native_declarations(process, context, directory, approved_reference)
+    _native_declarations(process, context, directory, approved_reference, version=_version(case))
     package_root, inventories = _release_inventory(context["runtime"], trusted_archive)
     by_pid, passive = {}, {}
     for path in sorted(_owned_trace_directory(context["traceDirectory"], directory).glob("*.jsonl")):
@@ -639,7 +742,7 @@ def _native_authority(case, raw, directory, approved_node, trusted_archive, appr
         for row in rows[1:]:
             require(row["pid"] == pid and row["threadId"] == thread,
                     "An original Native import trace changed process or worker")
-            if row["event"] == ("forget-index-fence-v2-bootstrap" if _v2(case) else "forget-index-fence-bootstrap"):
+            if row["event"] == _capture_prefix(case) + "-bootstrap":
                 clock.append(row)
                 continue
             if row["event"] == "fence-gate-enter":
@@ -938,7 +1041,7 @@ def _native_integrity_messages(rows, fixture):
             "An original integrity process did not settle its actual checks and close protocol")
 
 
-def _native_declarations(process, context, directory, approved_reference):
+def _native_declarations(process, context, directory, approved_reference, *, version=2):
     from equivalence.forget_index_fence_bindings import (
         SOURCE_HASHES, SOURCE_ANCHORS, COMPILED_HASHES, COMPILED_ANCHORS, REFERENCE_COMMIT,
     )
@@ -952,8 +1055,23 @@ def _native_declarations(process, context, directory, approved_reference):
             and bindings["referenceCommit"] == REFERENCE_COMMIT and bindings["sourceBuildReproduced"] is False
             and bindings["sourceFallbackAllowed"] is False and bindings["constructorSkipped"] is False,
             "Native source/release declarations lost their original authority")
-    for name, root, hashes, anchors in (("sourceBindings", source, SOURCE_HASHES, SOURCE_ANCHORS),
-            ("compiledBindings", Path(context["runtime"]["runtimeRoot"]), COMPILED_HASHES, COMPILED_ANCHORS)):
+    additions = ({
+        "extensions/memory-core/src/tools.ts": (
+            '                void import("./short-term-promotion-record.js")',
+            '                  .then(({ recordShortTermRecalls }) => recordShortTermRecalls(recall))'),
+        "extensions/memory-core/src/memory/manager-registry.ts": (
+            '      if (params.purpose !== "default") {',
+            '    // Withdrawn retirement owners still need explicit retry; live transient managers remain caller-owned.')}, {
+        "dist/extensions/memory-core/manager-runtime.js": (
+            "\t\t\t\t}).finally(() => {\n\t\t\t\t\tthis.activeBackgroundSearchSyncs.delete(trackedSearchSync);",),
+        "dist/tools-DotaQGXh.mjs": (
+            'import("./short-term-promotion-record-CEpBdgKW.mjs").then(({ recordShortTermRecalls }) => recordShortTermRecalls(recall)).catch(() => {});',)})
+    for (name, root, hashes, declared), extra in zip((("sourceBindings", source, SOURCE_HASHES, SOURCE_ANCHORS),
+            ("compiledBindings", Path(context["runtime"]["runtimeRoot"]), COMPILED_HASHES, COMPILED_ANCHORS)), additions, strict=True):
+        anchors = {path: tuple(anchor for anchor in rows if anchor not in extra.get(path, ())) for path, rows in declared.items()}
+        if version >= 3:
+            for path, rows in extra.items():
+                anchors[path] = (*anchors.get(path, ()), *rows)
         rows = bindings[name]
         require(len(rows) == len(hashes) and {row["path"] for row in rows} == set(hashes),
                 "A Native original source/compiled owner declaration was omitted")
@@ -1069,8 +1187,8 @@ def _session_shape(value, sessions):
                 "An original session metadata/event field was removed")
 
 
-def _sdk_error(error, recorded_root, approved_root):
-    _observer_exception(error, recorded_root)
+def _sdk_error(error, recorded_root, approved_root, recorded_adapter_root=None):
+    _observer_exception(error, recorded_root, recorded_adapter_root)
     kind, typed = error["exceptionType"], error["typedConflictClass"]
     require(kind["module"] == error["module"] and kind["name"] == error["name"]
             and typed["module"] == "memory_core.consolidation.origins"
@@ -1316,7 +1434,7 @@ def _native_clock_control_v2(case, control, *, actor, child, context, imports, p
 
 def _native_source_clock_v2(case, raw, actors, imports, passive, context, authority, approved_node):
     policy = case["input"]["clock"]["sourceWriteClock"]
-    _same(context["forgetIndexFenceV2Profile"]["sourceWriteClock"], policy,
+    _same(context[_native_profile_key(case)]["sourceWriteClock"], policy,
           "Native clock capability differs from the independently frozen source-write policy")
     commits, reads, boundaries, control_ids = [], [], [], set()
     all_clock_events = [row for rows in passive.values() for row in rows if row["event"].startswith("source-clock-")]
@@ -2212,12 +2330,13 @@ def _native_gates(case, raw, actors, passive, authority, approved_node, director
                     "The Native direct promotion gate replaced the original source/lock planning frame")
 
 
-def _sdk_observation(observation, process, value, approved_root):
+def _sdk_observation(observation, process, value, approved_root, *, adapter_roots=None):
     recorded, trusted = _sdk_inventory(observation["sourceProvenanceBefore"], approved_root)
     _same(observation["sourceProvenanceBefore"], observation["sourceProvenanceAfter"],
           "Original SDK production bytes changed during an actor lifetime")
+    expected_cwd = str(adapter_roots[0] if adapter_roots else recorded)
     require(observation["pid"] == process["pid"] and observation["actor"] == process["actor"]
-            and observation["process"]["cwd"] == str(recorded)
+            and observation["process"]["cwd"] == expected_cwd
             and observation["process"]["executable"] == process["argv"][0],
             "Original SDK observation borrowed another process, actor, executable, or imported tree")
     argv = bytes.fromhex(observation["process"]["cmdlineHex"]).split(b"\0")
@@ -2226,11 +2345,33 @@ def _sdk_observation(observation, process, value, approved_root):
     for module in observation["loadedSdk"]:
         source = _source_path(module["path"], recorded, trusted)
         require(_digest(source) == module["sha256"], "An actually imported SDK module differs from the trusted source seal")
+    if adapter_roots:
+        actual_adapter = _adapter_inventory(observation["adapterProvenanceBefore"], adapter_roots[1])
+        require(actual_adapter == adapter_roots, "An SDK child borrowed another approved adapter tree")
+        _same(observation["adapterProvenanceBefore"], observation["adapterProvenanceAfter"],
+              "SDK fixture sources changed during the actual actor lifetime")
+        modules = set()
+        for module in observation["loadedFixtureModules"]:
+            source = _adapter_path(module["path"], *adapter_roots)
+            cli_main = (module["module"] == "__main__" and Path(module["path"]) ==
+                        adapter_roots[0] / "equivalence/forget_index_fence_sdk_cli.py")
+            require((module["module"].startswith("equivalence") or cli_main) and module["module"] not in modules
+                    and Path(module["path"]).suffix == ".py" and _digest(source) == module["sha256"],
+                    "An imported SDK fixture module lost its independent source authority")
+            relative = Path(module["path"]).relative_to(adapter_roots[0]).with_suffix("").parts
+            expected_name = ".".join(relative[:-1] if relative[-1] == "__init__" else relative)
+            require(module["module"] == expected_name or cli_main, "An SDK fixture import borrowed another module identity")
+            if (cache := _VALIDATION_CACHE.get()) is not None:
+                cache["verifiedFiles"][str(source)] = module["sha256"]
+            modules.add(module["module"])
+        require({"__main__", "equivalence.forget_index_fence_sdk", "equivalence.forget_index_fence_sdk_clock",
+                 "equivalence.forget_index_fence_v3"} <= modules,
+                "The actual SDK actor omitted its loaded fixture sources")
     codes = {}
     def code_key(name, code):
         return name, code["file"], code["qualname"], code["firstLine"], code["bytecodeSha256"]
     for row in observation["codeOwners"]:
-        _sdk_code_owner(row["code"], recorded, trusted)
+        _sdk_callable_owner(row["code"], recorded, trusted, role=row["name"] if adapter_roots else None)
         key = code_key(row["name"], row["code"])
         require(key not in codes, "An SDK original callable/code identity was duplicated")
         codes[key] = row
@@ -2245,6 +2386,8 @@ def _sdk_observation(observation, process, value, approved_root):
                 and owner["storage"]["catalog"] != owner["storage"]["index"]
                 and (owner["storage"]["origins"] == owner["storage"]["index"]) is shared,
                 "An SDK fence/callback/catalog profile was silently strengthened or weakened")
+        if adapter_roots:
+            _sdk_effective_predicate(owner, recorded, trusted, adapter_roots)
         _sdk_code_owner(owner["constructorCode"], recorded, trusted)
         require(owner["classMro"][0]["module"] == "memory_core.host.managed_index"
                 and owner["classMro"][0]["name"] == "ManagedSQLiteMemoryStore",
@@ -2262,12 +2405,28 @@ def _sdk_observation(observation, process, value, approved_root):
             _same(row["code"], owner["code"], "An actual SDK invocation borrowed another callable/code object")
             require(row["exactReceiver"] is (owner["receiver"] is not None),
                     "An SDK original method lost its exact bound receiver")
+            if adapter_roots:
+                require(isinstance(row["frameObjectId"], str) and row["frameObjectId"].isdigit()
+                        and int(row["frameObjectId"]) > 0, "An SDK original entry omitted its actual Python frame")
         elif row["event"] == "original-return":
             call = events[row["callSequence"]]
             require(call["event"] == "original-call" and call["sequence"] < row["sequence"]
                     and call["name"] == row["name"] and call["threadId"] == row["threadId"]
                     and call["callLabel"] == row["callLabel"] and row["callSequence"] not in returns,
                     "An SDK original return was omitted, duplicated, or reassigned")
+            if adapter_roots:
+                lookup = row["returnLookup"]
+                owner = codes[code_key(call["name"], call["code"])]
+                require(lookup["strategy"] == "retained-entry-frame"
+                        and lookup["frameObjectId"] == call["frameObjectId"]
+                        and lookup["entryCallSequence"] == call["sequence"]
+                        and lookup["entryReceiverObjectId"] == call["receiverObjectId"]
+                        and lookup["receiverLocalName"] == owner["receiver"]
+                        and type(lookup["receiverLocalPresent"]) is bool
+                        and ("receiverLocal" in lookup) is lookup["receiverLocalPresent"]
+                        and (owner["receiver"] is not None or lookup["receiverLocalPresent"] is False),
+                        "An SDK return lost its actual retained entry frame, code, receiver or current receiver-local observation")
+                _same(lookup["entryCode"], call["code"], "An SDK return borrowed another original code object")
             returns[row["callSequence"]] = row
     if process["exit"]["code"] != -9:
         require(all(row["sequence"] in returns for row in events.values() if row["event"] == "original-call"),
@@ -2291,7 +2450,7 @@ def _sdk_observation(observation, process, value, approved_root):
     return recorded, trusted, events, returns
 
 
-def _sdk_public(case, call, observation, process, events, returns, recorded, trusted):
+def _sdk_public(case, call, observation, process, events, returns, recorded, trusted, *, recorded_adapter_root=None):
     kind, label, value = call["kind"], call["label"], case["input"]
     require(call["pid"] == process["pid"] and call["actor"] == process["actor"],
             "An SDK public call borrowed another actual child")
@@ -2324,7 +2483,7 @@ def _sdk_public(case, call, observation, process, events, returns, recorded, tru
         require(original["exactReceiver"] is True and original["receiverObjectId"] == expected_receiver,
                 "An SDK public method borrowed another original receiver")
     if "error" in call:
-        typed = _sdk_error(call["error"], recorded, trusted)
+        typed = _sdk_error(call["error"], recorded, trusted, recorded_adapter_root)
         require(any(row["callLabel"] == label and row["error"]["module"] == call["error"]["module"]
                     and row["error"]["name"] == call["error"]["name"]
                     and row["error"]["message"] == call["error"]["message"]
@@ -2457,7 +2616,7 @@ def _native_transcript_exports(case, actor, snapshot, events, authority, approve
               "Native observed session events differ from the full actual original read-only export")
 
 
-def _native_capture(case, raw, result, directory, approved_node, trusted_archive, approved_reference):
+def _native_capture(case, raw, result, directory, approved_node, trusted_archive, approved_reference, approved_adapter_root=None):
     require(raw["kind"] == "forget-index-fence-native-capture" and raw["schemaVersion"] == 1
             and raw["engine"] == "native" and raw["caseId"] == case["id"]
             and raw["completed"] is raw["allChildrenReaped"] is True
@@ -2466,7 +2625,8 @@ def _native_capture(case, raw, result, directory, approved_node, trusted_archive
     _same(raw["input"], case["input"], "The original Native received another frozen input")
     _same(raw["result"], result, "Native raw capture lost its whole public result")
     directory = Path(directory or Path(raw["fixtureBase"]).parent).resolve(strict=True)
-    context, process, authority, imports, passive = _native_authority(case, raw, directory, approved_node, trusted_archive, approved_reference)
+    context, process, authority, imports, passive = _native_authority(case, raw, directory, approved_node, trusted_archive,
+                                                                   approved_reference, approved_adapter_root)
     require(not any(row["event"] == "fixture-control-failure" for rows in passive.values() for row in rows),
             "An actual Native functional fixture failure was omitted from its outer control status")
     approved_node = authority["execPath"]
@@ -2566,6 +2726,8 @@ def _native_capture(case, raw, result, directory, approved_node, trusted_archive
             entries = [row["sequence"] for row in passive[pid, 0] if row["event"] == "original-transcript-export-read-enter"]
             require([row["enterSeq"] for row in actor["sessionTranscriptExportReads"]] == entries,
                     "Native transcript exports were omitted, duplicated, or reordered after actual invocation")
+    if _version(case) == 3:
+        _native_search_effects_v3(case, raw, actors, commands, passive, context, imports, authority, approved_node)
     _native_gates(case, raw, actors, passive, authority, approved_node, directory, context=context, imports=imports)
     snapshots = {}
     for snapshot in raw["snapshots"]:
@@ -2603,6 +2765,225 @@ def _native_capture(case, raw, result, directory, approved_node, trusted_archive
         snapshots[label] = common
     _same(snapshots, result["snapshots"], "Native common snapshot stages were omitted or repaired")
     return True
+
+
+def _native_search_effects_v3(case, raw, actors, commands, passive, context, imports, authority, approved_node):
+    """Authenticate actual queued Promise identities and the explicit V3 joins."""
+    policy = case["input"]["observationPolicy"]["searchEffects"]
+    protocol, maximum = policy["protocol"], policy["maxReferencesPerBarrier"]
+    effects = {"original-search-effect-promise-created", "original-search-effect-promise-settled",
+               "original-search-effects-queue-read", "original-search-effects-public-settlement",
+               "original-search-effects-await-enter", "original-search-effects-await-return",
+               "original-search-effects-control-enter"}
+    for channel, rows in passive.items():
+        installs = [row for row in rows if row["event"] == "original-search-effects-observer-installed"]
+        require(len(installs) == 1, "An actual Native thread omitted or duplicated its original Promise observer")
+        installed = installs[0]
+        require(installed["protocol"] == protocol and installed["maxJobs"] == maximum
+                and installed["originalThenSource"] == "function then() { [native code] }"
+                and installed["sourceKinds"] == ["recall-then", "recall-catch", "publisher"]
+                and all(isinstance(installed[key], str) and installed[key].startswith(f"{channel[0]}:{channel[1]}:")
+                        for key in ("originalThenRef", "hookRef", "promiseClassRef", "promisePrototypeRef", "setClassRef", "setPrototypeRef")),
+                "A Native effects observer replaced its original Promise/Set methods or capacity")
+        if channel[1] != 0 or channel[0] not in actors:
+            require(not any(row["event"] in effects for row in rows),
+                    "A Native search effect borrowed another process or worker thread")
+            continue
+        child, actor = actors[channel[0]]
+        events = _events(rows)
+        grouped = {}
+        for row in rows:
+            grouped.setdefault(row["event"], []).append(row)
+        entries = {row["id"]: row for row in actor["calls"]}
+        searches = {"search:" + row["label"]: row for row in actor["calls"]
+                    if row["operation"] == "public-memory-search"}
+        created, async_ids, settlements = {}, set(), {}
+        for row in grouped.get("original-search-effect-promise-created", []):
+            key, reference = row["callKey"], row["promiseRef"]
+            require(key in searches and reference not in created and row["asyncId"] not in async_ids
+                    and type(row["asyncId"]) is int and row["asyncId"] > 0
+                    and type(row["triggerAsyncId"]) is int and row["triggerAsyncId"] >= 0
+                    and row["promiseConstructorRef"] == installed["promiseClassRef"]
+                    and row["promisePrototypeRef"] == installed["promisePrototypeRef"],
+                    "An original Native search Promise was fabricated, duplicated, or borrowed")
+            public = searches[key]
+            frame = {"commandId": public["id"], "actor": actor["actor"], "instance": actor["instance"],
+                     "pid": actor["pid"], "wallClockNowMs": public["wallClockNowMs"], "enteredAtNs": public["startedAtNs"]}
+            _same(row["causalFrame"], frame, "A queued Native Promise lost its actual originating public-call frame")
+            require(_ns(public["startedAtNs"]) <= _ns(row["atNs"]), "A queued Native Promise preceded its actual search")
+            owner = row["sourceOwner"]
+            kind = owner["kind"]
+            paths = {"recall-then": ("dist/tools-DotaQGXh.mjs", 904, "at Promise.then"),
+                     "recall-catch": ("dist/tools-DotaQGXh.mjs", 904, "at Promise.catch"),
+                     "publisher": ("dist/extensions/memory-core/manager-runtime.js", 5068, "at Promise.finally")}
+            require(kind in paths, "A Native Promise was assigned an undeclared producer source")
+            filename, line, method = paths[kind]
+            caller = owner["sourceCaller"]
+            _native_clock_owner(caller, row["originalStack"], context, imports, child["pid"])
+            require(caller["package"] == "node_modules/openclaw" and caller["path"] == filename
+                    and owner["line"] == line and f"{Path(filename).name}:{line}:" in row["originalStack"]
+                    and method in row["originalStack"], "A Native queued effect lost its exact original scheduling site")
+            created[reference] = row
+            async_ids.add(row["asyncId"])
+        require(len({row["jobId"] for row in created.values()}) == len(created),
+                "A Native effect job identity was reused for another actual Promise")
+        for row in grouped.get("original-search-effect-promise-settled", []):
+            reference = row["promiseRef"]
+            require(reference in created and reference not in settlements and row["jobId"] == created[reference]["jobId"]
+                    and created[reference]["sequence"] < row["sequence"] and row["status"] in {"fulfilled", "rejected"},
+                    "An actual Native Promise settlement was omitted, duplicated, or reassigned")
+            carrier, typename = ("value", "valueType") if row["status"] == "fulfilled" else ("error", "errorType")
+            decoded = _native_value(row[carrier], authority, approved_node)
+            actual_type = ("undefined" if decoded == {"privateType": "undefined"} else "boolean" if type(decoded) is bool
+                           else "number" if type(decoded) in (int, float) else "string" if isinstance(decoded, str)
+                           else "bigint" if isinstance(decoded, dict) and decoded.get("privateType") == "bigint" else "object")
+            require(row[typename] == actual_type, "A settled Native Promise lost its complete actual value type")
+            if row["status"] == "rejected" and isinstance(decoded, dict) and decoded.get("privateType") == "Error":
+                require(row["errorConstructorRef"] and row["errorPrototypeRef"] and row["errorRef"],
+                        "An actual Native effect rejection lost its original exception object")
+                for name in ("name", "message", "stack"):
+                    _same(row["errorFields"][name], decoded[name], "A Native effect error view differs from its complete original V8 error")
+                require(isinstance(row["errorOwnProperties"], list), "Native effect rejection own properties were dropped")
+                for descriptor in row["errorOwnProperties"]:
+                    if "value" in descriptor:
+                        _native_value(descriptor["value"], authority, approved_node)
+            settlements[reference] = row
+
+        owners = {owner["searchEffectsOwnerRef"]: owner for owner in actor["ownerBindings"] if owner["purpose"] == "default"}
+        require(len(owners) == sum(owner["purpose"] == "default" for owner in actor["ownerBindings"]),
+                "An actual Native default owner was rebound to another effect registry")
+        gets = grouped.get("original-manager-get-enter", [])
+        require(len(gets) == len(actor["getCalls"]), "An actual Native owner acquisition was omitted from the effects registry")
+        owner_by_actor_ref = {owner["ownerRef"]: owner for owner in owners.values()}
+        owner_entered = {}
+        for entered_get, original_get in zip(gets, actor["getCalls"], strict=True):
+            require(entered_get["callLabel"] == original_get["callLabel"],
+                    "A Native acquired effect owner borrowed another original getter frame")
+            if original_get["ownerRef"] in owner_by_actor_ref:
+                reference = owner_by_actor_ref[original_get["ownerRef"]]["searchEffectsOwnerRef"]
+                owner_entered.setdefault(reference, _ns(entered_get["atNs"]))
+        require(set(owner_entered) == set(owners), "A Native default effect owner has no actual original acquisition")
+        queue_rows = grouped.get("original-search-effects-queue-read", [])
+        used_queues, used_settlements, used_public, used_waits = set(), set(), set(), set()
+        used_controls, used_await_enter, used_await_return, actual_sets = set(), set(), set(), {}
+
+        def match_receipt(receipt, event_name):
+            matches = [row for row in grouped.get(event_name, [])
+                       if all(key in row and _same_json(row[key], item) for key, item in receipt.items())]
+            require(len(matches) == 1, "A Native search-effects receipt lost its complete actual passive event")
+            return matches[0]
+
+        def queue(receipt, key, stage, lower, upper):
+            row = match_receipt(receipt, "original-search-effects-queue-read")
+            require(row["sequence"] not in used_queues and row["callKey"] == key and row["stage"] == stage
+                    and row["ownerRef"] in owners and row["setConstructorRef"] == installed["setClassRef"]
+                    and row["setPrototypeRef"] == installed["setPrototypeRef"] and row["setRef"]
+                    and lower <= _ns(row["atNs"]) <= upper
+                    and len(set(row["promiseRefs"])) == len(row["promiseRefs"]),
+                    "A Native queued Set read borrowed an owner, stage, reference, or lifetime")
+            for reference in row["promiseRefs"]:
+                require(reference in created and created[reference]["callKey"] == key
+                        and created[reference]["sourceOwner"]["kind"] == "publisher"
+                        and created[reference]["sequence"] < row["sequence"],
+                        "An actual Native queued publisher has no original same-search Promise source")
+            require(actual_sets.setdefault(row["ownerRef"], row["setRef"]) == row["setRef"],
+                    "A Native default owner's original queued Promise Set was replaced")
+            used_queues.add(row["sequence"])
+            return row
+
+        waits = [entry for entry in entries.values() if entry["operation"] == "await-original-search-effects"]
+        for key, public in searches.items():
+            require("searchEffectsControlError" not in public and "searchEffectsPublicSettlement" in public,
+                    "A Native original search failed to retain its actual effect boundary")
+            receipt = public["searchEffectsPublicSettlement"]
+            row = match_receipt(receipt, "original-search-effects-public-settlement")
+            status = "rejected" if "error" in public else "fulfilled"
+            requires_recall = status == "fulfilled" and public["publicTool"]["details"].get("unavailable") is not True
+            require(row["callKey"] == key and row["status"] == status and row["requiresRecall"] is requires_recall
+                    and _ns(public["startedAtNs"]) < _ns(row["atNs"]) <= _ns(public["settledAtNs"]),
+                    "Native effects were labelled from a predicted search result or another public lifetime")
+            used_public.add(row["sequence"])
+            _same([read["ownerRef"] for read in receipt["queueReads"]],
+                  [reference for reference in owners if owner_entered[reference] < _ns(row["atNs"])],
+                  "Native public settlement omitted an actually acquired default owner's original Promise Set")
+            search_steps = [step for step in raw["steps"] if step["step"].get("operation") in {
+                "public-memory-search", "start-public-memory-search"} and step["step"].get("label") == public["label"]]
+            require(len(search_steps) == 1 and search_steps[0]["step"].get("actor", "foreground") == actor["actor"],
+                    "A Native search effect borrowed another declared actor or process epoch")
+            recall = [item for item in created.values() if item["callKey"] == key and item["sourceOwner"]["kind"].startswith("recall-")]
+            _same(row["recallPromiseRefs"], [item["promiseRef"] for item in recall], "Native original recall Promise references were dropped or repaired")
+            then = [item for item in recall if item["sourceOwner"]["kind"] == "recall-then"]
+            caught = [item for item in recall if item["sourceOwner"]["kind"] == "recall-catch"]
+            require(len(then) == len(caught) <= 1 and (not requires_recall or len(then) == 1)
+                    and (not caught or caught[0]["triggerAsyncId"] == then[0]["asyncId"])
+                    and all(item["sequence"] < row["sequence"] for item in recall),
+                    "The Native recall Promise chain lost its genuine original then/catch relationship")
+            actual_waits = [entry for entry in waits if entry["label"] == public["label"]]
+            require(len(actual_waits) == 1, "A settled Native search omitted or duplicated its explicit effects wait")
+            wait = actual_waits[0]
+            require("error" not in wait and "infrastructureError" not in wait
+                    and _ns(public["settledAtNs"]) < _ns(wait["startedAtNs"]) < _ns(wait["settledAtNs"]),
+                    "A Native effects wait ran before its actual public search had settled")
+            control = events[wait["searchEffectsControlEnter"]["sequence"]]
+            _same(control, wait["searchEffectsControlEnter"], "Native effect control-entry receipt changed")
+            require(control["event"] == "original-search-effects-control-enter" and control["commandId"] == wait["id"]
+                    and control["label"] == public["label"] and control["sequence"] > row["sequence"],
+                    "A Native effects barrier borrowed another actual command")
+            used_controls.add(control["sequence"])
+            final = wait["searchEffects"]
+            ended = match_receipt(final, "original-search-effects-await-return")
+            entered = [item for item in grouped.get("original-search-effects-await-enter", []) if item["callKey"] == key]
+            require(len(entered) == 1 and final["protocol"] == protocol and final["callKey"] == key
+                    and final["searchStatus"] == status and final["recallPromiseRefs"] == row["recallPromiseRefs"]
+                    and control["sequence"] < entered[0]["sequence"] < ended["sequence"]
+                    and _ns(wait["startedAtNs"]) <= _ns(final["startedAtNs"]) <= _ns(final["finishedAtNs"]) <= _ns(wait["settledAtNs"]),
+                    "A Native explicit barrier has no actual entry, original jobs, or completion")
+            used_await_enter.add(entered[0]["sequence"])
+            used_await_return.add(ended["sequence"])
+            for name in ("protocol", "callKey", "searchStatus", "recallPromiseRefs", "startedAtNs"):
+                _same(entered[0][name], final[name], "The Native original effects wait changed its initial boundary")
+            _same(entered[0]["queueReads"], receipt["queueReads"], "Native public-settlement Set reads were replaced at the explicit wait")
+            require(final["queueReads"][:len(receipt["queueReads"])] == receipt["queueReads"],
+                    "Native explicit effects wait dropped an original early publisher reference")
+            references = list(row["recallPromiseRefs"])
+            for index, read in enumerate(final["queueReads"]):
+                early = index < len(receipt["queueReads"])
+                queue(read, key, "public-settlement" if early else "explicit-await",
+                      _ns(public["startedAtNs"]) if early else _ns(final["startedAtNs"]),
+                      _ns(row["atNs"]) if early else _ns(final["finishedAtNs"]))
+                references.extend(reference for reference in read["promiseRefs"] if reference not in references)
+            require(len(final["jobs"]) <= maximum, "Native effects exceed the frozen reference capacity")
+            _same([job["promiseRef"] for job in final["jobs"]], references,
+                  "Native explicit effects jobs differ from its actual recall chain and queued Set members")
+            for job in final["jobs"]:
+                original = created[job["promiseRef"]]
+                for name in ("jobId", "promiseRef", "promiseConstructorRef", "promisePrototypeRef", "asyncId", "triggerAsyncId", "sourceOwner", "originalStack"):
+                    _same(job[name], original[name], "A Native awaited job lost its original Promise/source identity")
+                settled = settlements[job["promiseRef"]]
+                settlement_fields = ({"status", "value", "valueRef", "valueType"} if settled["status"] == "fulfilled" else
+                                     {"status", "error", "errorRef", "errorType"} | ({"errorFields", "errorConstructorRef", "errorPrototypeRef", "errorOwnProperties"}
+                                     if "errorFields" in settled else set()))
+                _same(job["settlement"], {name: settled[name] for name in settlement_fields},
+                      "A Native effects barrier manufactured an original Promise settlement")
+                require(entered[0]["sequence"] < settled["sequence"] < ended["sequence"],
+                        "Native effect completion was inferred without its actual Promise fulfillment/rejection")
+                used_settlements.add(job["promiseRef"])
+            used_waits.add(wait["id"])
+            expected_steps = [step for step in raw["steps"] if step["step"].get("operation") == "await-original-search-effects"
+                              and step["step"].get("actor") == actor["actor"] and step["step"].get("label") == public["label"]]
+            require(len(expected_steps) == 1, "A Native effects wait was not declared at its exact frozen schedule position")
+            step = expected_steps[0]
+            command = commands[wait["id"]][2]
+            require(_ns(step["startedAtNs"]) <= _ns(command["startedAtNs"]) <= _ns(wait["startedAtNs"])
+                    and _ns(wait["settledAtNs"]) <= _ns(command["settledAtNs"]) <= _ns(step["finishedAtNs"]),
+                    "A Native effects command escaped its frozen schedule lifetime")
+        require(used_settlements == set(settlements) and used_waits == {wait["id"] for wait in waits}
+                and used_queues == {row["sequence"] for row in queue_rows}
+                and used_public == {row["sequence"] for row in grouped.get("original-search-effects-public-settlement", [])}
+                and used_controls == {row["sequence"] for row in grouped.get("original-search-effects-control-enter", [])}
+                and used_await_enter == {row["sequence"] for row in grouped.get("original-search-effects-await-enter", [])}
+                and used_await_return == {row["sequence"] for row in grouped.get("original-search-effects-await-return", [])},
+                "Native effects evidence omitted, duplicated, or reassigned an actual wait, Set read, or settlement")
 
 
 def _native_producers(case, actor, authority, approved_node):
@@ -2771,18 +3152,32 @@ def _sdk_snapshot_receiver(specification, step, snapshot, processes, stages):
           "SDK snapshot receiver substituted an earlier or future observation for its actual snapshot response")
 
 
-def _sdk_capture(case, dispatch, result, directory, approved_root):
+def _sdk_launch_environment(carrier, adapter_root, fixture):
+    executable = Path(carrier["argv"][0])
+    require(executable.is_absolute(), "The original SDK executable was not absolute")
+    expected = {"PATH": str(executable.parent) + os.pathsep + os.defpath,
+                "PYTHONPATH": str(adapter_root), "LANG": "C.UTF-8", "TZ": "UTC",
+                "OPENCLAW_HOME": str(fixture), "OPENCLAW_STATE_DIR": str(fixture / "state"),
+                "PYTHONDONTWRITEBYTECODE": "1"}
+    _same(carrier["environment"], expected, "An original SDK launch borrowed ambient environment or another import selector")
+
+
+def _sdk_capture(case, dispatch, result, directory, approved_root, approved_adapter_root=None):
     value = case["input"]
-    prefix = "forget-index-fence-v2" if _v2(case) else "forget-index-fence"
+    prefix = _capture_prefix(case)
+    modern_effects = _version(case) == 3
     require(dispatch["kind"] == prefix + "-sdk-dispatch" and dispatch["exit"] == {"code": 0}
             and not any(dispatch.get(key) for key in ("timeout", "stdoutParseError", "error")),
             "The original SDK outer process failed or its stdout was replaced")
     _same(dispatch["input"], value, "The actual SDK dispatch received another frozen input")
     _same(_json(dispatch["requestJson"]), dispatch["request"], "The actual SDK request JSON bytes changed")
+    request_keys = {"input", "directory", "sdkRoot", "adapterRoot"} if modern_effects else {"input", "directory"}
+    environment_keys = sorted(["LANG", "OPENCLAW_HOME", "OPENCLAW_STATE_DIR", "PATH", "PYTHONPATH",
+                               *(["PYTHONDONTWRITEBYTECODE"] if modern_effects else []), "TZ"])
     require(dispatch["requestSha256"] == _sha(dispatch["requestJson"].encode())
-            and set(dispatch["request"]) == {"input", "directory"}
+            and set(dispatch["request"]) == request_keys
             and dispatch["argv"][1:] == ["-m", "equivalence.forget_index_fence_sdk_cli"]
-            and dispatch["environmentKeys"] == ["LANG", "OPENCLAW_HOME", "OPENCLAW_STATE_DIR", "PATH", "PYTHONPATH", "TZ"]
+            and dispatch["environmentKeys"] == environment_keys
             and dispatch["pid"] != dispatch["coordinatorPid"],
             "The actual SDK outer request, executable arguments, environment, or PID changed")
     _same(dispatch["request"]["input"], value, "Actual SDK outer input bytes differ from the frozen literal")
@@ -2796,6 +3191,17 @@ def _sdk_capture(case, dispatch, result, directory, approved_root):
     recorded_root, trusted_root = _sdk_inventory(raw["sourceProvenanceBefore"], approved_root)
     for identity in (raw["sourceProvenanceAfter"], dispatch["sourceProvenanceBefore"], dispatch["sourceProvenanceAfter"]):
         _same(identity, raw["sourceProvenanceBefore"], "SDK production bytes changed across the complete process dispatch")
+    adapter_roots = None
+    if modern_effects:
+        adapter_roots = _adapter_inventory(raw["adapterProvenanceBefore"], approved_adapter_root)
+        recorded_adapter, _ = adapter_roots
+        for identity in (raw["adapterProvenanceAfter"], dispatch["adapterProvenanceBefore"], dispatch["adapterProvenanceAfter"]):
+            _same(identity, raw["adapterProvenanceBefore"], "SDK adapter bytes changed across the complete original dispatch")
+        for carrier in (dispatch, raw, dispatch["request"]):
+            require(carrier["sdkRoot"] == str(recorded_root) and carrier["adapterRoot"] == str(recorded_adapter),
+                    "The SDK source selector or loaded adapter identity changed across dispatch")
+        require(dispatch["cwd"] == str(recorded_adapter), "The SDK outer process borrowed another working directory")
+        _sdk_launch_environment(dispatch, recorded_adapter, Path(raw["fixtureRoot"]))
     fixture = Path(raw["fixtureRoot"])
     require(fixture.is_absolute() and fixture.resolve(strict=True) == fixture,
             "The actual SDK fixture root was aliased or relative")
@@ -2804,7 +3210,7 @@ def _sdk_capture(case, dispatch, result, directory, approved_root):
                 "The SDK fixture root escaped the independently selected SDK transport directory")
     if _v2(case):
         require(raw["observationInvalid"] == [], "SDK clock custody was invalidated outside the original public outcomes")
-    processes, observations, reconstructed = {}, {}, {}
+    processes, observations, reconstructed, effect_waits = {}, {}, {}, {}
     for process in raw["processes"]:
         require(process["pid"] not in processes and process["pid"] != raw["pid"]
                 and process["exit"] in ({"code": 0}, {"code": -9})
@@ -2815,6 +3221,13 @@ def _sdk_capture(case, dispatch, result, directory, approved_root):
                 and process["request"]["actor"] == process["actor"] and process["request"]["mode"] == "actor"
                 and process["requestSha256"] == _sha(process["requestJson"].encode()),
                 "An original SDK actor changed its executable/fixture/input request")
+        if modern_effects:
+            require(set(process["request"]) == request_keys | {"mode", "actor"}
+                    and process["request"]["sdkRoot"] == str(recorded_root)
+                    and process["request"]["adapterRoot"] == str(adapter_roots[0])
+                    and process["cwd"] == str(adapter_roots[0]),
+                    "An original SDK actor changed its separately approved source selection")
+            _sdk_launch_environment(process, adapter_roots[0], fixture)
         _same(_json(process["requestJson"]), process["request"], "Original SDK actor input JSON carrier changed")
         _same(process["request"]["input"], value, "An original SDK child received another frozen input")
         require(len(process["stdoutResponses"]) == len(process["stdoutLines"])
@@ -2827,12 +3240,25 @@ def _sdk_capture(case, dispatch, result, directory, approved_root):
                     and response["observation"]["ppid"] == raw["pid"], "An SDK original response borrowed another child/parent PID")
         observation = process["observation"]
         _same(observation, process["stdoutResponses"][-1]["observation"], "SDK final process observation lost its actual last response")
-        recorded, trusted, events, returns = _sdk_observation(observation, process, value, trusted_root)
+        recorded, trusted, events, returns = _sdk_observation(observation, process, value, trusted_root,
+                                                            adapter_roots=adapter_roots)
         require(recorded == recorded_root and trusted == trusted_root, "An SDK child imported another source namespace")
+        checked_effects = None
+        if modern_effects:
+            from equivalence.forget_index_fence_sdk_effects_evidence import validate_sdk_effects_v3
+            checked_effects = validate_sdk_effects_v3(case, observation, process, events, returns,
+                recorded_root=recorded, approved_sdk_root=trusted,
+                recorded_adapter_root=adapter_roots[0], approved_adapter_root=adapter_roots[1])
+            for label, receipt in checked_effects["waits"].items():
+                require(label not in effect_waits, "An SDK search-effects barrier borrowed another process epoch")
+                effect_waits[label] = process, receipt
         if _v2(case):
             from equivalence.forget_index_fence_sdk_clock_evidence import validate_sdk_clock_v2
             validate_sdk_clock_v2(case, observation, process, events, returns, recorded_root=recorded,
-                                  approved_sdk_root=trusted, fixture_root=fixture)
+                                  approved_sdk_root=trusted, fixture_root=fixture,
+                                  recorded_adapter_root=adapter_roots[0] if adapter_roots else None,
+                                  approved_adapter_root=adapter_roots[1] if adapter_roots else None,
+                                  source_read_workers=checked_effects["workers"] if checked_effects else ())
         if observation["ownerBindings"]:
             require(observation["providerIdentity"] is None and result["provider"] == "none",
                     "SDK provider-none was predicted instead of using its actual original provider identity")
@@ -2841,11 +3267,12 @@ def _sdk_capture(case, dispatch, result, directory, approved_root):
         for key, call in observation["publicCalls"].items():
             require(key == call["kind"] + ":" + call["label"] and key not in reconstructed,
                     "An original SDK labelled API call was omitted, duplicated, or reassigned")
-            reconstructed[key] = _sdk_public(case, call, observation, process, events, returns, recorded, trusted)
+            reconstructed[key] = _sdk_public(case, call, observation, process, events, returns, recorded, trusted,
+                                              recorded_adapter_root=adapter_roots[0] if adapter_roots else None)
     _same(reconstructed, result["calls"], "SDK common outcomes dropped, predicted, or repaired original public calls")
     _sdk_gates(case, raw, processes, observations, recorded_root, trusted_root)
     require(len(raw["steps"]) == len(value["steps"]), "The original SDK schedule omitted a declared step")
-    snapshots = {}
+    snapshots, matched_effects = {}, set()
     previous = -1
     for number, (step, specification) in enumerate(zip(raw["steps"], value["steps"], strict=True)):
         _same(step["specification"], specification, "The original SDK schedule changed its operation order")
@@ -2853,6 +3280,19 @@ def _sdk_capture(case, dispatch, result, directory, approved_root):
                 and previous <= _ns(step["enteredAtNs"]) < _ns(step["settledAtNs"]),
                 "An SDK schedule step lost its actual monotonic lifetime")
         previous = _ns(step["settledAtNs"])
+        if modern_effects and specification["operation"] == "await-original-search-effects":
+            label = specification["label"]
+            process, receipt = effect_waits[label]
+            require(label not in matched_effects and specification["actor"] == process["actor"]
+                    and _ns(process["startedAtNs"]) < _ns(step["enteredAtNs"]) <= _ns(receipt["enteredAtNs"])
+                    < _ns(receipt["returnedAtNs"]) <= _ns(step["settledAtNs"]) < _ns(process["reapedAtNs"]),
+                    "An SDK effects wait escaped its frozen actor, command lifetime, or process epoch")
+            _same(step["returned"], receipt, "The SDK declared barrier changed the actual original-effects wait receipt")
+            matches = [(command, response) for command, response in zip(process["stdinCommands"], process["stdoutResponses"], strict=True)
+                       if command["operation"] == "await-search-effects" and command["label"] == label]
+            require(len(matches) == 1, "An SDK frozen barrier has no unique actual child command/response")
+            _same(matches[0][1]["result"], receipt, "The SDK effects barrier lost its whole actual process stdout result")
+            matched_effects.add(label)
         if specification["operation"] != "capture-physical-state":
             continue
         label = specification["label"]
@@ -2895,6 +3335,8 @@ def _sdk_capture(case, dispatch, result, directory, approved_root):
         common["concurrency"] = _sdk_concurrency(case, snapshot, stages)
         snapshots[label] = common
     _same(snapshots, result["snapshots"], "SDK common state dropped or repaired complete actual source/SQL/public-reader observations")
+    if modern_effects:
+        require(matched_effects == set(effect_waits), "An actual SDK effects barrier was omitted or moved outside the declared schedule")
     return True
 
 
@@ -3030,14 +3472,15 @@ def _sdk_gates(case, raw, processes, observations, recorded, trusted):
 
 
 def validate_capture(case, capture, result, *, native, approved_node=None, approved_sdk_root=None,
-                     trusted_archive=None, directory=None, approved_reference=None):
+                     trusted_archive=None, directory=None, approved_reference=None, approved_adapter_root=None):
     """Authenticate one actual engine independently; no policy match is required."""
     cache = {"sourceIndexes": {}, "verifiedFiles": {}, "terminated": {}, "decoderAuthorities": {}, "v8": {}}
     token = _VALIDATION_CACHE.set(cache)
     try:
         validate_result(case, result)
-        verified = (_native_capture(case, capture, result, directory, approved_node, trusted_archive, approved_reference)
-                    if native else _sdk_capture(case, capture, result, directory, approved_sdk_root))
+        verified = (_native_capture(case, capture, result, directory, approved_node, trusted_archive,
+                                    approved_reference, approved_adapter_root)
+                    if native else _sdk_capture(case, capture, result, directory, approved_sdk_root, approved_adapter_root))
         require(all(_digest(filename) == digest for filename, digest in cache["verifiedFiles"].items()),
                 "An independently approved Native source or decoder changed during custody validation")
         return verified
@@ -3050,17 +3493,19 @@ def validate_capture(case, capture, result, *, native, approved_node=None, appro
 
 def validate_pair(case, native_raw, sdk_raw, native_result, sdk_result, *, approved_node=None,
                   approved_sdk_root=None, trusted_archive=None, native_directory=None, sdk_directory=None,
-                  approved_reference=None):
+                  approved_reference=None, approved_adapter_root=None):
     """Custody precedes parity; genuine original differences remain differences."""
     validate_capture(case, native_raw, native_result, native=True, approved_node=approved_node,
-                     trusted_archive=trusted_archive, directory=native_directory, approved_reference=approved_reference)
+                     trusted_archive=trusted_archive, directory=native_directory, approved_reference=approved_reference,
+                     approved_adapter_root=approved_adapter_root)
     validate_capture(case, sdk_raw, sdk_result, native=False, approved_sdk_root=approved_sdk_root,
-                     directory=sdk_directory)
+                     directory=sdk_directory, approved_adapter_root=approved_adapter_root)
     return True
 
 
 def replay_case(case, native_directory, sdk_directory=None, *, approved_node=None,
-                approved_sdk_root=None, trusted_archive=None, approved_reference=None, include_results=False):
+                approved_sdk_root=None, trusted_archive=None, approved_reference=None, include_results=False,
+                approved_adapter_root=None):
     """Replay explicit retained transports; the SDK directory contains its raw file.
 
     A full-pair transport is a mapping with exactly ``nativeDirectory`` and
@@ -3086,7 +3531,7 @@ def replay_case(case, native_directory, sdk_directory=None, *, approved_node=Non
     validate_pair(case, native_values[0], sdk_values[0], native_result, sdk_result,
                   approved_node=approved_node, approved_sdk_root=approved_sdk_root,
                   trusted_archive=trusted_archive, native_directory=native_directory, sdk_directory=sdk_directory,
-                  approved_reference=approved_reference)
+                  approved_reference=approved_reference, approved_adapter_root=approved_adapter_root)
     replay = {"validated": True, "publicMatch": _same_json(native_result, sdk_result),
             "nativeSnapshots": len(native_result["snapshots"]), "sdkSnapshots": len(sdk_result["snapshots"]),
             "acceptancePointsAwarded": 0}

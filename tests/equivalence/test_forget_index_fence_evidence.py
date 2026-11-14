@@ -1,10 +1,11 @@
 """Replay only explicitly selected, genuine forget/index-fence packets.
 
-Legacy SDK packets and new V2 paired packets have separate explicit selectors.
+Legacy SDK, V2, and V3 packets have separate explicit selectors.
 A failed Native transport cannot become a positive paired baseline. No test
 launches an original engine or modifies a retained capture file.
 """
 import base64
+from concurrent.futures import Future, ThreadPoolExecutor
 from copy import deepcopy
 from functools import lru_cache
 import hashlib
@@ -13,6 +14,7 @@ import math
 import os
 from pathlib import Path
 import stat
+import threading
 import zlib
 
 import pytest
@@ -20,10 +22,14 @@ import pytest
 from equivalence import forget_index_fence_evidence as guard
 from equivalence.forget_index_fence import build_cases
 from equivalence.forget_index_fence_v2 import build_cases as build_v2_cases
+from equivalence.forget_index_fence_v3 import build_cases as build_v3_cases, validate_registration as validate_v3_registration
 
 
 ROOT = Path(__file__).resolve().parents[2]
 CAPTURE_ROOT = os.environ.get("MEMORY_FORGET_INDEX_FENCE_CAPTURE_ROOT")
+V3_CAPTURE_ROOT = os.environ.get("MEMORY_FORGET_INDEX_FENCE_V3_CAPTURE_ROOT")
+V3_REJECTED_NATIVE_RELEASE_ROOT = os.environ.get("MEMORY_FORGET_INDEX_FENCE_V3_REJECTED_NATIVE_RELEASE_ROOT")
+ADAPTER_ROOT = os.environ.get("MEMORY_FORGET_INDEX_FENCE_ADAPTER_ROOT")
 SDK_CAPTURE_ROOT = os.environ.get("MEMORY_FORGET_INDEX_FENCE_SDK_CAPTURE_ROOT")
 REJECTED_NATIVE_CAPTURE_ROOT = os.environ.get("MEMORY_FORGET_INDEX_FENCE_REJECTED_NATIVE_ROOT")
 REJECTED_RELEASE_CAPTURE_ROOT = os.environ.get("MEMORY_FORGET_INDEX_FENCE_REJECTED_RELEASE_ROOT")
@@ -31,6 +37,7 @@ SDK_SOURCE_ROOT = Path(os.environ.get("MEMORY_FORGET_INDEX_FENCE_SDK_SOURCE_ROOT
 REFERENCE_ROOT = Path(os.environ.get("MEMORY_FORGET_INDEX_FENCE_REFERENCE_ROOT", ROOT / "work/openclaw-v2026.9.9")).resolve()
 CASES = build_cases()
 V2_CASES = build_v2_cases()
+V3_CASES = build_v3_cases()
 
 
 def _read(path):
@@ -1088,3 +1095,364 @@ def test_actual_sdk_unscoped_read_policy_never_extends_to_writes_or_datetime(v2_
     rows[number] = row
     with pytest.raises(ValueError, match="public-call scope"):
         _validate_sdk_clock(context, {**original, field: rows})
+
+
+@lru_cache(maxsize=1)
+def _v3_raw_packet(case_id):
+    if V3_CAPTURE_ROOT is None:
+        pytest.skip("No explicitly selected V3 packet; no acceptance credit")
+    assert ADAPTER_ROOT is not None, "Selected V3 replay requires an independently selected adapter root"
+    assert Path(ADAPTER_ROOT).resolve(strict=True).is_dir()
+    case = next(case for case in V3_CASES if case["id"] == case_id)
+    directory = Path(V3_CAPTURE_ROOT).resolve(strict=True) / case_id
+    native_directory, sdk_directory = directory / "native", directory / "sdk/evidence"
+    native_path, sdk_path = native_directory / "evidence/native-raw.json", sdk_directory / "python-raw.json"
+    assert native_path.is_file() and sdk_path.is_file(), f"The explicitly selected V3 packet is incomplete: {directory}"
+    native_values, sdk_values = _read(native_path), _read(sdk_path)
+    assert isinstance(native_values, list) and len(native_values) == 1
+    assert isinstance(sdk_values, list) and len(sdk_values) == 1
+    returned = _read(native_directory / "stdout.json")
+    assert returned["id"] == case_id and returned["ok"] is True
+    native, sdk = native_values[0], sdk_values[0]
+    return case, native, sdk, returned["result"], sdk["observation"]["result"], native_directory, sdk_directory
+
+
+@pytest.fixture(scope="module", params=V3_CASES, ids=lambda case: case["id"])
+def v3_raw_actual(request):
+    """Raw structure alone supplies no engine, barrier, or acceptance credit."""
+    return _v3_raw_packet(request.param["id"])
+
+
+def test_v3_selected_raw_retains_both_independent_original_inputs(v3_raw_actual):
+    case, native, sdk, native_result, sdk_result, *_ = v3_raw_actual
+    guard._same(native["input"], case["input"], "Native V3 raw must retain the whole frozen independent input")
+    guard._same(sdk["input"], case["input"], "SDK V3 raw must retain the whole frozen independent input")
+    guard._same(native["result"], native_result, "Native V3 raw must retain its whole original common result")
+    guard._same(sdk["observation"]["result"], sdk_result, "SDK V3 raw must retain its whole original common result")
+
+
+def test_v3_actual_pair_requires_complete_independent_custody(v3_raw_actual):
+    """Genuine disagreement is retained; either invalid engine blocks custody."""
+    case, native, sdk, native_result, sdk_result, native_directory, sdk_directory = v3_raw_actual
+    assert guard.validate_pair(case, native, sdk, native_result, sdk_result,
+        approved_node=_trusted_node(), approved_sdk_root=SDK_SOURCE_ROOT,
+        approved_reference=REFERENCE_ROOT, approved_adapter_root=Path(ADAPTER_ROOT).resolve(strict=True),
+        native_directory=native_directory, sdk_directory=sdk_directory) is True
+
+
+@lru_cache(maxsize=1)
+def _v3_sdk_packet(case_id):
+    values = _v3_raw_packet(case_id)
+    case, _, sdk, _, result, _, directory = values
+    assert guard.validate_capture(case, sdk, result, native=False, approved_sdk_root=SDK_SOURCE_ROOT,
+        approved_adapter_root=Path(ADAPTER_ROOT).resolve(strict=True), directory=directory) is True
+    return values
+
+
+@pytest.fixture(scope="module", params=V3_CASES, ids=lambda case: case["id"])
+def v3_sdk_actual(request):
+    """A genuine SDK proof is independent of a rejected Native transport."""
+    return _v3_sdk_packet(request.param["id"])
+
+
+def test_actual_v3_sdk_public_capture_validates_without_a_native_positive(v3_sdk_actual):
+    case, _, sdk, _, result, _, directory = v3_sdk_actual
+    assert sdk["observation"]["complete"] is True and directory.name == "evidence"
+    assert set(result["calls"]) == set(guard._expected_calls(case["input"]))
+
+
+def _v3_sdk_observation_context(actual):
+    case, _, sdk, *_ = actual
+    raw = sdk["observation"]
+    roots = guard._adapter_inventory(raw["adapterProvenanceBefore"], Path(ADAPTER_ROOT).resolve(strict=True))
+    process = next(process for process in raw["processes"] if process["observation"]["ownerBindings"])
+    observation = process["observation"]
+    recorded, trusted, events, returns = guard._sdk_observation(observation, process, case["input"],
+        SDK_SOURCE_ROOT, adapter_roots=roots)
+    return case, process, observation, recorded, trusted, roots, events, returns
+
+
+@pytest.mark.parametrize("attack", ["frame", "code", "receiver"])
+def test_v3_sdk_original_method_return_requires_its_retained_entry(v3_sdk_actual, attack):
+    case, process, original, _, _, roots, events, returns = _v3_sdk_observation_context(v3_sdk_actual)
+    call = next(row for row in events.values() if row["event"] == "original-call" and row["name"] == "MemorySearchTool.execute")
+    row = deepcopy(returns[call["sequence"]])
+    lookup = row["returnLookup"]
+    if attack == "frame":
+        lookup["frameObjectId"] = next(item["frameObjectId"] for item in events.values()
+            if item["event"] == "original-call" and item["frameObjectId"] != call["frameObjectId"])
+    elif attack == "code":
+        lookup["entryCode"]["sourceSha256"] = "0" * 64
+    else:
+        lookup["entryReceiverObjectId"] = next(item["receiverObjectId"] for item in events.values()
+            if item["event"] == "original-call" and item["receiverObjectId"] is not None
+            and item["receiverObjectId"] != call["receiverObjectId"])
+    observation = {**original, "originalCalls": [row if item["sequence"] == row["sequence"] else item
+                                               for item in original["originalCalls"]]}
+    with pytest.raises(ValueError):
+        guard._sdk_observation(observation, process, case["input"], SDK_SOURCE_ROOT, adapter_roots=roots)
+
+
+@pytest.mark.parametrize("attack", ["callable-role", "present", "receiver"])
+def test_v3_sdk_declared_predicate_must_match_the_actual_effective_callable(v3_sdk_actual, attack):
+    case, process, original, _, _, roots, *_ = _v3_sdk_observation_context(v3_sdk_actual)
+    owners = list(original["ownerBindings"])
+    owner = deepcopy(owners[0])
+    owners[0] = owner
+    effective = owner["effectiveForgottenCallback"]
+    if attack == "callable-role":
+        if owner["forgottenCallback"]:
+            effective["callable"]["module"] = "memory_core.index.sqlite_store"
+            effective["callable"]["qualname"] = "SQLiteMemoryStore.is_session_forgotten"
+        else:
+            effective["callable"]["module"] = "equivalence.forget_index_fence_sdk"
+            effective["callable"]["qualname"] = "_SdkActor.acquire.<locals>.<lambda>"
+    elif attack == "present":
+        effective["present"] = not effective["present"]
+    else:
+        effective["boundReceiverObjectId"] = owner["storeObjectId"] if effective["boundReceiverObjectId"] is None else None
+    with pytest.raises(ValueError):
+        guard._sdk_observation({**original, "ownerBindings": owners}, process, case["input"],
+            SDK_SOURCE_ROOT, adapter_roots=roots)
+
+
+@pytest.mark.parametrize("attack", ["outside-root", "other-approved-module"])
+def test_v3_sdk_main_import_alias_is_limited_to_the_actual_cli(v3_sdk_actual, attack):
+    case, process, original, _, _, roots, *_ = _v3_sdk_observation_context(v3_sdk_actual)
+    modules = list(original["loadedFixtureModules"])
+    number, actual = next((number, row) for number, row in enumerate(modules) if row["module"] == "__main__")
+    row = dict(actual)
+    modules[number] = row
+    if attack == "outside-root":
+        row["path"] = str(roots[0].parent / "labelled-other-tree/equivalence/forget_index_fence_sdk_cli.py")
+    else:
+        target = next(item for item in modules if item["module"] == "equivalence.forget_index_fence_sdk")
+        row["path"], row["sha256"] = target["path"], target["sha256"]
+    with pytest.raises(ValueError):
+        guard._sdk_observation({**original, "loadedFixtureModules": modules}, process, case["input"],
+            SDK_SOURCE_ROOT, adapter_roots=roots)
+
+
+def test_actual_v3_rejected_native_release_never_becomes_a_positive_capture():
+    if V3_REJECTED_NATIVE_RELEASE_ROOT is None:
+        pytest.skip("No explicitly selected rejected V3 Native release packet; no acceptance credit")
+    assert ADAPTER_ROOT is not None, "Rejected V3 replay requires an independently selected adapter root"
+    case = V3_CASES[0]
+    directory = Path(V3_REJECTED_NATIVE_RELEASE_ROOT).resolve(strict=True) / case["id"] / "native"
+    values, returned = _read(directory / "evidence/native-raw.json"), _read(directory / "stdout.json")
+    assert isinstance(values, list) and len(values) == 1
+    assert returned["id"] == case["id"] and returned["ok"] is True
+    with pytest.raises(ValueError, match="release"):
+        guard.validate_capture(case, values[0], returned["result"], native=True, approved_node=_trusted_node(),
+            approved_reference=REFERENCE_ROOT, approved_adapter_root=Path(ADAPTER_ROOT).resolve(strict=True),
+            directory=directory)
+
+
+def test_v3_capture_selector_never_borrows_a_v2_packet(tmp_path, monkeypatch):
+    monkeypatch.setitem(globals(), "V3_CAPTURE_ROOT", None)
+    monkeypatch.setitem(globals(), "CAPTURE_ROOT", str(tmp_path / "labelled-v2-only"))
+    with pytest.raises(pytest.skip.Exception, match="No explicitly selected V3 packet"):
+        _v3_raw_packet.__wrapped__(V3_CASES[0]["id"])
+
+
+@pytest.mark.parametrize("case", V3_CASES, ids=lambda case: case["id"])
+def test_v3_literal_barriers_bind_search_settlement_and_declared_dependencies(case):
+    value = case["input"]
+    policy = value["observationPolicy"]["searchEffects"]
+    assert policy["protocol"] == "original-search-effects-v3"
+    assert policy["placement"]["captureAndCloseRequiresSettledPriorSearchEffects"] is True
+    deferred = {(row["actor"], row["label"]): row["after"] for row in policy["placement"]["deferredSearches"]}
+    settled, pending, joined = {}, set(), set()
+    for number, step in enumerate(value["steps"]):
+        operation = step["operation"]
+        key = step.get("actor", "foreground"), step.get("label")
+        if operation == "start-public-memory-search":
+            assert key not in pending and key not in settled
+            pending.add(key)
+        elif operation in {"public-memory-search", "await-public-call"}:
+            assert key[1] in value["queries"] and key not in settled
+            if operation == "await-public-call":
+                assert key in pending
+                pending.remove(key)
+            settled[key] = number
+        elif operation == "await-original-search-effects":
+            assert set(step) == {"operation", "actor", "label"}
+            assert key in settled and key not in joined
+            after = deferred.get(key)
+            if after is None:
+                assert number == settled[key] + 1
+            else:
+                prior = value["steps"][number - 1]
+                assert all(prior.get(name) == expected for name, expected in after.items())
+                assert number - 1 > settled[key]
+            joined.add(key)
+        elif operation == "capture-physical-state":
+            # A search still held before its actual await settlement is pending.
+            assert set(settled) <= joined
+        elif operation == "original-owner-close":
+            assert all(item in joined for item in settled if item[0] == key[0])
+    assert not pending and set(settled) == joined and set(deferred) <= joined
+
+
+def test_v3_closed_family_never_credits_legacy_v2_cases():
+    with pytest.raises(ValueError):
+        validate_v3_registration(V2_CASES)
+
+
+def _v3_schema_only_counterexample(case):
+    """Deliberately non-evidence: no engine return, state, or job count is claimed."""
+    calls = {}
+    for key, (kind, label, _) in guard._expected_calls(case["input"]).items():
+        outcome = ({"status": "rejected", "isTypedConflict": False} if kind == "sync" else
+                   {"status": "rejected", "error": {"message": "Labelled schema-only negative; never original output"}})
+        calls[key] = {"operation": kind, "label": label, "outcome": outcome}
+    stages = {}
+    for step in case["input"]["steps"]:
+        if step["operation"] == "capture-physical-state":
+            stages[step["label"]] = {"documents": [], "origins": [], "tombstones": [], "recall": None,
+                "phaseSignals": None, "ingestion": None, "preimages": None, "sessions": {"facts": [], "admission": []},
+                "index": [], "events": [], "concurrency": {"markerVisible": None, "forgetSettled": None, "oldBuildSettled": None}}
+    return {"provider": "none", "calls": calls, "snapshots": stages}
+
+
+@pytest.mark.parametrize("case", V3_CASES, ids=lambda case: case["id"])
+@pytest.mark.parametrize("native", [False, True])
+def test_v3_schema_only_counterexample_never_supplies_capture_custody(case, native):
+    result = _v3_schema_only_counterexample(case)
+    assert guard.validate_result(case, result) is True  # Schema validation is not custody.
+    with pytest.raises(ValueError):
+        guard.validate_capture(case, {}, result, native=native)
+
+
+ADAPTER_SOURCE_FILES = (
+    "equivalence/forget_index_fence_sdk.py", "equivalence/forget_index_fence_sdk_cli.py",
+    "equivalence/forget_index_fence_sdk_clock.py", "equivalence/forget_index_fence_v3.py",
+    "docs/forget_index_fence_v3_literals.json", "docs/forget_index_fence_v3_plan.md",
+)
+
+
+def _source_only_adapter_identity(root):
+    digest, rows = hashlib.sha256(), []
+    for name in ADAPTER_SOURCE_FILES:
+        data = (root / name).read_bytes()
+        digest.update(name.encode() + b"\0" + data + b"\0")
+        rows.append({"path": name, "bytes": len(data), "sha256": hashlib.sha256(data).hexdigest()})
+    return {"root": str(root), "files": rows, "sourceSha256": digest.hexdigest()}
+
+
+@pytest.fixture
+def approved_adapter_source_copy(tmp_path):
+    """Actual source bytes only; this fixture contains no execution evidence."""
+    approved, recorded = tmp_path / "approved-adapter", tmp_path / "recorded-checkout"
+    for name in ADAPTER_SOURCE_FILES:
+        destination = approved / name
+        destination.parent.mkdir(parents=True, exist_ok=True)
+        destination.write_bytes((ROOT / name).read_bytes())
+    identity = _source_only_adapter_identity(approved)
+    identity["root"] = str(recorded)
+    return approved, recorded, identity
+
+
+def test_v3_adapter_inventory_uses_independently_approved_canonical_bytes(approved_adapter_source_copy):
+    approved, recorded, identity = approved_adapter_source_copy
+    assert guard._adapter_inventory(identity, approved) == (recorded, approved)
+    for name in ADAPTER_SOURCE_FILES:
+        assert guard._adapter_path(recorded / name, recorded, approved) == approved / name
+
+
+@pytest.mark.parametrize("attack", ["bytes", "missing", "duplicate", "order", "seal", "relative-root"])
+def test_v3_adapter_inventory_rejects_tampered_bytes_or_complete_inventory(approved_adapter_source_copy, attack):
+    approved, _, original = approved_adapter_source_copy
+    identity = deepcopy(original)
+    if attack == "bytes":
+        target = approved / ADAPTER_SOURCE_FILES[0]
+        target.write_bytes(target.read_bytes() + b"\n# labelled source-only substitution\n")
+    elif attack == "missing":
+        del identity["files"][0]
+    elif attack == "duplicate":
+        identity["files"].append(deepcopy(identity["files"][0]))
+    elif attack == "order":
+        identity["files"].reverse()
+    elif attack == "seal":
+        identity["sourceSha256"] = "0" * 64
+    else:
+        identity["root"] = "labelled-relative-root"
+    with pytest.raises(ValueError):
+        guard._adapter_inventory(identity, approved)
+
+
+def test_v3_captured_adapter_root_cannot_select_its_own_authority(approved_adapter_source_copy, tmp_path):
+    approved, _, _ = approved_adapter_source_copy
+    attacker = tmp_path / "captured-arbitrary-root"
+    for name in ADAPTER_SOURCE_FILES:
+        target = attacker / name
+        target.parent.mkdir(parents=True, exist_ok=True)
+        target.write_bytes((approved / name).read_bytes())
+    target = attacker / ADAPTER_SOURCE_FILES[0]
+    target.write_bytes(target.read_bytes() + b"\n# labelled coherently sealed attacker tree\n")
+    identity = _source_only_adapter_identity(attacker)
+    for authority in (approved, None):
+        with pytest.raises(ValueError):
+            guard._adapter_inventory(identity, authority)
+
+
+@pytest.mark.parametrize("path_kind", ["outside", "traversal", "production"])
+def test_v3_adapter_owner_path_cannot_escape_the_declared_fixture_surface(approved_adapter_source_copy, path_kind):
+    approved, recorded, _ = approved_adapter_source_copy
+    paths = {"outside": recorded.parent / "other-checkout/equivalence/forget_index_fence_sdk.py",
+             "traversal": recorded / "equivalence/../docs/forget_index_fence_v3_literals.json",
+             "production": recorded / "memory_core/index/sqlite_store.py"}
+    with pytest.raises(ValueError):
+        guard._adapter_path(paths[path_kind], recorded, approved)
+
+
+@pytest.mark.parametrize("kind", ["symbolic", "hardlink"])
+def test_v3_adapter_source_must_be_an_independent_regular_file(approved_adapter_source_copy, tmp_path, kind):
+    approved, _, identity = approved_adapter_source_copy
+    path = approved / ADAPTER_SOURCE_FILES[0]
+    backing = tmp_path / "labelled-temporary-backing.py"
+    backing.write_bytes(path.read_bytes())
+    path.unlink()
+    if kind == "symbolic":
+        path.symlink_to(backing)
+    else:
+        os.link(backing, path)
+    with pytest.raises(ValueError):
+        guard._adapter_inventory(identity, approved)
+
+
+INSTALLED_WAIT_ROLES = {"ThreadPoolExecutor.submit": ThreadPoolExecutor.submit,
+                        "Future.result": Future.result, "Condition.wait": threading.Condition.wait}
+
+
+def _installed_wait_code(role):
+    code = INSTALLED_WAIT_ROLES[role].__code__
+    source = Path(code.co_filename).resolve(strict=True)
+    return {"file": str(source), "qualname": code.co_qualname, "firstLine": code.co_firstlineno,
+            "sourceSha256": hashlib.sha256(source.read_bytes()).hexdigest(),
+            "bytecodeSha256": hashlib.sha256(code.co_code).hexdigest()}
+
+
+@pytest.mark.parametrize("role", INSTALLED_WAIT_ROLES)
+def test_v3_wait_callable_owner_matches_the_actual_installed_standard_library(role):
+    row = _installed_wait_code(role)
+    assert guard._sdk_callable_owner(row, ROOT, ROOT, role=role) == Path(row["file"])
+
+
+@pytest.mark.parametrize("role", INSTALLED_WAIT_ROLES)
+@pytest.mark.parametrize("attack", ["role", "source", "source-sha", "bytecode"])
+def test_v3_wait_callable_owner_rejects_source_role_and_bytecode_substitution(role, attack):
+    row = _installed_wait_code(role)
+    other = next(item for item in INSTALLED_WAIT_ROLES if item != role)
+    if attack == "role":
+        role = other
+    elif attack == "source":
+        row = _installed_wait_code(other)
+    elif attack == "source-sha":
+        row["sourceSha256"] = "0" * 64
+    else:
+        alternate = _installed_wait_code(other)["bytecodeSha256"]
+        assert alternate != row["bytecodeSha256"]
+        row["bytecodeSha256"] = alternate
+    with pytest.raises(ValueError):
+        guard._sdk_callable_owner(row, ROOT, ROOT, role=role)

@@ -1330,6 +1330,40 @@ def _native_source_clock_v2(case, raw, actors, imports, passive, context, author
         actor_events = [row for row in all_clock_events if row["pid"] == pid]
         selected = [row for row in actor_events if row["event"] in {
             "source-clock-control", "source-clock-call-boundary", "source-clock-read", "source-clock-deletion"}]
+        if child["exit"] == {"code": None, "signal": "SIGKILL"}:
+            # A process killed inside the original marker gate cannot execute
+            # its public-call finally/persist. Its last raw JSON snapshot is
+            # authenticated by the exact RAM prefix it actually observed.
+            channels = [row for row in actor["passiveChannels"] if row["pid"] == pid and row["threadId"] == 0]
+            require(len(channels) == 1, "A killed Native actor lost its actual persisted RAM snapshot boundary")
+            channel = channels[0]
+            directory = Path(raw["fixtureBase"]).parent
+            wire = _owned(directory / "evidence" / f"{pid}-0-events.jsonl", directory).read_bytes()
+            require(channel["protocol"] == NATIVE_EVENT_PROTOCOL and channel["codec"] == NATIVE_EVENT_CODEC
+                    and channel["token"] == _digest(directory / "context.json") and channel["channelIndex"] == 0
+                    and type(channel["publishedBytes"]) is int and 0 < channel["publishedBytes"] <= len(wire)
+                    and channel["failureCode"] == 0,
+                    "A killed Native actor borrowed another thread/context or an invented snapshot offset")
+            prefix = wire[:channel["publishedBytes"]]
+            require(prefix.endswith(b"\n") and _sha(prefix) == channel["sha256"],
+                    "The killed Native actor's actual persisted RAM prefix differs from its original sealed bytes")
+            prefix_rows = [_decode_native_event_line(line) for line in prefix.split(b"\n")[:-1]]
+            pending = actor["calls"][-1]
+            require(pending["operation"] == "original-forget" and "settledAtNs" not in pending
+                    and prefix_rows[-1]["event"] == "original-public-owner-enter"
+                    and prefix_rows[-1]["sequence"] == pending["originalEntered"]["sequence"]
+                    and prefix_rows[-1]["atNs"] == pending["originalEntered"]["atNs"],
+                    "A killed Native actor invented an earlier/later RAM cutoff instead of its actual persisted public entry")
+            before = {(row["threadId"], row["sequence"]) for row in prefix_rows if row["event"] in {
+                "source-clock-control", "source-clock-call-boundary", "source-clock-read", "source-clock-deletion"}}
+            prior = [row for row in selected if (row["threadId"], row["sequence"]) in before]
+            extra = [row for row in selected if (row["threadId"], row["sequence"]) not in before]
+            require(len(rows) == len(prior) and len(before) == len(prior)
+                    and all(row["event"] == "source-clock-read" for row in extra)
+                    and any(gate.get("killWhileHeld") and gate["receipt"]["pid"] == pid
+                            and gate["boundary"] == "forget.marker-committed-before-purge" for gate in raw["gates"]),
+                    "A killed Native snapshot omitted prior evidence or claimed unobserved post-marker mutations")
+            rows = [*rows, *extra]  # Validate every later original read, without rewriting the saved snapshot.
         require(len(rows) == len(selected), "Native source-clock receipts omitted or duplicated actual passive events")
         claimed = set()
         for receipt in rows:
@@ -2077,6 +2111,31 @@ def _native_held_publication_terminal(gate, passive, context, imports, authority
             "The held Native publication refreshed its original captured expected fence or replied before the held frame")
 
 
+def _native_marker_commit(receipt, events, context, imports, authority, approved_node):
+    filename = Path(context["runtime"]["runtimeRoot"]) / "dist/cli.runtime-CVRN4xUp.mjs"
+    text = _compiled_text(str(filename), _digest(filename))
+    anchor = ("\t\t\tif (!runSqliteImmediateTransactionSync(db, () => {\n"
+              "\t\t\t\tif (!lineageIsCurrent()) return false;\n"
+              "\t\t\t\tif (recordMemorySessionTombstonesInDatabase(db, {")
+    require(text.count(anchor) == 1, "The original Native guarded marker transaction lost its unique pinned source owner")
+    line = text[:text.index(anchor)].count("\n") + 1
+    require(f"{filename}:{line}:" in receipt["originalStack"]
+            and "dist/cli.runtime-CVRN4xUp.mjs" in imports[receipt["pid"], receipt["threadId"]]["loaded"]
+            and receipt["sourceOwner"] == "forgetWorkspaceMemory.marker-transaction"
+            and receipt["commitReturned"] is True and receipt["wasTransaction"] is True
+            and receipt["transactionActive"] is False and receipt["sql"].strip().upper() in {"COMMIT", "COMMIT;"},
+            "The killed Native forget had no actual source-owned committed marker before purge")
+    commits = [row for row in events if row["event"] == "original-forget-marker-commit"
+               and row["databaseRef"] == receipt["databaseRef"] and row["sequence"] < receipt["sequence"]]
+    require(commits, "The held Native marker gate lost its actual original COMMIT return event")
+    for field in ("dbPath", "sql", "wasTransaction", "transactionActive", "returned", "originalStack", "sourceOwner"):
+        _same(commits[-1][field], receipt[field], "The Native marker gate changed its actual original committed transaction")
+    require(_native_value(receipt["returned"], authority, approved_node) == {"privateType": "undefined"}
+            and any(row["event"] == "original-tombstone-write" and row["databaseRef"] == receipt["databaseRef"]
+                    and row["transactionActive"] is True and row["sequence"] < commits[-1]["sequence"] for row in events),
+            "The Native marker COMMIT did not retain its actual void return and same-database original tombstone write")
+
+
 def _native_gates(case, raw, actors, passive, authority, approved_node, directory, *, context=None, imports=None):
     specifications = {row["name"]: row for row in case["input"]["gates"]}
     require(len(raw["gates"]) == len(specifications), "An original Native functional gate was omitted or added")
@@ -2130,10 +2189,7 @@ def _native_gates(case, raw, actors, passive, authority, approved_node, director
                     "The Native postcheck live fence differs from its actual SQL return")
             _native_held_publication_terminal(gate, passive, context, imports, authority, approved_node)
         elif boundary == "forget.marker-committed-before-purge":
-            require(receipt["commitReturned"] is True and receipt["wasTransaction"] is True
-                    and receipt["transactionActive"] is False and receipt["sql"].strip().upper() in {"COMMIT", "COMMIT;"}
-                    and "forgetWorkspaceMemory" in receipt["originalStack"],
-                    "The killed Native forget had no actual committed marker before purge")
+            _native_marker_commit(receipt, events, context, imports, authority, approved_node)
         elif boundary == "forget.marker-commit-or-original-workspace-or-writer-wait":
             observation = receipt["observation"]
             require(observation in spec["observationAlternatives"], "Native forget progress was inferred from elapsed time")

@@ -384,16 +384,18 @@ def validate_sdk_clock_v2(case, observation, process, events, returns, *, record
     for row in observation["sourceClockReads"]:
         require(row["event"] == "original-index-source-read-return", "SDK source read receipt used another event")
         code(row["sourceCode"], "source-read")
-        key, _, _ = scope(row["scope"])
-        candidates = [call for call in originals if call["code"] == owners["source-read"]
-                      and call["callLabel"] == row["scope"]["label"] and call["sequence"] in returns
-                      and _ns(call["atNs"]) < _ns(row["atNs"]) < _ns(returns[call["sequence"]]["atNs"])]
-        require(len(candidates) == 1, "SDK source read lacks a unique original invocation")
-        call = candidates[0]
-        require(call["sequence"] not in read_frames, "SDK source read duplicated an original invocation")
-        read_frames.add(call["sequence"])
-        _same(returns[call["sequence"]]["returned"], row["returned"], "SDK source read altered its original complete return")
-        _same(call["arguments"]["file"], row["arguments"]["file"], "SDK source read borrowed another original file")
+        call, key = None, None
+        if row["scope"] is not None:
+            key, _, _ = scope(row["scope"])
+            candidates = [call for call in originals if call["code"] == owners["source-read"]
+                          and call["callLabel"] == row["scope"]["label"] and call["sequence"] in returns
+                          and _ns(call["atNs"]) < _ns(row["atNs"]) < _ns(returns[call["sequence"]]["atNs"])]
+            require(len(candidates) == 1, "SDK source read lacks a unique original invocation")
+            call = candidates[0]
+            require(call["sequence"] not in read_frames, "SDK source read duplicated an original invocation")
+            read_frames.add(call["sequence"])
+            _same(returns[call["sequence"]]["returned"], row["returned"], "SDK source read altered its original complete return")
+            _same(call["arguments"]["file"], row["arguments"]["file"], "SDK source read borrowed another original file")
         source = owned(row["arguments"]["file"]["abs_path"], source=True)
         returned = row["returned"]
         require(returned["source"] == "memory" and returned["path"] == source.relative_to(workspace).as_posix(),
@@ -405,9 +407,27 @@ def validate_sdk_clock_v2(case, observation, process, events, returns, *, record
         mtime = returned["mtime"]
         require(type(mtime) in (int, float) and math.isfinite(mtime) and int(mtime) == mtime,
                 "SDK V2 original source read lacks an exact integral millisecond filesystem clock")
+        if call is None:
+            # The existing managed publisher can read on an unlabelled worker.
+            # Its actual return profiler retains the original function/locals,
+            # but supplies no public API entry, clock tick, or thread lineage.
+            # Do not invent those missing facts or extend write clock scopes.
+            initial = value["initialFiles"].get(source.relative_to(workspace).as_posix())
+            initial_bytes = initial.encode("utf8").hex() if isinstance(initial, str) else None
+            known_initial = initial_bytes == payload.hex() and mtime == value["clock"]["initialSourceMtimeMs"]
+            known_commit = any(item["path"] == str(source) and item["bytes"] == payload.hex()
+                               and item["mtimeNs"] == int(mtime) * 1_000_000 and _ns(item["atNs"]) < _ns(row["atNs"])
+                               for item in commits)
+            require(known_initial or known_commit,
+                    "An unscoped original SDK read borrowed bytes/mtime outside its verified initial or committed source")
+            require(payload.decode("utf8", "replace") == returned["text"]
+                    and hashlib.sha256(returned["text"].encode("utf8")).hexdigest() == returned["hash"]
+                    and row["arguments"]["file"]["source"] == "memory"
+                    and row["arguments"]["info"][6] == len(payload),
+                    "An unscoped SDK read lost its actual original local file bytes/stat/text/return relation")
         reads.append({"path": str(source), "sha256": hashlib.sha256(payload).hexdigest(), "bytes": payload.hex(),
-                      "mtimeNs": int(mtime) * 1_000_000, "mtimeMs": mtime, "enteredAtNs": call["atNs"],
-                      "finishedAtNs": returns[call["sequence"]]["atNs"], "atNs": row["atNs"],
+                      "mtimeNs": int(mtime) * 1_000_000, "mtimeMs": mtime, "enteredAtNs": call["atNs"] if call else None,
+                      "finishedAtNs": returns[call["sequence"]]["atNs"] if call else row["atNs"], "atNs": row["atNs"],
                       "callKey": key, "pid": pid})
     for call in originals:
         if call["code"] == owners["source-read"] and call["sequence"] in returns:

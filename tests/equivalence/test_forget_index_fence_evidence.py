@@ -961,3 +961,130 @@ def test_v2_cache_rechecks_labelled_temporary_source_before_return(v2_clock_actu
 def test_replay_result_inclusion_requires_a_boolean_before_reading_any_packet(tmp_path, value):
     with pytest.raises(ValueError, match="explicit boolean opt-in"):
         guard.replay_case(V2_CASES[0], tmp_path / "unselected-native", tmp_path / "unselected-sdk", include_results=value)
+
+
+@pytest.mark.parametrize("attack", ["offset", "coherent-earlier-offset", "coherent-later-offset", "sha", "boundary-receipt-omission", "late-write"])
+def test_actual_native_killed_snapshot_requires_exact_ram_prefix_and_read_only_tail(v2_clock_actual, attack):
+    case, raw, *_ = v2_clock_actual
+    if not any(child["exit"] == {"code": None, "signal": "SIGKILL"} for child in raw["children"]):
+        pytest.skip("The actual selected original was not killed; no crash-prefix boundary credit")
+    _, original_actors, execution, authority, imports, original_passive = _native_clock_context(case["id"])
+    pid, (child, original) = next((pid, values) for pid, values in original_actors.items()
+                                if values[0]["exit"] == {"code": None, "signal": "SIGKILL"})
+    channels = deepcopy(original["passiveChannels"])
+    channel = next(row for row in channels if row["pid"] == pid and row["threadId"] == 0)
+    passive = {key: list(rows) for key, rows in original_passive.items()}
+    if attack == "offset":
+        channel["publishedBytes"] += 1
+    elif attack in {"coherent-earlier-offset", "coherent-later-offset"}:
+        path = Path(raw["fixtureBase"]).parent / "evidence" / f"{pid}-0-events.jsonl"
+        wire = path.read_bytes()
+        boundary = channel["publishedBytes"]
+        if attack == "coherent-earlier-offset":
+            changed = wire.rfind(b"\n", 0, boundary - 1) + 1
+            assert 0 < changed < boundary
+        else:
+            changed = wire.find(b"\n", boundary) + 1
+            assert boundary < changed <= len(wire)
+        channel["publishedBytes"] = changed
+        channel["sha256"] = hashlib.sha256(wire[:changed]).hexdigest()
+    elif attack == "sha":
+        channel["sha256"] = "0" * 64
+    elif attack == "boundary-receipt-omission":
+        channels.remove(channel)
+    else:
+        path = Path(raw["fixtureBase"]).parent / "evidence" / f"{pid}-0-events.jsonl"
+        prefix = path.read_bytes()[:channel["publishedBytes"]]
+        last = guard._decode_native_event_line(prefix[:-1].rsplit(b"\n", 1)[-1])
+        selected = next(((number, row) for number, row in enumerate(passive[pid, 0])
+                         if row["event"] == "source-clock-read" and row["sequence"] > last["sequence"]), None)
+        if selected is None:
+            pytest.skip("The actual killed original has no late read to mutate; no late-read boundary credit")
+        number, row = selected
+        passive[pid, 0][number] = {**row, "event": "source-clock-deletion"}
+    actor = {**original, "passiveChannels": channels}
+    actors = {**original_actors, pid: (child, actor)}
+    with pytest.raises(ValueError, match="post-marker mutations" if attack == "late-write" else None):
+        guard._native_source_clock_v2(case, raw, actors, imports, passive, execution, authority, _trusted_node())
+
+
+def _sdk_unscoped_read_context(actual, version):
+    case, _, sdk, *_ = actual
+    for process in sdk["observation"]["processes"]:
+        observation = process["observation"]
+        if not any(row["scope"] is None for row in observation["sourceClockReads"]):
+            continue
+        recorded, trusted, events, returns = guard._sdk_observation(observation, process, case["input"], SDK_SOURCE_ROOT)
+        context = case, sdk, process, observation, recorded, trusted, events, returns
+        proof = _validate_sdk_clock(context, observation)
+        for number, row in enumerate(observation["sourceClockReads"]):
+            if row["scope"] is not None:
+                continue
+            returned = row["returned"]
+            raw = row["arguments"]["raw"]["bytesHex"]
+            initial = case["input"]["initialFiles"].get(returned["path"])
+            initial_match = isinstance(initial, str) and initial.encode("utf8").hex() == raw and returned["mtime"] == case["input"]["clock"]["initialSourceMtimeMs"]
+            committed = any(item["path"] == row["arguments"]["file"]["abs_path"] and item["bytes"] == raw
+                            and item["mtimeNs"] == returned["mtime"] * 1_000_000
+                            and int(item["atNs"]) < int(row["atNs"]) for item in proof["commits"])
+            if (version == "initial" and initial_match) or (version == "commit" and committed):
+                return context, number, proof
+    pytest.skip("The actual selected SDK original did not perform this unscoped source-version read; no version boundary credit")
+
+
+@pytest.mark.parametrize("version", ["initial", "commit"])
+def test_actual_sdk_unscoped_read_preserves_absent_public_call_lineage(v2_clock_actual, version):
+    context, number, proof = _sdk_unscoped_read_context(v2_clock_actual, version)
+    row = context[3]["sourceClockReads"][number]
+    summary = next(item for item in proof["reads"] if item["atNs"] == row["atNs"])
+    assert row["scope"] is None and summary["callKey"] is None and summary["enteredAtNs"] is None
+    assert summary["finishedAtNs"] == row["atNs"]
+
+
+@pytest.mark.parametrize("version", ["initial", "commit"])
+@pytest.mark.parametrize("attack", ["source", "hash", "mtime", "path", "version-bytes", "stat-size", "source-kind"])
+def test_actual_sdk_unscoped_read_requires_verified_source_bytes_and_version(v2_clock_actual, version, attack):
+    context, number, _ = _sdk_unscoped_read_context(v2_clock_actual, version)
+    original = context[3]
+    rows = list(original["sourceClockReads"])
+    row = deepcopy(rows[number])
+    rows[number] = row
+    if attack == "source":
+        row["sourceCode"]["sourceSha256"] = "0" * 64
+    elif attack == "hash":
+        row["returned"]["hash"] = "0" * 64
+    elif attack == "mtime":
+        row["returned"]["mtime"] += 1000
+    elif attack == "path":
+        row["arguments"]["file"]["abs_path"] = str(Path(context[1]["request"]["directory"]) / "labelled-unowned.md")
+    elif attack == "version-bytes":
+        raw = row["arguments"]["raw"]
+        payload = bytes.fromhex(raw["bytesHex"])
+        assert payload and payload[0] < 128
+        changed = bytes([payload[0] ^ 1]) + payload[1:]
+        raw["bytesHex"] = changed.hex()
+        row["arguments"]["text"] = row["returned"]["text"] = changed.decode("utf8")
+        row["returned"]["hash"] = hashlib.sha256(changed).hexdigest()
+    elif attack == "stat-size":
+        row["arguments"]["info"][6] += 1
+    else:
+        row["arguments"]["file"]["source"] = "sessions"
+    with pytest.raises(ValueError):
+        _validate_sdk_clock(context, {**original, "sourceClockReads": rows})
+
+
+@pytest.mark.parametrize("kind", ["write", "datetime"])
+def test_actual_sdk_unscoped_read_policy_never_extends_to_writes_or_datetime(v2_clock_actual, kind):
+    context = _sdk_clock_context(v2_clock_actual, require_receipt=kind == "write", require_datetime=kind == "datetime")
+    original = context[3]
+    field = "sourceClockOriginalIO" if kind == "write" else "datetimeClockCalls"
+    rows = list(original[field])
+    selected = next(((number, row) for number, row in enumerate(rows) if isinstance(row.get("scope"), dict)), None)
+    assert selected is not None
+    number, actual = selected
+    row = deepcopy(actual)
+    assert isinstance(row["scope"], dict)
+    row["scope"] = None
+    rows[number] = row
+    with pytest.raises(ValueError, match="public-call scope"):
+        _validate_sdk_clock(context, {**original, field: rows})

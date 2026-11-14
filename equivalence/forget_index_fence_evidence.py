@@ -9,6 +9,7 @@ from __future__ import annotations
 import ast
 import base64
 import binascii
+from contextvars import ContextVar
 from functools import lru_cache
 import hashlib
 import json
@@ -67,6 +68,41 @@ def _json(text):
 NATIVE_EVENT_CODEC = "deflate-raw-native-event-v1"
 NATIVE_EVENT_PROTOCOL = "shared-original-event-jsonl-v2"
 MAX_NATIVE_EVENT_RAW_BYTES = 64 * 1024 * 1024
+_VALIDATION_CACHE = ContextVar("forget_index_fence_custody_cache", default=None)
+
+
+def _native_source_index(context, imports):
+    cache = _VALIDATION_CACHE.get()
+    if cache is None:
+        return None
+    key = id(context), id(imports)
+    if key not in cache["sourceIndexes"]:
+        package_root = Path(context["runtime"]["runtimeRoot"]).parent.parent
+        owners, paths = {}, {}
+        for (pid, _), loaded in imports.items():
+            for owner in loaded["releaseImports"]:
+                path = package_root / _relative(owner["package"]) / _relative(owner["path"])
+                owners[pid, owner["package"], owner["path"], owner["sha256"]] = path
+                paths.setdefault(pid, set()).add(str(path))
+                cache["verifiedFiles"][str(path)] = owner["sha256"]
+        cache["sourceIndexes"][key] = {"owners": owners, "paths": paths, "ownerChecks": set(), "stackChecks": set()}
+    return cache["sourceIndexes"][key]
+
+
+def _native_original_stack(stack, context, imports, pid):
+    require(isinstance(stack, str), "An original Native SQL invocation lost its actual source stack")
+    index = _native_source_index(context, imports)
+    if index is not None:
+        key = pid, stack
+        if key not in index["stackChecks"]:
+            require(any(path in stack for path in index["paths"].get(pid, ())),
+                    "A Native cached SQL statement was invoked outside an actual original source frame")
+            index["stackChecks"].add(key)
+        return
+    package_root = Path(context["runtime"]["runtimeRoot"]).parent.parent
+    require(any(str(package_root / _relative(owner["package"]) / _relative(owner["path"])) in stack
+                for (process_pid, _), loaded in imports.items() if process_pid == pid for owner in loaded["releaseImports"]),
+            "A Native cached SQL statement was invoked outside an actual original source frame")
 
 
 def _decode_native_event_record(line, *, allow_plain=False, maximum_raw_bytes=MAX_NATIVE_EVENT_RAW_BYTES):
@@ -1126,6 +1162,19 @@ def _native_clock_state(state):
 
 def _native_clock_owner(owner, stack, context, imports, pid):
     require(isinstance(owner, dict) and owner["kind"] == "release", "A Native clock writer has no actual original source owner")
+    index = _native_source_index(context, imports)
+    if index is not None:
+        require(isinstance(stack, str), "A Native source owner lost its actual original stack")
+        key = (pid, owner["package"], owner["path"], owner["sha256"], owner["absolutePath"], stack)
+        if key in index["ownerChecks"]:
+            return
+        path = index["owners"].get(key[:4])
+        require(path is not None and owner["absolutePath"] == str(path)
+                and (str(path) in stack or path.as_uri() in stack) and _digest(path) == owner["sha256"],
+                "A Native source clock borrowed another loaded writer, source bytes, or call stack")
+        _VALIDATION_CACHE.get()["verifiedFiles"][str(path)] = owner["sha256"]
+        index["ownerChecks"].add(key)
+        return
     package_root = Path(context["runtime"]["runtimeRoot"]).parent.parent
     path = package_root / _relative(owner["package"]) / _relative(owner["path"])
     require(owner["absolutePath"] == str(path) and _digest(path) == owner["sha256"]
@@ -1566,6 +1615,10 @@ def _native_ram_channels(directory, process, imports, passive):
 
 
 def _native_terminated_threads(context, imports, passive, authority, approved_node):
+    cache = _VALIDATION_CACHE.get()
+    cache_key = id(context), id(imports), id(passive)
+    if cache is not None and cache_key in cache["terminated"]:
+        return cache["terminated"][cache_key]
     workers, exited = {}, {}
     for (pid, _), rows in passive.items():
         for row in rows:
@@ -1586,6 +1639,8 @@ def _native_terminated_threads(context, imports, passive, authority, approved_no
             require(isinstance(arguments, list) and arguments and type(arguments[0]) is int,
                     "An actual Native Worker exit lost its original numeric exit code")
             exited[key] = _ns(row["atNs"])
+    if cache is not None:
+        cache["terminated"][cache_key] = exited
     return exited
 
 
@@ -1595,6 +1650,7 @@ def _native_sql_custody(raw, context, imports, passive, authority, approved_node
     exited = _native_terminated_threads(context, imports, passive, authority, approved_node)
     operations = {"prepare", "exec", "get", "all", "run", "iterate", "columns", "setAllowBareNamedParameters",
                   "setAllowUnknownNamedParameters", "setReadBigInts", "setReturnArrays", "iterate.next", "iterate.return", "iterate.throw"}
+    database_paths = set()
     for key, rows in passive.items():
         pid, thread = key
         prefix = f"{pid}:{thread}:process-ref-"
@@ -1632,9 +1688,11 @@ def _native_sql_custody(raw, context, imports, passive, authority, approved_node
             require(row["transactionActive"] is None or type(row["transactionActive"]) is bool,
                     "Native SQL transaction state lost its actual type")
             path = row["dbPath"]
-            require(path in (None, "", ":memory:") or (Path(path).is_absolute()
-                    and Path(path).is_relative_to(fixture) and ".." not in Path(path).parts),
-                    "An original Native selected SQL operation escaped its owned database fixture")
+            if path not in database_paths:
+                require(path in (None, "", ":memory:") or (Path(path).is_absolute()
+                        and Path(path).is_relative_to(fixture) and ".." not in Path(path).parts),
+                        "An original Native selected SQL operation escaped its owned database fixture")
+                database_paths.add(path)
             if event == "original-selected-sql-call":
                 require(row["callId"] not in calls, "An actual Native SQL invocation was duplicated")
                 arguments = _native_observed_value(row["arguments"], authority, approved_node)
@@ -1652,12 +1710,7 @@ def _native_sql_custody(raw, context, imports, passive, authority, approved_node
                             "An actual Native statement operation lost its original prepare receiver/SQL")
                     _same(statement["sourceCaller"], row["sourceCaller"],
                           "A Native cached statement changed its original preparation owner")
-                    package_root = Path(context["runtime"]["runtimeRoot"]).parent.parent
-                    require(isinstance(row["originalStack"], str) and any(
-                        str(package_root / _relative(owner["package"]) / _relative(owner["path"])) in row["originalStack"]
-                        for (process_pid, _), loaded in imports.items() if process_pid == pid
-                        for owner in loaded["releaseImports"]),
-                        "A Native cached SQL statement was invoked outside an actual original source frame")
+                    _native_original_stack(row["originalStack"], context, imports, pid)
                 calls[row["callId"]] = row
                 continue
             require(row["callId"] in calls and row["callId"] not in settled,
@@ -1706,7 +1759,7 @@ def _native_sql_custody(raw, context, imports, passive, authority, approved_node
                     "A live original Native SQL invocation lost its actual return/error receipt")
 
 
-def _native_transport_value(payload, authority, approved_node, *, pid, thread):
+def _native_transport_value(payload, authority, approved_node, *, pid, thread, map_paths=()):
     require(set(payload) == {"value", "privateJSON", "valueRef"}, "A Native transport payload lost its whole original carrier")
     prefix = f"{pid}:{thread}:process-ref-"
     def ref(value):
@@ -1725,6 +1778,13 @@ def _native_transport_value(payload, authority, approved_node, *, pid, thread):
                     "A Native original transport buffer lost its complete actual bytes or size")
             ref(value["ref"])
             return value if kind == "SharedArrayBuffer" else {name: value[name] for name in ("privateType", "byteLength", "hex")}
+        if kind in {"Buffer", "DataView", "Uint8Array", "Uint8ClampedArray", "Int8Array", "Uint16Array", "Int16Array",
+                    "Uint32Array", "Int32Array", "Float32Array", "Float64Array", "BigInt64Array", "BigUint64Array"}:
+            require(set(value) == {"privateType", "byteLength", "hex"} and type(value["byteLength"]) is int
+                    and value["byteLength"] >= 0 and bytes.fromhex(value["hex"]).hex() == value["hex"]
+                    and len(bytes.fromhex(value["hex"])) == value["byteLength"],
+                    "A Native original transport view lost its complete actual backing bytes or size")
+            return dict(value)
         if kind in {"MessagePort", "function"}:
             require(set(value) == ({"privateType", "ref"} if kind == "MessagePort" else {"privateType", "name", "ref"}),
                     "A Native opaque transport value lost its actual host type/ref descriptor")
@@ -1761,7 +1821,19 @@ def _native_transport_value(payload, authority, approved_node, *, pid, thread):
         require(observed["ref"] == payload["valueRef"], "A Native transport's original root host-object ref changed")
     expected = projection(observed)
     if set(payload["value"]) == {"v8Hex"}:
-        _same(_native_value(payload["value"], authority, approved_node), expected,
+        actual = _native_value(payload["value"], authority, approved_node)
+        for path in map_paths:
+            original, side = actual, expected
+            for name in path[:-1]:
+                original, side = original[name], side[name]
+            original, name = original[path[-1]], path[-1]
+            require(isinstance(original, dict) and set(original) == {"privateType", "entries"}
+                    and original["privateType"] == "Map" and isinstance(original["entries"], list)
+                    and all(isinstance(entry, list) and len(entry) == 2 for entry in original["entries"])
+                    and side[name] == {},
+                    "The original recall-metadata Map lost its full typed V8 entries or source-known Object.keys side view")
+            side[name] = original
+        _same(actual, expected,
               "A Native transport JSON/typed side observation differs from its complete actual V8 value")
     else:
         _native_observed_value(payload["value"], authority, approved_node, opaque=True)
@@ -1769,10 +1841,29 @@ def _native_transport_value(payload, authority, approved_node, *, pid, thread):
     return observed
 
 
+def _native_recall_map_paths(row, family, imports, actual_thread):
+    source = row["sourceCaller"]
+    message = row["message"]["privateJSON"]
+    if (family not in {"original-worker-reply", "original-message-port"} or not isinstance(message, dict)
+            or not isinstance(message.get("value"), dict) or message["value"].get("kind") != "recall-metadata"):
+        return (), ()
+    expected_source = "dist/worker-task-pool-BQlnRNqZ.mjs" if family == "original-worker-reply" else "dist/worker-task-server-CF3aSh39.mjs"
+    producer_thread = actual_thread if family == "original-worker-reply" else row["threadId"]
+    require(source["package"] == "node_modules/openclaw" and source["path"] == expected_source
+            and (row["pid"], producer_thread) in imports
+            and {"dist/manager-search.worker-BWRvo8WR.mjs", "dist/manager-search-DgMs3pkc.mjs"}
+                <= imports[row["pid"], producer_thread]["loaded"],
+            "A Native recall-metadata Map projection borrowed another actual task/worker/source producer")
+    paths = (("value", "rows"), ("value", "sourceMtimes", "memory"), ("value", "sourceMtimes", "sessions"))
+    argument = 1 if family == "original-worker-reply" else 0
+    return paths, tuple((argument, *path) for path in paths)
+
+
 def _native_transport_custody(raw, context, imports, passive, authority, approved_node):
     families = {"original-worker-command": ("originalPostRef", "postMessage"),
                 "original-worker-reply": ("originalEmitRef", "emit"),
                 "original-message-port": ("originalPostRef", "postMessage")}
+    event_families = {family + "-" + suffix: family for family in families for suffix in ("call", "return", "throw")}
     exited = _native_terminated_threads(context, imports, passive, authority, approved_node)
     for (pid, thread), rows in passive.items():
         bindings, calls, settled, received = {}, {}, set(), {}
@@ -1795,7 +1886,7 @@ def _native_transport_custody(raw, context, imports, passive, authority, approve
             if event == "original-worker-reply-received":
                 require(row["callId"] not in received, "An original Native worker notification was duplicated")
                 received[row["callId"]] = row
-            family = next((name for name in families if event in {name + "-call", name + "-return", name + "-throw"}), None)
+            family = event_families.get(event)
             if family is None:
                 continue
             function_ref, function_name = families[family]
@@ -1811,8 +1902,17 @@ def _native_transport_custody(raw, context, imports, passive, authority, approve
             _native_clock_owner(row["sourceCaller"], row["originalStack"], context, imports, pid)
             if event.endswith("-call"):
                 require(row["callId"] not in calls, "A Native transport original invocation was duplicated")
-                _native_transport_value(row["message"], authority, approved_node, pid=pid, thread=thread)
-                _native_transport_value(row["arguments"], authority, approved_node, pid=pid, thread=thread)
+                actual_thread = row.get("workerThreadId", thread)
+                if actual_thread <= 0:
+                    actual_thread = known_workers.get(row.get("workerRef"), actual_thread)
+                message_maps, argument_maps = _native_recall_map_paths(row, family, imports, actual_thread)
+                _native_transport_value(row["message"], authority, approved_node, pid=pid, thread=thread, map_paths=message_maps)
+                _native_transport_value(row["arguments"], authority, approved_node, pid=pid, thread=thread, map_paths=argument_maps)
+                if message_maps:
+                    message_value = _native_value(row["message"]["value"], authority, approved_node)
+                    arguments_value = _native_value(row["arguments"]["value"], authority, approved_node)
+                    _same(arguments_value[1 if family == "original-worker-reply" else 0], message_value,
+                          "The full original recall-metadata Maps differ between the independent message and actual argument carriers")
                 if family != "original-message-port":
                     actual_thread = row["workerThreadId"] if row["workerThreadId"] > 0 else known_workers.get(row["workerRef"])
                     require((pid, actual_thread) in imports and actual_thread != 0,
@@ -1936,8 +2036,35 @@ def _native_held_publication_terminal(gate, passive, context, imports, authority
             and terminal["sourceCaller"]["path"] == "dist/infra/sqlite-store.worker.js",
             "A held Native publication terminal reply came from another original source owner")
     _native_clock_owner(terminal["sourceCaller"], terminal["originalStack"], context, imports, key[0])
-    request = _native_value(terminal["request"], authority, approved_node)
-    command = _native_value(terminal["requestInput"], authority, approved_node)
+    dispatches = [row for (pid, _), records in passive.items() if pid == key[0] for row in records
+                  if row["event"] == "original-worker-command-call" and row["workerThreadId"] == key[1]
+                  and row["requestId"] == terminal["brokerRequestId"]]
+    require(len(dispatches) == 1, "The held Native reply has no unique actual original broker dispatch")
+    dispatch = dispatches[0]
+    require(dispatch["sourceCaller"]["package"] == "node_modules/openclaw"
+            and dispatch["sourceCaller"]["path"] == "dist/sqlite-worker-store-D6Kl0iv0.mjs",
+            "A held Native publication borrowed another original broker source")
+    _native_clock_owner(dispatch["sourceCaller"], dispatch["originalStack"], context, imports, key[0])
+    request = dispatch["message"]["privateJSON"]
+    if "v8Hex" in terminal["request"]:
+        actual_request = _native_value(terminal["request"], authority, approved_node)
+        require(actual_request["id"] == request["id"] and actual_request["type"] == request["type"],
+                "The held Native worker received another original broker request")
+    else:
+        _native_observed_value(terminal["request"], authority, approved_node, opaque=True)
+        failure = terminal["request"].get("unserializable", terminal["request"].get("serializationError"))
+        require(request["operationAdmission"]["privateType"] == "MessagePort"
+                and failure["name"] == "Error" and "MessagePort" in failure["message"],
+                "A held Native broker request serialization gap lost its actual original admission port")
+    outer = _native_value(terminal["requestInput"], authority, approved_node)
+    _same(_native_value({"v8Hex": request["input"]["hex"]}, authority, approved_node), outer,
+          "The held Native publication command differs from its complete actual dispatched broker bytes")
+    if outer["type"] == "database.domain.execute":
+        require(set(outer["input"]) == {"id", "command"} and isinstance(outer["input"]["id"], str),
+                "The held Native publication lost its original actor-domain command wrapper")
+        command = outer["input"]["command"]
+    else:
+        command = outer
     reply = _native_value(terminal["reply"], authority, approved_node)
     arguments = _native_value(terminal["postArguments"], authority, approved_node)
     require(terminal["requestType"] == request["type"] == "execute" and type(request["id"]) is int
@@ -1945,14 +2072,7 @@ def _native_held_publication_terminal(gate, passive, context, imports, authority
             and command["type"] == "database.publish" and type(reply["ok"]) is bool
             and isinstance(arguments, list) and arguments,
             "The held Native terminal reply lost its actual original broker request/command/result envelope")
-    _same(_native_value({"v8Hex": request["input"]["hex"]}, authority, approved_node), command,
-          "The held Native publication command differs from its complete actual received broker bytes")
     _same(arguments[0], reply, "The actual Native terminal post received another original reply object")
-    publication = [row for (pid, _), records in passive.items() if pid == key[0] for row in records
-                   if row["event"] == "original-database-publication-command" and row["brokerRequestId"] == request["id"]]
-    require(len(publication) == 1, "The held Native reply has no unique actual parent publication dispatch")
-    _same(_native_value(publication[0]["command"], authority, approved_node), command,
-          "The original Native worker published a command different from its actual parent dispatch")
     require(receipt["sequence"] < terminal["sequence"] and command["input"]["expectedRevision"] == receipt["lastRevisionRead"]["value"],
             "The held Native publication refreshed its original captured expected fence or replied before the held frame")
 
@@ -2856,13 +2976,20 @@ def _sdk_gates(case, raw, processes, observations, recorded, trusted):
 def validate_capture(case, capture, result, *, native, approved_node=None, approved_sdk_root=None,
                      trusted_archive=None, directory=None, approved_reference=None):
     """Authenticate one actual engine independently; no policy match is required."""
+    cache = {"sourceIndexes": {}, "verifiedFiles": {}, "terminated": {}, "decoderAuthorities": {}, "v8": {}}
+    token = _VALIDATION_CACHE.set(cache)
     try:
         validate_result(case, result)
-        return (_native_capture(case, capture, result, directory, approved_node, trusted_archive, approved_reference)
-                if native else _sdk_capture(case, capture, result, directory, approved_sdk_root))
+        verified = (_native_capture(case, capture, result, directory, approved_node, trusted_archive, approved_reference)
+                    if native else _sdk_capture(case, capture, result, directory, approved_sdk_root))
+        require(all(_digest(filename) == digest for filename, digest in cache["verifiedFiles"].items()),
+                "An independently approved Native source or decoder changed during custody validation")
+        return verified
     except (KeyError, IndexError, TypeError, AttributeError, StopIteration, OSError, UnicodeError,
             json.JSONDecodeError) as error:
         raise ValueError(("Native" if native else "SDK") + " forget/index-fence custody is structurally incomplete: " + str(error)) from error
+    finally:
+        _VALIDATION_CACHE.reset(token)
 
 
 def validate_pair(case, native_raw, sdk_raw, native_result, sdk_result, *, approved_node=None,
@@ -2877,13 +3004,14 @@ def validate_pair(case, native_raw, sdk_raw, native_result, sdk_result, *, appro
 
 
 def replay_case(case, native_directory, sdk_directory=None, *, approved_node=None,
-                approved_sdk_root=None, trusted_archive=None, approved_reference=None):
+                approved_sdk_root=None, trusted_archive=None, approved_reference=None, include_results=False):
     """Replay explicit retained transports; the SDK directory contains its raw file.
 
     A full-pair transport is a mapping with exactly ``nativeDirectory`` and
     ``sdkDirectory``. No previous packet, development root, or sibling capture
     is selected implicitly.
     """
+    require(type(include_results) is bool, "Replay result inclusion requires an explicit boolean opt-in")
     if isinstance(native_directory, dict):
         require(sdk_directory is None and set(native_directory) == {"nativeDirectory", "sdkDirectory"},
                 "An explicit pair transport must name both actual engine directories")
@@ -2903,9 +3031,12 @@ def replay_case(case, native_directory, sdk_directory=None, *, approved_node=Non
                   approved_node=approved_node, approved_sdk_root=approved_sdk_root,
                   trusted_archive=trusted_archive, native_directory=native_directory, sdk_directory=sdk_directory,
                   approved_reference=approved_reference)
-    return {"validated": True, "publicMatch": _same_json(native_result, sdk_result),
+    replay = {"validated": True, "publicMatch": _same_json(native_result, sdk_result),
             "nativeSnapshots": len(native_result["snapshots"]), "sdkSnapshots": len(sdk_result["snapshots"]),
             "acceptancePointsAwarded": 0}
+    if include_results:
+        replay.update(nativeResult=native_result, sdkResult=sdk_result)
+    return replay
 
 
 # V8 is used strictly as a decoder. No program, module, or executable selected by
@@ -2947,15 +3078,24 @@ _V8_CACHE = {}
 
 def _decode_v8_views(authority, wires, approved_node):
     require(approved_node is not None, "Replay requires an independently selected approved Node binary")
-    binary = _regular(Path(approved_node).resolve(strict=True))
-    digest = _digest(binary)
-    require(str(binary) == authority["execPath"] and digest == authority["sha256"] == NODE_SHA256,
-            "Captured Node authority differs from the independently approved decoder")
+    validation = _VALIDATION_CACHE.get()
+    authority_key = str(approved_node), authority["execPath"], authority["sha256"]
+    known = validation["decoderAuthorities"].get(authority_key) if validation is not None else None
+    if known is None:
+        binary = _regular(Path(approved_node).resolve(strict=True))
+        digest = _digest(binary)
+        require(str(binary) == authority["execPath"] and digest == authority["sha256"] == NODE_SHA256,
+                "Captured Node authority differs from the independently approved decoder")
+        known = binary, digest, _sha(V8_DECODER.encode())
+        if validation is not None:
+            validation["decoderAuthorities"][authority_key] = known
+            validation["verifiedFiles"][str(binary)] = digest
+    binary, digest, decoder = known
     for wire in wires:
         require(isinstance(wire, str) and len(wire) % 2 == 0 and re.fullmatch(r"[0-9a-f]*", wire) is not None,
                 "An original V8 carrier is not complete hexadecimal bytes")
-    decoder = _sha(V8_DECODER.encode())
-    missing = list(dict.fromkeys(wire for wire in wires if (digest, decoder, wire) not in _V8_CACHE))
+    values_cache = validation["v8"] if validation is not None else _V8_CACHE
+    missing = list(dict.fromkeys(wire for wire in wires if (digest, decoder, wire) not in values_cache))
     if missing:
         finished = subprocess.run([str(binary), "--input-type=module", "-e", V8_DECODER],
             input=json.dumps(missing), capture_output=True, text=True, timeout=30,
@@ -2964,8 +3104,8 @@ def _decode_v8_views(authority, wires, approved_node):
         values = _json(finished.stdout)
         require(isinstance(values, list) and len(values) == len(missing), "V8 replay dropped an original carrier")
         for wire, value in zip(missing, values, strict=True):
-            _V8_CACHE[digest, decoder, wire] = value
-    return [_V8_CACHE[digest, decoder, wire] for wire in wires]
+            values_cache[digest, decoder, wire] = value
+    return [values_cache[digest, decoder, wire] for wire in wires]
 
 
 def _decode_v8(authority, wires, approved_node):

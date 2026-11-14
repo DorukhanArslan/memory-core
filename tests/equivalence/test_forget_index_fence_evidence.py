@@ -770,3 +770,194 @@ def test_native_event_files_reject_an_oversized_wire_before_decoding(tmp_path, m
     monkeypatch.setattr(guard, "_decode_native_event_record", lambda *_args, **_kwargs: pytest.fail("Oversized wire entered decoding"))
     with pytest.raises(ValueError):
         guard._read_native_event_files(evidence.parent)
+
+
+@lru_cache(maxsize=1)
+def _native_map_context(case_id):
+    """Read only genuine selected carriers; this subcheck awards no pair credit."""
+    if CAPTURE_ROOT is None:
+        pytest.skip("No explicitly selected Native Map packet; no acceptance credit")
+    case = next(case for case in V2_CASES if case["id"] == case_id)
+    directory = Path(CAPTURE_ROOT).resolve(strict=True) / case_id / "native"
+    context, process = _read(directory / "context.json"), _read(directory / "process.json")
+    request_path = Path(process["requestPath"])
+    assert request_path.is_relative_to(directory) and process["requestSha256"] == guard._digest(request_path)
+    guard._same(_read(request_path), {key: case[key] for key in ("id", "operation", "input")},
+        "The selected Native Map carrier belongs to another frozen input")
+    assert process["returncode"] == 0 and process["contextSha256"] == guard._digest(directory / "context.json")
+    root, inventories = guard._release_inventory(context["runtime"])
+    imports, selected, workers = {}, {}, {}
+
+    def load_trace(pid, thread):
+        if (pid, thread) in imports:
+            return
+        path = directory / "traces" / f"{pid}-{thread}.jsonl"
+        guard._owned(path, directory)
+        rows = [guard._json(line) for line in path.read_text(encoding="utf8").splitlines()]
+        assert rows[0]["pid"] == pid and rows[0]["threadId"] == thread
+        assert rows[0]["contextSha256"] == process["contextSha256"]
+        release = [row for row in rows if row.get("kind") == "release"]
+        for row in release:
+            path = root / guard._relative(row["package"]) / guard._relative(row["path"])
+            assert inventories[row["package"]][row["path"]] == row["sha256"] == guard._digest(path)
+        imports[pid, thread] = {"loaded": {row["path"] for row in release if row["package"] == "node_modules/openclaw"},
+                               "releaseImports": release}
+
+    families = {"original-worker-reply-call": "original-worker-reply",
+                "original-message-port-call": "original-message-port"}
+    for path in sorted((directory / "evidence").glob("*-events.jsonl")):
+        guard._owned(path, directory)
+        with path.open("rb") as stream:
+            for wire in stream:
+                assert wire.endswith(b"\n")
+                row = guard._decode_native_event_line(wire[:-1])
+                if row["event"] == "original-worker-command-call" and row["workerThreadId"] > 0:
+                    workers[row["pid"], row["workerRef"]] = row["workerThreadId"]
+                family = families.get(row["event"])
+                if family is None or family in selected:
+                    continue
+                message = row["message"]["privateJSON"]
+                if not isinstance(message, dict) or not isinstance(message.get("value"), dict) or message["value"].get("kind") != "recall-metadata":
+                    continue
+                thread = row.get("workerThreadId", row["threadId"])
+                if thread <= 0:
+                    thread = workers.get((row["pid"], row.get("workerRef")), thread)
+                for actual_thread in {row["threadId"], thread}:
+                    load_trace(row["pid"], actual_thread)
+                guard._native_clock_owner(row["sourceCaller"], row["originalStack"], context, imports, row["pid"])
+                selected[family] = row, thread
+                if len(selected) == len(families):
+                    break
+        if len(selected) == len(families):
+            break
+    assert selected, "The explicitly selected packet contains no genuine recall-metadata Map carrier"
+    return case, directory, context, context["approvedNodeRuntime"], imports, selected
+
+
+@pytest.fixture(scope="module", params=V2_CASES, ids=lambda case: case["id"])
+def v2_native_maps_actual(request):
+    return _native_map_context(request.param["id"])
+
+
+def _actual_map_row(context, family):
+    _, _, _, authority, imports, selected = context
+    if family not in selected:
+        pytest.skip("The actual selected source did not enter this Map transport family; no boundary credit")
+    row, thread = selected[family]
+    message_paths, argument_paths = guard._native_recall_map_paths(row, family, imports, thread)
+    assert len(message_paths) == len(argument_paths) == 3
+    for field, paths in (("message", message_paths), ("arguments", argument_paths)):
+        guard._native_transport_value(row[field], authority, _trusted_node(), pid=row["pid"],
+            thread=row["threadId"], map_paths=paths)
+    message = guard._native_value(row["message"]["value"], authority, _trusted_node())
+    arguments = guard._native_value(row["arguments"]["value"], authority, _trusted_node())
+    guard._same(arguments[1 if family == "original-worker-reply" else 0], message,
+        "The actual independent argument carrier must retain all three original Map entries")
+    for path in message_paths:
+        value = message
+        for name in path:
+            value = value[name]
+        assert value["privateType"] == "Map" and isinstance(value["entries"], list)
+    return row, thread, message_paths, argument_paths
+
+
+@pytest.mark.parametrize("family", ["original-worker-reply", "original-message-port"])
+def test_actual_native_recall_metadata_keeps_all_three_typed_maps(v2_native_maps_actual, family):
+    _actual_map_row(v2_native_maps_actual, family)
+
+
+@pytest.mark.parametrize("family", ["original-worker-reply", "original-message-port"])
+@pytest.mark.parametrize("attack", ["source", "producer-module", "producer-thread", "default-map", "map-slot", "message-side", "argument-side"])
+def test_actual_native_recall_maps_reject_unqualified_sources_slots_and_sideviews(v2_native_maps_actual, family, attack):
+    _, _, _, authority, imports, _ = v2_native_maps_actual
+    original, thread, message_paths, argument_paths = _actual_map_row(v2_native_maps_actual, family)
+    row = deepcopy(original)
+    changed_imports = dict(imports)
+    if attack == "source":
+        row["sourceCaller"]["path"] = "dist/labelled-unapproved-producer.mjs"
+    elif attack == "producer-module":
+        producer_thread = thread if family == "original-worker-reply" else row["threadId"]
+        key = row["pid"], producer_thread
+        changed_imports[key] = {**imports[key], "loaded": imports[key]["loaded"] - {"dist/manager-search-DgMs3pkc.mjs"}}
+    elif attack == "producer-thread":
+        if family == "original-worker-reply":
+            thread += 100000
+        else:
+            row["threadId"] += 100000
+    if attack in {"source", "producer-module", "producer-thread"}:
+        with pytest.raises(ValueError):
+            guard._native_recall_map_paths(row, family, changed_imports, thread)
+        return
+    field, paths = "message", message_paths
+    if attack == "default-map":
+        paths = ()
+    elif attack == "map-slot":
+        paths = (("value",),)
+    elif attack == "message-side":
+        row["message"]["privateJSON"]["value"]["rows"] = {"labelledTamper": True}
+    else:
+        field, paths = "arguments", argument_paths
+        slot = 1 if family == "original-worker-reply" else 0
+        row[field]["privateJSON"][slot]["value"]["sourceMtimes"]["memory"] = {"labelledTamper": True}
+    with pytest.raises(ValueError):
+        guard._native_transport_value(row[field], authority, _trusted_node(), pid=row["pid"],
+            thread=row["threadId"], map_paths=paths)
+
+
+def test_custody_cache_is_fresh_and_restores_outer_scope_after_structural_rejection(monkeypatch):
+    """Cache protocol only; every attempted malformed capture is rejected."""
+    original = guard.validate_result
+    seen, global_keys = [], set(guard._V8_CACHE)
+    outer = {"labelledProtocolOnly": "outer-context"}
+    token = guard._VALIDATION_CACHE.set(outer)
+
+    def observe_then_validate(*args):
+        cache = guard._VALIDATION_CACHE.get()
+        assert cache is not outer and set(cache) == {"sourceIndexes", "verifiedFiles", "terminated", "decoderAuthorities", "v8"}
+        assert all(not values for values in cache.values())
+        seen.append(cache)
+        cache["v8"]["labelled-unused-cache-marker"] = "protocol-only"
+        return original(*args)
+
+    monkeypatch.setattr(guard, "validate_result", observe_then_validate)
+    try:
+        for native in (True, False):
+            with pytest.raises(ValueError):
+                guard.validate_capture(V2_CASES[0], {}, {}, native=native)
+            assert guard._VALIDATION_CACHE.get() is outer
+        assert len(seen) == 2 and seen[0] is not seen[1]
+        assert set(guard._V8_CACHE) == global_keys
+    finally:
+        guard._VALIDATION_CACHE.reset(token)
+
+
+@pytest.mark.parametrize("changed", [False, True])
+def test_v2_cache_rechecks_labelled_temporary_source_before_return(v2_clock_actual, tmp_path, monkeypatch, changed):
+    """A false protocol callback cannot award original-engine or pair credit."""
+    case, raw, _, result, *_ = v2_clock_actual
+    path = tmp_path / "labelled-cache-source.mjs"
+    path.write_bytes(b"// labelled temporary source version one\n")
+    previous = guard._VALIDATION_CACHE.get()
+    seen = []
+
+    def false_verification_callback(*_args):
+        cache = guard._VALIDATION_CACHE.get()
+        seen.append(cache)
+        cache["verifiedFiles"][str(path)] = guard._digest(path)
+        if changed:
+            path.write_bytes(b"// labelled temporary source version two\n")
+        return False
+
+    monkeypatch.setattr(guard, "_native_capture", false_verification_callback)
+    if changed:
+        with pytest.raises(ValueError, match="changed during custody validation"):
+            guard.validate_capture(case, raw, result, native=True)
+    else:
+        assert guard.validate_capture(case, raw, result, native=True) is False
+    assert len(seen) == 1 and guard._VALIDATION_CACHE.get() is previous
+
+
+@pytest.mark.parametrize("value", [None, 0, 1, "true", {}, []])
+def test_replay_result_inclusion_requires_a_boolean_before_reading_any_packet(tmp_path, value):
+    with pytest.raises(ValueError, match="explicit boolean opt-in"):
+        guard.replay_case(V2_CASES[0], tmp_path / "unselected-native", tmp_path / "unselected-sdk", include_results=value)

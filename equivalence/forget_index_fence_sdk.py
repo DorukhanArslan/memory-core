@@ -44,6 +44,9 @@ BOUNDARIES = frozenset({
     "promotion.source-planned-before-final-lock",
     "forget.marker-commit-or-original-workspace-or-writer-wait",
 })
+SEARCH_EFFECT_KINDS = frozenset({"forget-index-fence-v3", "forget-index-fence-v4"})
+PROFILE_MODULES = {f"forget-index-fence-v{version}": f"equivalence.forget_index_fence_v{version}"
+                   for version in (2, 3, 4)}
 
 
 def _serialized(value):
@@ -206,10 +209,13 @@ def _loaded_sdk():
             and getattr(module, "__file__", None) and Path(module.__file__).is_file()]
 
 
-def _adapter_sources():
+def _adapter_sources(kind="forget-index-fence-v3"):
+    if kind not in SEARCH_EFFECT_KINDS:
+        raise ValueError("Adapter custody requires a closed search-effects profile")
+    version = kind.rsplit("-", 1)[1]
     names = ("equivalence/forget_index_fence_sdk.py", "equivalence/forget_index_fence_sdk_cli.py",
-             "equivalence/forget_index_fence_sdk_clock.py", "equivalence/forget_index_fence_v3.py",
-             "docs/forget_index_fence_v3_literals.json", "docs/forget_index_fence_v3_plan.md")
+             "equivalence/forget_index_fence_sdk_clock.py", f"equivalence/forget_index_fence_{version}.py",
+             f"docs/forget_index_fence_{version}_literals.json", f"docs/forget_index_fence_{version}_plan.md")
     rows, digest = [], hashlib.sha256()
     for name in names:
         path = ROOT / name
@@ -234,15 +240,33 @@ def _loaded_fixtures():
 
 
 def _literal(value):
-    if value.get("kind") == "forget-index-fence-v3":
-        from equivalence.forget_index_fence_v3 import build_cases
-    else:
-        from equivalence.forget_index_fence_v2 import build_cases
-
-    for case in build_cases():
+    if not isinstance(value, dict) or value.get("kind") not in PROFILE_MODULES:
+        raise ValueError("The SDK actor requires a supported closed profile kind")
+    module = importlib.import_module(PROFILE_MODULES[value["kind"]])
+    for case in module.build_cases():
         if case.get("input") == value:
             return case
     raise ValueError("The SDK forget/index-fence actor requires an exact frozen input")
+
+
+def _search_maintenance_binding(owner, declared_sync):
+    """Describe the actual SDK policy without inventing unsupported sync flags."""
+    owner_class = type(owner)
+
+    def identity(value):
+        return None if value is None else {"objectId": str(id(value)),
+            "module": type(value).__module__, "className": type(value).__qualname__}
+
+    return {"declaredNativeSync": deepcopy(declared_sync),
+        "constructorParameters": list(inspect.signature(owner_class.__init__).parameters),
+        "actualSdk": {"memoryPublication": owner._memory_publication,
+            "sessionPublicationController": identity(owner._session_publication),
+            "memoryExecutor": identity(owner._memory_executor), "memoryActive": owner._memory_active,
+            "memoryJobs": _encode(_observation_copy(list(owner._memory_jobs.copy())))},
+        "sourceRoles": {key: _code_identity(getattr(owner_class, name).__code__) for key, name in (
+            ("constructor", "__init__"), ("onSearchSnapshot", "_on_search_snapshot"),
+            ("submitMemoryPublication", "_submit_memory_publication"),
+            ("bindSessionPublication", "bind_session_publication"))}}
 
 
 class _FunctionalGate:
@@ -289,7 +313,7 @@ class _OriginalObserver:
         self.codes = dict(codes)
         self.owners = {}
         self.local = threading.local()
-        self.events, self.exceptions, self.sql = [], [], []
+        self.events, self.exceptions, self.sql, self.failures = [], [], [], []
         self.submitted_tasks, self.pending_submissions, self.job_scopes = [], {}, {}
         self.sql_executions = []
         self.connections = {}
@@ -418,6 +442,8 @@ class _OriginalObserver:
                 receiverObjectId=str(id(receiver)) if receiver is not None else None,
                 contextObjectId=str(id(frame.f_locals["context"])) if frame.f_locals.get("context") is not None else None,
                 selfObjectId=str(id(frame.f_locals["self"])) if frame.f_locals.get("self") is not None else None,
+                workspaceObjectId=str(id(frame.f_locals["workspace"])) if frame.f_locals.get("workspace") is not None else None,
+                configObjectId=str(id(frame.f_locals["config"])) if frame.f_locals.get("config") is not None else None,
                 exactReceiver=receiver is not None, code=specification.get("code"),
                 arguments={key: _encode(value) for key, value in frame.f_locals.items()
                            if specification["name"] != "ThreadPoolExecutor.submit"
@@ -427,6 +453,25 @@ class _OriginalObserver:
                 call["contextRecallOwnerObjectId"] = str(id(recall_owner)) if recall_owner is not None else None
             if specification["name"] == "ThreadPoolExecutor.submit":
                 self._remember_submission(frame, scope, call, stack)
+            if specification.get("replanCallback") and frame.f_locals.get("db") is not None:
+                parent, db = frame.f_back, frame.f_locals["db"]
+                parent_specification = self.codes.get(parent.f_code, {}) if parent is not None else {}
+                parent_entry = next((item for item in reversed(stack) if item[0] is parent), None)
+                replan = parent.f_locals.get("replan") if parent is not None else None
+                proof = {"parentFrameObjectId": str(id(parent)) if parent is not None else None,
+                    "parentCallSequence": parent_entry[1]["sequence"] if parent_entry is not None else None,
+                    "parentCode": parent_specification.get("code"),
+                    "replanObjectId": str(id(replan)) if replan is not None else None,
+                    "replanCodeIsCallback": getattr(replan, "__code__", None) is frame.f_code,
+                    "databaseObjectId": str(id(db)),
+                    "parentDatabaseObjectId": str(id(parent.f_locals.get("db"))) if parent is not None else None,
+                    "parentStoreObjectId": str(id(parent.f_locals.get("store"))) if parent is not None else None,
+                    "inTransaction": db.in_transaction if isinstance(db, sqlite3.Connection) else None}
+                call["replanParent"] = proof
+                if (parent_specification.get("name") != "purge_memory_index" or parent_entry is None
+                        or not proof["replanCodeIsCallback"] or parent.f_locals.get("db") is not db):
+                    self.failures.append({"phase": "original-replan-parent", "callSequence": call["sequence"],
+                                          "proof": proof})
             self.local.stack = (*stack, (frame, call, scope, match, frame.f_code))
             if self.gate_callback is not None:
                 self.gate_callback(frame, event, returned, call, scope)
@@ -569,7 +614,9 @@ def _nested_codes(code):
 
 def _original_bindings():
     """Resolve original loaded functions, not wrappers or recompiled source."""
-    from memory_core.consolidation.forget import forget_memory_entries, purge_memory_index
+    from memory_core.consolidation.forget import (
+        _forget_workspace_memory, forget_memory_entries, purge_memory_index, plan_memory_index,
+    )
     from memory_core.consolidation.origins import IndexRevisionFence, MemoryEntryOriginLedger
     from memory_core.consolidation.promotion import run_short_term_promotion, rank_short_term_promotion_candidates
     from memory_core.consolidation.recall import record_short_term_recalls
@@ -606,6 +653,7 @@ def _original_bindings():
         codes[function.__code__] = {"name": f"{owner.__name__}.{name}", "receiver": "self",
                                     "code": _code_identity(function.__code__)}
     for function, receiver in ((forget_memory_entries, "store"), (purge_memory_index, "store"),
+        (plan_memory_index, "store"), (ManagedSQLiteMemoryStore.__init__, None),
         (run_short_term_promotion, "store"), (rank_short_term_promotion_candidates, None),
         (record_short_term_recalls, None),
         (search_module.execute_memory_search_tool, "store"), (search_module._run_memory_search_tool, "store"),
@@ -647,6 +695,10 @@ def _original_bindings():
             if code is function.__code__:
                 continue
             codes[code] = {"name": code.co_qualname, "receiver": None, "code": _code_identity(code)}
+    for code in _nested_codes(_forget_workspace_memory.__code__):
+        if code.co_name == "current_index_plan":
+            codes[code] = {"name": code.co_qualname, "receiver": None, "code": _code_identity(code),
+                           "replanCallback": True}
     # The imported publication function must be the original used by the store.
     if sqlite_store.write_prepared_index is not write_prepared_index:
         raise RuntimeError("The SDK index publication owner is not its original imported function")
@@ -801,7 +853,7 @@ class _SdkActor:
     def __init__(self, request):
         self.value, self.directory, self.actor = request["input"], Path(request["directory"]), request["actor"]
         self.before = _sdk_sources()
-        self.adapter_before = _adapter_sources() if self.value["kind"] == "forget-index-fence-v3" else None
+        self.adapter_before = _adapter_sources(self.value["kind"]) if self.value["kind"] in SEARCH_EFFECT_KINDS else None
         self.imported_before = _loaded_sdk()
         self.storage = _storage(self.value, self.directory)
         self.root = self.directory / "workspace"
@@ -1003,12 +1055,13 @@ class _SdkActor:
         record = {"actor": self.actor, "pid": os.getpid(), "storeObjectId": str(id(self.owner)),
             "storeClass": type(self.owner).__qualname__, "workspaceObjectId": str(id(self.workspace)),
             "catalogObjectId": str(id(self.catalog)), "ledgerObjectId": str(id(self.ledger)),
-            "config": _encode(self.config), "storage": _encode(self.storage),
-            "memoryPublication": "on-search", "explicitFence": fence is not None,
+            "configObjectId": str(id(self.config)), "config": _encode(self.config), "storage": _encode(self.storage),
+            "memoryPublication": self.owner._memory_publication, "explicitFence": fence is not None,
             "forgottenCallback": callback is not None, "catalogTombstoneMirror": False}
         record["declaredPhysicalPreparation"] = {"statement": "PRAGMA journal_mode=WAL", "returned": journal_mode}
         record["classMro"] = _type_identity(type(self.owner))["mro"]
         record["constructorCode"] = _code_identity(ManagedSQLiteMemoryStore.__init__.__code__)
+        record["searchMaintenance"] = _search_maintenance_binding(self.owner, config.get("sync"))
         predicate = self.workspace.is_session_forgotten
         predicate_function = getattr(predicate, "__func__", predicate)
         record["effectiveForgottenCallback"] = {"present": predicate is not None,
@@ -1240,7 +1293,7 @@ class _SdkActor:
         return {**payload, "serializedJSON": wire, "sha256": hashlib.sha256(wire.encode()).hexdigest()}
 
     def _assert_search_effects_settled(self):
-        if self.value["kind"] != "forget-index-fence-v3":
+        if self.value["kind"] not in SEARCH_EFFECT_KINDS:
             return
         missing = [label for label, binding in self.search_tools.items()
             if "returnSeq" in self.public_calls.get("search:" + label, {}) and not binding.get("effectsSettled")]
@@ -1250,11 +1303,12 @@ class _SdkActor:
 
     def observation(self):
         return {"actor": self.actor, "pid": os.getpid(), "sourceProvenanceBefore": self.before,
-            **({"adapterProvenanceBefore": self.adapter_before, "adapterProvenanceAfter": _adapter_sources(),
+            **({"adapterProvenanceBefore": self.adapter_before, "adapterProvenanceAfter": _adapter_sources(self.value["kind"]),
                 "loadedFixtureModules": _loaded_fixtures()} if self.adapter_before is not None else {}),
             "sourceProvenanceAfter": _sdk_sources(), "importedBefore": self.imported_before, "loadedSdk": _loaded_sdk(),
             "codeOwners": list(self.observer.codes.values()), "ownerBindings": _observation_copy(self.bindings),
             "originalCalls": _observation_copy(self.observer.events), "originalExceptions": _observation_copy(self.observer.exceptions),
+            "observerFailures": _observation_copy(self.observer.failures),
             "sqlStatements": _observation_copy(self.observer.sql), "sqlExecutions": _observation_copy(self.observer.sql_executions),
             "functionalGates": {key: gate.snapshot() for key, gate in self.gates.items()},
             "publicCalls": _observation_copy(self.public_calls), "catalogSourceFacts": _observation_copy(self.catalog_facts),
@@ -1291,7 +1345,7 @@ class _SdkActor:
         if operation == "await-call":
             return self.futures[f"{command['kind']}:{command['label']}"].result(timeout=PROCESS_TIMEOUT_SECONDS)
         if operation == "await-search-effects":
-            if self.value["kind"] != "forget-index-fence-v3":
+            if self.value["kind"] not in SEARCH_EFFECT_KINDS:
                 raise ValueError("Search effect waits require their separately frozen V3 profile")
             label = command["label"]
             call = self.public_calls.get("search:" + label)
@@ -1381,15 +1435,15 @@ class _ActorProcess:
     def __init__(self, value, directory, actor):
         self.actor, self.directory = actor, directory
         self.request = {"mode": "actor", "input": value, "directory": str(directory), "actor": actor}
-        if value["kind"] == "forget-index-fence-v3" or SDK_ROOT != ROOT:
+        if value["kind"] in SEARCH_EFFECT_KINDS or SDK_ROOT != ROOT:
             self.request["sdkRoot"] = str(SDK_ROOT)
-        if value["kind"] == "forget-index-fence-v3":
+        if value["kind"] in SEARCH_EFFECT_KINDS:
             self.request["adapterRoot"] = str(ROOT)
         self.argv = [sys.executable, "-m", "equivalence.forget_index_fence_sdk_cli"]
         self.environment = {"PATH": str(Path(sys.executable).parent) + os.pathsep + os.defpath,
             "PYTHONPATH": str(ROOT), "LANG": "C.UTF-8", "TZ": "UTC",
             "OPENCLAW_HOME": str(directory), "OPENCLAW_STATE_DIR": str(directory / "state")}
-        if value["kind"] == "forget-index-fence-v3":
+        if value["kind"] in SEARCH_EFFECT_KINDS:
             self.environment["PYTHONDONTWRITEBYTECODE"] = "1"
         self.child = subprocess.Popen(self.argv, cwd=ROOT, env=self.environment, stdin=subprocess.PIPE,
             stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True, bufsize=1)
@@ -1596,8 +1650,8 @@ def run_forget_index_fence_sdk_host(request):
         "adapterRoot": str(ROOT), "sdkRoot": str(SDK_ROOT),
         "fixtureRoot": str(directory), "sourceProvenanceBefore": before, "processes": processes,
         "steps": steps, "physicalSnapshots": snapshots, "publicCalls": calls}
-    if value["kind"] == "forget-index-fence-v3":
-        raw["adapterProvenanceBefore"] = _adapter_sources()
+    if value["kind"] in SEARCH_EFFECT_KINDS:
+        raw["adapterProvenanceBefore"] = _adapter_sources(value["kind"])
 
     def start(actor):
         if actor in actors and actors[actor].child.poll() is None:
@@ -1747,13 +1801,15 @@ def run_forget_index_fence_sdk_host(request):
             except BaseException as error:
                 process.receipt["reapError"] = _error(error)
         raw["sourceProvenanceAfter"] = _sdk_sources()
-        if value["kind"] == "forget-index-fence-v3":
-            raw["adapterProvenanceAfter"] = _adapter_sources()
+        if value["kind"] in SEARCH_EFFECT_KINDS:
+            raw["adapterProvenanceAfter"] = _adapter_sources(value["kind"])
     clock_failures = [{"actor": process["actor"], "pid": process["pid"],
         "sourceClockFailures": process["observation"].get("sourceClockFailures", []),
-        "datetimeClockFailures": process["observation"].get("datetimeClockFailures", [])}
+        "datetimeClockFailures": process["observation"].get("datetimeClockFailures", []),
+        "observerFailures": process["observation"].get("observerFailures", [])}
         for process in processes if process.get("observation") and (
-            process["observation"].get("sourceClockFailures") or process["observation"].get("datetimeClockFailures"))]
+            process["observation"].get("sourceClockFailures") or process["observation"].get("datetimeClockFailures")
+            or process["observation"].get("observerFailures"))]
     observation_failures = [{"actor": process["actor"], "pid": process["pid"], "failures": process["observationFailures"]}
                             for process in processes if process.get("observationFailures")]
     raw["observationInvalid"] = [*clock_failures, *observation_failures]
@@ -1772,16 +1828,16 @@ def run_forget_index_fence_sdk_case(value, *, evidence_directory=None, sdk_root=
     directory = Path(tempfile.mkdtemp(prefix="sdk-forget-index-fence-", dir=evidence_directory)).resolve()
     destination = Path(evidence_directory) if evidence_directory is not None else directory
     request = {"input": value, "directory": str(directory)}
-    if value["kind"] == "forget-index-fence-v3" or sdk_root is not None:
+    if value["kind"] in SEARCH_EFFECT_KINDS or sdk_root is not None:
         request["sdkRoot"] = str(selected_sdk)
-    if value["kind"] == "forget-index-fence-v3":
+    if value["kind"] in SEARCH_EFFECT_KINDS:
         request["adapterRoot"] = str(ROOT)
     wire = _serialized(request)
     argv = [sys.executable, "-m", "equivalence.forget_index_fence_sdk_cli"]
     environment = {"PATH": str(Path(sys.executable).parent) + os.pathsep + os.defpath,
         "PYTHONPATH": str(ROOT), "LANG": "C.UTF-8", "TZ": "UTC",
         "OPENCLAW_HOME": str(directory), "OPENCLAW_STATE_DIR": str(directory / "state")}
-    if value["kind"] == "forget-index-fence-v3":
+    if value["kind"] in SEARCH_EFFECT_KINDS:
         environment["PYTHONDONTWRITEBYTECODE"] = "1"
     dispatch = {"kind": value["kind"] + "-sdk-dispatch", "input": deepcopy(value), "request": request,
         "adapterRoot": str(ROOT), "sdkRoot": str(selected_sdk),
@@ -1789,8 +1845,8 @@ def run_forget_index_fence_sdk_case(value, *, evidence_directory=None, sdk_root=
         "requestJson": wire, "requestSha256": hashlib.sha256(wire.encode()).hexdigest(),
         "argv": argv, "environmentKeys": sorted(environment), "coordinatorPid": os.getpid(),
         "sourceProvenanceBefore": _sdk_sources(selected_sdk)}
-    if value["kind"] == "forget-index-fence-v3":
-        dispatch["adapterProvenanceBefore"] = _adapter_sources()
+    if value["kind"] in SEARCH_EFFECT_KINDS:
+        dispatch["adapterProvenanceBefore"] = _adapter_sources(value["kind"])
     with subprocess.Popen(argv, cwd=ROOT, env=environment, stdin=subprocess.PIPE,
         stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True) as child:
         dispatch["pid"] = child.pid
@@ -1802,8 +1858,8 @@ def run_forget_index_fence_sdk_case(value, *, evidence_directory=None, sdk_root=
             dispatch["timeout"] = True
     dispatch.update(stdout=stdout, stderr=stderr, exit={"code": child.returncode},
                     sourceProvenanceAfter=_sdk_sources(selected_sdk))
-    if value["kind"] == "forget-index-fence-v3":
-        dispatch["adapterProvenanceAfter"] = _adapter_sources()
+    if value["kind"] in SEARCH_EFFECT_KINDS:
+        dispatch["adapterProvenanceAfter"] = _adapter_sources(value["kind"])
     try:
         dispatch["observation"] = json.loads(stdout)
     except json.JSONDecodeError as error:

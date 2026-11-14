@@ -16,6 +16,20 @@ const statValue=stat=>Object.fromEntries(Object.getOwnPropertyNames(stat).map(ke
 const same=(left,right)=>left.dev===right.dev&&left.ino===right.ino&&left.nlink===1n&&right.nlink===1n;
 const stable=(left,right)=>same(left,right)&&left.size===right.size&&left.mtimeNs===right.mtimeNs&&left.ctimeNs===right.ctimeNs;
 
+// A reply hold postpones only its original delivery; no thread waits on Atomics.
+// The intercepted notification has no original return until the real emit runs.
+export function deferOriginalEventDelivery({receiver,originalEmit,eventName,message,args,awaitRelease,onReceipt,onControlFailure}){
+ const receipt=(name,fields)=>{try{onReceipt(name,fields);}catch(error){onControlFailure(error);}};
+ const completion=(async()=>{
+  try{await awaitRelease();}catch(error){onControlFailure(error);throw error;}
+  receipt('delivery-enter',{enteredAtNs:now(),message:valueRecord(message),arguments:valueRecord(args)});
+  try{const result=Reflect.apply(originalEmit,receiver,[eventName,message,...args]);
+   receipt('delivery-return',{returnedAtNs:now(),actualReturn:valueRecord(result),actualReturnType:typeof result});return result;
+  }catch(error){receipt('delivery-throw',{threwAtNs:now(),error:errorValue(error),privateError:valueRecord(error)});throw error;}
+ })();
+ return{completion};
+}
+
 export function installSourceClock({workspaceDir,actor,ticksByCall,event=()=>{},qualifyStack}){
  if(!path.isAbsolute(workspaceDir)||!ticksByCall||typeof qualifyStack!=='function')throw Error('A source clock requires explicit owned inputs and source authority');
  const original=Object.fromEntries(['open','writeFile','rename','unlink','stat','lstat','readFile'].map(name=>[name,fsp[name]]));

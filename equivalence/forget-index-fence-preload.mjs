@@ -78,7 +78,7 @@ registerHooks({resolve(specifier,ctx,next){const result=next(specifier,ctx),reco
 const diagnostics=new Console({stdout:process.stderr,stderr:process.stderr});
 for(const name of['log','info','debug'])Object.defineProperty(console,name,{value:diagnostics[name].bind(diagnostics),writable:false,configurable:false});
 Object.defineProperty(globalThis,'fetch',{value:async()=>{throw Error('Fence reference network fetch denied');},writable:false,configurable:false});
-const originalDate=Date,originalTimeout=setTimeout,originalPerformance=performance.now;
+const originalDate=Date,originalTimeout=setTimeout,originalImmediate=setImmediate,originalPerformance=performance.now;
 const actorClock=Number(process.env.MEMORY_EQ_FIF_CLOCK_NOW_MS??profile.actorClocks[actor]);
 const permittedClocks=new Set([profile.actorClocks[actor],...(profile.recoveryNowMs===undefined?[]:[profile.recoveryNowMs])]);
 if(!permittedClocks.has(actorClock))throw Error('Undeclared wall clock phase');
@@ -89,6 +89,7 @@ trace({event:'forget-index-fence-v2-bootstrap',profile,clock:{owner:'node:test',
 
 const sleepCell=new Int32Array(new SharedArrayBuffer(4)),fired=new Set(),passive=[];
 let callLabel=null,sequence=0,lastReindexRevisionRead=null,sourceClock=null;
+const controlFailures=[];
 const event=(name,fields={})=>{const row={event:name,sequence:++sequence,callLabel,atNs:process.hrtime.bigint().toString(),...fields};passive.push(row);return row;};
 function flush(){if(passive.length)fs.appendFileSync(path.join(context.evidenceDirectory,`${process.pid}-${threadId}-events.jsonl`),
  passive.splice(0).map(row=>JSON.stringify({...row,pid:process.pid,ppid:process.ppid,threadId,actor,
@@ -119,10 +120,37 @@ function pause(boundary,facts={}){
   event('fence-gate-release',{gate:gate.name,boundary});
  }
 }
+function controlFailure(reason,error,fields={}){const row=event('fixture-control-failure',{reason,...fields,
+ error:{name:error.name,message:error.message,stack:error.stack},privateError:carrier(error)});controlFailures.push(row);flush();}
+async function pauseAsync(boundary,facts={}){
+ for(const gate of matching(boundary)){
+  const prefix=path.join(context.gateDirectory,gate.name);
+  if(!fs.existsSync(prefix+'.armed'))continue;
+  fired.add(gate.name);
+  const receipt={...gate,pid:process.pid,ppid:process.ppid,threadId,actor,sequence:++sequence,
+   instance:Number(process.env.MEMORY_EQ_FIF_INSTANCE??0),mode:'deferred-original-worker-reply',
+   enteredAtNs:process.hrtime.bigint().toString(),originalStack:new Error('Actual original asynchronous fence control').stack,...facts};
+  fs.writeFileSync(prefix+'.hit.json',JSON.stringify(receipt)+'\n',{flag:'wx',mode:0o600});flush();trace({event:'fence-gate-enter',...receipt});
+  if(gate.pause===false)return;
+  // These real callbacks demonstrate that the held notification does not own
+  // unrelated IPC, SQLite admission ports, timers or main-loop completions.
+  await Promise.all([new Promise(resolve=>originalImmediate(()=>{event('async-gate-mainloop-progress',{
+   gate:gate.name,boundary,callLabel:gate.callLabel,kind:'setImmediate',gateEnterAtNs:receipt.enteredAtNs});resolve();})),
+   new Promise(resolve=>originalTimeout(()=>{event('async-gate-mainloop-progress',{
+    gate:gate.name,boundary,callLabel:gate.callLabel,kind:'setTimeout',gateEnterAtNs:receipt.enteredAtNs});resolve();},0))]);flush();
+  const deadline=performance.now()+30_000;
+  while(!fs.existsSync(prefix+'.release')){if(performance.now()>=deadline)throw Error('Declared asynchronous fence gate exceeded its real monotonic bound');
+   await new Promise(resolve=>originalTimeout(resolve,10));}
+  const released=JSON.parse(fs.readFileSync(prefix+'.release','utf8'));
+  if(released.wallClockNowMs!==undefined)setWallClock(released.wallClockNowMs);
+  event('fence-gate-release',{gate:gate.name,boundary,callLabel:gate.callLabel,mode:'deferred-original-worker-reply'});flush();
+ }
+}
 globalThis[Symbol.for('memory.eq.forgetIndexFence')]=Object.freeze({
  setCallLabel(label){callLabel=label;},event,pause,carrier,flush,setWallClock,
  getReindexRevisionRead(){return lastReindexRevisionRead;},
  get sourceClock(){return sourceClock;},
+ get controlFailures(){return controlFailures;},
 });
 // Observe the original sleep resource after its held-lock decision. Timers
 // remain unchanged; this is a pending proof, never a timeout-selected outcome.
@@ -182,7 +210,13 @@ Worker.prototype.postMessage=function(message,...args){
  if(!observedWorkers.has(this)){observedWorkers.add(this);event('original-worker-first-dispatch',{
   workerThreadId:this.threadId,wallClockNowMs:Date.now(),request:carrier(message),originalStack:new Error('Original worker dispatch').stack});}
  if(message?.input?.kind==='keyword'&&Number.isSafeInteger(message.taskId)){
-  let map=tasks.get(this);if(!map){map=new Map();tasks.set(this,map);}map.set(message.taskId,{request:carrier(message),callLabel});
+  const originalStack=new Error('Original keyword task dispatch').stack,sourceCaller=releaseCaller(originalStack);
+  if(sourceCaller?.package!=='node_modules/openclaw'||sourceCaller.path!=='dist/worker-task-pool-BQlnRNqZ.mjs'){
+   controlFailure('keyword-request-source-unqualified',Error('Unqualified original keyword worker dispatch'),{originalStack,sourceCaller});
+   return post.call(this,message,...args);
+  }
+  let map=tasks.get(this);if(!map){map=new Map();tasks.set(this,map);}map.set(message.taskId,{request:carrier(message),requestObject:message,
+   requestRef:processRef(message),requestInput:carrier(message.input),nativeSectionsRef:processRef(message.nativeSections),originalStack,sourceCaller,callLabel});
  }
  if(message?.input instanceof Uint8Array&&message.type==='execute'){
   const command=deserialize(message.input);
@@ -195,9 +229,27 @@ Worker.prototype.emit=function(name,message,...args){
  if(name==='message'&&message?.status==='ok'&&message.value?.kind==='keyword'){
   const task=tasks.get(this)?.get(message.taskId);
   if(task){const previous=callLabel;callLabel=task.callLabel;
-   try{pause('search.keyword-result-before-enrichment',{sourceOwner:'WorkerTaskPool.original-keyword-reply',taskId:message.taskId,
-    workerThreadId:this.threadId,request:task.request,reply:carrier(message),replyV8Sha256:hash(serialize(message))});}
-   finally{callLabel=previous;tasks.get(this).delete(message.taskId);}
+   const boundary='search.keyword-result-before-enrichment',armed=isMainThread&&matching(boundary).some(gate=>fs.existsSync(path.join(context.gateDirectory,gate.name)+'.armed'));
+   if(armed){const facts={sourceOwner:'WorkerTaskPool.original-keyword-reply',taskId:message.taskId,workerThreadId:this.threadId,
+     workerRef:processRef(this),emitRef:processRef(emit),messageRef:processRef(message),requestRef:task.requestRef,
+     request:task.request,requestInput:task.requestInput,nativeSectionsRef:task.nativeSectionsRef,requestSourceCaller:task.sourceCaller,
+     requestOriginalStack:task.originalStack,reply:carrier(message),replyV8Sha256:hash(serialize(message)),eventName:name,
+     eventArguments:carrier(args),eventArgumentRefs:args.map(value=>value&&typeof value==='object'?processRef(value):null)};
+    facts.callLabel=task.callLabel;
+    facts.requestHeader={taskId:task.requestObject.taskId,interactive:task.requestObject.interactive,sampleMemory:task.requestObject.sampleMemory,
+     nativeSections:{constructorName:task.requestObject.nativeSections.constructor.name,byteLength:task.requestObject.nativeSections.byteLength,
+      bytesHex:Buffer.from(task.requestObject.nativeSections).toString('hex')}};
+    event('keyword-reply-held',facts);
+    const held=clockModule.deferOriginalEventDelivery({receiver:this,originalEmit:emit,eventName:name,message,args,
+     awaitRelease:()=>pauseAsync(boundary,facts),
+     onReceipt:(stage,fields)=>{if(stage==='delivery-enter'&&hash(serialize(message))!==facts.replyV8Sha256)
+       controlFailure('held-keyword-message-mutated',Error('Actual held keyword reply changed before original delivery'),facts);
+      event('keyword-reply-'+stage,{...facts,...fields});if(stage!=='delivery-enter'){tasks.get(this).delete(message.taskId);flush();}},
+     onControlFailure:error=>controlFailure('keyword-reply-control-failed',error,facts)});
+    held.completion.catch(error=>controlFailure('keyword-reply-deferred-completion-rejected',error,facts));
+    callLabel=previous;return; // The original emit has deliberately not run yet.
+   }
+   callLabel=previous;tasks.get(this).delete(message.taskId);
   }
  }
  return emit.call(this,name,message,...args);

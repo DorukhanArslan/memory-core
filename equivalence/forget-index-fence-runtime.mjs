@@ -134,6 +134,8 @@ export async function runForgetIndexFenceRuntime(input,config){
   if(message.snapshot){raw.snapshots.push(message.snapshot);result.snapshots[message.snapshot.label]=message.snapshot.common;}
   if(message.sourceClockBlocked){(raw.sourceClockFailures??=[]).push({actor:message.actor,pid:message.pid,instance:message.instance,failures:message.sourceClockFailures});
    throw Object.assign(Error('Native source clock control failed; original outcomes retained'),{code:'FIF_SOURCE_CLOCK_CONTROL_FAILED'});}
+  if(message.controlBlocked){(raw.controlFailures??=[]).push({actor:message.actor,pid:message.pid,instance:message.instance,failures:message.controlFailures});
+   throw Object.assign(Error('Native fixture control failed; original outcomes retained'),{code:'FIF_CONTROL_FAILED'});}
   return message;
  }
  async function run(actorName,operation,label,extra){const call=await dispatch(actorName,operation,label,extra);return collect(await call.promise);}
@@ -213,8 +215,8 @@ export async function runForgetIndexFenceRuntime(input,config){
     const draining=(async()=>{
      if(!owned.record.exit){
       try{const call=await dispatch(name,'process-exit'),reply=await call.promise;
-       if(reply.infrastructureError||reply.error||reply.sourceClockBlocked||reply.exiting!==true){
-        acknowledgementError=Error(reply.infrastructureError?.message??reply.error?.message??(reply.sourceClockBlocked?'Native source clock control failed during original close':'Actual child did not acknowledge completed close'));
+       if(reply.infrastructureError||reply.error||reply.sourceClockBlocked||reply.controlBlocked||reply.exiting!==true){
+        acknowledgementError=Error(reply.infrastructureError?.message??reply.error?.message??(reply.sourceClockBlocked||reply.controlBlocked?'Native fixture control failed during original close':'Actual child did not acknowledge completed close'));
        }
       }catch(error){acknowledgementError=error;}
      }
@@ -545,10 +547,12 @@ export async function runForgetIndexFenceActor(request){
    else entry.infrastructureError=err(error);
   }finally{entry.settledAtNs=process.hrtime.bigint().toString();if(sourceKind)sourceClock.endCall();
    raw.sourceClock={protocol:input.clock.sourceWriteClock.protocol,receipts:sourceClock.receipts(),failures:sourceClock.failures(),blocked:sourceClock.blocked()};
+   raw.controlFailures=controller().controlFailures;
    controller().setCallLabel(null);controller().flush();persist();}
   return{type:'settled',id:command.id,...(publicCall?{publicCall}:{}),...(snapshotValue?{snapshot:snapshotValue}:{}),
    privateReturn:entry.privateReturn??null,error:entry.error??null,...(entry.infrastructureError?{infrastructureError:entry.infrastructureError}:{}),
-   providerIdentity:raw.ownerBindings.at(-1)?.providerIdentity??null,sourceClockBlocked:sourceClock.blocked(),sourceClockFailures:sourceClock.failures(),actor,pid:process.pid,instance,exiting};
+   providerIdentity:raw.ownerBindings.at(-1)?.providerIdentity??null,sourceClockBlocked:sourceClock.blocked(),sourceClockFailures:sourceClock.failures(),
+   controlBlocked:controller().controlFailures.length>0,controlFailures:controller().controlFailures,actor,pid:process.pid,instance,exiting};
  }
  return{execute,isExiting:()=>exiting,persist};
 }

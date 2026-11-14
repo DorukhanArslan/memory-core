@@ -150,3 +150,204 @@ def test_disabled_profile_uses_workspace_guard_without_creating_lease(tmp_path):
         with closing(sqlite3.connect(index)) as db:
             db.execute("CREATE TABLE ordinary_on_write(value TEXT)")
     assert not Path(f"{index}.reindex-lock.sqlite").exists()
+
+
+def _managed_lease_owner(root, index, origins, catalog_path):
+    from memory_core.config import MemoryConfig
+    from memory_core.consolidation.origins import MemoryEntryOriginLedger
+    from memory_core.flags import FeatureFlags
+    from memory_core.host.managed_index import ManagedSQLiteMemoryStore
+    from memory_core.session_catalog import MemorySessionCatalog
+    from memory_core.workspace import MemoryWorkspace
+
+    ledger = MemoryEntryOriginLedger(lambda _agent: Path(origins))
+    catalog = MemorySessionCatalog(Path(catalog_path))
+    workspace = MemoryWorkspace(Path(root), agent_id="main", session_catalog=catalog,
+        is_session_forgotten=lambda session: bool(ledger.list_session_tombstones("main", [session])),
+        index_sources=["memory", "sessions"])
+    config = MemoryConfig(Path(root), store_path=Path(index),
+                          flags=FeatureFlags(vector_search=False, temporal_decay=False))
+    store = ManagedSQLiteMemoryStore(config, workspace, memory_publication="on-search",
+                                    revision_fence=ledger.revision_fence("main"))
+    return store, workspace, ledger, catalog
+
+
+def _managed_producer_process(root, index, origins, catalog, connection, *, hold_prepared):
+    from memory_core.consolidation.origins import MemoryIndexRevisionConflictError
+
+    store = None
+    send_guard = threading.Lock()
+    attempted = threading.Event()
+    original_try_acquire = _ReindexLease.try_acquire
+
+    def send(phase, **values):
+        with send_guard:
+            connection.send({"phase": phase, **values})
+
+    def actual_lease_attempt(lease):
+        acquired = original_try_acquire(lease)
+        if not acquired and not attempted.is_set():
+            attempted.set()
+            send("lease-wait", acquired=acquired)
+        elif acquired:
+            send("lease-acquired", acquired=acquired)
+        return acquired
+
+    _ReindexLease.try_acquire = actual_lease_attempt
+    try:
+        store, workspace, _ledger, _catalog = _managed_lease_owner(root, index, origins, catalog)
+        if hold_prepared:
+            original_publish = store.publish_prepared_index
+
+            def pause_real_prepared_frame(prepared, expected_revision, **options):
+                send("prepared", revision=expected_revision,
+                     sources=[{"path": source.path, "source": source.source,
+                               "texts": [chunk.text for chunk in source.chunks]}
+                              for source in prepared.sources])
+                if not connection.poll(15) or connection.recv() != "release":
+                    raise RuntimeError("The actual prepared producer was not released")
+                return original_publish(prepared, expected_revision, **options)
+
+            store.publish_prepared_index = pause_real_prepared_frame
+        with ThreadPoolExecutor(max_workers=2) as executor:
+            producer = executor.submit(store.reindex, workspace, force=True)
+            if not hold_prepared:
+                if not attempted.wait(5):
+                    raise RuntimeError("The second managed producer did not reach the real held lease")
+                hits = executor.submit(store.search, "keeppine853", min_score=0).result(timeout=2)
+                send("foreground-query", hits=[{"path": hit.path, "snippet": hit.snippet} for hit in hits])
+            try:
+                result = producer.result(timeout=15)
+            except BaseException as error:
+                send("settled", error={"name": type(error).__name__, "message": str(error),
+                                       "typedConflict": isinstance(error, MemoryIndexRevisionConflictError)})
+            else:
+                send("settled", returned=result, published=store.read_published_index(),
+                     admitted=[file.rel_path for file in workspace.discover_session_transcript_files()])
+    except BaseException as error:
+        send("child-error", error={"name": type(error).__name__, "message": str(error)})
+        raise
+    finally:
+        _ReindexLease.try_acquire = original_try_acquire
+        if store is not None:
+            store.close()
+        connection.close()
+
+
+def _receive_phase(connection, phase, receipts):
+    import time
+
+    deadline = time.monotonic() + 5
+    while True:
+        remaining = deadline - time.monotonic()
+        assert remaining > 0 and connection.poll(remaining), f"No actual {phase} receipt arrived"
+        row = connection.recv()
+        receipts.append(row)
+        assert row["phase"] != "child-error", row
+        if row["phase"] == phase:
+            return row
+
+
+def _finish_managed_process(process, connection, *, release=False):
+    if process.is_alive() and release:
+        try:
+            connection.send("release")
+        except (BrokenPipeError, EOFError, OSError):
+            pass
+    process.join(5)
+    if process.is_alive():
+        process.kill()
+        process.join(5)
+    connection.close()
+    assert not process.is_alive(), "The managed producer could not be reaped"
+
+
+@pytest.mark.parametrize("split_origins", [False, True])
+def test_real_managed_processes_preserve_forget_and_queued_foreground_query(tmp_path, split_origins):
+    from memory_core.consolidation.forget import forget_memory_entries
+    from memory_core.consolidation.origins import MemoryEntryOrigin
+    from memory_core.index.sqlite_store import SQLiteMemoryStore
+
+    root, index, catalog_path = tmp_path / "workspace", tmp_path / "index.sqlite", tmp_path / "catalog.sqlite"
+    origins = tmp_path / "origins.sqlite" if split_origins else index
+    (root / "memory").mkdir(parents=True)
+    (root / "MEMORY.md").write_text(
+        "# Memory\n\n<!-- memory-core-memory-promotion:chosen -->\n"
+        "- A durable forgetmaple742 preference.\n", encoding="utf8",
+    )
+    (root / "memory/retained.md").write_text("A durable keeppine853 preference.\n", encoding="utf8")
+    seed, workspace, ledger, catalog = _managed_lease_owner(root, index, origins, catalog_path)
+    ledger.record("main", [MemoryEntryOrigin("chosen", "main", "forgotten",
+                  "agent:main:dm:forgotten", "owner", 123)])
+    for session, text in (("forgotten", "A durable forgetmaple742 preference."),
+                          ("retained", "A durable keeppine853 preference.")):
+        key = f"agent:main:dm:{session}"
+        catalog.upsert_session(key, {"sessionId": session})
+        catalog.append_message(session, {"role": "user", "content": text}, session_key=key,
+                               event_id=f"{session}-message", now_ms=123)
+    try:
+        assert seed.reindex(workspace, force=True) == 4
+        before = seed.read_published_index()
+        config = seed.config
+        with closing(seed.connect()) as db:
+            assert db.execute("PRAGMA journal_mode=WAL").fetchone() == ("wal",)
+    finally:
+        seed.close()
+    context = multiprocessing.get_context("spawn")
+    old_connection, old_child = context.Pipe()
+    old = context.Process(target=_managed_producer_process,
+        args=(root, index, origins, catalog_path, old_child), kwargs={"hold_prepared": True})
+    fresh_connection, fresh_child = context.Pipe()
+    fresh = context.Process(target=_managed_producer_process,
+        args=(root, index, origins, catalog_path, fresh_child), kwargs={"hold_prepared": False})
+    old_receipts, fresh_receipts = [], []
+    started_fresh = released_old = False
+    old.start()
+    old_child.close()
+    try:
+        prepared = _receive_phase(old_connection, "prepared", old_receipts)
+        assert any("forgetmaple742" in text for source in prepared["sources"] for text in source["texts"])
+        with closing(sqlite3.connect(f"{index}.reindex-lock.sqlite", timeout=0)) as reader:
+            with pytest.raises(sqlite3.OperationalError):
+                reader.execute("PRAGMA user_version").fetchone()
+        fresh.start()
+        started_fresh = True
+        fresh_child.close()
+        assert _receive_phase(fresh_connection, "lease-wait", fresh_receipts)["acquired"] is False
+        foreground = _receive_phase(fresh_connection, "foreground-query", fresh_receipts)
+        assert foreground["hits"] and all("keeppine853" in hit["snippet"] for hit in foreground["hits"])
+        assert not any(row["phase"] == "lease-acquired" for row in fresh_receipts)
+        # Forget owns its actual marker and purge transactions independently of
+        # the maintenance sidecar held by the already prepared old producer.
+        forget_store = SQLiteMemoryStore(config, None, revision_fence=ledger.revision_fence("main"))
+        with ThreadPoolExecutor(max_workers=1) as executor:
+            forgotten = executor.submit(forget_memory_entries, config=config, agent_id="main",
+                                        origins=ledger, session_ids=["forgotten"], store=forget_store)
+            try:
+                report = forgotten.result(timeout=3)
+                assert report.session_ids == ["forgotten"] and report.artifacts["indexChunks"] > 0
+                assert [row.session_id for row in ledger.list_session_tombstones("main")] == ["forgotten"]
+                assert forget_store.count_chunks() < len(before["chunks"])
+                assert "forgetmaple742" not in (root / "MEMORY.md").read_text(encoding="utf8")
+            finally:
+                old_connection.send("release")
+                released_old = True
+        rejected = _receive_phase(old_connection, "settled", old_receipts)
+        assert rejected["error"]["typedConflict"] is True
+        assert _receive_phase(fresh_connection, "lease-acquired", fresh_receipts)["acquired"] is True
+        published = _receive_phase(fresh_connection, "settled", fresh_receipts)
+        assert "error" not in published
+        assert "sessions/main/forgotten.jsonl" not in published["admitted"]
+        assert "sessions/main/retained.jsonl" in published["admitted"]
+        texts = [chunk["text"] for chunk in published["published"]["chunks"]]
+        assert texts and all("forgetmaple742" not in text for text in texts)
+        assert any("keeppine853" in text for text in texts)
+        assert catalog.snapshot().forgotten_session_ids == frozenset()
+    finally:
+        _finish_managed_process(old, old_connection, release=not released_old)
+        if started_fresh:
+            _finish_managed_process(fresh, fresh_connection)
+        else:
+            fresh_connection.close()
+            fresh_child.close()
+    assert old.exitcode == fresh.exitcode == 0

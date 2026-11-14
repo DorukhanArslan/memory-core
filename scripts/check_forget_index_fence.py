@@ -16,7 +16,7 @@ import traceback
 ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT))
 
-from equivalence import forget_index_fence_v2, forget_index_fence_v3, forget_index_fence_v4  # noqa: E402
+from equivalence import forget_index_fence_v2, forget_index_fence_v3, forget_index_fence_v4, forget_index_fence_v5  # noqa: E402
 from equivalence.forget_index_fence_bindings import prepare_forget_index_fence_bindings  # noqa: E402
 from equivalence.forget_index_fence_evidence import replay_case  # noqa: E402
 from equivalence.forget_index_fence_native import run_native_case  # noqa: E402
@@ -44,9 +44,10 @@ def error_record(error):
     return {"name": type(error).__name__, "message": str(error), "traceback": traceback.format_exc()}
 
 
-def main():
+def main(argv=None):
     parser = argparse.ArgumentParser(description=__doc__)
-    versions = {"v2": forget_index_fence_v2, "v3": forget_index_fence_v3, "v4": forget_index_fence_v4}
+    versions = {"v2": forget_index_fence_v2, "v3": forget_index_fence_v3, "v4": forget_index_fence_v4,
+                "v5": forget_index_fence_v5}
     parser.add_argument("--version", choices=tuple(versions), default="v2")
     parser.add_argument("--reference", type=Path, required=True)
     parser.add_argument("--node", type=Path, required=True)
@@ -59,7 +60,7 @@ def main():
                         help="Retain the first invalid measurement and stop; ordinary mismatches continue")
     parser.add_argument("--defer-custody", action="store_true",
                         help="Capture originals only; retain blocked status and award no credit until independent replay")
-    args = parser.parse_args()
+    args = parser.parse_args(argv)
     frozen = versions[args.version]
     CASE_HASHES, MANIFEST, POINTS, build_cases = frozen.CASE_HASHES, frozen.MANIFEST, frozen.POINTS, frozen.build_cases
     if args.case and any(case_id not in CASE_HASHES for case_id in args.case):
@@ -114,8 +115,20 @@ def main():
                     try:
                         row["structuralReplay"] = replay_case(case, native_directory, sdk_directory,
                                                             approved_node=node, approved_sdk_root=ROOT,
-                                                            approved_reference=reference)
+                                                            approved_reference=reference,
+                                                            **({"approved_adapter_root": ROOT}
+                                                               if args.version != "v2" else {}))
+                        if args.version == "v5" and (
+                                not isinstance(row["structuralReplay"], dict)
+                                or row["structuralReplay"].get("validated") is not True
+                                or type(row["structuralReplay"].get("publicMatch")) is not bool
+                                or type(row["structuralReplay"].get("acceptancePointsAwarded")) is not int
+                                or row["structuralReplay"]["acceptancePointsAwarded"] != 0):
+                            raise ValueError("V5 requires affirmative independent zero-credit custody before comparison")
                         row["differences"] = differences(native_result, sdk_result)
+                        if (args.version == "v5"
+                                and row["structuralReplay"]["publicMatch"] is not (not row["differences"])):
+                            raise ValueError("V5 independent custody parity differs from the whole actual results")
                         row["status"] = "mismatch" if row["differences"] else "match"
                     except Exception as error:
                         row["custodyError"] = error_record(error)

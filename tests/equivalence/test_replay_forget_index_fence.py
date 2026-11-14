@@ -136,12 +136,12 @@ def packet(monkeypatch, tmp_path, request):
                       "sourceSha256": sdk_info["sourceSha256"], "sourceFiles": sdk_info["sourceFiles"]},
                   "node": node_info, "reference": {key: ref_info[key] for key in ("tag", "commit")},
                   "execution": {"caseOrder": list(frozen.CASE_HASHES),
-                                **({"inputVersion": version} if version in {"v3", "v4"} else {})}, "cases": rows}
+                                **({"inputVersion": version} if version in {"v3", "v4", "v5"} else {})}, "cases": rows}
         (root / "report.json").write_text(json.dumps(source, indent=2) + "\n")
 
     def argv(output, selected_roots=None, *, selected_version="fixture"):
         if selected_version == "fixture":
-            selected_version = version if version in {"v3", "v4"} else None
+            selected_version = version if version in {"v3", "v4", "v5"} else None
         args = [part for root in (roots if selected_roots is None else selected_roots)
                 for part in ("--capture-root", str(root))]
         return [*args, *(["--version", selected_version] if selected_version is not None else []),
@@ -339,7 +339,7 @@ def test_progress_updates_are_complete_atomic_json_and_no_trusted_fake_mode_is_e
                for row in snapshots)
 
 
-@pytest.mark.parametrize("packet", ["v2", "v3", "v4"], indirect=True)
+@pytest.mark.parametrize("packet", ["v2", "v3", "v4", "v5"], indirect=True)
 def test_explicit_version_replays_only_its_own_complete_family(packet):
     output = packet["tmp"] / "selected-version.json"
     args = packet["argv"](output, selected_version=packet["version"])
@@ -355,7 +355,7 @@ def test_explicit_version_replays_only_its_own_complete_family(packet):
     assert report["fullScopePassed"] is False
 
 
-@pytest.mark.parametrize("packet", ["v2", "v3", "v4"], indirect=True)
+@pytest.mark.parametrize("packet", ["v2", "v3", "v4", "v5"], indirect=True)
 def test_wrong_explicit_version_cannot_relabel_a_complete_packet(packet):
     other = "v4" if packet["version"] != "v4" else "v3"
     output = packet["tmp"] / "wrong-version.json"
@@ -367,7 +367,7 @@ def test_wrong_explicit_version_cannot_relabel_a_complete_packet(packet):
     assert report["covers"] == [] and report["fullScopePassed"] is False
 
 
-@pytest.mark.parametrize("packet", ["v3", "v4"], indirect=True)
+@pytest.mark.parametrize("packet", ["v3", "v4", "v5"], indirect=True)
 def test_later_version_is_never_implicitly_selected_from_capture_contents(packet):
     output = packet["tmp"] / "no-version.json"
     assert packet["cli"].main(packet["argv"](output, selected_version=None)) == 2
@@ -377,7 +377,7 @@ def test_later_version_is_never_implicitly_selected_from_capture_contents(packet
     assert report["acceptancePointsAwarded"] == 0 and report["fullScopePassed"] is False
 
 
-@pytest.mark.parametrize("packet", ["v3", "v4"], indirect=True)
+@pytest.mark.parametrize("packet", ["v3", "v4", "v5"], indirect=True)
 @pytest.mark.parametrize("attack", ["report-kind", "manifest", "missing-version", "wrong-version"])
 def test_later_report_must_declare_its_frozen_version_and_scope(packet, attack):
     root = packet["roots"][0]
@@ -399,7 +399,7 @@ def test_later_report_must_declare_its_frozen_version_and_scope(packet, attack):
     assert report["fullScopePassed"] is False and report["errors"]
 
 
-@pytest.mark.parametrize("packet", ["v2", "v3", "v4"], indirect=True)
+@pytest.mark.parametrize("packet", ["v2", "v3", "v4", "v5"], indirect=True)
 def test_mixed_version_members_cannot_borrow_the_selected_family_scope(packet):
     root = packet["roots"][1]
     source = _report(root)
@@ -414,7 +414,7 @@ def test_mixed_version_members_cannot_borrow_the_selected_family_scope(packet):
     assert any("foreign case" in error["message"] for error in report["errors"])
 
 
-@pytest.mark.parametrize("packet", ["v2", "v3", "v4"], indirect=True)
+@pytest.mark.parametrize("packet", ["v2", "v3", "v4", "v5"], indirect=True)
 def test_explicit_adapter_source_is_independent_and_sealed(packet):
     packet["hook"]["explicitAdapter"] = True
     output = packet["tmp"] / "explicit-adapter.json"
@@ -428,7 +428,7 @@ def test_explicit_adapter_source_is_independent_and_sealed(packet):
     assert report["acceptancePointsAwarded"] == 0 and report["fullScopePassed"] is False
 
 
-@pytest.mark.parametrize("packet", ["v3", "v4"], indirect=True)
+@pytest.mark.parametrize("packet", ["v3", "v4", "v5"], indirect=True)
 def test_changed_actor_source_after_replay_invalidates_complete_baseline(packet):
     def change(case):
         packet["hook"]["function"] = None
@@ -442,7 +442,7 @@ def test_changed_actor_source_after_replay_invalidates_complete_baseline(packet)
     assert report["acceptancePointsAwarded"] == 0 and report["fullScopePassed"] is False
 
 
-@pytest.mark.parametrize("packet", ["v4"], indirect=True)
+@pytest.mark.parametrize("packet", ["v4", "v5"], indirect=True)
 def test_missing_explicit_adapter_source_is_rejected_before_guard(packet):
     output = packet["tmp"] / "missing-adapter.json"
     args = [*packet["argv"](output), "--adapter-root", str(packet["tmp"] / "absent-actor-source")]

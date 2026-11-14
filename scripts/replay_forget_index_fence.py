@@ -190,7 +190,7 @@ def _admit_reports(roots, authority, report, frozen, version):
             raise ValueError("A source collector report lacks complete final authentication or selected frozen scope")
         execution = source.get("execution")
         if (not isinstance(execution, dict)
-                or version in {"v3", "v4"} and execution.get("inputVersion") != version
+                or version in {"v3", "v4", "v5"} and execution.get("inputVersion") != version
                 or "inputVersion" in execution and execution["inputVersion"] != version):
             raise ValueError("A collector report does not belong to the explicitly selected input version")
         identity, node = source.get("implementationIdentity"), source.get("node")
@@ -305,13 +305,13 @@ def _error(error):
 
 def main(argv=None):
     parser = argparse.ArgumentParser(description=__doc__)
-    parser.add_argument("--version", choices=("v2", "v3", "v4"), default="v2")
+    parser.add_argument("--version", choices=("v2", "v3", "v4", "v5"), default="v2")
     parser.add_argument("--capture-root", type=Path, action="append", required=True)
     parser.add_argument("--reference", type=Path, required=True)
     parser.add_argument("--node", type=Path, required=True)
     parser.add_argument("--sdk-source-root", type=Path, required=True)
     parser.add_argument("--adapter-root", type=Path,
-                        help="Independent actor source tree; V3/V4 default to this replay program tree, V2 preserves legacy custody when omitted")
+                        help="Independent actor source tree; V3/V4/V5 default to this replay program tree, V2 preserves legacy custody when omitted")
     parser.add_argument("--output", type=Path, required=True)
     args = parser.parse_args(argv)
     frozen = import_module(f"equivalence.forget_index_fence_{args.version}")

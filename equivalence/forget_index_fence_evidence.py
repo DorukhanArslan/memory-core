@@ -248,9 +248,16 @@ SNAPSHOT_FIELDS = {"documents", "origins", "tombstones", "recall", "phaseSignals
 
 
 def _case(case):
-    from equivalence.forget_index_fence import validate_case
+    if isinstance(case, dict) and case.get("operation") == "forget-index-fence-v2-runtime":
+        from equivalence.forget_index_fence_v2 import validate_case
+    else:
+        from equivalence.forget_index_fence import validate_case
     validate_case(case)
     return case["input"]
+
+
+def _v2(case):
+    return case["operation"] == "forget-index-fence-v2-runtime"
 
 
 def _expected_calls(value):
@@ -480,8 +487,8 @@ def _native_authority(case, raw, directory, approved_node, trusted_archive, appr
     require(context["providerMode"] == "none" and context["fetchPolicy"] == "deny"
             and context["stateDirectory"] == raw["fixtureBase"] == str(directory / "state"),
             "Native original process borrowed ambient provider or fixture state")
-    profile = context["forgetIndexFenceProfile"]
-    require(profile["kind"] == "forget-index-fence" and profile["operation"] == case["operation"]
+    profile = context["forgetIndexFenceV2Profile" if _v2(case) else "forgetIndexFenceProfile"]
+    require(profile["kind"] == case["input"]["kind"] and profile["operation"] == case["operation"]
             and profile["caseId"] == case["id"] and profile["acceptancePointsAwarded"] == 0
             and profile["caseWireSha256"] == _digest(request_path),
             "Native original process used an undeclared execution profile")
@@ -491,8 +498,9 @@ def _native_authority(case, raw, directory, approved_node, trusted_archive, appr
           "Native process wall-clock capabilities were silently equalized")
     program_root = Path(process["cwd"])
     allowed = {row["path"]: row["sha256"] for row in context["allowedLocal"]}
-    require(len(allowed) == 3 and set(allowed) == {str(program_root / "equivalence" / f"forget-index-fence-{name}.mjs")
-                for name in ("entry", "runtime", "preload")}, "Native execution allowed an undeclared local program")
+    local_names = ("entry", "runtime", "preload", "source-clock") if _v2(case) else ("entry", "runtime", "preload")
+    require(len(allowed) == len(local_names) and set(allowed) == {str(program_root / "equivalence" / f"forget-index-fence-{name}.mjs")
+                for name in local_names}, "Native execution allowed an undeclared local program")
     for filename, digest in allowed.items():
         require(_digest(filename) == digest, "An actual Native observer/actor program changed after execution")
     environment = process["environment"]
@@ -517,11 +525,11 @@ def _native_authority(case, raw, directory, approved_node, trusted_archive, appr
                 and boot["isMainThread"] is (thread == 0), "Native imported worker identity was substituted")
         _same(boot["runtime"], authority, "An actual Native worker used another executable")
         require((pid, thread) not in by_pid, "A Native worker import trace was duplicated")
-        loaded, clock, gates = set(), [], []
+        loaded, release_imports, clock, gates = set(), [], [], []
         for row in rows[1:]:
             require(row["pid"] == pid and row["threadId"] == thread,
                     "An original Native import trace changed process or worker")
-            if row["event"] == "forget-index-fence-bootstrap":
+            if row["event"] == ("forget-index-fence-v2-bootstrap" if _v2(case) else "forget-index-fence-bootstrap"):
                 clock.append(row)
                 continue
             if row["event"] == "fence-gate-enter":
@@ -535,12 +543,16 @@ def _native_authority(case, raw, directory, approved_node, trusted_archive, appr
                 require(row.get("kind") == "release" and inventories[package].get(str(relative)) == row["sha256"]
                         and _digest(package_root / _relative(package) / relative) == row["sha256"],
                         "Actually imported Native source differs from the pinned original archive")
-                loaded.add(row["path"])
+                release_imports.append({"package": package, "path": row["path"], "sha256": row["sha256"]})
+                if package == "node_modules/openclaw":
+                    loaded.add(row["path"])
         require(len(clock) == 1 and clock[0]["clock"]["apis"] == ["Date"]
                 and clock[0]["clock"]["setTimeoutUnchanged"] is True
                 and clock[0]["clock"]["performanceNowUnchanged"] is True,
                 "Native original monotonic clocks or timers were replaced")
-        by_pid[pid, thread] = {"bootstrap": boot, "loaded": loaded, "clock": clock[0]["clock"], "gates": gates}
+        _same(clock[0]["profile"], profile, "An original Native worker used another complete execution capability")
+        by_pid[pid, thread] = {"bootstrap": boot, "loaded": loaded, "releaseImports": release_imports,
+                              "clock": clock[0]["clock"], "gates": gates}
     require((raw["pid"], 0) in by_pid, "Native actual coordinator never imported the authenticated actor")
     for path in sorted((directory / "evidence").glob("*-events.jsonl")):
         rows = [_json(line) for line in _owned(path, directory).read_text().splitlines()]
@@ -557,7 +569,261 @@ def _native_authority(case, raw, directory, approved_node, trusted_archive, appr
             rows.sort(key=lambda row: row["sequence"])
             _events(rows)
             passive[key] = rows
+    _native_process_graph(case, raw, context, process, authority, by_pid, passive, approved_node or binary)
     return context, process, authority, by_pid, passive
+
+
+def _native_process_graph(case, raw, context, process, authority, imports, passive, approved_node):
+    """Every original helper needs its actual source-owned launch and OS close."""
+    graph = {raw["pid"]: {"ppid": raw["ppid"], "actor": "coordinator", "instance": 0,
+                          "clock": case["input"]["clock"]["nowMs"]}}
+    for child in raw["children"]:
+        require(child["pid"] not in graph, "An actual Native process PID was duplicated")
+        clock = case["input"]["clock"]["nowMs"]
+        for step in raw["steps"]:
+            if "wallClockNowMs" in step["step"] and _ns(step["startedAtNs"]) <= _ns(child["startedAtNs"]):
+                clock = step["step"]["wallClockNowMs"]
+        graph[child["pid"]] = {"ppid": raw["pid"], "actor": child["actor"], "instance": child["instance"], "clock": clock}
+    allowed = {(package["location"], row["path"]): row["sha256"]
+               for package in context["runtime"]["packages"] for row in package["files"]}
+    package_root = Path(context["runtime"]["runtimeRoot"]).parent.parent
+    def source(record, owner_key):
+        require(isinstance(record, dict) and record["kind"] == "release"
+                and allowed.get((record["package"], record["path"])) == record["sha256"],
+                "An original Native helper used an unapproved source caller or entrypoint")
+        filename = package_root / _relative(record["package"]) / _relative(record["path"])
+        require(record["absolutePath"] == str(filename) and _digest(filename) == record["sha256"],
+                "An actual Native helper source path differs from pinned original release bytes")
+        require(any(row["package"] == record["package"] and row["path"] == record["path"]
+                    and row["sha256"] == record["sha256"] for row in imports[owner_key]["releaseImports"]),
+                "An actual Native helper source was not imported by its producing process/worker")
+        return filename
+    launches, lifecycle, messages = {}, {}, {}
+    for key, rows in passive.items():
+        for row in rows:
+            if row["event"] == "original-child-spawn":
+                require(row["launchId"] not in launches, "An actual original child launch was duplicated")
+                launches[row["launchId"]] = key, row
+            elif row["event"] in {"original-child-os-exit", "original-child-exit", "original-child-error"}:
+                lifecycle.setdefault(row["launchId"], []).append((key, row))
+            elif row["event"] == "original-child-message":
+                messages.setdefault(row["launchId"], []).append((key, row))
+    require(set(lifecycle) <= set(launches) and set(messages) <= set(launches),
+            "An original helper return, error, or IPC message has no actual source launch")
+    unresolved = dict(launches)
+    while unresolved:
+        progressed = False
+        for launch_id, (key, row) in list(unresolved.items()):
+            if row["pid"] not in graph:
+                continue
+            parent = graph[row["pid"]]
+            require(key in imports and row["method"] in {"fork", "spawn"} and row["returnedChildRef"]
+                    and row["ppid"] == parent["ppid"] and row["actor"] == parent["actor"]
+                    and row["instance"] == parent["instance"] and isinstance(row["originalStack"], str),
+                    "An actual original helper launch borrowed another process/worker/source frame")
+            caller = source(row["sourceCaller"], key)
+            require(row["method"] == "fork" and row["sourceCaller"]["package"] == "node_modules/openclaw"
+                    and row["sourceCaller"]["path"] == "dist/openclaw-agent-db-maintenance-DBuIm8El.mjs"
+                    and row["sourceEntrypoint"]["package"] == "node_modules/openclaw"
+                    and row["sourceEntrypoint"]["path"] == "dist/infra/sqlite-integrity.worker.js",
+                    "An original Native helper did not use the source-declared integrity route")
+            require(str(caller) in row["originalStack"] or caller.as_uri() in row["originalStack"],
+                    "An actual original helper launch lost its source-owned call stack")
+            paths = "|".join(re.escape(value) for value in (str(caller), caller.as_uri()))
+            frame = re.search(r"at assertSqliteIntegrityWithProcess \((?:" + paths + r"):(\d+):\d+\)", row["originalStack"])
+            source_lines = _compiled_text(str(caller), _digest(caller)).splitlines()
+            require(frame is not None and 0 < int(frame[1]) <= len(source_lines)
+                    and "fork(entry, [], {" in source_lines[int(frame[1]) - 1],
+                    "An original integrity launch did not come from its actual pinned fork call site")
+            require(row["executable"] == authority["execPath"] and row["argv"]
+                    and row["argv"][0] == authority["execPath"] and Path(row["cwd"]).is_absolute(),
+                    "An original Native helper executed a different binary or working directory")
+            environment = row["environment"]
+            require(environment["MEMORY_EQ_RELEASE_CONTEXT"] == process["contextPath"]
+                    and environment["MEMORY_EQ_FIF_ACTOR"] == parent["actor"]
+                    and environment["MEMORY_EQ_FIF_INSTANCE"] == str(parent["instance"])
+                    and environment["OPENCLAW_STATE_DIR"] == raw["fixtureBase"]
+                    and environment["OPENCLAW_CONFIG_PATH"] == context["configPath"]
+                    and environment["NODE_OPTIONS"] == process["environment"]["NODE_OPTIONS"]
+                    and environment["HOME"] == environment["OPENCLAW_HOME"] == raw["fixtureBase"]
+                    and environment["MEMORY_EQ_FIF_CLOCK_NOW_MS"] == str(row["wallClockNowMs"]),
+                    "An original Native helper borrowed ambient state, actor identity, clock, or preload authority")
+            permitted_clocks = {case["input"]["clock"]["nowMs"], case["input"]["clock"].get("recoveryNowMs")}
+            require(type(row["wallClockNowMs"]) is int and row["wallClockNowMs"] in permitted_clocks,
+                    "An original Native helper used an undeclared wall-clock phase")
+            _native_child_arguments(row, authority, approved_node)
+            ends = lifecycle.get(launch_id, [])
+            require(all(owner == key and item["childPid"] == row["childPid"]
+                        and item["sequence"] > row["sequence"] for owner, item in ends),
+                    "An original helper lifecycle receipt borrowed another actual child object")
+            closes = [item for _, item in ends if item["event"] == "original-child-exit"]
+            exits = [item for _, item in ends if item["event"] == "original-child-os-exit"]
+            errors = [item for _, item in ends if item["event"] == "original-child-error"]
+            require(len(closes) == 1 and closes[0]["spawnSequence"] == row["sequence"]
+                    and (closes[0]["code"] is None or type(closes[0]["code"]) is int)
+                    and (closes[0]["signal"] is None or isinstance(closes[0]["signal"], str)),
+                    "An original Native helper has no actual OS close settlement")
+            child_pid = row["childPid"]
+            if child_pid is None:
+                require(errors and not exits, "An unspawned original helper lacks its actual source-owned launch error")
+                for error in errors:
+                    decoded = _native_value(error["error"], authority, approved_node)
+                    require(decoded["privateType"] == "Error" and decoded["message"] == error["message"],
+                            "An original helper launch error lost its actual exception carrier")
+            else:
+                require(type(child_pid) is int and child_pid > 0 and child_pid not in graph
+                        and (child_pid, 0) in imports and len(exits) == 1
+                        and row["sequence"] < exits[0]["sequence"] < closes[0]["sequence"]
+                        and exits[0]["spawnSequence"] == row["sequence"]
+                        and exits[0]["code"] == closes[0]["code"] and exits[0]["signal"] == closes[0]["signal"],
+                        "An original helper PID was substituted or its actual OS exit/close was omitted")
+                entrypoint = source(row["sourceEntrypoint"], (child_pid, 0))
+                require(row["modulePath"] == str(entrypoint) and str(entrypoint) in row["argv"],
+                        "An original Native helper executed another actual release entrypoint")
+                graph[child_pid] = {"ppid": row["pid"], "actor": parent["actor"],
+                                    "instance": parent["instance"], "clock": row["wallClockNowMs"]}
+            for owner, message in messages.get(launch_id, []):
+                require(owner == key and message["childPid"] == child_pid
+                        and message["direction"] in {"parent-to-child", "child-to-parent"}
+                        and row["sequence"] < message["sequence"] < closes[0]["sequence"],
+                        "An actual original helper IPC message lost its producing launch/object/lifetime")
+                _same(_native_value(message["message"], authority, approved_node), message["messageJSON"],
+                      "An actual original helper IPC payload was rewritten or truncated")
+            _native_integrity_messages([message for _, message in messages.get(launch_id, [])], raw["fixtureBase"])
+            for error in errors:
+                decoded = _native_value(error["error"], authority, approved_node)
+                require(decoded["privateType"] == "Error" and decoded["message"] == error["message"],
+                        "An original helper error differs from its complete actual V8 exception")
+            del unresolved[launch_id]
+            progressed = True
+        require(progressed, "An original helper process has no authenticated parent launch chain")
+    mains = {pid for pid, thread in imports if thread == 0}
+    require(mains == set(graph), "An actual Native process bootstrap has no genuine original spawn receipt")
+    for (pid, thread), item in imports.items():
+        require(pid in graph, "An original Native worker borrowed an unknown process")
+        identity, boot = graph[pid], item["bootstrap"]
+        require(boot["ppid"] == identity["ppid"] and boot["actor"] == identity["actor"]
+                and boot["instance"] == identity["instance"],
+                "An original Native main/worker bootstrap lost its actual process lineage")
+        if thread == 0:
+            require(item["clock"]["nowMs"] == identity["clock"],
+                    "An original Native process bootstrap changed its actual source-owned wall-clock phase")
+        else:
+            dispatches = [row for (parent_pid, _), rows in passive.items() if parent_pid == pid
+                          for row in rows if row["event"] == "original-worker-first-dispatch"
+                          and row["workerThreadId"] == thread]
+            require(len(dispatches) == 1 and dispatches[0]["wallClockNowMs"] == item["clock"]["nowMs"],
+                    "An original Native worker has no actual dispatch/clock receipt from its producing process")
+
+
+def _native_child_arguments(spawn, authority, approved_node):
+    """Bind V8's host-class loss to the independently observed fork target.
+
+    V8 preserves the complete original bytes but serializes URL and AbortSignal
+    host objects as empty objects. Only those exact original fork parameters
+    have additional typed observations; ordinary arguments remain exact.
+    """
+    request = spawn["request"]
+    original = _native_value(request["originalArgs"], authority, approved_node)
+    options = _native_value(request["options"], authority, approved_node)
+    observed_options = request["optionsJSON"]
+    require(isinstance(observed_options, dict), "Original helper options lost their actual complete object")
+    require({"execArgv", "serialization", "stdio", "timeout", "killSignal"} <= set(observed_options)
+            and set(observed_options) <= {"execArgv", "serialization", "stdio", "timeout", "killSignal", "signal"}
+            and observed_options["execArgv"] == spawn["execArgv"] == []
+            and observed_options["serialization"] == "advanced"
+            and observed_options["stdio"] == ["ignore", "ignore", "ignore", "ipc"]
+            and observed_options["killSignal"] == "SIGKILL",
+            "An original Native integrity fork changed its actual source-declared options")
+    expected_options = dict(observed_options)
+    if "signal" in expected_options:
+        signal_ = expected_options["signal"]
+        require(isinstance(signal_, dict) and set(signal_) == {"privateType", "aborted", "reason", "ref"}
+                and signal_["privateType"] == "AbortSignal" and type(signal_["aborted"]) is bool
+                and isinstance(signal_["ref"], str) and signal_["ref"],
+                "An original fork signal lost its actual host-class/state/ref observation")
+        expected_options["signal"] = {}
+    _same(options, expected_options, "Original helper options differ from their complete V8 fields and typed signal witness")
+    observed = request["argumentsJSON"]
+    if spawn["method"] == "fork" and isinstance(observed, list) and observed:
+        target = observed[0]
+        if isinstance(target, dict) and target.get("privateType") == "URL":
+            require(set(target) == {"privateType", "href"}
+                    and target["href"] == Path(spawn["modulePath"]).as_uri()
+                    and spawn["modulePath"] in spawn["argv"]
+                    and spawn["sourceEntrypoint"]["absolutePath"] == spawn["modulePath"],
+                    "An original fork URL lost its actual argv/approved-entrypoint relationship")
+            require(len(observed) == 3 and _same_json(observed[2], observed_options),
+                    "An original fork argument list omitted its actual options object")
+            _same(original, [{}, observed[1], expected_options],
+                  "The complete original fork V8 arguments differ outside their declared host-class fields")
+            return
+    _same(original, observed, "An original Native helper launch lost its complete actual argument carrier")
+
+
+def _native_integrity_messages(rows, fixture):
+    active, phases, previous, closed, checks = None, [], None, False, 0
+    for receipt in rows:
+        message = receipt["messageJSON"]
+        if receipt["direction"] == "parent-to-child":
+            if _same_json(message, {"type": "close"}):
+                require(active is None and previous is not None and previous[0].get("reuse") is True
+                        and previous[1]["ok"] is True and not closed,
+                        "An original integrity close has no actual completed reusable request")
+                closed = True
+                continue
+            require(active is None and not closed and isinstance(message, dict)
+                    and {"pathname", "databaseLabel", "identity", "busyTimeoutMs", "tables"} <= set(message)
+                    and set(message) <= {"pathname", "databaseLabel", "identity", "busyTimeoutMs", "tables", "reuse"},
+                    "An original integrity request overlaps another request or lost actual source fields")
+            path = Path(message["pathname"])
+            require(path.is_absolute() and ".." not in path.parts and path.is_relative_to(Path(fixture))
+                    and isinstance(message["databaseLabel"], str) and type(message["busyTimeoutMs"]) is int
+                    and message["busyTimeoutMs"] >= 0 and ("reuse" not in message or message["reuse"] is True),
+                    "An original integrity request borrowed an unowned actual database or changed source options")
+            identity = message["identity"]
+            require(isinstance(identity, dict) and set(identity) == {"dev", "ino", "size"}
+                    and all(isinstance(value, dict) and set(value) == {"privateType", "value"}
+                            and value["privateType"] == "bigint" and isinstance(value["value"], str)
+                            and value["value"].isdigit() for value in identity.values()),
+                    "An original integrity request lost its complete native file identity")
+            tables = message["tables"]
+            require(tables == {"privateType": "undefined"} or isinstance(tables, list)
+                    and all(isinstance(table, dict) and set(table) == {"table", "check"}
+                            and isinstance(table["table"], str) and table["check"] in {"quick_check", "integrity_check"}
+                            for table in tables), "An original integrity request rewrote its actual table checks")
+            active, phases = message, []
+        else:
+            require(active is not None and not closed and isinstance(message, dict),
+                    "An original integrity reply has no actual outstanding request")
+            if message.get("type") == "phase":
+                phases.append(message["phase"])
+                require(set(message) == {"type", "phase"} and phases in (
+                    ["opening"], ["opening", "checking"], ["opening", "closing"], ["opening", "checking", "closing"]),
+                    "Original integrity worker phases were omitted, duplicated, or reordered")
+                continue
+            require(type(message.get("ok")) is bool and set(message) <= {"ok", "checkElapsedMs", "tables", "error"}
+                    and phases and (message["ok"] is False or phases == ["opening", "checking", "closing"])
+                    and (message["ok"] is False or "error" not in message),
+                    "An original integrity worker result lost its actual complete outcome/lifetime")
+            if "checkElapsedMs" in message:
+                require(type(message["checkElapsedMs"]) in (int, float) and math.isfinite(message["checkElapsedMs"])
+                        and message["checkElapsedMs"] >= 0, "An original integrity timing number was stripped or rewritten")
+            if message["ok"] is False:
+                error = message["error"]
+                require(isinstance(error, dict) and {"name", "message", "code", "errcode"} <= set(error)
+                        and isinstance(error["name"], str) and isinstance(error["message"], str),
+                        "An original integrity error lost its actual message/code fields")
+            if "tables" in message:
+                require(isinstance(message["tables"], list) and all(isinstance(table, dict)
+                        and set(table) == {"table", "check", "elapsedMs"} and isinstance(table["table"], str)
+                        and table["check"] in {"quick_check", "integrity_check"}
+                        and type(table["elapsedMs"]) in (int, float) and math.isfinite(table["elapsedMs"])
+                        and table["elapsedMs"] >= 0 for table in message["tables"]),
+                        "Original integrity per-table timing/error numbers were removed or rewritten")
+            previous, active, phases, checks = (active, message), None, [], checks + 1
+    require(active is None and checks and (previous[0].get("reuse") is not True or previous[1]["ok"] is False or closed),
+            "An original integrity process did not settle its actual checks and close protocol")
 
 
 def _native_declarations(process, context, directory, approved_reference):
@@ -708,6 +974,11 @@ def _sdk_error(error, recorded_root, approved_root):
                         "An original SDK exception class lost its independently selected source seal")
     actual = any(row["module"] == typed["module"] and row["name"] == typed["name"] for row in kind["mro"])
     require(error["isTypedConflict"] is actual, "The original SDK typed-conflict predicate was substituted")
+    require(error["publicFields"]["message"] == error["message"]
+            and ("code" in error) is ("code" in error["publicFields"]),
+            "An SDK public error fabricated or dropped an actual accessible error code")
+    if "code" in error:
+        _same(error["code"], error["publicFields"]["code"], "An SDK public error rewrote the actual accessible error code")
     return actual
 
 
@@ -775,7 +1046,7 @@ def _native_code_owners(actor, loaded, context):
                 "An actual Native getter borrowed a different function/promise/owner")
         for args in get["args"]:
             require(args["agentId"] == actor["request"]["input"]["identity"]["agentId"]
-                    and args["purpose"] in {"cli", "tool", "status", "default"},
+                    and args["purpose"] in {"cli", "tool", "status", "default", "maintenance"},
                     "An original Native getter used another agent or purpose")
             _same(args["cfg"], actor["config"], "An original Native owner acquired another configuration")
         require(any(owner["ownerRef"] == get["ownerRef"] for owner in actor["ownerBindings"]),
@@ -1101,6 +1372,14 @@ def _sdk_public(case, call, observation, process, events, returns, recorded, tru
                     and call["returnType"] == {"module": "builtins", "name": "int"},
                     "The actual SDK sync integer return was dropped or manufactured")
             _same(returned["returned"], call["returned"], "SDK sync result lost its actual original return")
+            nested = [row for row in events.values() if row["event"] == "original-call"
+                      and row["name"] in {"SQLiteMemoryStore.reindex", "SQLiteMemoryStore._reindex_locked"}
+                      and row["callLabel"] == label and call["enterSeq"] < row["sequence"] < call["returnSeq"]
+                      and row["sequence"] in returns and type(returns[row["sequence"]]["returned"]) is int]
+            require(nested, "The SDK sync integer has no actual nested original producer return")
+            for source_call in nested:
+                _same(returns[source_call["sequence"]]["returned"], call["returned"],
+                      "The SDK private sync count differs from another actual original producer-frame return")
             outcome = {"status": "fulfilled", "isTypedConflict": False}
         elif kind == "recall":
             require(type(call["returned"]) is int and call["returned"] >= 0
@@ -1223,6 +1502,7 @@ def _native_capture(case, raw, result, directory, approved_node, trusted_archive
                 "A Native original actor capture borrowed another PID or imported program")
         _same(actor["request"], child["request"], "A Native actor changed its actual initialization request")
         _native_code_owners(actor, imports[child["pid"], 0]["loaded"], context)
+        _native_producers(case, actor, authority, approved_node)
         actors[child["pid"]] = child, actor
         if child["exit"]["code"] == 0:
             require(actor["closed"] is True, "An original Native owner did not actually close before graceful exit")
@@ -1295,6 +1575,68 @@ def _native_capture(case, raw, result, directory, approved_node, trusted_archive
     return True
 
 
+def _native_producers(case, actor, authority, approved_node):
+    preparation = [row for row in actor["calls"] if row["operation"] == "prepare-real-host-inputs"]
+    if not preparation:
+        require(not actor["producerReceipts"], "A Native actor invented an undeclared session producer")
+        return
+    require(len(preparation) == 1, "An original Native host-input producer was duplicated")
+    value, fixture = case["input"], Path(actor["request"]["fixtureBase"])
+    file_receipts = actor["inputFileReceipts"]
+    require([row["path"] for row in file_receipts] == list(value["initialFiles"]),
+            "The Native original input source creation omitted or duplicated a declared file")
+    prepared = {row["path"]: row for row in actor["preparedSourceDocuments"]}
+    for row in file_receipts:
+        path, text = row["path"], value["initialFiles"][row["path"]]
+        filename = fixture / "workspace" / _relative(path)
+        require(row["absolutePath"] == str(filename) and row["flags"] == "wx"
+                and row["bytes"] == text.encode("utf8").hex(),
+                "A Native initial source file borrowed another actual path, bytes, or creation mode")
+        _same(row["utimesArguments"], [str(filename), value["clock"]["initialSourceMtimeMs"] / 1000,
+              value["clock"]["initialSourceMtimeMs"] / 1000], "The Native initial source clock arguments changed")
+        for name in ("writeReturn", "utimesReturn"):
+            require(_native_value(row[name], authority, approved_node) == {"privateType": "undefined"},
+                    "A Native initial source syscall lost its actual original void return")
+        observed = prepared[path]
+        require(observed["kind"] == "file" and observed["hex"] == row["bytes"]
+                and int(observed["mtimeNs"]) == value["clock"]["initialSourceMtimeMs"] * 1_000_000,
+                "A Native prepared source differs from its actual initial bytes or filesystem-clock input")
+    facts = value["sessionFacts"]["sessions"]
+    require(len(actor["producerReceipts"]) == len(facts), "An actual Native session producer was omitted or added")
+    names = {row["name"] for row in actor["codeOwners"]}
+    if _v2(case):
+        require({"upsertSessionEntry", "replaceTranscriptEventsSync"} <= names,
+                "The original Native session counterpart producer lost its actual callable source owners")
+    for receipt, fact in zip(actor["producerReceipts"], facts, strict=True):
+        scope = receipt["scope"]
+        require(scope["agentId"] == fact["agentId"] and scope["sessionKey"] == fact["sessionKey"]
+                and scope["sessionId"] == fact["sessionId"] and Path(scope["storePath"]).is_absolute()
+                and Path(scope["storePath"]).is_relative_to(fixture),
+                "A Native persisted session producer borrowed another declared identity or state root")
+        _same(receipt["upsertRequest"], {**scope, "entry": fact["entry"]},
+              "The Native original upsert received nonliteral metadata or another producer's output")
+        _native_value(receipt["upsertReturn"], authority, approved_node)
+        if _v2(case) or "transcriptReplacement" in receipt:
+            replacement = receipt["transcriptReplacement"]
+            require(replacement["method"] == "replaceTranscriptEventsSync"
+                    and type(replacement["result"]) is bool and replacement["privateReturn"]["type"] == "boolean",
+                    "The actual Native literal-event replacement lost its original boolean return")
+            _same(replacement["request"], {"scope": scope, "events": fact["events"]},
+                  "The original Native event replacement received altered literals or SDK-derived state")
+            _same(_native_value(replacement["privateReturn"], authority, approved_node), replacement["result"],
+                  "The original Native event replacement result differs from its actual V8 boolean")
+            require(isinstance(replacement["beforeEvents"], list)
+                    and isinstance(replacement["eventsArgumentAfter"], list) and isinstance(receipt["events"], list),
+                    "The original Native event replacement lost its actual before/argument-after/readback records")
+        else:
+            require(len(receipt["messages"]) == len(fact["events"]),
+                    "The legacy Native diagnostic omitted an actual original append")
+            for message, event in zip(receipt["messages"], fact["events"], strict=True):
+                require(message["params"]["message"] == event["message"]
+                        and message["params"]["eventId"] == event["id"],
+                        "The legacy Native original append received another literal event")
+
+
 def _native_plugin_state(snapshot, actor, events, fixture, authority, approved_node):
     binding = actor["pluginStatePathBinding"]
     require(binding["module"] == "dist/openclaw-state-db.paths-rJI64Ab5.mjs" and binding["export"] == "s"
@@ -1343,7 +1685,8 @@ def _native_concurrency(case, snapshot, commands):
 
 def _sdk_capture(case, dispatch, result, directory, approved_root):
     value = case["input"]
-    require(dispatch["kind"] == "forget-index-fence-sdk-dispatch" and dispatch["exit"] == {"code": 0}
+    prefix = "forget-index-fence-v2" if _v2(case) else "forget-index-fence"
+    require(dispatch["kind"] == prefix + "-sdk-dispatch" and dispatch["exit"] == {"code": 0}
             and not any(dispatch.get(key) for key in ("timeout", "stdoutParseError", "error")),
             "The original SDK outer process failed or its stdout was replaced")
     _same(dispatch["input"], value, "The actual SDK dispatch received another frozen input")
@@ -1357,7 +1700,7 @@ def _sdk_capture(case, dispatch, result, directory, approved_root):
     _same(dispatch["request"]["input"], value, "Actual SDK outer input bytes differ from the frozen literal")
     raw = _json(dispatch["stdout"])
     _same(raw, dispatch["observation"], "SDK stdout lost the complete actual observation")
-    require(raw["kind"] == "forget-index-fence-sdk-host" and raw["complete"] is True
+    require(raw["kind"] == prefix + "-sdk-host" and raw["complete"] is True
             and raw["pid"] == dispatch["pid"] and raw["fixtureRoot"] == dispatch["request"]["directory"]
             and not raw.get("error"), "The original SDK host borrowed another PID or fixture root")
     _same(raw["input"], value, "The original SDK host received another input")
@@ -1586,6 +1929,10 @@ def validate_capture(case, capture, result, *, native, approved_node=None, appro
     """Authenticate one actual engine independently; no policy match is required."""
     try:
         validate_result(case, result)
+        if _v2(case):
+            # First collection is diagnostic only until the source-clock
+            # receipts have an independent validator. No fallback is allowed.
+            raise ValueError("V2 source-clock custody pending; genuine raw retained with no acceptance credit")
         return (_native_capture(case, capture, result, directory, approved_node, trusted_archive, approved_reference)
                 if native else _sdk_capture(case, capture, result, directory, approved_sdk_root))
     except (KeyError, IndexError, TypeError, AttributeError, StopIteration, OSError, UnicodeError,

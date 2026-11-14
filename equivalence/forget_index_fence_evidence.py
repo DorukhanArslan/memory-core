@@ -2428,6 +2428,133 @@ def _native_keyword_delivery(receipt, gate, raw, actors, passive, authority, app
             "The Native keyword fixture did not permit the actual independent original forget to settle while held")
 
 
+def _native_async_planning_gate(case, receipt, gate, raw, actors, passive, authority, approved_node,
+                                context, imports, directory):
+    """Hold only an original asynchronous planning result, never its actor loop."""
+    modes = {"promotion.model-planning-before-final-lock": "deferred-original-model-completion",
+             "promotion.source-planned-before-final-lock": "deferred-original-realpath-return"}
+    mode = modes[receipt["boundary"]]
+    require(receipt.get("mode") == mode and receipt["threadId"] == 0,
+            "A Native planning gate froze an actor thread or borrowed another asynchronous boundary")
+    child, actor = actors[receipt["pid"]]
+    scope = receipt["commandScope"]
+    require(isinstance(scope, dict) and set(scope) == {"protocol", "commandId", "operation", "label"}
+            and scope["protocol"] == "async-local-original-command-v1"
+            and type(scope["commandId"]) is int and scope["commandId"] > 0
+            and scope["operation"] == "original-promotion" and scope["label"] == receipt["callLabel"]
+            and receipt["actor"] == child["actor"] == actor["actor"]
+            and receipt["pid"] == child["pid"] == actor["pid"]
+            and receipt["instance"] == child["instance"] == actor["instance"],
+            "A Native planning gate lost its actual asynchronous original command scope")
+    commands = [row for row in child["commands"] if row["id"] == scope["commandId"]]
+    entries = [row for row in actor["calls"] if row["id"] == scope["commandId"]]
+    require(len(commands) == len(entries) == 1,
+            "A Native planning gate has no unique actual original promotion invocation")
+    command, entry = commands[0], entries[0]
+    require(all(row["operation"] == scope["operation"] and row["label"] == scope["label"]
+                for row in (command, entry)),
+            "A Native planning hold borrowed another original invocation or public label")
+    entered, deadline = _ns(receipt["enteredAtNs"]), _ns(receipt["gateDeadlineNs"])
+    require(type(receipt["gateTimeoutMs"]) is int and receipt["gateTimeoutMs"] == 30_000
+            and deadline == entered + 30_000_000_000,
+            "A Native asynchronous planning gate changed its real thirty-second deadline")
+    events = passive[receipt["pid"], 0]
+    release, release_step = _native_gate_release(gate, raw, events, directory)
+    require(release["mode"] == mode and release["boundary"] == receipt["boundary"]
+            and release["gateEnterSequence"] == receipt["sequence"]
+            and release["gateDeadlineNs"] == receipt["gateDeadlineNs"]
+            and type(release["gateTimeoutMs"]) is int
+            and release["gateTimeoutMs"] == receipt["gateTimeoutMs"]
+            and release["callLabel"] == receipt["callLabel"]
+            and release["pid"] == receipt["pid"] and release["threadId"] == receipt["threadId"]
+            and release["actor"] == receipt["actor"] and release["instance"] == receipt["instance"],
+            "A Native planning continuation consumed another boundary, actor, or deadline")
+    _same(release["commandScope"], scope, "A Native planning release borrowed a concurrent watcher command scope")
+    _same(release["releaseStep"], release_step["step"], "A Native planning release replaced its actual frozen step")
+    consumed = _ns(release["consumedAtNs"])
+    require(_ns(command["startedAtNs"]) <= _ns(entry["startedAtNs"])
+            <= _ns(entry["originalEntered"]["atNs"]) < entered
+            < _ns(release_step["startedAtNs"]) <= consumed <= _ns(release["atNs"])
+            and consumed < deadline
+            and _ns(release["atNs"]) < _ns(entry["settledAtNs"]) <= _ns(command["settledAtNs"]),
+            "A Native planning result settled before release or consumed it outside the real deadline")
+    progress = [row for row in events if row["event"] == "async-gate-mainloop-progress" and row["gate"] == gate["name"]]
+    require(len(progress) == 2 and {row["kind"] for row in progress} == {"setImmediate", "setTimeout"},
+            "A Native planning hold lacks both genuine independent main-loop progress callbacks")
+    for row in progress:
+        require(row["mode"] == mode and row["gateEnterAtNs"] == receipt["enteredAtNs"]
+                and row["callLabel"] == receipt["callLabel"] and row["actor"] == receipt["actor"]
+                and row["pid"] == receipt["pid"] and row["threadId"] == receipt["threadId"]
+                and row["instance"] == receipt["instance"]
+                and receipt["sequence"] < row["sequence"] < release["sequence"]
+                and entered < _ns(row["atNs"]) < consumed,
+                "A Native planning hold borrowed progress outside its pending original boundary")
+        _same(row["commandScope"], scope, "A Native planning callback borrowed a concurrent command's label or scope")
+    declared = case["input"]["steps"]
+    wait_index = next(index for index, step in enumerate(declared)
+                      if step["operation"] == "await-gate" and step["gate"] == gate["name"])
+    release_index = next(index for index, step in enumerate(declared)
+                         if step["operation"] == "release-gate" and step["gate"] == gate["name"])
+    waits = [step for step in declared[wait_index + 1:release_index]
+             if step["operation"] == "await-original-watch-effects" and receipt["actor"] in step["actors"]]
+    require(len(waits) == 1, "A Native planning hold has no exact frozen watcher join while its original result is pending")
+    wait = waits[0]
+    actual_steps = [row for row in raw["steps"] if row["step"] == wait]
+    controls = [row for row in child["commands"] if row["operation"] == wait["operation"] and row["label"] == wait["label"]]
+    watch_entries = [row for row in actor["calls"] if row["operation"] == wait["operation"] and row["label"] == wait["label"]]
+    require(len(actual_steps) == len(controls) == len(watch_entries) == 1,
+            "The held Native planning actor did not execute its unique actual watcher control")
+    step, control, watch = actual_steps[0], controls[0], watch_entries[0]
+    control_events = [row for row in events if row["event"] == "original-watch-control-enter"
+                      and row["commandId"] == control["id"]]
+    require(len(control_events) == 1, "The held Native planning watcher command lacks its actual main-loop entry")
+    control_event = control_events[0]
+    require(control["id"] == watch["id"] != scope["commandId"]
+            and control["settlement"]["controlBlocked"] is False
+            and control["settlement"]["error"] is None
+            and watch["watchEffects"]["protocol"] == "original-watch-effects-v5"
+            and watch["watchEffects"]["kind"] == "effects" and watch["watchEffects"]["label"] == wait["label"]
+            and entered < _ns(step["startedAtNs"]) <= _ns(control["startedAtNs"])
+            <= _ns(watch["startedAtNs"]) <= _ns(control_event["atNs"])
+            <= _ns(watch["watchEffects"]["startedAtNs"])
+            < _ns(watch["watchEffects"]["finishedAtNs"]) <= _ns(watch["settledAtNs"])
+            <= _ns(control["settledAtNs"]) <= _ns(step["finishedAtNs"])
+            < _ns(release_step["startedAtNs"]),
+            "The Native planning gate blocked watcher settlement or released the original result early")
+    require(control_event["operation"] == wait["operation"] and control_event["label"] == wait["label"]
+            and control_event["callLabel"] == wait["label"] and control_event["actor"] == receipt["actor"]
+            and control_event["pid"] == receipt["pid"] and control_event["threadId"] == receipt["threadId"]
+            and control_event["instance"] == receipt["instance"]
+            and receipt["sequence"] < control_event["sequence"] < release["sequence"],
+            "The held Native planning watcher control borrowed the pending business call's label or actor")
+    module = "dist/short-term-promotion-MX1vHJuE.mjs"
+    loaded = [row for (pid, _), item in imports.items() if pid == receipt["pid"]
+              for row in item["releaseImports"]
+              if row["package"] == "node_modules/openclaw" and row["path"] == module]
+    require(loaded and len({row["sha256"] for row in loaded}) == 1,
+            "A Native planning gate lacks its actual loaded original promotion source")
+    owner = {"kind": "release", **loaded[0], "absolutePath": str(Path(context["runtime"]["runtimeRoot"]) / module)}
+    _native_clock_owner(owner, receipt["originalStack"], context, imports, receipt["pid"])
+    if mode == "deferred-original-model-completion":
+        require(receipt["sourceOwner"] == "consolidateMemory.actual-subagent-complete-await"
+                and "consolidateMemory" in receipt["originalStack"],
+                "The Native asynchronous model hold left its actual original consolidation await")
+        completions = [row for row in entry["completions"] if row["request"] == receipt["request"]]
+        require(len(completions) == 1 and isinstance(receipt["request"], dict),
+                "The Native model gate replaced its actual original completion request")
+        _same(completions[0]["returned"], {"text": case["input"]["promotions"][scope["label"]]["consolidation"]["completion"]["text"]},
+              "The Native held original model await returned a changed declared response")
+    else:
+        workspace = str(Path(raw["fixtureBase"]) / "workspace")
+        require(receipt["sourceOwner"] == "resolveMemoryPromotionLockTarget.actual-realpath-return"
+                and "resolveMemoryPromotionLockTarget" in receipt["originalStack"],
+                "The Native direct planning hold left its actual original lock-target await")
+        _same(_native_value(receipt["arguments"], authority, approved_node), [workspace],
+              "The Native held original realpath invocation used changed arguments")
+        _same(_native_value(receipt["result"], authority, approved_node), workspace,
+              "The Native held original realpath result was replaced")
+
+
 def _native_held_publication_terminal(gate, passive, context, imports, authority, approved_node):
     receipt = gate["receipt"]
     key = receipt["pid"], receipt["threadId"]
@@ -2576,11 +2703,17 @@ def _native_gates(case, raw, actors, passive, authority, approved_node, director
         elif boundary == "promotion.model-planning-before-final-lock":
             require(receipt["sourceOwner"] == "consolidateMemory.actual-subagent-complete-await"
                     and isinstance(receipt["request"], dict), "The Native model gate did not hold the actual original planning request")
+            if _version(case) == 5:
+                _native_async_planning_gate(case, receipt, gate, raw, actors, passive, authority, approved_node,
+                                            context, imports, directory)
         else:
             require(receipt["sourceOwner"] == "resolveMemoryPromotionLockTarget.actual-realpath-return"
                     and "resolveMemoryPromotionLockTarget" in receipt["originalStack"]
                     and _native_value(receipt["result"], authority, approved_node) == str(Path(raw["fixtureBase"]) / "workspace"),
                     "The Native direct promotion gate replaced the original source/lock planning frame")
+            if _version(case) == 5:
+                _native_async_planning_gate(case, receipt, gate, raw, actors, passive, authority, approved_node,
+                                            context, imports, directory)
 
 
 def _sdk_observation(observation, process, value, approved_root, *, adapter_roots=None):

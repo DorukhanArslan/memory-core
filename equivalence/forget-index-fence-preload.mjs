@@ -108,6 +108,7 @@ function setWallClock(nowMs){if(!permittedClocks.has(nowMs))throw Error('Undecla
 function matching(boundary){return profile.gates.filter(gate=>gate.actor===actor&&gate.boundary===boundary&&
  !fired.has(gate.name)&&(!isMainThread||gate.callLabel===callLabel));}
 function pause(boundary,facts={}){
+ try{
  for(const gate of matching(boundary)){
   const prefix=path.join(context.gateDirectory,gate.name);
   if(!fs.existsSync(prefix+'.armed'))continue;
@@ -123,7 +124,7 @@ function pause(boundary,facts={}){
   }
   trace({event:'fence-gate-enter',...receipt});
   if(!flush())return;
-  fs.writeFileSync(prefix+'.hit.json',JSON.stringify(receipt)+'\n',{flag:'wx',mode:0o600});
+  clockModule.publishControlFile(prefix+'.hit.json',JSON.stringify(receipt)+'\n');
   if(gate.pause===false)return;
   const deadline=performance.now()+30_000;
   while(!fs.existsSync(prefix+'.release')){if(performance.now()>=deadline)throw Error('Declared fence gate exceeded its real monotonic bound');Atomics.wait(sleepCell,0,0,10);}
@@ -132,10 +133,12 @@ function pause(boundary,facts={}){
   event('fence-gate-release',{gate:gate.name,boundary,callLabel:gate.callLabel,gateEnterSequence:receipt.sequence,releaseStep:released});
   flush(); // A real Worker.terminate need not run this worker's exit listener.
  }
+ }catch(error){controlFailure('synchronous-gate-control-failed',error,{boundary});}
 }
 function controlFailure(reason,error,fields={}){const row=event('fixture-control-failure',{reason,...fields,
  error:{name:error.name,message:error.message,stack:error.stack},privateError:carrier(error)});controlFailures.push(row);flush();}
 async function pauseAsync(boundary,facts={}){
+ try{
  for(const gate of matching(boundary)){
   const prefix=path.join(context.gateDirectory,gate.name);
   if(!fs.existsSync(prefix+'.armed'))continue;
@@ -144,7 +147,7 @@ async function pauseAsync(boundary,facts={}){
    instance:Number(process.env.MEMORY_EQ_FIF_INSTANCE??0),mode:'deferred-original-worker-reply',
    enteredAtNs:process.hrtime.bigint().toString(),originalStack:new Error('Actual original asynchronous fence control').stack,...facts};
   trace({event:'fence-gate-enter',...receipt});if(!flush())return;
-  fs.writeFileSync(prefix+'.hit.json',JSON.stringify(receipt)+'\n',{flag:'wx',mode:0o600});
+  clockModule.publishControlFile(prefix+'.hit.json',JSON.stringify(receipt)+'\n');
   if(gate.pause===false)return;
   // These real callbacks demonstrate that the held notification does not own
   // unrelated IPC, SQLite admission ports, timers or main-loop completions.
@@ -159,6 +162,7 @@ async function pauseAsync(boundary,facts={}){
   if(released.wallClockNowMs!==undefined)setWallClock(released.wallClockNowMs);
   event('fence-gate-release',{gate:gate.name,boundary,callLabel:gate.callLabel,mode:'deferred-original-worker-reply'});flush();
  }
+ }catch(error){controlFailure('asynchronous-gate-control-failed',error,{boundary});}
 }
 globalThis[Symbol.for('memory.eq.forgetIndexFence')]=Object.freeze({
  setCallLabel(label){callLabel=label;},event,pause,carrier,flush,setWallClock,

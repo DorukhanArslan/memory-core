@@ -18,6 +18,31 @@ const same=(left,right)=>left.dev===right.dev&&left.ino===right.ino&&left.nlink=
 const stable=(left,right)=>same(left,right)&&left.size===right.size&&left.mtimeNs===right.mtimeNs&&left.ctimeNs===right.ctimeNs;
 const PASSIVE_EVENT_CODEC='deflate-raw-native-event-v1',PASSIVE_EVENT_RAW_LIMIT=64*1024*1024;
 
+// A control consumer must never see a partially written JSON body. The private
+// reservation is exclusive across processes; rename publishes one complete,
+// closed, single-link inode without overwriting a prior control publication.
+export function publishControlFile(filename,content){
+ if(!path.isAbsolute(filename)||fs.realpathSync(path.dirname(filename))!==path.dirname(filename))throw Error('A control publication requires its exact owned directory');
+ const bytes=Buffer.isBuffer(content)?content:Buffer.from(content,'utf8'),reservation=filename+'.publishing',stage=path.join(reservation,'body');
+ fs.mkdirSync(reservation,{mode:0o700});let fd=null;
+ try{
+  try{fs.lstatSync(filename);throw Error('A control file was already published');}catch(error){if(error.code!=='ENOENT')throw error;}
+  fd=fs.openSync(stage,fs.constants.O_CREAT|fs.constants.O_EXCL|fs.constants.O_WRONLY|fs.constants.O_NOFOLLOW,0o600);
+  let written=0;while(written<bytes.length){const count=fs.writeSync(fd,bytes,written,bytes.length-written);
+   if(count<=0)throw Error('A control body write made no progress');written+=count;}
+  fs.closeSync(fd);fd=null;
+  const before=fs.lstatSync(stage,{bigint:true}),actual=fs.readFileSync(stage);
+  if(!before.isFile()||before.nlink!==1n||before.size!==BigInt(bytes.length)||!actual.equals(bytes))throw Error('A control stage lost its complete original bytes');
+  const renameEnteredAtNs=now();fs.renameSync(stage,filename);const renameReturnedAtNs=now();
+  return{path:filename,stagePath:stage,bytes:bytes.toString('hex'),sha256:digest(bytes),
+   stageStat:statValue(before),renameEnteredAtNs,renameReturnedAtNs};
+ }finally{
+  if(fd!==null)fs.closeSync(fd);
+  try{fs.unlinkSync(stage);}catch(error){if(error.code!=='ENOENT')throw error;}
+  fs.rmdirSync(reservation);
+ }
+}
+
 // V3's explicit observer joins actual work already scheduled by the original
 // search. The hook never invokes a producer or replaces an original Promise.
 export function observeOriginalSearchEffects({scope,qualifyPromise,ref,event=()=>{},onFailure=()=>{},maxJobs=256}){

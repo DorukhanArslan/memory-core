@@ -9,6 +9,7 @@ import {fileURLToPath,pathToFileURL} from 'node:url';
 import {DatabaseSync} from 'node:sqlite';
 import {serialize} from 'node:v8';
 import {isDeepStrictEqual} from 'node:util';
+import {publishControlFile} from './forget-index-fence-source-clock.mjs';
 
 const hash=value=>crypto.createHash('sha256').update(value).digest('hex');
 const plain=value=>JSON.parse(JSON.stringify(value));
@@ -155,12 +156,12 @@ export async function runForgetIndexFenceRuntime(input,config){
    else if(name==='execute-seed-actions'){for(const action of input.seedActions)await run(action.actor,action.operation,action.label);}
    else if(name==='arm-gate'){
     const gate=input.gates.find(item=>item.name===step.gate);if(!gate)throw Error('Undeclared gate');
-    fs.writeFileSync(path.join(config.gateDirectory,safeName(gate.name)+'.armed'),JSON.stringify(gate)+'\n',{flag:'wx'});
+    publishControlFile(path.join(config.gateDirectory,safeName(gate.name)+'.armed'),JSON.stringify(gate)+'\n');
     raw.gates.push({...gate,armedAtNs:process.hrtime.bigint().toString()});
    }else if(name==='await-gate')await awaitGate(step.gate);
    else if(name==='release-gate'){
     if(step.wallClockNowMs!==undefined)currentWallClock=step.wallClockNowMs;
-    fs.writeFileSync(path.join(config.gateDirectory,safeName(step.gate)+'.release'),JSON.stringify(step)+'\n',{flag:'wx'});
+    publishControlFile(path.join(config.gateDirectory,safeName(step.gate)+'.release'),JSON.stringify(step)+'\n');
     raw.gates.find(item=>item.name===step.gate).releasedAtNs=process.hrtime.bigint().toString();
    }else if(name.startsWith('start-')&&['start-sync','start-forget','start-promotion','start-public-memory-search'].includes(name)){
     const operation={'start-sync':'original-sync','start-forget':'original-forget','start-promotion':'original-promotion','start-public-memory-search':'public-memory-search'}[name];

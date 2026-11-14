@@ -278,9 +278,14 @@ class _OriginalObserver:
             call = self.event("original-call", name=specification["name"],
                 callLabel=scope["label"], callKind=scope["kind"], owner=owner_label,
                 receiverObjectId=str(id(receiver)) if receiver is not None else None,
+                contextObjectId=str(id(frame.f_locals["context"])) if frame.f_locals.get("context") is not None else None,
+                selfObjectId=str(id(frame.f_locals["self"])) if frame.f_locals.get("self") is not None else None,
                 exactReceiver=receiver is not None, code=specification.get("code"),
                 arguments={key: _encode(value) for key, value in frame.f_locals.items()
                            if key not in {"self", "context", "store", "workspace", "config", "origins", "ledger"}})
+            if specification["name"] in {"MemorySearchRecallOwner.submit", "_record_search_recalls"}:
+                recall_owner = frame.f_locals["context"].recall
+                call["contextRecallOwnerObjectId"] = str(id(recall_owner)) if recall_owner is not None else None
             self.local.stack = (*stack, (id(frame), call, scope))
             if self.gate_callback is not None:
                 self.gate_callback(frame, event, returned, call, scope)
@@ -292,7 +297,7 @@ class _OriginalObserver:
                 callLabel=scope["label"], owner=owner_label, returned=_encode(returned),
                 frameScalars={key: _encode(frame.f_locals[key]) for key in (
                     "live", "expected", "expected_revision", "expected_fence_revision", "current_revision",
-                    "expected_fence", "generation", "mutation_generation")
+                    "expected_fence", "expected_forget_revision", "generation", "mutation_generation")
                     if key in frame.f_locals and (frame.f_locals[key] is None
                         or type(frame.f_locals[key]) in (bool, int, float, str))})
             if isinstance(returned, sqlite3.Connection):
@@ -336,13 +341,17 @@ class _OriginalObserver:
             # The first original execute already carries its real C receiver.
             # Attach observation before that execute, including schema creation
             # inside _open_write before the Python connection factory returns.
-            if specification["name"] not in {"SQLiteMemoryStore.connect", "MemoryEntryOriginLedger._open_write"}:
+            if specification["name"] not in {"SQLiteMemoryStore.connect", "MemoryEntryOriginLedger._open_write",
+                                             "SQLiteMemoryStore.is_session_forgotten"}:
                 return
             self._bind_connection(db, scope, specification["name"])
         stack = getattr(self.local, "sql_stack", ())
         if event == "c_call":
             row = self.event("original-sql-c-call", connectionId=str(id(db)), method=method,
                 callLabel=scope["label"], source=specification["name"], parentCode=specification.get("code"))
+            if specification["name"] == "SQLiteMemoryStore.is_session_forgotten":
+                row.update(ownerDatabasePath=str(frame.f_locals["self"].path),
+                           databaseOwnerObjectId=str(id(frame.f_locals["self"])))
             self.sql_executions.append(row)
             self.local.sql_stack = (*stack, (db, row))
         elif stack and stack[-1][0] is db:
@@ -401,7 +410,9 @@ def _original_bindings():
     from memory_core.index import sqlite_store
     from memory_core.index.publication import write_prepared_index
     from memory_core.session_catalog import MemorySessionCatalog
-    from memory_core.tools.memory_search import execute_memory_search_tool, _run_memory_search_tool
+    from memory_core.tools.memory_search import (
+        MemorySearchRecallOwner, execute_memory_search_tool, _run_memory_search_tool, _record_search_recalls,
+    )
     from memory_core.tools.search_factory import MemorySearchTool
     from memory_core import atomic_publication
     from memory_core.consolidation.artifacts import write_dreams_file_atomic
@@ -409,7 +420,8 @@ def _original_bindings():
 
     methods = [(SQLiteMemoryStore, name) for name in (
         "connect", "reindex", "reindex_sources", "_reindex_locked", "publish_prepared_index",
-        "search", "_search_candidates", "_search_keyword_with_fallback", "attach_recall_metadata", "_on_search_snapshot")]
+        "search", "_search_candidates", "_search_keyword_with_fallback", "attach_recall_metadata", "_on_search_snapshot",
+        "is_session_forgotten")]
     methods += [(ManagedSQLiteMemoryStore, name) for name in ("reindex", "reindex_sources", "search", "close")]
     methods += [(MemoryEntryOriginLedger, name) for name in (
         "_open_write", "_open_read", "record", "delete", "record_session_tombstones_if_lineage_current",
@@ -426,6 +438,10 @@ def _original_bindings():
         (run_short_term_promotion, "store"), (rank_short_term_promotion_candidates, None),
         (record_short_term_recalls, None),
         (execute_memory_search_tool, "store"), (_run_memory_search_tool, "store"),
+        (_record_search_recalls, "store"),
+        (MemorySearchRecallOwner.submit, "store"),
+        (SQLiteMemoryStore._existing_forget_revision, "db"),
+        (IndexRevisionFence.ledger.fget, "self"), (IndexRevisionFence.publication_guard.__wrapped__, "self"),
         (write_prepared_index, "db"), (promotion.acquire_short_term_promotion_lock, None)):
         codes[function.__code__] = {"name": function.__qualname__, "receiver": receiver,
                                     "code": _code_identity(function.__code__)}
@@ -631,8 +647,8 @@ class _SdkActor:
         if scope["kind"] != "forget" or not writer_attempt:
             return
         index_connection = row["source"] == "SQLiteMemoryStore.connect"
-        shared_origin_connection = self.storage["shared"] and row["source"] == "MemoryEntryOriginLedger._open_write"
-        if index_connection or shared_origin_connection:
+        origin_connection = row["source"] == "MemoryEntryOriginLedger._open_write"
+        if index_connection or origin_connection:
             self._hit("forget.marker-commit-or-original-workspace-or-writer-wait", scope,
                       {**row, "progressKind": "actual-original-SQLite-writer-attempt"})
 
@@ -670,7 +686,7 @@ class _SdkActor:
         self.host_events.append(body)
         self.host_event_receipts.append({"event": body, "atNs": str(time.monotonic_ns()),
             "actor": self.actor, "pid": os.getpid(),
-            "callScope": deepcopy(getattr(self.observer.local, "scope", None))})
+            "callScope": deepcopy(self._active_scope())})
 
     def acquire(self):
         from memory_core.config import MemoryConfig
@@ -722,6 +738,12 @@ class _SdkActor:
         record["declaredPhysicalPreparation"] = {"statement": "PRAGMA journal_mode=WAL", "returned": journal_mode}
         record["classMro"] = _type_identity(type(self.owner))["mro"]
         record["constructorCode"] = _code_identity(ManagedSQLiteMemoryStore.__init__.__code__)
+        predicate = self.workspace.is_session_forgotten
+        predicate_function = getattr(predicate, "__func__", predicate)
+        record["effectiveForgottenCallback"] = {"present": predicate is not None,
+            "callable": _encode(predicate),
+            "boundReceiverObjectId": str(id(predicate.__self__)) if getattr(predicate, "__self__", None) is not None else None,
+            "code": _code_identity(predicate_function.__code__) if hasattr(predicate_function, "__code__") else None}
         self.bindings.append(record)
         return record
 
@@ -804,7 +826,8 @@ class _SdkActor:
                         context=MemorySearchToolContext(clock=lambda: self.wall_ms, source_policy=policy,
                             session_visibility=SessionVisibilityContext.from_catalog(self.catalog)),
                         agent_session_key=self.value["identity"]["requesterSessionKey"],
-                        runtime_identity=OPENCLAW_COMPAT_RUNTIME_IDENTITY)
+                        runtime_identity=OPENCLAW_COMPAT_RUNTIME_IDENTITY,
+                        recall_origins=self.ledger, on_event=self._host_event)
                     if tool is None:
                         raise RuntimeError("The original search factory returned no tool")
                     self.observer.bind_owner(tool, "public-memory-search-tool")

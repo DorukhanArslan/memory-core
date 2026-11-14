@@ -12,6 +12,8 @@ import pytest
 
 from equivalence.forget_index_fence_sdk import (
     _OriginalObserver,
+    _SdkActor,
+    _original_bindings,
     _common_calls,
     _common_snapshot,
     _code_identity,
@@ -214,6 +216,114 @@ def test_worker_attribution_uses_the_exact_saved_context_and_store_on_another_th
     saved_context, saved_owner, scope = observer.contexts[(id(context), id(owner))]
     assert saved_context is context and saved_owner is owner
     assert scope == {"label": "public-query", "kind": "search"}
+
+
+def test_callback_on_later_worker_retains_only_its_observed_original_context_scope():
+    owner, context = object(), object()
+    observer = _OriginalObserver({
+        _labelled_public.__code__: _specification("labelled-public", "store"),
+        _labelled_worker.__code__: _specification("labelled-worker", "store"),
+    })
+    observer.bind_owner(owner, "actual-owner")
+    actor = _SdkActor.__new__(_SdkActor)
+    actor.actor, actor.observer = "foreground", observer
+    actor.host_events, actor.host_event_receipts = [], []
+    public = _frame(_labelled_public, context=context, store=owner)
+    with observer.call_scope("actual-search", "search", 1234):
+        observer.profile(public, "call", None)
+        observer.profile(public, "return", {"unchanged": "public result"})
+    body = {"type": "labelled-test-event", "raw": [None, {"value": 7}]}
+
+    def observe_callback():
+        assert getattr(observer.local, "scope", None) is None
+        worker = _frame(_labelled_worker, context=context, store=owner)
+        observer.profile(worker, "call", None)
+        actor._host_event(body)
+        observer.profile(worker, "return", None)
+        assert actor._active_scope() is None
+
+    thread = threading.Thread(target=observe_callback)
+    thread.start()
+    thread.join(5)
+    assert not thread.is_alive()
+    assert actor.host_events == [body]
+    receipt, = actor.host_event_receipts
+    assert receipt["callScope"] == {"label": "actual-search", "kind": "search", "wallClockNowMs": 1234}
+    assert receipt["event"] == body and receipt["event"] is not body
+    assert receipt["actor"] == "foreground" and int(receipt["atNs"]) > 0
+
+
+def test_split_ledger_progress_uses_actual_observed_writer_attempt_without_a_shared_layout_assumption():
+    actor = _SdkActor.__new__(_SdkActor)
+    actor.storage = {"shared": False}
+    hits = []
+    actor._hit = lambda *arguments: hits.append(arguments)
+    owner = object()
+    observer = _OriginalObserver({
+        _labelled_method.__code__: _specification("MemoryEntryOriginLedger._open_write", "self")},
+        sql_callback=actor._sql_progress)
+    observer.bind_owner(owner, "labelled-configured-ledger")
+    frame = _frame(_labelled_method, self=owner)
+    db = sqlite3.connect(":memory:")
+    try:
+        with observer.call_scope("selected", "forget"):
+            observer.profile(frame, "call", None)
+            observer.profile(frame, "c_call", db.execute)
+            db.execute("BEGIN IMMEDIATE")
+            observer.profile(frame, "c_return", db.execute)
+            observer.profile(frame, "return", db)
+        boundary, scope, receipt = hits.pop()
+        assert boundary == "forget.marker-commit-or-original-workspace-or-writer-wait"
+        assert scope == {"label": "selected", "kind": "forget"}
+        assert receipt["progressKind"] == "actual-original-SQLite-writer-attempt"
+        assert receipt["source"] == "MemoryEntryOriginLedger._open_write"
+        assert receipt["connectionId"] == str(id(db)) and receipt["statement"] == "BEGIN IMMEDIATE"
+        assert receipt["executionSequence"] == observer.sql_executions[0]["sequence"]
+    finally:
+        db.close()
+
+
+def test_new_source_bindings_use_original_generator_body_and_exact_worker_receivers_without_execution():
+    from memory_core.consolidation.origins import IndexRevisionFence
+    from memory_core.index.sqlite_store import SQLiteMemoryStore
+    from memory_core.tools.memory_search import MemorySearchRecallOwner, _record_search_recalls
+
+    codes = _original_bindings()
+    generator = IndexRevisionFence.publication_guard.__wrapped__.__code__
+    assert codes[generator]["name"] == "IndexRevisionFence.publication_guard"
+    assert codes[generator]["receiver"] == "self"
+    assert IndexRevisionFence.publication_guard.__code__ not in codes
+    assert codes[IndexRevisionFence.ledger.fget.__code__]["receiver"] == "self"
+    assert codes[SQLiteMemoryStore._existing_forget_revision.__code__]["receiver"] == "db"
+    assert codes[SQLiteMemoryStore.is_session_forgotten.__code__]["receiver"] == "self"
+    assert codes[_record_search_recalls.__code__]["receiver"] == "store"
+    assert codes[MemorySearchRecallOwner.submit.__code__]["receiver"] == "store"
+
+
+def test_direct_readonly_predicate_connection_retains_its_actual_bound_path_without_observer_queries(tmp_path):
+    path = tmp_path / "labelled-owned-index.sqlite"
+    sqlite3.connect(path).close()
+    owner = SimpleNamespace(path=path)
+    observer = _OriginalObserver({
+        _labelled_method.__code__: _specification("SQLiteMemoryStore.is_session_forgotten", "self")})
+    observer.bind_owner(owner, "labelled-managed-index")
+    frame = _frame(_labelled_method, self=owner, session_id="labelled-session")
+    db = sqlite3.connect(path.resolve().as_uri() + "?mode=ro", uri=True)
+    try:
+        with observer.call_scope("actual-build", "sync"):
+            observer.profile(frame, "call", None)
+            observer.profile(frame, "c_call", db.execute)
+            db.execute("SELECT name FROM sqlite_schema").fetchall()
+            observer.profile(frame, "c_return", db.execute)
+            observer.profile(frame, "return", False)
+        execution, = observer.sql_executions
+        assert execution["ownerDatabasePath"] == str(path)
+        assert execution["databaseOwnerObjectId"] == str(id(owner))
+        assert execution["connectionId"] == str(id(db)) and execution["settlement"] == "returned"
+        assert [row["statement"] for row in observer.sql] == ["SELECT name FROM sqlite_schema"]
+        assert observer.events[-1]["returned"] is False and db.total_changes == 0
+    finally:
+        db.close()
 
 
 def test_observed_exception_retains_class_message_and_args_without_invoking_original():

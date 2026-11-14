@@ -208,7 +208,7 @@ def _definitions(filename, digest):
 def _bytecodes(filename, digest):
     result = {}
     def visit(code):
-        result[code.co_qualname, code.co_firstlineno] = _sha(code.co_code)
+        result.setdefault((code.co_qualname, code.co_firstlineno), set()).add(_sha(code.co_code))
         for item in code.co_consts:
             if isinstance(item, CodeType):
                 visit(item)
@@ -222,7 +222,7 @@ def _sdk_code_owner(row, recorded_root, approved_root):
     require(row["sourceSha256"] == digest
             and (row["qualname"], row["firstLine"]) in _bytecodes(str(source), digest),
             "An actual SDK callable lost its original source/code identity")
-    require(row["bytecodeSha256"] == _bytecodes(str(source), digest).get((row["qualname"], row["firstLine"])),
+    require(row["bytecodeSha256"] in _bytecodes(str(source), digest).get((row["qualname"], row["firstLine"]), set()),
             "The actual SDK callable code differs from independently compiled original source")
     return source
 
@@ -740,6 +740,13 @@ def _native_value(row, authority, approved_node):
     return _decode_v8(authority, [row["v8Hex"]], approved_node)[0]
 
 
+def _native_json(row, authority, approved_node):
+    """Use the original actor's declared JSON/plain codec at that boundary."""
+    view = _decode_v8_views(authority, [row["v8Hex"]], approved_node)[0]["json"]
+    require(view["status"] == "serialized", "An original public JSON carrier is not JSON serializable")
+    return _json(view["text"])
+
+
 @lru_cache(maxsize=4096)
 def _compiled_text(filename, digest):
     return Path(filename).read_text(encoding="utf8")
@@ -855,14 +862,15 @@ def _native_public(case, child, actor, command, entry, authority, approved_node)
             tool = entry["publicTool"]
             _search_envelope(tool["envelope"])
             _same(_sealed_json(tool), tool["envelope"], "Original search envelope JSON bytes changed")
-            _same(actual, tool["envelope"], "Original public search result differs from its actual V8 return")
+            _same(_native_json(entry["privateReturn"], authority, approved_node), tool["envelope"],
+                  "Original public search result differs from its actual V8 JSON view")
             _same(tool["details"], tool["envelope"]["details"], "Whole public search details were replaced")
             require(tool["carrierJSON"] == tool["envelope"]["content"][0]["text"], "Original search text carrier was rewritten")
             _same(entry["originalArguments"], value["queries"][label], "Original Native public search arguments changed")
             outcome = {"status": "fulfilled", "result": tool["details"]}
         elif kind == "forget":
             write = entry["actualWriteJson"]
-            report = _native_value(write["privateReturnValue"], authority, approved_node)
+            report = _native_json(write["privateReturnValue"], authority, approved_node)
             _same(report, write["value"], "Original CLI forget report differs from its actual emitted V8 value")
             _same(_json(write["serializedJSON"]), report, "Original whole CLI forget report JSON changed")
             _forget_report(report)
@@ -873,8 +881,9 @@ def _native_public(case, child, actor, command, entry, authority, approved_node)
             _same(_json(stream["text"]), report, "The actual original CLI stdout differs from its emitted whole report")
             outcome = {"status": "fulfilled", "result": report}
         else:
-            _same(actual, entry["publicPromotionResult"], "The whole Native promotion result lost its original V8 return")
-            outcome = {"status": "fulfilled", "result": _promotion_result(actual, Path(actor["request"]["fixtureBase"]) / "workspace")}
+            actual_json = _native_json(entry["privateReturn"], authority, approved_node)
+            _same(actual_json, entry["publicPromotionResult"], "The whole Native promotion result lost its original V8 JSON view")
+            outcome = {"status": "fulfilled", "result": _promotion_result(actual_json, Path(actor["request"]["fixtureBase"]) / "workspace")}
     expected = {"operation": kind, "label": label, "outcome": outcome}
     _same(settlement["publicCall"], expected, "The Native IPC public outcome was truncated or repaired")
     return expected
@@ -981,10 +990,13 @@ def _sdk_observation(observation, process, value, approved_root):
         source = _source_path(module["path"], recorded, trusted)
         require(_digest(source) == module["sha256"], "An actually imported SDK module differs from the trusted source seal")
     codes = {}
+    def code_key(name, code):
+        return name, code["file"], code["qualname"], code["firstLine"], code["bytecodeSha256"]
     for row in observation["codeOwners"]:
         _sdk_code_owner(row["code"], recorded, trusted)
-        require(row["name"] not in codes, "An SDK original callable was omitted or given two identities")
-        codes[row["name"]] = row
+        key = code_key(row["name"], row["code"])
+        require(key not in codes, "An SDK original callable/code identity was duplicated")
+        codes[key] = row
     for owner in observation["ownerBindings"]:
         require(owner["actor"] == observation["actor"] and owner["pid"] == observation["pid"]
                 and owner["memoryPublication"] == "on-search" and owner["catalogTombstoneMirror"] is False,
@@ -1009,8 +1021,9 @@ def _sdk_observation(observation, process, value, approved_root):
     for row in events.values():
         require(row["pid"] == observation["pid"], "An SDK original event borrowed another process")
         if row["event"] == "original-call":
-            _same(row["code"], codes[row["name"]]["code"], "An actual SDK invocation borrowed another callable/code object")
-            require(row["exactReceiver"] is (codes[row["name"]]["receiver"] is not None),
+            owner = codes[code_key(row["name"], row["code"])]
+            _same(row["code"], owner["code"], "An actual SDK invocation borrowed another callable/code object")
+            require(row["exactReceiver"] is (owner["receiver"] is not None),
                     "An SDK original method lost its exact bound receiver")
         elif row["event"] == "original-return":
             call = events[row["callSequence"]]
@@ -1240,7 +1253,7 @@ def _native_capture(case, raw, result, directory, approved_node, trusted_archive
         require(emitted == child["stdout"], "The actual Native child stdout omitted an original CLI report or added unrelated output")
         for owner in actor["ownerBindings"]:
             status = owner["providerIdentity"]
-            _same(_native_value(status["privateReturn"], authority, approved_node), status["result"],
+            _same(_native_json(status["privateReturn"], authority, approved_node), status["result"],
                   "The Native selected provider status differs from its actual original return")
             require(status["result"]["provider"] == result["provider"], "Native provider-none result was predicted instead of observed")
     require(set(reconstructed) == set(_expected_calls(case["input"])), "Native actual calls differ from the complete frozen schedule")
@@ -1265,7 +1278,7 @@ def _native_capture(case, raw, result, directory, approved_node, trusted_archive
         for name, raw_value in (("origins", snapshot["publicState"]["origins"]),
                                 ("tombstones", snapshot["publicState"]["tombstones"]), ("stores", snapshot["stores"]),
                                 ("sessions", snapshot["sessions"])):
-            _same(_native_value(snapshot["publicReadReturns"][name], authority, approved_node), raw_value,
+            _same(_native_json(snapshot["publicReadReturns"][name], authority, approved_node), raw_value,
                   "An original Native logical reader lost its complete V8 return")
         membership = snapshot["originalCorpusMembership"]
         _same(_sealed_json(membership), membership["entries"], "The Native actual session admission source carrier changed")
@@ -1645,12 +1658,22 @@ function carrier(value, seen=new WeakSet()) {
   return Object.fromEntries(Object.entries(value).map(([k,v])=>[k,carrier(v,seen)]));
 }
 const input=JSON.parse(fs.readFileSync(0,'utf8'));
-process.stdout.write(JSON.stringify(input.map(hex=>carrier(deserialize(Buffer.from(hex,'hex'))))));
+process.stdout.write(JSON.stringify(input.map(hex=>{
+  const value=deserialize(Buffer.from(hex,'hex'));
+  let json;
+  try {
+    const text=JSON.stringify(value);
+    json=text===undefined?{status:'undefined'}:{status:'serialized',text};
+  } catch(error) {
+    json={status:'rejected',error:{name:error.name,message:error.message}};
+  }
+  return {carrier:carrier(value),json};
+})));
 '''
 _V8_CACHE = {}
 
 
-def _decode_v8(authority, wires, approved_node):
+def _decode_v8_views(authority, wires, approved_node):
     require(approved_node is not None, "Replay requires an independently selected approved Node binary")
     binary = _regular(Path(approved_node).resolve(strict=True))
     digest = _digest(binary)
@@ -1671,3 +1694,7 @@ def _decode_v8(authority, wires, approved_node):
         for wire, value in zip(missing, values, strict=True):
             _V8_CACHE[digest, decoder, wire] = value
     return [_V8_CACHE[digest, decoder, wire] for wire in wires]
+
+
+def _decode_v8(authority, wires, approved_node):
+    return [view["carrier"] for view in _decode_v8_views(authority, wires, approved_node)]

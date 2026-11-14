@@ -283,7 +283,12 @@ class _OriginalObserver:
             if call is None:
                 return
             row = self.event("original-return", callSequence=call["sequence"], name=specification["name"],
-                             callLabel=scope["label"], owner=owner_label, returned=_encode(returned))
+                callLabel=scope["label"], owner=owner_label, returned=_encode(returned),
+                frameScalars={key: _encode(frame.f_locals[key]) for key in (
+                    "live", "expected", "expected_revision", "expected_fence_revision", "current_revision",
+                    "expected_fence", "generation", "mutation_generation")
+                    if key in frame.f_locals and (frame.f_locals[key] is None
+                        or type(frame.f_locals[key]) in (bool, int, float, str))})
             if isinstance(returned, sqlite3.Connection):
                 self._bind_connection(returned, scope, specification["name"])
             if self.gate_callback is not None:
@@ -447,6 +452,11 @@ def _rows(path):
         return {**payload, "serializedJSON": wire, "sha256": hashlib.sha256(wire.encode()).hexdigest()}
 
 
+def _full_stat(info):
+    """Retain every supplied OS stat field without assuming another platform's set."""
+    return {name: str(getattr(info, name)) for name in dir(info) if name.startswith("st_")}
+
+
 def _files(root):
     entries = []
     if not root.exists():
@@ -454,13 +464,15 @@ def _files(root):
     for path in sorted(root.rglob("*")):
         info = path.lstat()
         if path.is_symlink():
-            entries.append({"path": path.relative_to(root).as_posix(), "kind": "symlink", "target": os.readlink(path)})
+            entries.append({"path": path.relative_to(root).as_posix(), "kind": "symlink",
+                            "target": os.readlink(path), "stat": _full_stat(info)})
         elif path.is_file():
             payload = path.read_bytes()
             entries.append({"path": path.relative_to(root).as_posix(), "kind": "file", "hex": payload.hex(),
                 "text": payload.decode("utf8", errors="replace"), "sha256": hashlib.sha256(payload).hexdigest(),
                 "size": len(payload), "mtimeNs": str(info.st_mtime_ns), "mode": info.st_mode,
-                "device": info.st_dev, "inode": info.st_ino})
+                "device": info.st_dev, "inode": info.st_ino, "stat": _full_stat(info),
+                "statAfter": _full_stat(path.lstat())})
     return entries
 
 
@@ -1208,8 +1220,11 @@ def run_forget_index_fence_sdk_host(request):
                 capture_path.write_bytes(capture_bytes)
                 record["physicalCapture"] = {"path": str(capture_path), "bytes": len(capture_bytes),
                     "sha256": hashlib.sha256(capture_bytes).hexdigest()}
+                observations_at_capture = [deepcopy(process["observation"])
+                    for process in processes if process.get("observation")]
+                record["observationsAtCapture"] = observations_at_capture
                 common_snapshots[label] = _common_snapshot(value, record["returned"],
-                    [process["observation"] for process in processes if process.get("observation")], directory / "workspace")
+                    observations_at_capture, directory / "workspace")
             elif operation == "original-owner-close":
                 record["returned"] = actors[actor].command("close")
             elif operation == "stop-original-process":

@@ -17,6 +17,8 @@ from equivalence.forget_index_fence_sdk import (
     _code_identity,
     _encode,
     _error,
+    _files,
+    _full_stat,
     _safe_path,
     _validate_actor_command,
 )
@@ -142,6 +144,49 @@ def test_observed_exception_retains_class_message_and_args_without_invoking_orig
                             "message": str(error), "args": ["precise original message", 4]}
     assert observer.exception_trace(_frame(_unrelated_method, self=owner), "exception",
                                     (type(error), error, None)) is None
+
+
+def test_original_return_keeps_actual_present_fence_frame_scalars_without_source_io(monkeypatch):
+    owner = object()
+    observer = _OriginalObserver({_labelled_method.__code__: _specification("labelled-fence", "self")})
+    observer.bind_owner(owner, "actual-fence")
+    frame = _frame(_labelled_method, self=owner, expected=7, live=9,
+        expected_revision=11, expected_fence_revision=None, current_revision=13,
+        expected_fence=15, generation=17, mutation_generation=19,
+        arbitrary="not-a-declared-fence-scalar")
+
+    def forbid_source_lookup(*arguments, **options):
+        raise AssertionError("Returning from an original frame must not read source files")
+
+    monkeypatch.setattr(Path, "read_bytes", forbid_source_lookup)
+    with observer.call_scope("original-sync", "sync"):
+        observer.profile(frame, "call", None)
+        observer.profile(frame, "return", None)
+
+    returned = observer.events[-1]
+    assert returned["returned"] is None
+    assert returned["frameScalars"] == {"expected": 7, "live": 9, "expected_revision": 11,
+        "expected_fence_revision": None, "current_revision": 13, "expected_fence": 15,
+        "generation": 17, "mutation_generation": 19}
+    assert frame.f_locals["live"] == 9 and frame.f_locals["expected"] == 7
+
+
+def test_physical_file_capture_retains_every_actual_stat_field_as_an_exact_string(tmp_path):
+    source = tmp_path / "ordinary-source.md"
+    source.write_bytes(b"actual ordinary source bytes\n")
+    before = source.lstat()
+    expected_names = {name for name in dir(before) if name.startswith("st_")}
+
+    assert _full_stat(before) == {name: str(getattr(before, name)) for name in expected_names}
+    captured = _files(tmp_path)
+
+    assert len(captured) == 1 and captured[0]["path"] == "ordinary-source.md"
+    assert set(captured[0]["stat"]) == expected_names
+    assert set(captured[0]["statAfter"]) == expected_names
+    assert all(type(item) is str for item in captured[0]["stat"].values())
+    assert captured[0]["stat"]["st_ctime_ns"] == str(before.st_ctime_ns)
+    assert captured[0]["stat"]["st_mtime_ns"] == captured[0]["mtimeNs"]
+    assert captured[0]["hex"] == b"actual ordinary source bytes\n".hex()
 
 
 def test_sql_observation_binds_exact_c_receiver_before_factory_return_and_retains_pending_execution(monkeypatch):

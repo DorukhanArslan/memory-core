@@ -41,6 +41,7 @@ def closed(monkeypatch):
                 "boundaries": {"atomic": "before original rename", "inPlace": "before original close"}}},
                       "actors": {"foreground": {"role": "fixture"}},
                       "gates": [], "steps": [{"operation": "original-sync", "actor": "foreground", "label": "s"}]}}
+    case["input"]["kind"] = "forget-index-fence-v3"
     case["input"]["observationPolicy"] = {"searchEffects": {
         "protocol": "original-search-effects-v3", "maxReferencesPerBarrier": 256}}
     recovery = deepcopy(case)
@@ -56,7 +57,7 @@ def closed(monkeypatch):
 
     contract = SimpleNamespace(build_cases=lambda: deepcopy(cases), validate_case=validate,
                                case_wire=_wire, CASE_HASHES=hashes)
-    monkeypatch.setattr(native, "_contract", lambda: contract)
+    monkeypatch.setattr(native, "_contract", lambda *_args: contract)
     authority = {"execPath": "/labelled/no-engine/node", **APPROVED_NODE_RUNTIME}
     return case, recovery, authority
 
@@ -135,6 +136,27 @@ def test_transport_contract_import_is_v3_only_without_a_v1_fallback(monkeypatch)
     assert native.NATIVE_KIND == "official-release-forget-index-fence-v3"
 
 
+def test_additive_v4_dispatch_is_closed_and_retains_v3_control_protocol(monkeypatch):
+    calls = []
+    monkeypatch.setattr(native, "import_module", lambda name: calls.append(name) or name)
+    assert native._contract("forget-index-fence-v3-runtime") == "equivalence.forget_index_fence_v3"
+    assert native._contract("forget-index-fence-v4-runtime") == "equivalence.forget_index_fence_v4"
+    with pytest.raises(ValueError, match="Unknown"):
+        native._contract("forget-index-fence-v5-runtime")
+    assert len(calls) == 2
+    assert native.PROFILE_KEY == "forgetIndexFenceV3Profile"
+    assert native.BOOTSTRAP_EVENT == "forget-index-fence-v3-bootstrap"
+
+
+def test_mixed_literal_kind_is_rejected_before_contract_import(closed, monkeypatch):
+    case, _, _ = closed
+    case = deepcopy(case)
+    case["input"]["kind"] = "forget-index-fence-v4"
+    monkeypatch.setattr(native, "_contract", lambda *_args: pytest.fail("A mixed version imported its contract"))
+    with pytest.raises(ValueError, match="mixed or unknown"):
+        native._validated_case(case)
+
+
 def test_profile_copies_the_entire_literal_source_clock_without_shared_nested_values(closed):
     case, _, authority = closed
     original = deepcopy(case)
@@ -156,6 +178,19 @@ def test_sealed_v3_family_has_exact_literal_clock_profiles_without_original_exec
         assert profile["searchEffects"] is not case["input"]["observationPolicy"]["searchEffects"]
         assert profile["sourceWriteClock"] == case["input"]["clock"]["sourceWriteClock"]
         assert native.validate_profile(profile) == profile
+
+
+def test_sealed_v4_profiles_keep_whole_policy_and_v3_diagnostics_without_running_node():
+    from equivalence import forget_index_fence_v3 as v3, forget_index_fence_v4 as v4
+    authority = {"execPath": "/labelled/no-engine/node", **APPROVED_NODE_RUNTIME}
+    for contract in (v3, v4):
+        for case in contract.build_cases():
+            profile = native.prepare_profile(case, authority)
+            assert profile["kind"] == case["input"]["kind"]
+            assert profile["operation"] == case["operation"]
+            assert profile["caseId"] == case["id"]
+            assert profile["searchEffects"] == case["input"]["observationPolicy"]["searchEffects"]
+            assert native.validate_profile(profile) == profile
 
 
 def test_changed_input_is_denied_before_executable_authentication_or_process_launch(closed, monkeypatch, tmp_path):

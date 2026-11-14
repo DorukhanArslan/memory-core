@@ -58,14 +58,23 @@ _ALWAYS_MAIN_ARTIFACTS = (
 )
 
 
-def _contract():
+def _contract(operation="forget-index-fence-v3-runtime"):
     # The root integrates the independently frozen input module. Importing this
     # transport alone neither loads that manifest nor launches either engine.
-    return import_module("equivalence.forget_index_fence_v3")
+    modules = {"forget-index-fence-v3-runtime": "equivalence.forget_index_fence_v3",
+               "forget-index-fence-v4-runtime": "equivalence.forget_index_fence_v4"}
+    if operation not in modules:
+        raise ValueError("Unknown forget/index-fence literal operation")
+    return import_module(modules[operation])
 
 
 def _validated_case(case):
-    contract = _contract()
+    operation = case.get("operation")
+    kinds = {"forget-index-fence-v3-runtime": "forget-index-fence-v3",
+             "forget-index-fence-v4-runtime": "forget-index-fence-v4"}
+    if operation not in kinds or case.get("input", {}).get("kind") != kinds[operation]:
+        raise ValueError("Forget/index-fence mixed or unknown literal versions")
+    contract = _contract(operation)
     value = contract.validate_case(case)
     # Recheck the complete sealed manifest before admitting any single member.
     frozen = {item["id"]: item for item in contract.build_cases()}
@@ -96,7 +105,7 @@ def prepare_profile(case, authority):
                    for actor in actors)):
         raise ValueError("Forget/index-fence requires declared actor clocks and identities")
     profile = {
-        "kind": PROFILE_KIND, "operation": case["operation"], "caseId": case["id"],
+        "kind": case["input"]["kind"], "operation": case["operation"], "caseId": case["id"],
         "caseWireSha256": hashlib.sha256(wire).hexdigest(),
         "actorClocks": {"coordinator": base, "observer": base, **dict.fromkeys(actors, base)},
         "gates": deepcopy(case["input"]["gates"]), "nodeRuntime": authority,
@@ -115,7 +124,7 @@ def prepare_profile(case, authority):
 def validate_profile(profile):
     if not isinstance(profile, dict):
         raise ValueError("Forget/index-fence requires its exact closed profile")
-    cases = {case["id"]: case for case in _contract().build_cases()}
+    cases = {case["id"]: case for case in _contract(profile.get("operation")).build_cases()}
     if profile.get("caseId") not in cases:
         raise ValueError("Forget/index-fence profile names an unapproved frozen case")
     expected = prepare_profile(cases[profile["caseId"]], profile.get("nodeRuntime"))

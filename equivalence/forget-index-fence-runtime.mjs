@@ -18,6 +18,24 @@ const err=error=>({name:error.name,message:error.message,code:error.code??null,s
 const sealed=value=>{const serializedJSON=JSON.stringify(value);return{serializedJSON,sha256:hash(serializedJSON)};};
 const privateValue=value=>{const type=value===undefined?'undefined':value===null?'null':typeof value;
  try{return{type,v8Hex:serialize(value).toString('hex')};}catch(error){return{type,serializationError:{name:error.name,message:error.message}};}};
+export function assertNativeLiteralVersion(input,caseId,operation){
+ if(!['forget-index-fence-v3','forget-index-fence-v4'].includes(input?.kind)||
+  operation!==undefined&&operation!==input.kind+'-runtime'||
+  /^forget-index-fence-v[34]-/u.test(caseId??'')&&!caseId.startsWith(input.kind+'-'))throw Error('Owned original fixture required');
+ return input.kind;
+}
+export function captureResolvedManagerSettings(owner,inputKind,reference){
+ const actual=owner.settings,serializedJSON=JSON.stringify(actual),descriptor=Object.getOwnPropertyDescriptor(owner,'settings');
+ const required=inputKind==='forget-index-fence-v4',admitted=!required||
+  actual?.sync?.watch===false&&actual?.sync?.onSearch===true&&actual?.sync?.onSessionStart===false;
+ return{property:'settings',sourceModule:'dist/extensions/memory-core/manager-runtime.js',sourceSymbol:'MemoryIndexManager.settings',
+  receiverRef:reference(owner),constructorRef:reference(owner.constructor),settingsRef:reference(actual),value:plain(actual),
+  privateValue:privateValue(actual),serializedJSON,sha256:hash(serializedJSON),readAtNs:process.hrtime.bigint().toString(),
+  ownPropertyDescriptor:descriptor?{enumerable:descriptor.enumerable,configurable:descriptor.configurable,
+   ...(Object.hasOwn(descriptor,'value')?{writable:descriptor.writable,valueRef:reference(descriptor.value)}:
+    {getRef:reference(descriptor.get),setRef:reference(descriptor.set)})}:null,
+  modeAdmission:{inputKind,required,admitted}};
+}
 const controller=()=>globalThis[Symbol.for('memory.eq.forgetIndexFence')];
 const sleep=ms=>new Promise(resolve=>setTimeout(resolve,ms));
 const safeName=value=>{if(typeof value!=='string'||!/[A-Za-z]/u.test(value)||!/^[a-zA-Z0-9_-]+$/u.test(value))throw Error('Invalid owned actor/gate name');return value;};
@@ -72,7 +90,8 @@ export function childRequest(input,actor,instance,config){
 }
 
 export async function runForgetIndexFenceRuntime(input,config){
- if(input.kind!=='forget-index-fence-v3'||!path.isAbsolute(config.runtimeRoot)||!path.isAbsolute(config.stateDirectory))throw Error('Owned original fixture required');
+ assertNativeLiteralVersion(input,config.caseId,config.operation);
+ if(!path.isAbsolute(config.runtimeRoot)||!path.isAbsolute(config.stateDirectory))throw Error('Owned original fixture required');
  const base=config.stateDirectory,workspace=path.join(base,'workspace');
  await fsp.mkdir(workspace,{recursive:true});
  const cfg={agents:{ownership:'explicit',defaults:{workspace},entries:{[input.identity.agentId]:{workspace}}},
@@ -247,6 +266,7 @@ export async function runForgetIndexFenceRuntime(input,config){
 
 export async function runForgetIndexFenceActor(request){
  const{input,actor,instance,fixtureBase:base,runtimeRoot,configPath,evidenceDirectory}=request;
+ assertNativeLiteralVersion(input,request.caseId);
  const workspace=path.join(base,'workspace'),cfg=JSON.parse(await fsp.readFile(configPath,'utf8'));
  const raw={schemaVersion:1,kind:'forget-index-fence-actor',actor,instance,pid:process.pid,ppid:process.ppid,request,
   config:cfg,calls:[],snapshots:[],producerReceipts:[],sessionTranscriptExportReads:[],codeOwners:[],owners:[],ownerBindings:[],getCalls:[],closed:false};
@@ -308,12 +328,17 @@ export async function runForgetIndexFenceActor(request){
    for(const name of['sync','search','status','close','listSessionCorpusEntries'])codeOwner(`MemoryIndexManager.${name}`,
     'dist/extensions/memory-core/manager-runtime.js',`MemoryIndexManager.prototype.${name}`,owner[name]);
    const actualStatus=owner.status();
-   raw.ownerBindings.push({ownerRef:ref(owner),searchEffectsOwnerRef:controller().searchEffects.reference(owner),
+   let resolvedSettings;
+   try{resolvedSettings=captureResolvedManagerSettings(owner,input.kind,ref);}
+   catch(error){controller().blockControl('resolved-search-settings-observation-failed',error,{ownerRef:ref(owner)});return;}
+   controller().event('original-manager-resolved-settings-read',resolvedSettings);
+   raw.ownerBindings.push({ownerRef:ref(owner),resolvedSettings,searchEffectsOwnerRef:controller().searchEffects.reference(owner),
     classRef:ref(runtime.MemoryIndexManager),prototypeRef:ref(Object.getPrototypeOf(owner)),
     databaseRef:ref(owner.publishedDatabase),nativeConnectionRef:ref(owner.publishedDatabase.db),
     dbPath:owner.publishedDatabase.db.location('main'),purpose:owner.purpose,
     providerIdentity:{method:'status',methodRef:ref(owner.status),result:plain(actualStatus),privateReturn:privateValue(actualStatus)},
     methods:['sync','search','status','close','listSessionCorpusEntries'].map(name=>({name,functionRef:ref(owner[name]),functionSourceSha256:hash(Function.prototype.toString.call(owner[name]))}))});
+   if(!resolvedSettings.modeAdmission.admitted)controller().blockControl('resolved-search-sync-mode-mismatch',Error('Actual original manager resolved unsupported V4 sync settings'),{ownerRef:ref(owner),resolvedSettings});
   },error=>{call.errorRef=ref(error);});return received;
  };
  let manager=null,exiting=false;

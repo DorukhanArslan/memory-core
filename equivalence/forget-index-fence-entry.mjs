@@ -10,13 +10,14 @@ if(actor==='coordinator'){
  try{
   if(createHash('sha256').update(stdin).digest('hex')!==profile.caseWireSha256)throw Error('Frozen original fence literal changed');
   const testCase=JSON.parse(stdin);
-  if(Object.keys(testCase).sort().join()!=='id,input,operation'||testCase.id!==profile.caseId||testCase.operation!==profile.operation)throw Error('Wrong original fence input');
+  if(Object.keys(testCase).sort().join()!=='id,input,operation'||testCase.id!==profile.caseId||testCase.operation!==profile.operation||
+   testCase.input.kind!==profile.kind)throw Error('Wrong original fence input');
   const expectedClocks=Object.fromEntries(['coordinator','observer',...Object.keys(testCase.input.actors)].map(name=>[name,testCase.input.clock.nowMs]));
   if(!isDeepStrictEqual(testCase.input.gates,profile.gates)||!isDeepStrictEqual(profile.actorClocks,expectedClocks)||
    profile.recoveryNowMs!==testCase.input.clock.recoveryNowMs||!isDeepStrictEqual(profile.sourceWriteClock,testCase.input.clock.sourceWriteClock)||
    !isDeepStrictEqual(profile.searchEffects,testCase.input.observationPolicy.searchEffects))throw Error('Fence capability substituted declared controls or wall phases');
   const {runForgetIndexFenceRuntime}=await import('./forget-index-fence-runtime.mjs');
-  const result=await runForgetIndexFenceRuntime(testCase.input,{caseId:testCase.id,runtimeRoot:context.runtime.runtimeRoot,
+  const result=await runForgetIndexFenceRuntime(testCase.input,{caseId:testCase.id,operation:testCase.operation,runtimeRoot:context.runtime.runtimeRoot,
    evidenceDirectory:context.evidenceDirectory,stateDirectory:context.stateDirectory,configPath:context.configPath,gateDirectory:context.gateDirectory});
   output={id:testCase.id,ok:true,result};
  }catch(error){output={id:profile.caseId,ok:false,error:{name:error.name,message:error.message,stack:error.stack}};process.exitCode=2;}

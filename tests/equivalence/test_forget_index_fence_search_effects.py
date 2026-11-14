@@ -183,3 +183,32 @@ assert.equal(receipt.jobs.length,1);assert.equal(receipt.jobs[0].promiseRef,ref(
 assert.equal(deserialize(Buffer.from(receipt.jobs[0].settlement.value.v8Hex,'hex')),'original returned value');
 effects.assertDrained();assert.deepEqual(failures,[]);
 ''')
+
+
+def test_additive_literal_versions_reject_unknown_and_mixed_operations_before_work(node, tmp_path):
+    _run(node, tmp_path, r'''
+const {assertNativeLiteralVersion}=await import(''' + json.dumps((ROOT / "equivalence/forget-index-fence-runtime.mjs").as_uri()) + r''');
+for(const version of [3,4])assert.equal(assertNativeLiteralVersion({kind:`forget-index-fence-v${version}`},
+ `forget-index-fence-v${version}-pure-label`,`forget-index-fence-v${version}-runtime`),`forget-index-fence-v${version}`);
+assert.throws(()=>assertNativeLiteralVersion({kind:'forget-index-fence-v4'},'forget-index-fence-v3-pure-label','forget-index-fence-v4-runtime'),/Owned original fixture/);
+assert.throws(()=>assertNativeLiteralVersion({kind:'forget-index-fence-v4'},'forget-index-fence-v4-pure-label','forget-index-fence-v3-runtime'),/Owned original fixture/);
+assert.throws(()=>assertNativeLiteralVersion({kind:'forget-index-fence-v9'},'pure-label'),/Owned original fixture/);
+''')
+
+
+def test_mode_admission_reads_actual_owned_settings_without_rewriting_them(node, tmp_path):
+    _run(node, tmp_path, r'''
+const {captureResolvedManagerSettings}=await import(''' + json.dumps((ROOT / "equivalence/forget-index-fence-runtime.mjs").as_uri()) + r''');
+const actual={sync:{watch:true,onSearch:true,onSessionStart:true},retained:{whole:'original settings'}};
+let reads=0;const originalOwner={get settings(){reads++;return actual;}};
+const rejected=captureResolvedManagerSettings(originalOwner,'forget-index-fence-v4',ref);
+assert.equal(reads,1);assert.equal(rejected.modeAdmission.admitted,false);assert.equal(rejected.settingsRef,ref(actual));
+assert.deepEqual(rejected.value,actual);assert.deepEqual(deserialize(Buffer.from(rejected.privateValue.v8Hex,'hex')),actual);
+assert.equal(actual.sync.watch,true);assert.equal(actual.sync.onSessionStart,true);
+const diagnostic=captureResolvedManagerSettings(originalOwner,'forget-index-fence-v3',ref);assert.equal(diagnostic.modeAdmission.required,false);
+const explicit={settings:{sync:{watch:false,onSearch:true,onSessionStart:false},extra:{untouched:[1,2]}}};
+const admitted=captureResolvedManagerSettings(explicit,'forget-index-fence-v4',ref);
+assert.equal(admitted.modeAdmission.admitted,true);assert.equal(admitted.receiverRef,ref(explicit));
+assert.equal(admitted.ownPropertyDescriptor.valueRef,ref(explicit.settings));assert.deepEqual(admitted.value,explicit.settings);
+assert.deepEqual(JSON.parse(admitted.serializedJSON),explicit.settings);
+''')

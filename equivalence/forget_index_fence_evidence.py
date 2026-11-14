@@ -1412,7 +1412,79 @@ def _native_public(case, child, actor, command, entry, authority, approved_node)
     return expected
 
 
-def _native_gates(case, raw, actors, passive, authority, approved_node, directory):
+def _native_keyword_delivery(receipt, gate, raw, actors, passive, authority, approved_node, context, imports):
+    require(receipt["mode"] == "deferred-original-worker-reply" and receipt["threadId"] == 0
+            and receipt["sourceOwner"] == "WorkerTaskPool.original-keyword-reply" and receipt["eventName"] == "message",
+            "The Native keyword fixture froze a thread instead of holding only the original reply delivery")
+    caller = receipt["requestSourceCaller"]
+    require(caller["package"] == "node_modules/openclaw" and caller["path"] == "dist/worker-task-pool-BQlnRNqZ.mjs",
+            "The held Native keyword task was dispatched by another original owner")
+    _native_clock_owner(caller, receipt["requestOriginalStack"], context, imports, receipt["pid"])
+    require((receipt["pid"], receipt["workerThreadId"]) in imports and receipt["workerThreadId"] != 0,
+            "The Native held keyword reply has no actual authenticated original Worker")
+    refs = [receipt[name] for name in ("workerRef", "emitRef", "messageRef", "requestRef", "nativeSectionsRef")]
+    require(len(set(refs)) == len(refs) and all(isinstance(value, str)
+            and re.fullmatch(rf'{receipt["pid"]}:0:process-ref-[0-9]+', value) for value in refs),
+            "The Native keyword hold replaced or conflated its original Worker/message/emitter/request identities")
+    request, reply = _native_value(receipt["requestInput"], authority, approved_node), _native_value(receipt["reply"], authority, approved_node)
+    header = receipt["requestHeader"]
+    require(set(header) == {"taskId", "interactive", "sampleMemory", "nativeSections"}
+            and type(header["taskId"]) is int and header["taskId"] == receipt["taskId"] == reply["taskId"]
+            and type(header["interactive"]) is bool and header["sampleMemory"] is True
+            and request["kind"] == reply["value"]["kind"] == "keyword" and reply["status"] == "ok"
+            and receipt["replyV8Sha256"] == _sha(bytes.fromhex(receipt["reply"]["v8Hex"])),
+            "The held Native keyword notification lost its complete actual task input/header/reply")
+    native = header["nativeSections"]
+    require(set(native) == {"constructorName", "byteLength", "bytesHex"} and native["constructorName"] == "SharedArrayBuffer"
+            and type(native["byteLength"]) is int and native["byteLength"] >= 0
+            and bytes.fromhex(native["bytesHex"]).hex() == native["bytesHex"]
+            and len(bytes.fromhex(native["bytesHex"])) == native["byteLength"],
+            "The original Native task's shared native-section carrier was stripped or reconstructed")
+    # V8 deliberately cannot clone the original SharedArrayBuffer. Preserve
+    # that actual failure alongside the separately witnessed same object.
+    require(set(receipt["request"]) == {"unserializable"}
+            and receipt["request"]["unserializable"]["name"] == "Error"
+            and "SharedArrayBuffer" in receipt["request"]["unserializable"]["message"],
+            "The Native original task serialization failure was replaced by a reconstructed request")
+    arguments = _native_value(receipt["eventArguments"], authority, approved_node)
+    require(isinstance(arguments, list) and len(arguments) == len(receipt["eventArgumentRefs"]),
+            "Native original keyword delivery lost actual extra emitter arguments")
+    events = passive[receipt["pid"], 0]
+    facts = ("sourceOwner", "taskId", "workerThreadId", "workerRef", "emitRef", "messageRef", "requestRef", "request",
+             "requestInput", "nativeSectionsRef", "requestSourceCaller", "requestOriginalStack", "reply", "replyV8Sha256",
+             "eventName", "eventArguments", "eventArgumentRefs", "callLabel", "requestHeader")
+    selected = {}
+    for name in ("held", "delivery-enter", "delivery-return"):
+        rows = [row for row in events if row["event"] == "keyword-reply-" + name
+                and row.get("messageRef") == receipt["messageRef"]]
+        require(len(rows) == 1, "The Native held notification was omitted, duplicated, or delivered more than once")
+        selected[name] = rows[0]
+        _same({key: rows[0][key] for key in facts}, {key: receipt[key] for key in facts},
+              "Native deferred delivery changed its actual original receiver/task/message/arguments")
+    held, enter, returned = (selected[name] for name in ("held", "delivery-enter", "delivery-return"))
+    releases = [row for row in events if row["event"] == "fence-gate-release" and row["gate"] == gate["name"]]
+    require(len(releases) == 1 and held["sequence"] < receipt["sequence"] < releases[0]["sequence"]
+            < enter["sequence"] < returned["sequence"]
+            and _ns(gate["releasedAtNs"]) <= _ns(releases[0]["atNs"]) <= _ns(enter["enteredAtNs"])
+            < _ns(returned["returnedAtNs"]) and returned["actualReturnType"] == "boolean"
+            and type(_native_value(returned["actualReturn"], authority, approved_node)) is bool
+            and "actualReturn" not in held and "actualReturn" not in enter,
+            "Native keyword delivery claimed an original emit return before the real release or invocation")
+    _same(enter["message"], receipt["reply"], "The actual Native original emit received another keyword message")
+    _same(enter["arguments"], receipt["eventArguments"], "The actual Native original emit received changed extra arguments")
+    progress = [row for row in events if row["event"] == "async-gate-mainloop-progress" and row["gate"] == gate["name"]]
+    require(len(progress) == 2 and {row["kind"] for row in progress} == {"setImmediate", "setTimeout"}
+            and all(row["gateEnterAtNs"] == receipt["enteredAtNs"] and row["callLabel"] == receipt["callLabel"]
+                    and receipt["sequence"] < row["sequence"] < releases[0]["sequence"] for row in progress),
+            "The Native keyword hold has no genuine independent main-loop progress while delivery is pending")
+    forgets = [entry for _, actor in actors.values() for entry in actor["calls"]
+               if entry["operation"] == "original-forget" and entry.get("label") == "selected"]
+    require(len(forgets) == 1 and _ns(receipt["enteredAtNs"]) < _ns(forgets[0]["startedAtNs"])
+            < _ns(forgets[0]["settledAtNs"]) < _ns(gate["releasedAtNs"]),
+            "The Native keyword fixture did not permit the actual independent original forget to settle while held")
+
+
+def _native_gates(case, raw, actors, passive, authority, approved_node, directory, *, context=None, imports=None):
     specifications = {row["name"]: row for row in case["input"]["gates"]}
     require(len(raw["gates"]) == len(specifications), "An original Native functional gate was omitted or added")
     for gate in raw["gates"]:
@@ -1483,11 +1555,7 @@ def _native_gates(case, raw, actors, passive, authority, approved_node, director
                         and receipt["asyncId"] and receipt["triggerAsyncId"] is not None,
                         "Native workspace wait was not an actual source-owned pending sleep")
         elif boundary == "search.keyword-result-before-enrichment":
-            request, reply = _native_value(receipt["request"], authority, approved_node), _native_value(receipt["reply"], authority, approved_node)
-            require(request["taskId"] == reply["taskId"] == receipt["taskId"] and reply["status"] == "ok"
-                    and reply["value"]["kind"] == request["input"]["kind"] == "keyword"
-                    and receipt["replyV8Sha256"] == _sha(bytes.fromhex(receipt["reply"]["v8Hex"])),
-                    "The Native in-flight public search lost its actual complete keyword worker reply")
+            _native_keyword_delivery(receipt, gate, raw, actors, passive, authority, approved_node, context, imports)
         elif boundary == "promotion.model-planning-before-final-lock":
             require(receipt["sourceOwner"] == "consolidateMemory.actual-subagent-complete-await"
                     and isinstance(receipt["request"], dict), "The Native model gate did not hold the actual original planning request")
@@ -1705,16 +1773,56 @@ def _common_events(rows, workspace):
     return result
 
 
+def _native_transcript_exports(case, actor, snapshot, events, authority, approved_node):
+    """Bind observation facts to the supported original read-only export call."""
+    method = "readTranscriptExportSnapshotReadOnlySync"
+    owners = [row for row in actor["codeOwners"] if row["name"] == method]
+    require(len(owners) == 1 and owners[0]["modulePath"] == "dist/session-accessor-CiKKTlbe.mjs",
+            "The Native observation lost its original read-only transcript export callable")
+    rows = snapshot["sessionTranscriptExportReads"]
+    require(len(rows) == len(case["input"]["sessionFacts"]["sessions"]) == len(snapshot["sessions"]),
+            "A Native transcript observation omitted or duplicated an actual export")
+    observed = [row for row in actor["sessionTranscriptExportReads"]
+                if snapshot["enterSeq"] < row["enterSeq"] < row["returnSeq"] < snapshot["returnSeq"]]
+    _same(rows, observed, "A Native snapshot replaced its actual cumulative transcript export receipts")
+    fixture = Path(actor["request"]["fixtureBase"])
+    for receipt, session in zip(rows, snapshot["sessions"], strict=True):
+        start, end = _interval(receipt, events, "original-transcript-export-read-enter", "original-transcript-export-read-return")
+        entered, returned = events[start], events[end]
+        require(receipt["method"] == entered["method"] == returned["method"] == method
+                and receipt["methodRef"] == entered["methodRef"] == returned["methodRef"] == owners[0]["functionRef"]
+                and receipt["ownerRef"] == entered["ownerRef"] and receipt["ownerRef"].startswith(str(actor["pid"]) + ":")
+                and returned["enteredSeq"] == start and returned["threw"] is False
+                and receipt["returnedUndefined"] is returned["returnedUndefined"] is False
+                and "error" not in receipt and receipt["startedAtNs"] == entered["atNs"]
+                and receipt["finishedAtNs"] == returned["atNs"] and _ns(receipt["startedAtNs"]) < _ns(receipt["finishedAtNs"]),
+                "A Native export borrowed another original receiver, call frame, or settlement")
+        scope = receipt["scope"]
+        require(set(scope) == {"agentId", "sessionId", "sessionKey", "storePath"}
+                and all(scope[name] == session[name] for name in ("agentId", "sessionId", "sessionKey"))
+                and Path(scope["storePath"]).is_absolute() and Path(scope["storePath"]).is_relative_to(fixture)
+                and ".." not in Path(scope["storePath"]).parts,
+                "A Native export observed another session identity or unowned producer database")
+        _same(_native_json(receipt["privateReturn"], authority, approved_node), receipt["result"],
+              "The Native read-only export lost its whole original typed return")
+        require(isinstance(receipt["result"], dict) and isinstance(receipt["result"]["events"], list),
+                "An undefined Native transcript export was replaced with an empty event history")
+        _same(receipt["result"]["events"], session["events"],
+              "Native observed session events differ from the full actual original read-only export")
+
+
 def _native_capture(case, raw, result, directory, approved_node, trusted_archive, approved_reference):
     require(raw["kind"] == "forget-index-fence-native-capture" and raw["schemaVersion"] == 1
             and raw["engine"] == "native" and raw["caseId"] == case["id"]
             and raw["completed"] is raw["allChildrenReaped"] is True
-            and not any(raw.get(name) for name in ("error", "teardownError", "observationErrors")),
+            and not any(raw.get(name) for name in ("error", "teardownError", "observationErrors", "controlFailures")),
             "The original Native packet is incomplete or contaminated")
     _same(raw["input"], case["input"], "The original Native received another frozen input")
     _same(raw["result"], result, "Native raw capture lost its whole public result")
     directory = Path(directory or Path(raw["fixtureBase"]).parent).resolve(strict=True)
     context, process, authority, imports, passive = _native_authority(case, raw, directory, approved_node, trusted_archive, approved_reference)
+    require(not any(row["event"] == "fixture-control-failure" for rows in passive.values() for row in rows),
+            "An actual Native functional fixture failure was omitted from its outer control status")
     approved_node = authority["execPath"]
     returned = _read(process["stdoutPath"], directory)
     require(returned["id"] == case["id"] and returned["ok"] is True, "The actual Native coordinator did not return its complete result")
@@ -1753,6 +1861,8 @@ def _native_capture(case, raw, result, directory, approved_node, trusted_archive
                 and actor["instance"] == child["instance"] and (child["pid"], 0) in imports,
                 "A Native original actor capture borrowed another PID or imported program")
         _same(actor["request"], child["request"], "A Native actor changed its actual initialization request")
+        if _v2(case):
+            require(actor["controlFailures"] == [], "A Native deferred fixture control failed outside the original public outcome")
         _native_code_owners(actor, imports[child["pid"], 0]["loaded"], context)
         _native_producers(case, actor, authority, approved_node)
         actors[child["pid"]] = child, actor
@@ -1792,7 +1902,11 @@ def _native_capture(case, raw, result, directory, approved_node, trusted_archive
     _same(reconstructed, result["calls"], "Native common calls dropped or repaired original public outcomes")
     if _v2(case):
         _native_source_clock_v2(case, raw, actors, imports, passive, context, authority, approved_node)
-    _native_gates(case, raw, actors, passive, authority, approved_node, directory)
+        for pid, (_, actor) in actors.items():
+            entries = [row["sequence"] for row in passive[pid, 0] if row["event"] == "original-transcript-export-read-enter"]
+            require([row["enterSeq"] for row in actor["sessionTranscriptExportReads"]] == entries,
+                    "Native transcript exports were omitted, duplicated, or reordered after actual invocation")
+    _native_gates(case, raw, actors, passive, authority, approved_node, directory, context=context, imports=imports)
     snapshots = {}
     for snapshot in raw["snapshots"]:
         label = snapshot["label"]
@@ -1803,6 +1917,8 @@ def _native_capture(case, raw, result, directory, approved_node, trusted_archive
         _same(actual[0], snapshot, "Native original observer snapshot differs from coordinator IPC")
         events = _events(passive[snapshot["pid"], 0])
         _interval(snapshot, events, "physical-snapshot-enter", "physical-snapshot-return")
+        if _v2(case):
+            _native_transcript_exports(case, actor, snapshot, events, authority, approved_node)
         database = _physical_database(snapshot["physical"], raw["fixtureBase"])
         _native_plugin_state(snapshot, actor, events, raw["fixtureBase"], authority, approved_node)
         require(set(database["selectedTables"]) == {row["name"] for row in database["schema"]
@@ -1939,6 +2055,62 @@ def _native_concurrency(case, snapshot, commands):
             "forgetSettled": settled("forget"), "oldBuildSettled": settled("builder")}
 
 
+def _sdk_snapshot_receiver(specification, step, snapshot, processes, stages):
+    selection = step["snapshotReceiver"]
+    require(set(selection) == {"requestedActor", "preferredActor", "selectedActor", "pid", "reason", "candidates"},
+            "SDK snapshot receiver custody fields were removed or replaced")
+    requested = specification.get("actor")
+    preferred = requested if requested is not None else "foreground"
+    require(selection["requestedActor"] == requested and selection["preferredActor"] == preferred,
+            "SDK observation receiver selection changed the frozen explicit actor request")
+    # Reassignment of an existing actor preserves its original insertion order.
+    current = {}
+    for process in processes.values():
+        if _ns(process["startedAtNs"]) < _ns(step["enteredAtNs"]):
+            current[process["actor"]] = process
+    candidates = selection["candidates"]
+    require([row["actor"] for row in candidates] == list(current),
+            "SDK snapshot selection omitted, duplicated, or invented an existing actor")
+    observations = {row["pid"]: row for row in stages}
+    require(len(observations) == len(stages), "SDK snapshot receiver lifecycle observations were duplicated")
+    require(all(_ns(event["atNs"]) < _ns(step["settledAtNs"]) for observation in stages
+                for event in observation["originalCalls"]),
+            "SDK snapshot receiver substituted an original response from a future schedule step")
+    available = {}
+    for row in candidates:
+        process = current[row["actor"]]
+        require(set(row) == {"actor", "pid", "poll", "acquired"} and row["pid"] == process["pid"]
+                and type(row["acquired"]) is bool and row["acquired"] is bool(observations.get(row["pid"], {}).get("ownerBindings")),
+                "SDK snapshot candidate did not retain its actual latest PID and acquired original owner")
+        require(row["poll"] is None or (type(row["poll"]) is int and row["poll"] == process["exit"]["code"]),
+                "SDK snapshot candidate changed its actual OS process status")
+        if _ns(process["reapedAtNs"]) < _ns(step["enteredAtNs"]):
+            require(row["poll"] == process["exit"]["code"], "An already reaped SDK process was admitted as a live snapshot receiver")
+        if row["poll"] is None and row["acquired"]:
+            available[row["actor"]] = row
+    if preferred in available:
+        selected = preferred
+        reason = "explicit-live-acquired-actor" if requested is not None else "implicit-foreground-live-acquired"
+    else:
+        require(requested is None and available, "An explicit SDK snapshot receiver was silently replaced or reacquired")
+        selected, reason = next(iter(available)), "implicit-live-acquired-fallback"
+    require(selection["selectedActor"] == snapshot["actor"] == selected
+            and selection["pid"] == snapshot["pid"] == available[selected]["pid"] and selection["reason"] == reason,
+            "SDK physical observation was reassigned using an output-dependent receiver choice")
+    process = processes[selection["pid"]]
+    require(_ns(process["startedAtNs"]) < _ns(step["enteredAtNs"]) < _ns(step["settledAtNs"]) < _ns(process["reapedAtNs"]),
+            "SDK snapshot result came from a process outside its actual live lifetime")
+    matches = [(command, response) for command, response in zip(process["stdinCommands"], process["stdoutResponses"], strict=True)
+               if command["operation"] == "snapshot" and command["label"] == specification["label"]]
+    require(len(matches) == 1, "SDK observation has no unique actual snapshot command/response")
+    command, response = matches[0]
+    require(any(item["operation"] == "acquire" and item["id"] < command["id"] for item in process["stdinCommands"]),
+            "SDK snapshot receiver was not actually acquired before the original snapshot command")
+    _same(response["result"], snapshot, "SDK snapshot receiver's actual stdout returned another physical observation")
+    _same(response["observation"], observations[selection["pid"]],
+          "SDK snapshot receiver substituted an earlier or future observation for its actual snapshot response")
+
+
 def _sdk_capture(case, dispatch, result, directory, approved_root):
     value = case["input"]
     prefix = "forget-index-fence-v2" if _v2(case) else "forget-index-fence"
@@ -2051,6 +2223,8 @@ def _sdk_capture(case, dispatch, result, directory, approved_root):
             require(pid in processes and any(_same_json(observation, response["observation"])
                     for response in processes[pid]["stdoutResponses"]),
                     "An SDK stage borrowed final/fabricated actor observations")
+        if _v2(case):
+            _sdk_snapshot_receiver(specification, step, snapshot, processes, stages)
         receipts = [receipt for observation in stages for receipt in observation["hostEventReceipts"]]
         receipts.sort(key=lambda receipt: _ns(receipt["atNs"]))
         for receipt in receipts:

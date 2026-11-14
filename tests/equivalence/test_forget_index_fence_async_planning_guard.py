@@ -76,6 +76,7 @@ def planning_control(request, tmp_path, monkeypatch):
         events.append({"event": "async-gate-mainloop-progress", **identity,
                        "sequence": sequence, "atNs": ns(at), "gate": gate["name"], "kind": kind,
                        "mode": mode, "commandScope": deepcopy(scope), "gateEnterAtNs": receipt["enteredAtNs"],
+                       "observedCommandScope": deepcopy(scope),
                        "callLabel": label})
     events.append({"event": "original-watch-control-enter", **identity, "sequence": 13,
                    "atNs": ns(9), "commandId": watch_id, "operation": wait["operation"],
@@ -83,6 +84,7 @@ def planning_control(request, tmp_path, monkeypatch):
     events.append({"event": "fence-gate-release", **identity, "sequence": 15, "atNs": ns(19),
                    "gate": gate["name"], "boundary": boundary, "callLabel": label,
                    "mode": mode, "commandScope": deepcopy(scope), "gateEnterSequence": receipt["sequence"],
+                   "observedCommandScope": deepcopy(scope),
                    "gateTimeoutMs": 30_000, "gateDeadlineNs": receipt["gateDeadlineNs"],
                    "consumedAtNs": ns(18), "releaseStep": deepcopy(release_step)})
     directory = tmp_path / "native"
@@ -120,6 +122,8 @@ def test_v5_gate_admission_checks_the_async_planning_protocol(planning_control):
     "source-owner", "source-frame", "source-module", "source-bytes", "changed-request-or-arguments",
     "changed-original-result", "missing-progress", "duplicated-progress", "progress-label",
     "progress-scope", "progress-process", "progress-after-release", "release-label", "release-mode", "release-scope",
+    "missing-progress-context", "null-progress-context", "watcher-progress-context",
+    "missing-release-context", "null-release-context", "watcher-release-context",
     "release-process", "release-timeout-type",
     "release-gate", "release-step", "widened-deadline", "at-deadline", "late-release", "early-public-settlement",
     "watcher-not-entered", "watcher-label", "watcher-blocked", "watcher-finished-after-release",
@@ -173,6 +177,12 @@ def test_planning_control_rejects_borrowed_or_deadlocked_boundary(planning_contr
         progress["callLabel"] = "selectedWatch"
     elif attack == "progress-scope":
         progress["commandScope"]["commandId"] = 18
+    elif attack == "missing-progress-context":
+        progress.pop("observedCommandScope")
+    elif attack == "null-progress-context":
+        progress["observedCommandScope"] = None
+    elif attack == "watcher-progress-context":
+        progress["observedCommandScope"].update(commandId=18, operation="await-original-watch-effects", label="selectedWatch")
     elif attack == "progress-process":
         progress["pid"] += 1
     elif attack == "progress-after-release":
@@ -183,6 +193,12 @@ def test_planning_control_rejects_borrowed_or_deadlocked_boundary(planning_contr
         release["mode"] = "deferred-original-worker-reply"
     elif attack == "release-scope":
         release["commandScope"]["commandId"] = 18
+    elif attack == "missing-release-context":
+        release.pop("observedCommandScope")
+    elif attack == "null-release-context":
+        release["observedCommandScope"] = None
+    elif attack == "watcher-release-context":
+        release["observedCommandScope"].update(commandId=18, operation="await-original-watch-effects", label="selectedWatch")
     elif attack == "release-process":
         release["pid"] += 1
     elif attack == "release-timeout-type":

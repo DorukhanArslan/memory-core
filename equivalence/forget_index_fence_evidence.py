@@ -2470,6 +2470,8 @@ def _native_async_planning_gate(case, receipt, gate, raw, actors, passive, autho
             and release["actor"] == receipt["actor"] and release["instance"] == receipt["instance"],
             "A Native planning continuation consumed another boundary, actor, or deadline")
     _same(release["commandScope"], scope, "A Native planning release borrowed a concurrent watcher command scope")
+    _same(release["observedCommandScope"], scope,
+          "A Native planning continuation lost its actual current asynchronous command context")
     _same(release["releaseStep"], release_step["step"], "A Native planning release replaced its actual frozen step")
     consumed = _ns(release["consumedAtNs"])
     require(_ns(command["startedAtNs"]) <= _ns(entry["startedAtNs"])
@@ -2490,6 +2492,8 @@ def _native_async_planning_gate(case, receipt, gate, raw, actors, passive, autho
                 and entered < _ns(row["atNs"]) < consumed,
                 "A Native planning hold borrowed progress outside its pending original boundary")
         _same(row["commandScope"], scope, "A Native planning callback borrowed a concurrent command's label or scope")
+        _same(row["observedCommandScope"], scope,
+              "A Native planning progress callback lost its actual current asynchronous command context")
     declared = case["input"]["steps"]
     wait_index = next(index for index, step in enumerate(declared)
                       if step["operation"] == "await-gate" and step["gate"] == gate["name"])

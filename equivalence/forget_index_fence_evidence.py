@@ -3472,6 +3472,8 @@ def _sdk_launch_environment(carrier, adapter_root, fixture):
 
 
 def _sdk_capture(case, dispatch, result, directory, approved_root, approved_adapter_root=None):
+    encoded_stdout = "observationEncoding" in dispatch
+    dispatch = materialize_sdk_dispatch(dispatch)
     value = case["input"]
     prefix = _capture_prefix(case)
     modern_effects = _search_effects(case)
@@ -3490,8 +3492,13 @@ def _sdk_capture(case, dispatch, result, directory, approved_root, approved_adap
             and dispatch["pid"] != dispatch["coordinatorPid"],
             "The actual SDK outer request, executable arguments, environment, or PID changed")
     _same(dispatch["request"]["input"], value, "Actual SDK outer input bytes differ from the frozen literal")
-    raw = _json(dispatch["stdout"])
-    _same(raw, dispatch["observation"], "SDK stdout lost the complete actual observation")
+    if encoded_stdout:
+        # This is the whole freshly parsed value of the authenticated original
+        # stdout bytes. No independent inline duplicate exists in this format.
+        raw = dispatch["observation"]
+    else:
+        raw = _json(dispatch["stdout"])
+        _same(raw, dispatch["observation"], "SDK stdout lost the complete actual observation")
     require(raw["kind"] == prefix + "-sdk-host" and raw["complete"] is True
             and raw["pid"] == dispatch["pid"] and raw["fixtureRoot"] == dispatch["request"]["directory"]
             and not raw.get("error"), "The original SDK host borrowed another PID or fixture root")
@@ -3789,6 +3796,48 @@ def _sdk_gates(case, raw, processes, observations, recorded, trusted):
                 "The SDK model planning gate did not hold its actual original completion request")
 
 
+
+def materialize_sdk_dispatch(dispatch):
+    """Decode a V5 stdout-authoritative wire view without changing its bytes.
+
+    The returned view adds the complete parsed observation and retains the wire
+    marker. Callers keep/persist the original dispatch; the view is not another
+    accepted wire encoding. Historical inline dispatches are returned unchanged.
+    This is a codec check, never an affirmative engine custody result.
+    """
+    require(isinstance(dispatch, dict), "SDK dispatch must be a complete JSON object")
+    if "observationEncoding" not in dispatch:
+        return dispatch
+    require(dispatch.get("kind") == "forget-index-fence-v5-sdk-dispatch"
+            and isinstance(dispatch.get("input"), dict) and dispatch["input"].get("kind") == "forget-index-fence-v5",
+            "SDK stdout encoding is only declared for the closed V5 transport")
+    require("observation" not in dispatch and "stdoutBytesHex" not in dispatch
+            and "stdoutDecodeError" not in dispatch and "stdoutParseError" not in dispatch,
+            "SDK stdout-authoritative dispatch contains dual observations or a failed original decode")
+    marker = dispatch["observationEncoding"]
+    require(isinstance(marker, dict) and set(marker) == {"kind", "field", "utf8Bytes", "sha256"}
+            and marker["kind"] == "stdout-json-v1" and marker["field"] == "stdout"
+            and type(marker["utf8Bytes"]) is int and 0 < marker["utf8Bytes"] <= 512 * 1024 * 1024
+            and isinstance(marker["sha256"], str) and re.fullmatch(r"[0-9a-f]{64}", marker["sha256"]) is not None,
+            "SDK stdout-authoritative marker is incomplete or uses an undeclared codec")
+    stdout = dispatch.get("stdout")
+    require(isinstance(stdout, str), "SDK authoritative stdout lost its exact original UTF8 string")
+    try:
+        original = stdout.encode("utf8", errors="strict")
+    except UnicodeError as error:
+        raise ValueError("SDK authoritative stdout is not exact valid UTF8") from error
+    require(len(original) == marker["utf8Bytes"] and _sha(original) == marker["sha256"],
+            "SDK authoritative stdout differs from its complete original byte count or SHA256")
+    require(original.endswith(b"\n") and original.count(b"\n") == 1 and b"\r" not in original,
+            "SDK authoritative stdout must retain exactly one complete original JSON line")
+    observation = _json(stdout)
+    require(isinstance(observation, dict) and _finite(observation)
+            and observation.get("kind") == "forget-index-fence-v5-sdk-host",
+            "SDK authoritative stdout did not contain the complete original V5 host observation")
+    _same(observation.get("input"), dispatch["input"], "SDK authoritative stdout borrowed another original input")
+    return {**dispatch, "observation": observation}
+
+
 def validate_capture(case, capture, result, *, native, approved_node=None, approved_sdk_root=None,
                      trusted_archive=None, directory=None, approved_reference=None, approved_adapter_root=None):
     """Authenticate one actual engine independently; no policy match is required."""
@@ -3845,7 +3894,8 @@ def replay_case(case, native_directory, sdk_directory=None, *, approved_node=Non
             "Replay requires exactly one genuine new capture per engine")
     returned = _read(native_directory / "stdout.json", native_directory)
     require(returned["ok"] is True and returned["id"] == case["id"], "The original Native public stdout failed")
-    native_result, sdk_result = returned["result"], sdk_values[0]["observation"]["result"]
+    native_result = returned["result"]
+    sdk_result = materialize_sdk_dispatch(sdk_values[0])["observation"]["result"]
     validate_pair(case, native_values[0], sdk_values[0], native_result, sdk_result,
                   approved_node=approved_node, approved_sdk_root=approved_sdk_root,
                   trusted_archive=trusted_archive, native_directory=native_directory, sdk_directory=sdk_directory,

@@ -1629,7 +1629,7 @@ def _v5_raw_packet(case_id):
     native, sdk = _read(native_directory / 'evidence/native-raw.json'), _read(sdk_directory / 'python-raw.json')
     returned = _read(native_directory / 'stdout.json')
     assert len(native) == len(sdk) == 1 and returned['id'] == case_id and returned['ok'] is True
-    return case, native[0], sdk[0], returned['result'], sdk[0]['observation']['result'], native_directory, sdk_directory
+    return case, native[0], sdk[0], returned['result'], guard.materialize_sdk_dispatch(sdk[0])['observation']['result'], native_directory, sdk_directory
 
 
 @pytest.mark.parametrize('case', V5_CASES, ids=lambda case: case['id'])
@@ -1723,3 +1723,110 @@ def test_v5_native_watcher_rejects_changed_actual_delivery_proof(v5_native_watch
             validate_native_watch_v5(*args)
     finally:
         guard._VALIDATION_CACHE.reset(token)
+
+
+def _v5_stdout_codec_example(text=None):
+    """Codec-only data; deliberately lacks all engine/process custody fields."""
+    value = V5_CASES[0]['input']
+    observation = {'kind': 'forget-index-fence-v5-sdk-host', 'input': value,
+                   'codecExample': ['Türkçe\nexact', 1, 1.0, True, False, None, {'timestamp': 1794614400000}]}
+    stdout = text if text is not None else json.dumps(observation, ensure_ascii=False, separators=(',', ':')) + '\n'
+    wire = stdout.encode('utf8')
+    return {'kind': 'forget-index-fence-v5-sdk-dispatch', 'input': value, 'stdout': stdout,
+            'observationEncoding': {'kind': 'stdout-json-v1', 'field': 'stdout', 'utf8Bytes': len(wire),
+                                    'sha256': hashlib.sha256(wire).hexdigest()}}, observation
+
+
+def test_v5_stdout_codec_preserves_whole_json_and_original_utf8_bytes():
+    dispatch, observation = _v5_stdout_codec_example()
+    original = deepcopy(dispatch)
+    decoded = guard.materialize_sdk_dispatch(dispatch)
+    assert decoded is not dispatch and 'observation' not in dispatch
+    assert dispatch == original and decoded['stdout'].encode('utf8') == original['stdout'].encode('utf8')
+    guard._same(decoded['observation'], observation, 'The codec must preserve every actual JSON field/value')
+    assert type(decoded['observation']['codecExample'][1]) is int
+    assert type(decoded['observation']['codecExample'][2]) is float
+    assert type(decoded['observation']['codecExample'][3]) is bool
+    assert decoded['observationEncoding'] == original['observationEncoding']
+    # Parsing a transport cannot manufacture genuine original process proof.
+    with pytest.raises(ValueError):
+        guard.validate_capture(V5_CASES[0], dispatch, {}, native=False)
+
+
+@pytest.mark.parametrize('version', [1, 2, 3, 4, 5])
+def test_v5_stdout_codec_preserves_historical_inline_wire_without_rewriting(version):
+    dispatch = {'kind': f'forget-index-fence-v{version}-sdk-dispatch', 'stdout': 'unchanged', 'observation': {'retained': True}}
+    assert guard.materialize_sdk_dispatch(dispatch) is dispatch
+
+
+@pytest.mark.parametrize('attack', ['dual', 'wrong-version', 'mixed-input', 'marker-extra', 'marker-missing',
+    'codec', 'field', 'bool-length', 'negative-length', 'over-limit', 'wrong-length', 'wrong-sha',
+    'uppercase-sha', 'stdout-type', 'stdout-tamper', 'invalid-utf8', 'decode-failure', 'bytes-duplicate'])
+def test_v5_stdout_codec_rejects_ambiguous_or_changed_bytes(attack):
+    dispatch, observation = _v5_stdout_codec_example()
+    marker = dispatch['observationEncoding']
+    if attack == 'dual':
+        dispatch['observation'] = observation
+    elif attack == 'wrong-version':
+        dispatch['kind'] = 'forget-index-fence-v4-sdk-dispatch'
+    elif attack == 'mixed-input':
+        dispatch['input'] = V4_CASES[0]['input']
+    elif attack == 'marker-extra':
+        marker['observed'] = True
+    elif attack == 'marker-missing':
+        del marker['sha256']
+    elif attack == 'codec':
+        marker['kind'] = 'stdout-json-v2'
+    elif attack == 'field':
+        marker['field'] = 'stderr'
+    elif attack == 'bool-length':
+        marker['utf8Bytes'] = True
+    elif attack == 'negative-length':
+        marker['utf8Bytes'] = -1
+    elif attack == 'over-limit':
+        marker['utf8Bytes'] = 512 * 1024 * 1024 + 1
+    elif attack == 'wrong-length':
+        marker['utf8Bytes'] += 1
+    elif attack == 'wrong-sha':
+        marker['sha256'] = '0' * 64
+    elif attack == 'uppercase-sha':
+        marker['sha256'] = marker['sha256'].upper()
+    elif attack == 'stdout-type':
+        dispatch['stdout'] = ['not original bytes']
+    elif attack == 'stdout-tamper':
+        dispatch['stdout'] = dispatch['stdout'].replace('exact', 'other')
+    elif attack == 'invalid-utf8':
+        dispatch['stdout'] = '\ud800\n'
+    elif attack == 'decode-failure':
+        dispatch['stdoutDecodeError'] = {'message': 'actual invalid UTF8'}
+    else:
+        dispatch['stdoutBytesHex'] = dispatch['stdout'].encode('utf8').hex()
+    with pytest.raises(ValueError):
+        guard.materialize_sdk_dispatch(dispatch)
+
+
+@pytest.mark.parametrize('attack', ['no-lf', 'two-lines', 'crlf', 'extra-json', 'duplicate', 'nonfinite', 'overflow-float', 'wrong-host', 'wrong-input'])
+def test_v5_stdout_codec_rejects_resealed_noncanonical_json_records(attack):
+    dispatch, _ = _v5_stdout_codec_example()
+    text = dispatch['stdout']
+    if attack == 'no-lf':
+        text = text[:-1]
+    elif attack == 'two-lines':
+        text += '\n'
+    elif attack == 'crlf':
+        text = text[:-1] + '\r\n'
+    elif attack == 'extra-json':
+        text = text[:-1] + '{}\n'
+    elif attack == 'duplicate':
+        text = text.replace('{', '{"codecExample":null,', 1)
+    elif attack == 'nonfinite':
+        text = text.replace('1794614400000', 'NaN', 1)
+    elif attack == 'overflow-float':
+        text = text.replace('1794614400000', '1e999', 1)
+    elif attack == 'wrong-host':
+        text = text.replace('forget-index-fence-v5-sdk-host', 'forget-index-fence-v4-sdk-host')
+    else:
+        text = text.replace('"kind":"forget-index-fence-v5"', '"kind":"forget-index-fence-v4"', 1)
+    changed, _ = _v5_stdout_codec_example(text)
+    with pytest.raises(ValueError):
+        guard.materialize_sdk_dispatch(changed)

@@ -521,10 +521,10 @@ export async function runForgetIndexFenceActor(request){
    startedAtNs:entered.atNs,finishedAtNs:returned.atNs,physical:{...physical,...sealed(physical)},common,commonSeal:sealed(common)};
   raw.snapshots.push(capture);return capture;
  }
- async function execute(command){
+ function execute(command){return controller().withCommandScope(command,()=>executeScoped(command));}
+ async function executeScoped(command){
   const{operation,label}=command;
   if(command.wallClockNowMs!==undefined&&command.wallClockNowMs!==Date.now())controller().setWallClock(command.wallClockNowMs);
-  controller().setCallLabel(label??operation);
   const entry=originalCallEntry(command);raw.calls.push(entry);
   const sourceKind={'original-sync':'sync','original-forget':'forget','original-promotion':'promotion','public-memory-search':'search','original-record-short-term-recalls':'recall'}[operation];
   const sourceClock=controller().sourceClock;
@@ -613,8 +613,10 @@ export async function runForgetIndexFenceActor(request){
     const params={workspaceDir:workspace,nowMs:Date.now(),candidates,...plain(declared.options)};
     if(declared.consolidation){params.consolidation={logger:{info:(...args)=>(entry.logs??=[]).push({level:'info',args}),warn:(...args)=>(entry.logs??=[]).push({level:'warn',args})},
      subagent:{complete:async request=>{const completion={request:plain(request)};(entry.completions??=[]).push(completion);
-      controller().pause('promotion.model-planning-before-final-lock',{sourceOwner:'consolidateMemory.actual-subagent-complete-await',request:plain(request),
-       originalStack:new Error('Original consolidation completion callback').stack});
+      const facts={sourceOwner:'consolidateMemory.actual-subagent-complete-await',request:plain(request),
+       originalStack:new Error('Original consolidation completion callback').stack};
+      if(input.kind==='forget-index-fence-v5')await controller().pauseAsync('promotion.model-planning-before-final-lock',facts);
+      else controller().pause('promotion.model-planning-before-final-lock',facts);
       const returned={text:declared.consolidation.completion.text};completion.returned=returned;return returned;
      }}};}
     entry.originalArguments=plain({...params,consolidation:declared.consolidation});entering('applyShortTermPromotions',entry.originalArguments);
@@ -656,7 +658,7 @@ export async function runForgetIndexFenceActor(request){
     if(input.kind==='forget-index-fence-v5'&&!sourceClock.blocked())entry.sourceVersions=sourceClock.captureCompletedVersions(`${sourceKind}:${label}`);}
    raw.sourceClock={protocol:input.clock.sourceWriteClock.protocol,receipts:sourceClock.receipts(),failures:sourceClock.failures(),blocked:sourceClock.blocked()};
    raw.controlFailures=controller().controlFailures;
-   controller().setCallLabel(null);controller().flush();persist();}
+   controller().flush();persist();}
   return{type:'settled',id:command.id,...(publicCall?{publicCall}:{}),...(snapshotValue?{snapshot:snapshotValue}:{}),
    privateReturn:entry.privateReturn??null,error:entry.error??null,...(sourceKind&&entry.sourceVersions?{sourceVersions:entry.sourceVersions}:{}),...(entry.infrastructureError?{infrastructureError:entry.infrastructureError}:{}),
    providerIdentity:raw.ownerBindings.at(-1)?.providerIdentity??null,sourceClockBlocked:sourceClock.blocked(),sourceClockFailures:sourceClock.failures(),

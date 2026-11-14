@@ -19,6 +19,39 @@ const same=(left,right)=>left.dev===right.dev&&left.ino===right.ino&&left.nlink=
 const stable=(left,right)=>same(left,right)&&left.size===right.size&&left.mtimeNs===right.mtimeNs&&left.ctimeNs===right.ctimeNs;
 const PASSIVE_EVENT_CODEC='deflate-raw-native-event-v1',PASSIVE_EVENT_RAW_LIMIT=64*1024*1024;
 
+// Concurrent IPC controls must not relabel a still-pending original call or
+// its asynchronous descendants. Each command retains its own causal scope.
+export function createOriginalCommandScope(){
+ const scopes=new AsyncLocalStorage();
+ function validate(frame){if(frame!==null&&(frame.protocol!=='async-local-original-command-v1'||
+  !Number.isSafeInteger(frame.commandId)||frame.commandId<1||typeof frame.operation!=='string'||!frame.operation||
+  typeof frame.label!=='string'||!frame.label))throw Error('An original command scope requires its actual labelled IPC command');}
+ return Object.freeze({
+  current:()=>scopes.getStore()??null,
+  run(command,callback){const frame=Object.freeze({protocol:'async-local-original-command-v1',commandId:command.id,
+   operation:command.operation,label:command.label??command.operation});validate(frame);return scopes.run(frame,callback);},
+  resume(frame,callback){validate(frame);return scopes.run(frame,callback);},
+ });
+}
+
+// Hold only an already asynchronous planning continuation. The real 30-second
+// deadline begins at the recorded gate entry, including flushes and probes.
+export async function awaitOriginalPlanningGateRelease(filename,{enteredAtNs,onProgress=()=>{},
+ originalTimeout=setTimeout,originalImmediate=setImmediate}){
+ const entered=BigInt(enteredAtNs),deadline=entered+30_000_000_000n;
+ if(entered<0n||entered>process.hrtime.bigint())throw Error('A planning gate requires its actual monotonic entry');
+ const withinDeadline=()=>{if(process.hrtime.bigint()>=deadline)throw Error('Declared asynchronous fence gate exceeded its real monotonic bound');};
+ withinDeadline();
+ const progressed=kind=>new Promise((resolve,reject)=>{
+  const callback=()=>{try{onProgress(kind);resolve();}catch(error){reject(error);}};
+  if(kind==='setImmediate')originalImmediate(callback);else originalTimeout(callback,0);
+ });
+ await Promise.all([progressed('setImmediate'),progressed('setTimeout')]);
+ for(;;){withinDeadline();if(fs.existsSync(filename))break;await new Promise(resolve=>originalTimeout(resolve,10));}
+ const releaseStep=JSON.parse(fs.readFileSync(filename,'utf8')),consumedAtNs=now();withinDeadline();
+ return{releaseStep,consumedAtNs,gateDeadlineNs:deadline.toString()};
+}
+
 // A control consumer must never see a partially written JSON body. The private
 // reservation is exclusive across processes; rename publishes one complete,
 // closed, single-link inode without overwriting a prior control publication.

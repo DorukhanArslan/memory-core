@@ -1011,6 +1011,258 @@ def _native_value(row, authority, approved_node):
     return _decode_v8(authority, [row["v8Hex"]], approved_node)[0]
 
 
+def _clock_stat(row, *, native):
+    names = ({"dev": "dev", "ino": "ino", "mode": "mode", "nlink": "nlink", "size": "size",
+              "mtimeNs": "mtimeNs", "ctimeNs": "ctimeNs", "atimeNs": "atimeNs"} if native else
+             {"dev": "st_dev", "ino": "st_ino", "mode": "st_mode", "nlink": "st_nlink", "size": "st_size",
+              "mtimeNs": "st_mtime_ns", "ctimeNs": "st_ctime_ns", "atimeNs": "st_atime_ns"})
+    require(isinstance(row, dict) and set(names.values()) <= set(row), "A complete source-clock stat witness was stripped")
+    result = {}
+    for name, field in names.items():
+        value = row[field]
+        require(isinstance(value, str) and re.fullmatch(r"-?[0-9]+", value) is not None,
+                "An original source-clock stat field lost its exact integer carrier")
+        result[name] = int(value)
+    require(stat.S_ISREG(result["mode"]) and result["nlink"] == 1 and result["size"] >= 0,
+            "A source-clock operation did not retain an owned single-link regular inode")
+    return result
+
+
+def _clock_path(filename, workspace, *, source=True):
+    path, base = Path(filename), Path(workspace)
+    require(path.is_absolute() and ".." not in path.parts and path.is_relative_to(base) and path != base
+            and (not source or path.suffix.lower() in {".md", ".txt"}),
+            "A source clock borrowed an unowned source, private state, or staged path")
+    return path
+
+
+def _native_clock_state(state):
+    data = bytes.fromhex(state["bytesHex"])
+    require(data.hex() == state["bytesHex"] and _sha(data) == state["sha256"],
+            "Native clock byte verification lost its complete original bytes or digest")
+    stats = [_clock_stat(state[key], native=True) for key in ("fdStat", "pathStat", "readerStat", "afterReadStat")]
+    fields = ("dev", "ino", "nlink", "size", "mtimeNs", "ctimeNs")
+    require(all(all(row[key] == stats[0][key] for key in fields) for row in stats)
+            and stats[0]["size"] == len(data),
+            "Native clock descriptor/path/reader observations borrowed another inode or changed bytes during inspection")
+    return stats[0]
+
+
+def _native_clock_owner(owner, stack, context, imports, pid):
+    require(isinstance(owner, dict) and owner["kind"] == "release", "A Native clock writer has no actual original source owner")
+    package_root = Path(context["runtime"]["runtimeRoot"]).parent.parent
+    path = package_root / _relative(owner["package"]) / _relative(owner["path"])
+    require(owner["absolutePath"] == str(path) and _digest(path) == owner["sha256"]
+            and isinstance(stack, str) and (str(path) in stack or path.as_uri() in stack)
+            and any(row["package"] == owner["package"] and row["path"] == owner["path"]
+                    and row["sha256"] == owner["sha256"] for (process_pid, _), loaded in imports.items()
+                    if process_pid == pid for row in loaded["releaseImports"]),
+            "A Native source clock borrowed another loaded writer, source bytes, or call stack")
+
+
+def _native_clock_control_v2(case, control, *, actor, child, context, imports, passive, authority, approved_node):
+    policy = case["input"]["clock"]["sourceWriteClock"]
+    tick = policy["ticksByCall"][control["callKey"]]
+    _same(control["tick"], tick, "Native source clock replaced its independently frozen literal tick")
+    require(control["actor"] == tick["actor"] == actor["actor"] == child["actor"]
+            and type(control["ordinal"]) is int and control["ordinal"] == tick["ordinal"]
+            and control["status"] == "clocked" and "controlError" not in control,
+            "A Native source control changed actor/ordinal or failed its actual timestamp operation")
+    workspace = Path(actor["request"]["fixtureBase"]) / "workspace"
+    target = _clock_path(control["path"], workspace)
+    frame = control["causalFrame"]
+    entries = [entry for entry in actor["calls"] if entry["id"] == frame["commandId"]]
+    require(len(entries) == 1, "A Native clock has no actual originating public command")
+    entry = entries[0]
+    require(entry["operation"] in CALL_KINDS
+            and CALL_KINDS[entry["operation"]] + ":" + entry["label"] == control["callKey"],
+            "A Native source clock guessed or refreshed the original causal API entry")
+    _same(frame, {"commandId": entry["id"], "actor": actor["actor"], "instance": actor["instance"],
+                  "pid": actor["pid"], "wallClockNowMs": tick["wallClockNowMs"], "enteredAtNs": entry["startedAtNs"]},
+          "A Native source clock changed its actual causal public-entry frame")
+    matching = [(key, row) for key, rows in passive.items() for row in rows
+                if row["event"] == "source-clock-control" and row["controlId"] == control["controlId"]]
+    require(len(matching) == 1, "Native source control lost its actual independently retained passive receipt")
+    key, original = matching[0]
+    require(key[0] == child["pid"] and original["actor"] == child["actor"]
+            and original["instance"] == child["instance"] and control["handleRef"]
+            and type(control["fd"]) is int and control["fd"] >= 0,
+            "A Native clock control borrowed another process/worker/file handle")
+    metadata = {"sequence", "pid", "ppid", "threadId", "instance", "atNs", "callLabel"}
+    for name, value in original.items():
+        if name not in metadata:
+            _same(control[name], value, "A Native clock receipt changed after its actual controlled syscall")
+    _native_clock_owner(control["sourceOwner"], control["originalStack"], context, imports, child["pid"])
+    opened = control["open"]
+    _native_clock_owner(opened["sourceOwner"], opened["originalStack"], context, imports, child["pid"])
+    require(_ns(entry["startedAtNs"]) <= _ns(opened["atNs"]) < _ns(control["startedAtNs"]),
+            "A Native clock handle was opened outside its actual original call lineage")
+    require(control["writes"], "A Native source clock lacks its actual completed original write")
+    for write in control["writes"]:
+        require(write["status"] == "fulfilled" and _ns(opened["atNs"]) <= _ns(write["startedAtNs"])
+                < _ns(write["finishedAtNs"]) <= _ns(control["startedAtNs"]),
+                "A Native clock preceded the final actual successful original write completion")
+        arguments = _native_value(write["arguments"], authority, approved_node)
+        returned = _native_value(write["return"], authority, approved_node)
+        require(write["method"] in {"fs.promises.writeFile", "writeFile", "write"},
+                "A Native clock invented another original source-write operation")
+        if write["method"] in {"fs.promises.writeFile", "writeFile"}:
+            require(returned == {"privateType": "undefined"}, "An original Native writeFile lost its actual void return")
+        else:
+            require(isinstance(arguments, list) and isinstance(returned, dict)
+                    and set(returned) == {"bytesWritten", "buffer"} and type(returned["bytesWritten"]) is int
+                    and returned["bytesWritten"] >= 0,
+                    "An original Native FileHandle.write lost its actual typed result")
+    for sync in control["syncs"]:
+        require(sync["method"] == "sync" and sync["status"] in {"fulfilled", "rejected"}
+                and _ns(sync["startedAtNs"]) < _ns(sync["finishedAtNs"]) <= _ns(control["startedAtNs"]),
+                "A Native clock omitted or preceded the actual original fsync settlement")
+        if sync["status"] == "fulfilled":
+            require(_native_value(sync["return"], authority, approved_node) == {"privateType": "undefined"},
+                    "An original Native FileHandle.sync lost its actual void return")
+        else:
+            require(_native_value(sync["privateError"], authority, approved_node)["message"] == sync["error"]["message"],
+                    "A Native original fsync error was fabricated or dropped")
+    before, after = _native_clock_state(control["before"]), _native_clock_state(control["after"])
+    require(all(before[name] == after[name] for name in ("dev", "ino", "nlink", "size"))
+            and control["before"]["bytesHex"] == control["after"]["bytesHex"]
+            and control["before"]["sha256"] == control["after"]["sha256"],
+            "A Native clock changed the genuine staged/descriptor bytes or inode")
+    stamp = control["utimes"]
+    _same(stamp["arguments"], [tick["atimeMs"] / 1000, tick["mtimeMs"] / 1000],
+          "Native source clock did not request both literal atime and mtime through the real handle")
+    require(_ns(control["startedAtNs"]) <= _ns(stamp["startedAtNs"]) < _ns(stamp["finishedAtNs"])
+            <= _ns(control["finishedAtNs"]) and "error" not in stamp
+            and _native_value(stamp["return"], authority, approved_node) == {"privateType": "undefined"}
+            and after["mtimeNs"] == tick["mtimeMs"] * 1_000_000,
+            "Native source clock lacks its actual successful utimes return or exact target mtime")
+    continuations = [row for row in passive[key] if row["event"] == "source-clock-continuation"
+                     and row["controlId"] == control["controlId"]]
+    require(len(continuations) == 1 and continuations[0]["sequence"] > original["sequence"],
+            "Native source clock has no unique actual original continuation")
+    continuation = continuations[0]
+    if control["operation"] == "atomic":
+        stage = _clock_path(control["stagePath"], workspace, source=False)
+        require(stage != target and opened["path"] == str(stage)
+                and opened["sourceOwner"].get("publicationRole") == "stage",
+                "A Native atomic clock did not control the original owned staged inode")
+        rename = control["rename"]
+        _same(continuation["rename"], rename, "Native clock original rename differs from its actual passive continuation")
+        _same(_native_value(rename["arguments"], authority, approved_node), [str(stage), str(target)],
+              "A Native clocked stage was renamed to another original target")
+        require(_ns(control["finishedAtNs"]) < _ns(rename["returnedAtNs"]),
+                "Native clock ran after the original atomic rename made its source visible")
+        if "error" in rename:
+            require(not control.get("committed") and not control.get("published")
+                    and _native_value(rename["privateError"], authority, approved_node)["message"] == rename["error"]["message"],
+                    "An original failed Native rename acquired a fabricated successful publication")
+            return None
+        require(_native_value(rename["return"], authority, approved_node) == {"privateType": "undefined"}
+                and control["committed"] is continuation["committed"] is True,
+                "A Native atomic publication lost its actual original rename result")
+        _same(control["published"], continuation["published"], "Native published inode differs from its actual rename continuation")
+        published = _native_clock_state(control["published"])
+        require(all(after[name] == published[name] for name in ("dev", "ino", "nlink", "size", "mtimeNs"))
+                and control["published"]["bytesHex"] == control["after"]["bytesHex"],
+                "The original Native rename did not publish the clocked same inode and bytes")
+        committed_at = rename["returnedAtNs"]
+    else:
+        require(control["operation"] == "inPlace" and control["stagePath"] is None
+                and opened["path"] == str(target) and opened["sourceOwner"].get("publicationRole") == "inPlace"
+                and control["committed"] is True,
+                "A Native in-place clock borrowed a staged or unowned original descriptor")
+        close = control["close"]
+        _same(close, continuation["close"], "Native original close differs from its actual passive continuation")
+        require(_ns(control["finishedAtNs"]) <= _ns(close["startedAtNs"]) < _ns(close["finishedAtNs"]),
+                "The Native source descriptor closed before its completed real clock operation")
+        if "error" in close:
+            require(_native_value(close["privateError"], authority, approved_node)["message"] == close["error"]["message"],
+                    "A Native source close error lost its actual private exception")
+        else:
+            require(_native_value(close["return"], authority, approved_node) == {"privateType": "undefined"},
+                    "An original Native FileHandle.close lost its actual void return")
+        committed_at = control["finishedAtNs"]
+    require(_ns(committed_at) < _ns(child["finishedAtNs"]), "Native source commit occurred outside its actual producer process lifetime")
+    return {"path": str(target), "sha256": control["after"]["sha256"], "bytes": control["after"]["bytesHex"],
+            "mtimeNs": after["mtimeNs"], "atNs": committed_at, "callKey": control["callKey"], "pid": child["pid"],
+            "operation": control["operation"], "writeStartedAtNs": min(write["startedAtNs"] for write in control["writes"]),
+            "clockFinishedAtNs": control["finishedAtNs"]}
+
+
+def _native_source_clock_v2(case, raw, actors, imports, passive, context, authority, approved_node):
+    policy = case["input"]["clock"]["sourceWriteClock"]
+    _same(context["forgetIndexFenceV2Profile"]["sourceWriteClock"], policy,
+          "Native clock capability differs from the independently frozen source-write policy")
+    commits, reads, boundaries, control_ids = [], [], [], set()
+    all_clock_events = [row for rows in passive.values() for row in rows if row["event"].startswith("source-clock-")]
+    require(not raw.get("sourceClockFailures") and not any(row["event"] == "source-clock-failure" for row in all_clock_events),
+            "A Native functional source clock failed while original results were retained")
+    for pid, (child, actor) in actors.items():
+        clock = actor["sourceClock"]
+        require(clock["protocol"] == policy["protocol"] and clock["blocked"] is False and clock["failures"] == [],
+                "Native source-clock control was missing, blocked, or retrospectively cleared")
+        rows = clock["receipts"]
+        actor_events = [row for row in all_clock_events if row["pid"] == pid]
+        selected = [row for row in actor_events if row["event"] in {
+            "source-clock-control", "source-clock-call-boundary", "source-clock-read", "source-clock-deletion"}]
+        require(len(rows) == len(selected), "Native source-clock receipts omitted or duplicated actual passive events")
+        claimed = set()
+        for receipt in rows:
+            event = receipt["event"]
+            identity = ("controlId",) if event == "source-clock-control" else (("atNs",) if "atNs" in receipt
+                         else ("startedAtNs", "finishedAtNs", "path", "method"))
+            candidates = [row for row in selected if row["event"] == event
+                          and all(row.get(name) == receipt.get(name) for name in identity)]
+            require(len(candidates) == 1 and (candidates[0]["threadId"], candidates[0]["sequence"]) not in claimed,
+                    "Native source-clock receipts are not one-to-one with actual passive source events")
+            claimed.add((candidates[0]["threadId"], candidates[0]["sequence"]))
+            if event == "source-clock-control":
+                require(receipt["controlId"] not in control_ids, "A Native clocked source publication was duplicated")
+                control_ids.add(receipt["controlId"])
+                commit = _native_clock_control_v2(case, receipt, actor=actor, child=child, context=context,
+                    imports=imports, passive=passive, authority=authority, approved_node=approved_node)
+                if commit is not None:
+                    commits.append(commit)
+                continue
+            require(event in {"source-clock-call-boundary", "source-clock-read", "source-clock-deletion"},
+                    "An unknown Native clock receipt acquired custody")
+            identity = ("atNs",) if "atNs" in receipt else ("startedAtNs", "finishedAtNs", "path", "method")
+            matching = [row for row in actor_events if row["event"] == event
+                        and all(row.get(name) == receipt.get(name) for name in identity)]
+            require(len(matching) == 1, "A Native clock receipt lost its unique actual passive source observation")
+            for name, value in receipt.items():
+                _same(matching[0][name], value, "A Native clock observation changed after its actual original event")
+            if event == "source-clock-call-boundary":
+                _same(receipt["tick"], policy["ticksByCall"][receipt["callKey"]], "A Native call boundary changed its literal source tick")
+                require(receipt["tick"]["actor"] == child["actor"], "A Native source boundary borrowed another actor's call")
+                boundaries.append(receipt)
+            else:
+                _native_clock_owner(receipt["sourceOwner"], receipt["originalStack"], context, imports, pid)
+                _clock_path(receipt["path"], Path(raw["fixtureBase"]) / "workspace")
+                value = _native_value(receipt["return"], authority, approved_node)
+                if event == "source-clock-read":
+                    require(_ns(receipt["startedAtNs"]) < _ns(receipt["finishedAtNs"]), "A Native source reader lost its actual IO lifetime")
+                    read = {"path": receipt["path"], "method": receipt["method"], "enteredAtNs": receipt["startedAtNs"],
+                            "finishedAtNs": receipt["finishedAtNs"], "pid": pid}
+                    if receipt["method"] in {"stat", "lstat"}:
+                        require(isinstance(value, dict) and "mtimeMs" in value, "Native original source stat lost its actual mtime")
+                        read["mtimeMs"] = value["mtimeMs"]
+                    elif isinstance(value, str):
+                        read.update(bytes=value.encode("utf8").hex(), sha256=_sha(value.encode("utf8")))
+                    elif isinstance(value, dict) and "hex" in value:
+                        read.update(bytes=value["hex"], sha256=_sha(bytes.fromhex(value["hex"])))
+                    reads.append(read)
+        require(claimed == {(row["threadId"], row["sequence"]) for row in selected},
+                "A Native actual source event was omitted from its original actor's raw record")
+    versions = {}
+    for commit in commits:
+        key = commit["callKey"], commit["path"]
+        require(key not in versions or versions[key] == commit["sha256"],
+                "One Native public call committed unsupported distinct byte revisions under one source tick")
+        versions[key] = commit["sha256"]
+    return {"commits": commits, "reads": reads, "boundaries": boundaries}
+
+
 def _native_json(row, authority, approved_node):
     """Use the original actor's declared JSON/plain codec at that boundary."""
     view = _decode_v8_views(authority, [row["v8Hex"]], approved_node)[0]["json"]
@@ -1538,6 +1790,8 @@ def _native_capture(case, raw, result, directory, approved_node, trusted_archive
             require(status["result"]["provider"] == result["provider"], "Native provider-none result was predicted instead of observed")
     require(set(reconstructed) == set(_expected_calls(case["input"])), "Native actual calls differ from the complete frozen schedule")
     _same(reconstructed, result["calls"], "Native common calls dropped or repaired original public outcomes")
+    if _v2(case):
+        _native_source_clock_v2(case, raw, actors, imports, passive, context, authority, approved_node)
     _native_gates(case, raw, actors, passive, authority, approved_node, directory)
     snapshots = {}
     for snapshot in raw["snapshots"]:
@@ -1583,7 +1837,9 @@ def _native_producers(case, actor, authority, approved_node):
     require(len(preparation) == 1, "An original Native host-input producer was duplicated")
     value, fixture = case["input"], Path(actor["request"]["fixtureBase"])
     file_receipts = actor["inputFileReceipts"]
-    require([row["path"] for row in file_receipts] == list(value["initialFiles"]),
+    require([row["path"] for row in file_receipts] == list(actor["request"]["input"]["initialFiles"])
+            and len(file_receipts) == len(value["initialFiles"])
+            and {row["path"] for row in file_receipts} == set(value["initialFiles"]),
             "The Native original input source creation omitted or duplicated a declared file")
     prepared = {row["path"]: row for row in actor["preparedSourceDocuments"]}
     for row in file_receipts:
@@ -1714,6 +1970,8 @@ def _sdk_capture(case, dispatch, result, directory, approved_root):
     if directory is not None:
         require(fixture.is_relative_to(Path(directory).resolve(strict=True)),
                 "The SDK fixture root escaped the independently selected SDK transport directory")
+    if _v2(case):
+        require(raw["observationInvalid"] == [], "SDK clock custody was invalidated outside the original public outcomes")
     processes, observations, reconstructed = {}, {}, {}
     for process in raw["processes"]:
         require(process["pid"] not in processes and process["pid"] != raw["pid"]
@@ -1739,6 +1997,10 @@ def _sdk_capture(case, dispatch, result, directory, approved_root):
         _same(observation, process["stdoutResponses"][-1]["observation"], "SDK final process observation lost its actual last response")
         recorded, trusted, events, returns = _sdk_observation(observation, process, value, trusted_root)
         require(recorded == recorded_root and trusted == trusted_root, "An SDK child imported another source namespace")
+        if _v2(case):
+            from equivalence.forget_index_fence_sdk_clock_evidence import validate_sdk_clock_v2
+            validate_sdk_clock_v2(case, observation, process, events, returns, recorded_root=recorded,
+                                  approved_sdk_root=trusted, fixture_root=fixture)
         if observation["ownerBindings"]:
             require(observation["providerIdentity"] is None and result["provider"] == "none",
                     "SDK provider-none was predicted instead of using its actual original provider identity")
@@ -1929,10 +2191,6 @@ def validate_capture(case, capture, result, *, native, approved_node=None, appro
     """Authenticate one actual engine independently; no policy match is required."""
     try:
         validate_result(case, result)
-        if _v2(case):
-            # First collection is diagnostic only until the source-clock
-            # receipts have an independent validator. No fallback is allowed.
-            raise ValueError("V2 source-clock custody pending; genuine raw retained with no acceptance credit")
         return (_native_capture(case, capture, result, directory, approved_node, trusted_archive, approved_reference)
                 if native else _sdk_capture(case, capture, result, directory, approved_sdk_root))
     except (KeyError, IndexError, TypeError, AttributeError, StopIteration, OSError, UnicodeError,

@@ -424,7 +424,7 @@ def validate_native_watch_v5(case, raw, actors, commands, passive, context, impo
                 and {child['actor'] for child, _, _ in active}.isdisjoint({row['actor'] for row in absence})
                 and {child['actor'] for child, _, _ in active} | {row['actor'] for row in absence} == set(spec['actors']),
                 'Native watch step omitted or duplicated a declared actor lifecycle')
-        for child, command, _ in active:
+        for child, command, entry in active:
             require(_ns(step['startedAtNs']) <= _ns(command['startedAtNs']) < _ns(command['settledAtNs']) <= _ns(step['finishedAtNs'])
                     and command['id'] in waits, 'Native watch command escaped its declared coordinator step')
             if spec['operation'].endswith('-effects'):

@@ -141,3 +141,60 @@ def test_actual_coordinator_retains_all_seventeen_whole_pairs_and_independent_at
     assert host_point["matchedCaseIds"] == ([] if change else [case["id"] for case in cases[:4]])
     assert all(len(point["matchedCaseIds"]) == 13 for point in requirements["forget.index-fence"]["acceptance"])
     assert report["fullScopePassed"] is False
+
+
+@pytest.mark.parametrize("outcome_version", ["legacy", "v4"])
+def test_known_outcome_sibling_does_not_consume_the_six_boundary_members(outcome_version):
+    from equivalence.host_turn_barrier import build_cases as legacy_cases
+    from equivalence.host_turn_barrier_boundaries import build_cases as boundary_cases
+
+    outcomes = legacy_cases() if outcome_version == "legacy" else _registered()
+    definitions = outcomes + boundary_cases()
+    rows = [dict(case, status="matched", runtimeEvidenceValidated=True) for case in definitions]
+    assert len(rows) == 10
+    assert harness._host_turn_barrier_family_complete(rows) is True
+    assert harness._host_turn_barrier_boundaries_family_complete(rows) is True
+    scope = json.loads((ROOT / "equivalence/scope.json").read_text())
+    harness._validate_scope(scope, definitions)
+    rows[0]["status"] = "mismatched"
+    assert harness._host_turn_barrier_family_complete(rows) is False
+    assert harness._host_turn_barrier_boundaries_family_complete(rows) is True
+    rows[0]["status"] = "matched"
+    rows[-1]["runtimeEvidenceValidated"] = False
+    assert harness._host_turn_barrier_family_complete(rows) is True
+    assert harness._host_turn_barrier_boundaries_family_complete(rows) is False
+
+
+@pytest.mark.parametrize("unknown_operation", ["unknown-host-operation", "host-turn-barrier-v3-runtime", "host-turn-barrier-v5-runtime"])
+def test_only_explicit_known_outcome_operations_are_excluded_from_boundary_selection(unknown_operation):
+    from equivalence.host_turn_barrier_boundaries import build_cases as boundary_cases
+
+    foreign = {"id": "unknown-host-sibling", "operation": unknown_operation,
+               "requirement": "host.turn-barrier", "covers": [], "input": {}}
+    definitions = _registered() + boundary_cases() + [foreign]
+    rows = [dict(case, status="matched", runtimeEvidenceValidated=True) for case in definitions]
+    assert harness._host_turn_barrier_boundaries_family_complete(rows) is False
+    assert harness._host_turn_barrier_family_complete(rows) is False
+    scope = json.loads((ROOT / "equivalence/scope.json").read_text())
+    with pytest.raises(harness.HarnessError) as failure:
+        harness._validate_scope(scope, definitions)
+    assert failure.value.code == "cases-invalid"
+
+
+def test_known_outcome_operation_cannot_hide_a_forged_boundary_claim():
+    from equivalence.host_turn_barrier_boundaries import POINTS, build_cases as boundary_cases
+
+    rows = [dict(case, status="matched", runtimeEvidenceValidated=True) for case in _registered() + boundary_cases()]
+    rows[0]["covers"] = list(POINTS)
+    assert harness._host_turn_barrier_boundaries_family_complete(rows) is False
+
+
+def test_ci_retains_only_owned_host_v4_execution_roots_and_explains_artifact_layout():
+    workflow = (ROOT / ".github/workflows/equivalence.yml").read_text()
+    retention = next(step for step in workflow.split("      - name: ") if "Retain results, including failed acceptance runs" in step)
+    assert ".equivalence-results/host-turn-barrier-v4/**" in retention
+    assert retention.count("/var/tmp/memory-host-v4-*/**") == 1
+    assert "/var/tmp/**" not in retention and "/var/tmp/*/**" not in retention
+    assert "common\n          # filesystem ancestor" in retention
+    assert "assuming the archive root is the repository root" in retention
+    assert "include-hidden-files: true" in retention

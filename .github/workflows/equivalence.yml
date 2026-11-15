@@ -189,6 +189,13 @@ jobs:
             .equivalence-results/forget-index-fence-v6-acceptance/**
             .equivalence-results/forget-index-fence-v6/**
             .equivalence-results/host-turn-barrier-v4/**
+            /var/tmp/memory-host-v4-*/**
+          # Host V4 keeps its original SQLite/WAL/SHM and workspace in these owned
+          # /var/tmp roots after all actors exit. Retain those bytes with the capture.
+          # Mixed absolute/repository paths make the artifact root their common
+          # filesystem ancestor; archive entries can include both var/tmp and the
+          # runner workspace prefix. Restore using the sealed context's original
+          # paths rather than assuming the archive root is the repository root.
           # The reports live in a dot-directory, which this action skips unless told otherwise.
           include-hidden-files: true
           if-no-files-found: ignore

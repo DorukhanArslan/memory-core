@@ -998,11 +998,13 @@ def _host_turn_barrier_family_complete(rows: list[dict]) -> bool:
 
 def _host_turn_barrier_boundaries_family_complete(rows: list[dict]) -> bool:
     """The boundary point needs all six exact, matched, affirmatively validated members."""
-    from equivalence.host_turn_barrier import OPERATION as outcome_operation
+    from equivalence.host_turn_barrier import OPERATION as legacy_outcome_operation
+    from equivalence.host_turn_barrier_v4 import OPERATION as current_outcome_operation
     from equivalence.host_turn_barrier_boundaries import CASE_HASHES, OPERATION, POINTS, REQUIREMENT, validate_registration
 
+    outcome_operations = {legacy_outcome_operation, current_outcome_operation}
     family = [row for row in rows if row.get("operation") == OPERATION
-              or row.get("requirement") == REQUIREMENT and row.get("operation") != outcome_operation
+              or row.get("requirement") == REQUIREMENT and row.get("operation") not in outcome_operations
               or str(row.get("id", "")).startswith("host-turn-barrier-boundaries-")
               or set(row.get("covers", ())) & set(POINTS)]
     if (len(family) != len(CASE_HASHES) or {row.get("id") for row in family} != set(CASE_HASHES)

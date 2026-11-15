@@ -20,7 +20,7 @@ from memory_core.config import MemoryConfig
 from memory_core.consolidation.artifacts import read_memory_preimages
 from memory_core.consolidation.forget import SessionInstance, forget_memory_entries
 from memory_core.consolidation.origins import MemoryEntryOrigin, MemoryEntryOriginLedger
-from memory_core.consolidation.session_backfill import record_session_backfill_day
+from memory_core.consolidation.recall import record_grounded_short_term_candidates
 from memory_core.consolidation.session_ingestion import (
     SessionCorpusEntry, read_session_ingestion_state, session_exclusion_reason,
     session_ingestion_source_from_corpus,
@@ -200,9 +200,10 @@ class _Owners:
                 arguments.append({"source": asdict(source), "returnValue": reason})
         before = read_canonical_recall_store(recall_store_path(self.workspace), self.now)
         backfill = operation["backfill"]
-        result = record_session_backfill_day(config=self.config, ledger=self.ledger, day=backfill["day"],
-                                             results=deepcopy(backfill["results"]), now_ms=self.now,
-                                             timezone=self.value["timezone"])
+        result = record_grounded_short_term_candidates(
+            config=self.config, origins=self.ledger, query="__dreaming_session_backfill__:" + backfill["day"],
+            items=[{**deepcopy(item), "dayBucket": backfill["day"]} for item in backfill["results"]],
+            now_ms=self.now, dedupe_by_query_per_day=True, timezone=self.value["timezone"])
         after = read_canonical_recall_store(recall_store_path(self.workspace), self.now)
         return {"admission": admission, "backfill": {"returnValue": {"type": "number", "value": result},
                 "beforeCount": len(before["entries"]), "afterCount": len(after["entries"])}}, {

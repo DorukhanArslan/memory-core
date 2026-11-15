@@ -4,6 +4,17 @@ This matrix preserves the v2026.9.6 baseline and its historical evidence. It is
 not acceptance evidence for v2026.9.9. The current target, cleanup order, and
 remaining acceptance work are tracked in [Full Equivalence Checklist](full-equivalence-checklist.md).
 
+The current v2026.9.9 [checklist](full-equivalence-checklist.md) records
+**71/128 verified conditions, 57 remaining**. The
+[forget/index-fence partial closeout](forget_index_fence_closeout.md) describes
+the SDK fixes, passing bounded preflights and current-source software checks.
+Hosted Python 3.11/3.12 each pass 9,365 tests, but the separate differential
+run fails globally with an undiagnosed authority error. No full004 or new
+acceptance credit is claimed; PR #18 remains draft and unmerged. Source
+classification stays `partial`, source-build reproduction stays false and
+full equivalence is not established. These results do not promote any
+historical row below. The older artifact investigation remains paused.
+
 Historical reference target:
 
 - OpenClaw release tag `v2026.9.6` = `eb377ac59e6c9fd6c7705028034812becf00271b` (tag commit 2026-09-22), the oracle target since 2026-09-27. Point `OPENCLAW_ORACLE_REPO` at a checkout of that commit with its pnpm deps installed; it needs Node `>=24.16.0 <25` or `>=26.1.0` (its SQLite guard refuses Node 25). The tag sits on a release branch, not on upstream main.

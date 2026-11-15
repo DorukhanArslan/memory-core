@@ -109,6 +109,18 @@ Hosts that need an explicit provider-none cold-search owner can compose the
 [managed index](managed_memory_index.md) with `Memory` and the existing kit/runner
 constructors. Its real repair notice follows an actual SQLite rebuild.
 
+With the managed `memory_publication="on-search"` policy, changes to MEMORY.md,
+USER.md and eligible Markdown files under `memory/` also refresh the index in
+the background. The watcher waits for edits to settle and uses the store's
+ordinary publication guards. Call the managed store's `close()` when its owner
+shuts down; this stops file watching and joins admitted publication work. The
+ordinary on-write policy keeps its immediate publication behavior. The
+[forget/index-fence packet](forget_index_fence_closeout.md) records the current
+bounded verification status. The keyword metadata correction has focused and
+hosted software checks plus bounded paired preflight evidence. The separate
+full differential run remains globally blocked, leaving both forget/index-fence
+conditions unverified. No complete-equivalence claim follows from these checks.
+
 - Every option is an input some core function already takes:
   `layout`, `templates`, `seed_bootstrap` (`initialize_agent_workspace`); `timezone` and
   `time_format` (the flush plan, the curator's "today", the session-memory stamp, the startup
@@ -308,22 +320,26 @@ def dispatch(
   Search returns the factory's complete actual `details` through the kit's established
   payload API. Its context preserves the host clock, visibility and source policy;
   disabled search and a foreign store are refused before retrieval. Recall tracking
-  still follows successful tool execution.
+  follows the factory's actual surfaced primary results before citation decoration.
 - Arguments: a mapping, its JSON text (parsed once for every tool) or `None` (read as `{}`).
   Blank text reads as `{}`. Parsing JSON text is host-transport glue and deliberately differs from
   the core's `asToolParamsRecord` (`as_tool_params_record`, where a string reads as `{}`): the kit
   sees the transport's raw text, the core sees an already-decoded value.
-- Recall tracking: with `dreaming_enabled`, the memory-corpus hits of a `memory_search` result that
-  is not unavailable go through `memory_core/consolidation/recall.py:undecorate_search_results` and
-  `record_short_term_recalls`, as upstream does only when dreaming is enabled and the memory search
-  succeeded (`extensions/memory-core/src/tools.ts:491-507`). Upstream records off the reply path and
-  swallows recording errors; the kit records synchronously and swallows them too. Off by default
-  (`DEFAULT_DEEP_DREAMING_ENABLED = False`): no `memory/.dreams/` write. Known gap: the recall
-  days are UTC dates, not dates in the kit's timezone. Upstream passes `dreaming.timezone`
-  (`tools.ts:501`) and buckets the day in it (`short-term-promotion-record.ts:192`); the pin-era
-  `record_short_term_recalls` takes no timezone (matrix row "Recall tracking from
-  `memory_search`"), so in Europe/Istanbul a recall between 00:00 and 03:00 counts on the
-  previous day.
+- Current recall tracking: HostKit passes its `dreaming_enabled` policy, timezone,
+  actual revision-fence ledger when present and event callback to the registered
+  search factory. Its owner queues only the raw primary results actually surfaced,
+  before citation decoration, for `record_short_term_recalls`; supplements do not
+  become primary recall signals. Recording errors are swallowed. The standalone
+  factory leaves persistence off its reply path and exposes `wait_for_recalls()`
+  to join already submitted work. HostKit calls that boundary before returning
+  `dispatch`, preserving its settled-state behavior without a second recording.
+  HostKit remains off by default (`DEFAULT_DEEP_DREAMING_ENABLED = False`), while
+  the standalone factory's explicit `dreaming_enabled` default is true and does
+  not depend on runtime identity. Direct retrieval records only when supplied an
+  explicit recall owner in its context. The current recorder accepts the kit's
+  timezone; the UTC-only limitation recorded in the historical v2026.9.6 matrix
+  describes the earlier implementation. Acceptance status is tracked in the
+  [forget/index-fence packet](forget_index_fence_closeout.md).
 - Returns the tool's payload unchanged, JSON-able, for the host to send back verbatim.
 - Error contract, checked in this order. Model-caused errors come back as payloads, never raised:
   - invalid JSON text: `{"status": "error", "tool": name, "error": "invalid JSON arguments: <msg>"}`

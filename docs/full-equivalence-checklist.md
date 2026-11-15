@@ -52,10 +52,50 @@ Comparisons must not normalize away behavior. A platform-specific path, generate
 Entries remain pending until their complete acceptance conditions are verified against `v2026.9.9`. Their detailed acceptance points and stable identifiers are in [scope.json](../equivalence/scope.json). A helper that already exists in Python still needs the new differential evidence. A known difference must stay visible until its implementation and tests agree. Bounded passing subsets are recorded below without closing the containing contract.
 
 <!-- CURRENT-VERIFICATION-START -->
-The latest complete local assessment has **73/128 verified conditions (57.0%)**,
-with **55 conditions remaining**. The fixed scope remains 64 contracts and 128
-conditions: **34 complete, five partial and 25 pending contracts**. This measures
-verified conditions, not effort or elapsed work.
+The latest independently assessed local catalog remains **71/128 verified
+conditions (55.5%), 57 remaining**: **32 complete, seven partial and 25 pending
+contracts**. Full003 on clean `13b54e0` completed with **1,443 matches, 18
+mismatches and four blocked cases**, actual exit 2 and runner errors `[]`.
+The prior 73/128 assessment is historical. Only `indexing.query-sync.outcomes`
+and `host.turn-barrier.outcomes` lost verification; their boundary points remain
+verified. There are **51 uncovered and six registered unresolved conditions**.
+
+The [forget/index-fence partial closeout](forget_index_fence_closeout.md)
+records the actual SDK fixes and current limits. Normal keyword enrichment
+now reads live metadata while retaining the original retrieval generation, so
+deleted chunk IDs are filtered. Genuine managed file watching, guarded
+publication and surfaced-result recall recording are integrated. Fresh V6
+keyword, seven-case query and four-case Host v4 packets strictly match; these
+bounded preflights add zero points. `forget.index-fence` stays **0/2**.
+
+Reviewed head `5b729e9` passes **269 focused checks**. Hosted Python 3.11 and
+3.12 each pass **9,365 tests**, with **7,213 uncredited skips**, zero failures,
+and successful wheel/sdist and typing checks. Their actual synthetic-merge tree
+exactly equals the 5b tree. The preceding broad whole003 on `b0b3778` retains
+its six failures; later test/map corrections do not relabel that execution.
+
+The fresh hosted differential run fails globally with
+`forget-index-fence-evidence-invalid`, exit 2, summary `{}` and no case IDs.
+Its cause is unproved; it is not labeled as the fourteen known mismatches.
+Overall CI is not green, and [PR #18](https://github.com/DorukhanArslan/memory-core/pull/18)
+remains draft and unmerged. Local full004 was prepared but never started.
+At the user's request, further long comparisons are deferred. The immediate
+follow-up is diagnosis from existing evidence, not another complete test run.
+
+The scope stays **64 contracts/128 conditions**. The integrated catalog still
+has 1,465 cases: exactly four Host definitions move to V4 and thirteen forget
+tail cases to V6. The other 1,448 old definitions and all 80 annotations are
+exact; the current entire 1,452-case prefix is **not unchanged**. Source
+classification remains `partial`, source-build reproduction is false and full
+equivalence is not established. The older four-extra-hosted-mismatch artifact
+investigation stays paused. Exact identities and retained attempts are in the
+[diagnostics](forget_index_fence_diagnostics.json).
+
+Historical query-sync boundary assessment on `d6bb805`:
+
+That preceding complete local assessment verified **73/128 conditions (57.0%)**,
+with **55 remaining**, **34 complete, five partial and 25 pending contracts**.
+The following evidence belongs to that historical code head.
 
 The [query-sync boundary closeout](query_sync_boundaries_closeout.md) verifies the
 original `indexing.query-sync.boundaries` condition. Eight input-only schedules
@@ -108,7 +148,7 @@ Exact executions belong to clean code head `d6bb805`; later documentation
 or merge commits must not relabel this evidence. Implementation review is tracked
 in [PR #17](https://github.com/DorukhanArslan/memory-core/pull/17).
 
-The complete local gate remains `mismatched`: **53 uncovered conditions plus two
+That historical complete local gate remained `mismatched`: **53 uncovered conditions plus two
 registered unresolved conditions** remain. The provider-none, opt-in on-search
 profile and bounded declared schedules do not establish every provider or
 interleaving. Source classification stays `partial`; complete OpenClaw
@@ -120,12 +160,15 @@ paused at the user's request, without relabeling their cause.
 The [cold retry development packet](query_sync_cold_retry_development_closeout.md)
 and [passive notice packet](next_turn_notice_observation_closeout.md) retain their
 original zero-credit identities. The older 71/128 and 72/128 full reports remain
-historical evidence and are not rewritten by this complete assessment.
+historical evidence and are not rewritten by full003.
 
-Next is the existing unverified `forget.index-fence` contract: make sure a deleted
-note cannot return from an older refresh. For example, delete an old preference
-while a refresh is running, then check that the old preference stays absent after
-the refresh and after restart.
+Next, diagnose the current hosted authority failure from existing evidence.
+A complete comparison and independent score assessment remain deferred to the
+package's verification closeout. The next proposed separate contract is
+`forget.lineage-tombstones`: preview and then delete a conversation's linked
+notes, with tombstones preventing relearning. Both implementations delete a
+whole mixed-origin entry and report `mixedLineage`; preserving another
+conversation's portion of that shared entry is not promised.
 
 The preceding [query-sync outcome closeout](query_sync_outcomes_closeout.md)
 historically verified **71 → 72/128** on clean `aa99a933`; its original capture and
@@ -179,10 +222,10 @@ reaching 66/128 before the update/isolation and natural next-turn packages.
 
 | Contract status | Contracts | Verified conditions | Remaining conditions |
 | --- | ---: | ---: | ---: |
-| Complete | 34 | 68 | 0 |
-| Partial | 5 | 5 | 5 |
+| Complete | 32 | 64 | 0 |
+| Partial | 7 | 7 | 7 |
 | Pending verification | 25 | 0 | 50 |
-| Total | 64 | 73 | 55 |
+| Total | 64 | 71 | 57 |
 
 Pending verification can include existing implementation. Partial contracts retain one open
 condition. Infrastructure sections 1–3 remain **20/22 tasks completed**; infrastructure and
@@ -207,7 +250,7 @@ Current status of all 64 contracts:
 | 12 | `indexing.incremental-sync` | Complete | 2/2 |
 | 13 | `indexing.transaction-publication` | Complete | 2/2 |
 | 14 | `indexing.embedding-cache` | Pending verification | 0/2 |
-| 15 | `indexing.query-sync` | Complete | 2/2 |
+| 15 | `indexing.query-sync` | Partial | 1/2 |
 | 16 | `retrieval.vector-scoring` | Complete | 2/2 |
 | 17 | `retrieval.hybrid-scoring` | Complete | 2/2 |
 | 18 | `retrieval.exact-path-priority` | Complete | 2/2 |
@@ -254,7 +297,7 @@ Current status of all 64 contracts:
 | 59 | `engine.numeric-boundaries` | Pending verification | 0/2 |
 | 60 | `engine.unicode-collation` | Pending verification | 0/2 |
 | 61 | `engine.datetime-regex` | Pending verification | 0/2 |
-| 62 | `host.turn-barrier` | Complete | 2/2 |
+| 62 | `host.turn-barrier` | Partial | 1/2 |
 | 63 | `host.restart-recall` | Complete | 2/2 |
 | 64 | `host.update-isolation` | Complete | 2/2 |
 
@@ -290,7 +333,7 @@ pre-open race authority, full raw filesystem evidence and broader SDK-only limit
 - [x] **`indexing.incremental-sync` — Match index refresh and invalidation.** Create, update, rename and delete files and sessions while retaining an index. Compare discovery, chunk replacement and unchanged-file handling across reopen.
 - [x] **`indexing.transaction-publication` — Publish one coherent index revision.** Interleave readers with successful and failing rebuilds. Compare visible old/new revisions and prevent partial chunk, FTS or provenance publication. Both acceptance points are covered by the prepared-publication comparisons recorded below.
 - [ ] **`indexing.embedding-cache` — Match embedding reuse and invalidation.** Use a deterministic instrumented embedder to count query and document calls. Compare cache identity, batching, changed chunks, failed batches and retained entries.
-- [x] **`indexing.query-sync` — Match query-time synchronization.** Both original conditions are verified for the declared provider-none on-search profile. Compare complete query outcomes and the eight frozen forced-sync/joining, failure, typed retry/exhaustion and dispatch-count schedules. Broader providers and interleavings remain outside this proof.
+- [ ] **`indexing.query-sync` — Match query-time synchronization.** Boundaries remain verified. Strict retrospective replay validates the four historical blocked pairs, and a fresh seven-case diagnostic on the changed SDK strictly matches without read-generation guard weakening. Full003's original outcome rows and 1/2 score remain unchanged until a fresh complete catalog. Broader providers and interleavings remain outside this proof.
 
 ### Retrieval and ranking
 
@@ -376,7 +419,7 @@ pre-open race authority, full raw filesystem evidence and broader SDK-only limit
 
 ### Host lifecycle acceptance
 
-- [x] **`host.turn-barrier` — Finalize memory before the next turn.** Both original conditions are verified in the fresh complete catalog: all four complete natural-turn outcomes and the separate full-channel boundary family match. The earlier missing Native cold notice has an unproved timing cause; no field allowance or notice-policy fix is used. No in-flight append or universal scheduling guarantee is claimed.
+- [ ] **`host.turn-barrier` — Finalize memory before the next turn.** The separate boundary point remains verified. The latest full003 assessment leaves the outcome point open after Native notice differences. The new Host v4 four-case diagnostic now strictly matches, and only those four definitions are migrated, but its zero-credit preflight does not restore the point without a fresh complete catalog. Latest measured status is 1/2; no field allowance or universal scheduling guarantee supplies credit.
 - [x] **`host.restart-recall` — Recall across fresh chats and process restart.** Use the same saved corpus with a fresh session and then a fresh host process. Compare source-backed retrieval and state continuity with facts omitted from the new prompt.
 - [x] **`host.update-isolation` — Update current facts while preserving isolation.** Replace a prior preference, retain unrelated facts and query from independent user/workspace scopes. Compare current versus superseded answers and honest write/index failure reporting.
 

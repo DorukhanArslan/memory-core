@@ -187,7 +187,7 @@ def test_keyword_exact_confidence_uses_project_multiplier_after_private_ordering
     assert all("vectorScore" not in row.to_payload() for row in rows)
 
 
-def test_read_generation_keeps_ranking_metadata_coherent_with_the_searched_text(tmp_path, monkeypatch):
+def test_retained_keyword_snapshot_uses_current_ranking_annotations(tmp_path, monkeypatch):
     store = make_store(tmp_path)
     with store.connect() as db:
         db.execute("PRAGMA journal_mode=WAL")
@@ -203,11 +203,16 @@ def test_read_generation_keeps_ranking_metadata_coherent_with_the_searched_text(
             with store.connect() as writer:
                 writer.execute(f"UPDATE {CHUNK_RECALL_TABLE} SET importance=1,project_key='changed' "
                                "WHERE chunk_id=?", (identifier,))
+            # The original retrieval reader remains pinned to its earlier
+            # snapshot even though later enrichment reads current annotations.
+            snapshot = args[0].execute(f"SELECT importance,project_key FROM {CHUNK_RECALL_TABLE} "
+                                       "WHERE chunk_id=?", (identifier,)).fetchone()
+            assert snapshot == (10, "alpha")
         return rows
 
     monkeypatch.setattr(store, "_query_body_hits", replace_after_body)
     first = store.search("comet", active_project_keys=["alpha"])
-    assert first[0].project_key == "alpha" and first[0].importance == 10
+    assert any(row.project_key == "changed" and row.importance == 1 for row in first)
     second = store.search("comet")
     assert any(row.project_key == "changed" and row.importance == 1 for row in second)
 

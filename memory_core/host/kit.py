@@ -47,7 +47,6 @@ from memory_core.bootstrap.files import (
 )
 from memory_core.client import Memory
 from memory_core.config import MemoryConfig
-from memory_core.consolidation import record_short_term_recalls, undecorate_search_results
 from memory_core.consolidation.artifact_provenance import MemoryArtifactProvenanceStore
 from memory_core.current_time import DEFAULT_TIME_FORMAT, TimeFormat, resolve_time_format
 from memory_core.curation import CurationPolicy, MemoryCurator
@@ -455,6 +454,10 @@ class HostKit:
             agent_session_key=session.session_key,
             active_project_keys=self._active_project_keys,
             runtime_identity=self._identity,
+            dreaming_enabled=self._dreaming_enabled,
+            dreaming_timezone=self._timezone,
+            recall_origins=(memory.store.revision_fence.ledger if memory.store.revision_fence is not None else None),
+            on_event=self._on_event,
         )
         if tool is None:
             raise MemoryToolError(
@@ -464,21 +467,9 @@ class HostKit:
         # The registered tool owns acquisition, owner validation and its complete
         # JSON carrier. The kit's established API returns those actual details.
         result = tool.execute(MEMORY_SEARCH_TOOL_NAME, args)["details"]
-        if self._dreaming_enabled and not result.get("unavailable"):
-            # tools.ts:491-507: with dreaming enabled, a successful search records its
-            # memory-corpus hits (raw, without the Source: citation) off the reply path and
-            # ignores recording errors.
-            hits = [hit for hit in result.get("results") or [] if hit.get("corpus") == "memory"]
-            try:
-                record_short_term_recalls(
-                    config=memory.config,
-                    query=str(args.get("query", "")),
-                    results=undecorate_search_results(hits),
-                    now_ms=self._clock(),
-                    on_event=self._on_event,
-                )
-            except Exception:
-                pass
+        # Keep HostKit's established settled-state dispatch boundary. The
+        # standalone model-facing factory leaves persistence off its reply path.
+        tool.wait_for_recalls()
         return result
 
     def before_turn(

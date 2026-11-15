@@ -1,6 +1,7 @@
 """Selected real sources publish atomically without replacing unrelated corpus rows."""
 from __future__ import annotations
 
+from contextlib import closing
 from dataclasses import replace
 import json
 import os
@@ -260,15 +261,28 @@ def test_base_full_reindex_still_refreshes_all_actual_sources(tmp_path):
     assert all(fragment in text for fragment in ("First changed.", "Second changed.", "Actual memory changed."))
 
 
-def test_search_snapshot_hook_runs_after_real_read_generation_is_pinned(tmp_path):
-    store, workspace, _ = _owner(tmp_path)
-    with store.connect() as db:
-        db.execute("PRAGMA journal_mode=WAL")
-    (workspace.root / "memory/a.md").write_text("Cedar newer publication.\n")
-    old_revision = store.read_published_index()["revision"]
-    observed = []
+def test_search_snapshot_hook_runs_after_real_read_generation_is_pinned(tmp_path, monkeypatch):
+    store, workspace, _ = _owner(tmp_path, bootstrap=False)
+    query = "snapshotneedle"
+    old_text = f"Cedar {query} old.\n"
+    retained_text = f"Maple {query} retained.\n"
+    replacement_text = f"Cedar {query} replacement.\n"
+    (workspace.root / "memory/a.md").write_text(old_text)
+    (workspace.root / "memory/b.md").write_text(retained_text)
+    store.reindex(workspace)
+    with closing(store.connect()) as db:
+        assert db.execute("PRAGMA journal_mode=WAL").fetchone()[0] == "wal"
+    before = store.read_published_index()
+    old_revision = before["revision"]
+    old_ids = {row["path"]: row["id"] for row in before["chunks"] if row["source"] == "memory"}
+    expected_retained = next(hit.to_payload() for hit in store.search(query, sources={"memory"}, min_score=0)
+                             if hit.path == "memory/b.md")
+    (workspace.root / "memory/a.md").write_text(replacement_text)
+    admitted_connections, body_reads, metadata_reads, published = [], [], [], []
     completed = threading.Event()
     failures = []
+    original_body = store._query_body_hits
+    original_metadata = store.read_recall_metadata
 
     def publish():
         try:
@@ -279,19 +293,62 @@ def test_search_snapshot_hook_runs_after_real_read_generation_is_pinned(tmp_path
             completed.set()
 
     def admitted(db):
-        observed.append((db.in_transaction, store.index_revision(db=db)))
-        if len(observed) == 1:
-            thread = threading.Thread(target=publish)
-            thread.start()
+        assert not admitted_connections
+        # Do not issue a read here: that would itself pin a deferred BEGIN
+        # and hide an admission hook moved before the real identity read.
+        assert db.in_transaction
+        admitted_connections.append(db)
+        thread = threading.Thread(target=publish, daemon=True)
+        thread.start()
+        try:
             assert completed.wait(5)
-            thread.join()
+        finally:
+            thread.join(5)
+        assert not thread.is_alive() and not failures
+        # BEGIN alone does not pin SQLite's reader. Both the generation and
+        # actual old rows must remain visible after another connection commits.
+        assert db.in_transaction and store.index_revision(db=db) == old_revision
+        assert dict(db.execute("SELECT path,text FROM chunks WHERE source='memory'")) == {
+            "memory/a.md": old_text, "memory/b.md": retained_text,
+        }
+        with closing(store.connect()) as current:
+            assert store.index_revision(db=current) == old_revision + 1
+            rows = {path: (identifier, text) for identifier, path, text in current.execute(
+                "SELECT id,path,text FROM chunks WHERE source='memory'")}
+        assert rows["memory/a.md"][0] != old_ids["memory/a.md"]
+        assert rows["memory/a.md"][1] == replacement_text
+        assert rows["memory/b.md"] == (old_ids["memory/b.md"], retained_text)
+        published.append(rows)
+
+    def body_hits(db, *arguments, **options):
+        assert db is admitted_connections[0] and db.in_transaction
+        assert store.index_revision(db=db) == old_revision
+        hits = original_body(db, *arguments, **options)
+        actual = {hit.id: hit.snippet for hit in hits}
+        assert actual == {old_ids["memory/a.md"]: old_text, old_ids["memory/b.md"]: retained_text}
+        assert published[0]["memory/a.md"][0] not in actual
+        body_reads.append(actual)
+        return hits
+
+    def metadata(ids, *, db=None):
+        assert db is not admitted_connections[0] and db.in_transaction
+        assert admitted_connections[0].in_transaction
+        assert set(ids) == set(old_ids.values())
+        rows = original_metadata(ids, db=db)
+        assert store.index_revision(db=db) == old_revision + 1
+        assert set(rows) == {old_ids["memory/b.md"]}
+        metadata_reads.append(set(rows))
+        return rows
 
     store._on_search_snapshot = admitted
-    actual = store.search("cedar memory", sources={"memory"}, min_score=0)
+    monkeypatch.setattr(store, "_query_body_hits", body_hits)
+    monkeypatch.setattr(store, "read_recall_metadata", metadata)
+    actual = store.search(query, sources={"memory"}, min_score=0)
 
-    assert not failures and observed == [(True, old_revision)]
-    assert any(hit.snippet == "Cedar memory baseline.\n" for hit in actual)
-    assert any(row["text"] == "Cedar newer publication.\n" for row in store.read_published_index()["chunks"])
+    assert not failures and len(admitted_connections) == len(body_reads) == len(metadata_reads) == 1
+    assert [hit.to_payload() for hit in actual] == [expected_retained]
+    assert {row["path"]: (row["id"], row["text"]) for row in store.read_published_index()["chunks"]
+            if row["source"] == "memory"} == published[0]
 
 
 def test_selected_refresh_rejects_another_workspace_before_initialization(tmp_path):

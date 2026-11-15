@@ -12,7 +12,7 @@ import stat
 import time
 import unicodedata
 from collections.abc import Callable, Collection, Iterator, Sequence
-from contextlib import closing, contextmanager
+from contextlib import closing, contextmanager, nullcontext
 from pathlib import Path, PurePosixPath
 from typing import Any, TypeVar
 
@@ -243,6 +243,13 @@ def validate_store_config(config: MemoryConfig, embeddings: EmbeddingProvider | 
     return config.resolved_store_path()
 
 
+class _UnspecifiedFenceRevision:
+    pass
+
+
+_UNSPECIFIED_FENCE_REVISION = _UnspecifiedFenceRevision()
+
+
 class SQLiteMemoryStore:
     # Backends opting into the tool's partial-result callback implement the
     # same optional search keyword. Legacy backends need not accept it.
@@ -290,8 +297,9 @@ class SQLiteMemoryStore:
         remove_listener = signal.add_listener(db.interrupt) if signal is not None else None
         try:
             # All lexical/path/vector probes and their identity gate use one
-            # reader generation. An early partial keyword lease is released
-            # before provider work; the final pass uses one complete generation.
+            # reader generation. Later keyword annotations use a fresh reader
+            # while this retrieval transaction remains open. An early partial
+            # keyword lease is released before provider work.
             db.execute("BEGIN")
             yield db
         finally:
@@ -385,6 +393,43 @@ class SQLiteMemoryStore:
             raise RuntimeError("Memory index mutation revision is missing or invalid")
         return row[0]
 
+    def is_session_forgotten(self, session_id: str) -> bool:
+        """Read this index owner's existing agent-scoped origins tombstone.
+
+        The host's separate session catalog is a different authority. No
+        database, tombstone table, or mirrored catalog state is created by this
+        lookup; an absent or incompatible table supplies no origins marker.
+        """
+        if not self.path.exists():
+            return False
+        with closing(sqlite3.connect(self.path.resolve().as_uri() + "?mode=ro", uri=True, timeout=30)) as db:
+            db.execute("BEGIN")
+            if db.execute(
+                "SELECT 1 FROM sqlite_schema WHERE type='table' AND name='memory_session_tombstones'"
+            ).fetchone() is None:
+                return False
+            columns = {row[1] for row in db.execute("PRAGMA table_info(memory_session_tombstones)")}
+            if not {"session_id", "agent_id", "reason", "created_at"} <= columns:
+                return False
+            return db.execute(
+                "SELECT 1 FROM memory_session_tombstones WHERE agent_id=? AND session_id=? LIMIT 1",
+                (normalize_session_agent_id(self.config.agent_id), session_id),
+            ).fetchone() is not None
+
+    @staticmethod
+    def _existing_forget_revision(db: sqlite3.Connection) -> int | None:
+        """Read an already-owned forget marker clock without creating ledger state."""
+        if db.execute(
+            "SELECT 1 FROM sqlite_schema WHERE type='table' AND name='memory_index_state'"
+        ).fetchone() is None:
+            return None
+        row = db.execute("SELECT revision FROM memory_index_state WHERE id=1").fetchone()
+        if row is None:
+            return None
+        if type(row[0]) is not int or abs(row[0]) > 2 ** 53 - 1:
+            raise RuntimeError("Memory forget revision is missing or invalid")
+        return row[0]
+
     def index_revision(self, *, db: sqlite3.Connection | None = None) -> int:
         """The private publication generation, checked like the native owner."""
         if db is None:
@@ -430,7 +475,7 @@ class SQLiteMemoryStore:
         on_begin: Callable[[sqlite3.Connection], None] | None = None,
         with_commit: Callable[[Callable[[], None]], None] | None = None,
         owner_check: Callable[[sqlite3.Connection], None] | None = None,
-        expected_fence_revision: int | None = None,
+        expected_fence_revision: int | None | _UnspecifiedFenceRevision = _UNSPECIFIED_FENCE_REVISION,
     ) -> int:
         """Atomically publish prepared chunks, metadata and source state.
 
@@ -440,10 +485,12 @@ class SQLiteMemoryStore:
         embedding cache entries are deliberately outside this transaction.
         """
         fence = self.revision_fence
-        if fence is not None and expected_fence_revision is None:
-            expected_fence_revision = fence.read()
+        if isinstance(expected_fence_revision, _UnspecifiedFenceRevision):
+            expected_fence_revision = fence.read() if fence is not None else None
         same_database = fence is not None and fence.same_database(self.path)
-        with closing(self.connect()) as db:
+        guard = (fence.publication_guard(expected_fence_revision)
+                 if fence is not None and not same_database else nullcontext())
+        with guard, closing(self.connect()) as db:
             try:
                 db.execute("BEGIN IMMEDIATE")
                 if on_begin is not None:
@@ -490,8 +537,6 @@ class SQLiteMemoryStore:
             except BaseException:
                 db.rollback()
                 raise
-        if fence is not None and not same_database:
-            fence.bump()
         return new_revision
 
     def _index_provider(self) -> dict[str, str] | None:
@@ -668,11 +713,13 @@ class SQLiteMemoryStore:
         next_meta = self._build_index_meta(None, provider=provider, provider_key=provider_key)
         chunk_tokens, chunk_overlap = next_meta["chunkTokens"], next_meta["chunkOverlap"]
         workspace_root = str(workspace.root.resolve())
+        implicit_forget_fence = fence is None and self._uses_row_mutation_revision()
         with self.connect() as db:
             mutation_generation = None
             if self._uses_row_mutation_revision():
                 db.execute("BEGIN")
                 mutation_generation = self._row_mutation_revision(db=db)
+            expected_forget_revision = self._existing_forget_revision(db) if implicit_forget_fence else None
             generation, previous_workspace, needs_rebuild = db.execute(
                 f"SELECT revision, workspace, needs_rebuild FROM {INDEX_SYNC_TABLE} WHERE id = 1"
             ).fetchone()
@@ -736,7 +783,18 @@ class SQLiteMemoryStore:
             remaining_old = set()
             active_dimensions = None
 
+        def assert_existing_forget_revision(db: sqlite3.Connection) -> None:
+            if rebuild and implicit_forget_fence:
+                live = self._existing_forget_revision(db)
+                if live != expected_forget_revision:
+                    raise MemoryIndexRevisionConflictError(
+                        "Memory index changed while full reindex was building "
+                        f"(expected revision {expected_forget_revision}, found {live}); "
+                        "retry the full reindex."
+                    )
+
         def assert_owner(db: sqlite3.Connection) -> None:
+            assert_existing_forget_revision(db)
             if fence is not None:
                 if same_database:
                     fence.assert_unchanged_in(db, expected_fence)
@@ -778,6 +836,9 @@ class SQLiteMemoryStore:
             # revision, before another host projection could hide the cause.
             if fence is not None:
                 fence.assert_unchanged(expected_fence)
+            if implicit_forget_fence:
+                with closing(self.connect()) as db:
+                    assert_existing_forget_revision(db)
             current = (self._read_source_snapshots(workspace) if selection is None else
                        self._read_source_snapshots(workspace, selection=selection))
             if ({key: entry.hash for key, entry in current.items()}
@@ -1156,7 +1217,7 @@ class SQLiteMemoryStore:
         self, candidates: Sequence[_RecallCandidate], *, db: sqlite3.Connection | None = None,
         include_memory_mtimes: bool = True, signal: CancellationSignal | None = None,
     ) -> list[_RecallCandidate]:
-        """Enrich retained keyword/vector candidates in the same leased read generation."""
+        """Enrich candidates in a supplied snapshot, or through a fresh reader."""
         if not candidates:
             return []
         if db is None:
@@ -1418,7 +1479,10 @@ class SQLiteMemoryStore:
                     keyword = self._search_keyword_with_fallback(
                         db, query, candidates, source_filter, signal
                     )
-                    keyword = self.attach_recall_metadata(keyword, db=db, signal=signal)
+                    # Native enriches retained worker hits through a later live
+                    # read: a completed forget can remove their chunks meanwhile.
+                    # Keep the retrieval transaction open until this read ends.
+                    keyword = self.attach_recall_metadata(keyword, signal=signal)
             vector: list[HybridVectorResult] = []
             if vector_ready and any(value != 0 for value in query_embedding):
                 match_exact_path = prepare_exact_path_matcher(query)

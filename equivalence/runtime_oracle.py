@@ -1539,9 +1539,13 @@ class ReleaseOracleExecution:
                         or Path(fixture_base).parent != evidence.parent
                         or not re.fullmatch(r"native-get-fixture-[A-Za-z0-9_-]+", Path(fixture_base).name)):
                     raise RuntimeOracleError("Get-tool path aliases require the exact owned case fixture base.")
+                fixture_home = diagnostic[0].get("fixtureHome")
+                if ("fixtureHome" in diagnostic[0] and (not isinstance(fixture_home, str)
+                        or (fixture_home and not Path(fixture_home).is_absolute()))):
+                    raise RuntimeOracleError("Get-tool path aliases require the recorded actual fixture home.")
             raw_requests = diagnostic[0].get("requests")
             if portable_paths:
-                raw_requests = map_get_fixture_paths(raw_requests, fixture_base)
+                raw_requests = map_get_fixture_paths(raw_requests, fixture_base, fixture_home=fixture_home)
             if not _same_json(raw_requests, row["result"].get("requests")):
                 raise RuntimeOracleError("Get-tool provider requests differ from retained raw observations.")
             if case["input"].get("observeFilesystem") is True:
@@ -1554,6 +1558,7 @@ class ReleaseOracleExecution:
                 try:
                     validate_get_filesystem_observation(
                         diagnostic[0].get("filesystem"), row["result"].get("filesystem"), fixture_base,
+                        fixture_home=fixture_home,
                     )
                     if case["input"].get("readRace") is not None:
                         from equivalence.get_fixture_filesystem import derive_get_read_race_observation
@@ -1589,7 +1594,7 @@ class ReleaseOracleExecution:
                 observed = ({"result": decode_search_tool_envelope(original["result"])}
                             if "result" in public else {"error": original["error"]})
                 if portable_paths:
-                    observed = map_get_fixture_paths(observed, fixture_base)
+                    observed = map_get_fixture_paths(observed, fixture_base, fixture_home=fixture_home)
                 if not _same_json(observed, public):
                     raise RuntimeOracleError("Get-tool public payload differs from its complete raw envelope.")
             if any("result" in step for step in public_steps) and any(

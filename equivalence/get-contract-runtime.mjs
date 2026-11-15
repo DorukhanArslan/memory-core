@@ -2,6 +2,7 @@
 // not construct an index manager; genuine secure file IO and wiki registrations
 // exercise the native read and corpus owners without an invented index worker.
 import fs from "node:fs/promises";
+import os from "node:os";
 import path from "node:path";
 import { pathToFileURL } from "node:url";
 import { decodeSearchToolEnvelope } from "./search-contract-runtime.mjs";
@@ -11,12 +12,33 @@ const publicError = (error) => ({ name: error.name,
 
 // Host identity transport only. Preserve all values and path suffixes; no OS
 // wording, cause, code, provider content or envelope field is selected away.
-export function mapGetFixturePaths(value, fixtureBase) {
-  if (typeof value === "string") return value === fixtureBase ? "$FIXTURE"
-    : value.replaceAll(`${fixtureBase}/`, "$FIXTURE/");
-  if (Array.isArray(value)) return value.map((item) => mapGetFixturePaths(item, fixtureBase));
+export function mapGetFixturePaths(value, fixtureBase, fixtureHome = null) {
+  const base = fixtureBase.replace(/\/+$/, "");
+  if (!base || !path.isAbsolute(base)) throw Error("A private absolute fixture base is required");
+  if (fixtureHome !== null && (typeof fixtureHome !== "string" || (fixtureHome && !path.isAbsolute(fixtureHome)))) {
+    throw Error("A recorded absolute fixture home is required");
+  }
+  if (typeof value === "string") {
+    const aliases = [[base, true]];
+    if (fixtureHome !== null) {
+      const prefix = fixtureHome.endsWith("/") ? fixtureHome : `${fixtureHome}/`;
+      if (base === fixtureHome || `${base}/` === prefix) aliases.push(["~", base === fixtureHome]);
+      else if (base.startsWith(prefix)) aliases.push([`~/${base.slice(prefix.length)}`, true]);
+      for (const [alias, exact] of [...aliases]) {
+        const escaped = alias.replace(/[\u0000-\u001f\u007f-\u009f\u2028\u2029]/gu,
+          (character) => `\\u${character.charCodeAt(0).toString(16).padStart(4, "0")}`);
+        if (escaped !== alias) aliases.push([escaped, exact]);
+      }
+    }
+    for (const [alias, exact] of aliases.sort((left, right) => right[0].length - left[0].length)) {
+      if (exact && value === alias) return "$FIXTURE";
+      value = value.replaceAll(`${alias}/`, "$FIXTURE/");
+    }
+    return value;
+  }
+  if (Array.isArray(value)) return value.map((item) => mapGetFixturePaths(item, base, fixtureHome));
   if (value !== null && typeof value === "object") return Object.fromEntries(Object.entries(value)
-    .map(([key, item]) => [key, mapGetFixturePaths(item, fixtureBase)]));
+    .map(([key, item]) => [key, mapGetFixturePaths(item, base, fixtureHome)]));
   return value;
 }
 
@@ -193,8 +215,10 @@ async function executeGetContractRuntime(input, runtimeConfig) {
   const imp = (relative) => import(pathToFileURL(path.join(runtimeConfig.runtimeRoot, relative)).href);
   await fs.mkdir(runtimeConfig.evidenceDirectory, { recursive: true });
   const directory = await fs.mkdtemp(path.join(runtimeConfig.evidenceDirectory, "native-get-fixture-"));
+  const fixtureHome = input.normalizeFixturePaths ? os.homedir() : null;
   const raw = { kind: input.kind, fixtureBase: directory,
-    nativeEnvelopes: [], nativeArguments: [], requests: [], indexManagerConstructed: false };
+    nativeEnvelopes: [], nativeArguments: [], requests: [], indexManagerConstructed: false,
+    ...(fixtureHome === null ? {} : { fixtureHome }) };
   const workspace = path.join(directory, "workspace");
   const outside = path.join(directory, "outside");
   if ((input.workspaceKind ?? "directory") === "directory") await fs.mkdir(workspace);
@@ -317,7 +341,7 @@ async function executeGetContractRuntime(input, runtimeConfig) {
     }
     if (input.readRace) result.readRace = { ...structuredClone(input.readRace),
       dispatches: raw.readRace.events.filter((event) => event === "dispatch").length, disarmed: raw.readRace.hookCleared };
-    return input.normalizeFixturePaths ? mapGetFixturePaths(result, directory) : result;
+    return input.normalizeFixturePaths ? mapGetFixturePaths(result, directory, fixtureHome) : result;
   } finally {
     await fs.mkdir(runtimeConfig.evidenceDirectory, { recursive: true });
     await fs.writeFile(path.join(runtimeConfig.evidenceDirectory, "native-raw.json"), JSON.stringify([raw]));

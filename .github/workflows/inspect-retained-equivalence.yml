@@ -115,9 +115,96 @@ jobs:
                           detail[name] = {'readError': str(error)}
                   selected['retainedFailureDetails'].append(detail)
 
+                  # Retain small original records for offline reading, not capture replay.
+                  prefix = unique_member(suffix + '/process.json').filename[:-len('process.json')]
+                  entries = [item for item in members
+                             if item.filename.startswith(prefix) and not item.is_dir()]
+                  inventory = [{'path': item.filename[len(prefix):], 'bytes': item.file_size,
+                                'crc32': item.CRC} for item in entries]
+                  selected['caseFileInventory'] = inventory
+                  selected['progressRecords'] = []
+
+                  def brief(value, depth=0):
+                      if depth > 6:
+                          return '<display depth bound>'
+                      if isinstance(value, dict):
+                          return {key: brief(part, depth + 1) for key, part in value.items()
+                                  if key not in {'v8Hex', 'privateReturn', 'result', 'dataBase64'}}
+                      if isinstance(value, list):
+                          return [brief(part, depth + 1) for part in value[:80]]
+                      if isinstance(value, str) and len(value) > 1024:
+                          return value[:1024] + '<display truncated>'
+                      return value
+
+                  def priority(item):
+                      relative = item.filename[len(prefix):]
+                      if relative.startswith('gates/'):
+                          return 0, relative
+                      if relative in {'evidence/native-raw.json', 'evidence/foreground-1-raw.json',
+                                      'evidence/forgetter-1-raw.json'}:
+                          return 1, relative
+                      return (2 if relative.endswith('.json') else 3), relative
+
+                  bundle_path = Path(os.environ['RUNNER_TEMP']) / 'failed-case-progress.zip'
+                  copied, skipped, used = [], [], 0
+                  with zipfile.ZipFile(bundle_path, 'w', compression=zipfile.ZIP_DEFLATED) as bundle:
+                      for item in sorted(entries, key=priority):
+                          relative = item.filename[len(prefix):]
+                          include = (relative.startswith('gates/') or relative.endswith(('.json', '.jsonl')))
+                          limit = 8 * 1024 * 1024 if relative.endswith('.json') else 2 * 1024 * 1024
+                          if not include or item.file_size > limit or used + item.file_size > 24 * 1024 * 1024:
+                              skipped.append({'path': relative, 'bytes': item.file_size})
+                              continue
+                          assert not PurePosixPath(relative).is_absolute() and '..' not in PurePosixPath(relative).parts
+                          data = retained.read(item)
+                          bundle.writestr(relative, data)
+                          used += len(data)
+                          copied.append({'path': relative, 'bytes': len(data),
+                                         'sha256': hashlib.sha256(data).hexdigest()})
+                          if relative.startswith('gates/'):
+                              try:
+                                  value = json.loads(data)
+                              except ValueError:
+                                  value = {'text': data[:2048].decode(errors='replace')}
+                              selected['progressRecords'].append({'path': relative, 'gate': brief(value)})
+                          elif relative.startswith('evidence/') and relative.endswith('-raw.json'):
+                              try:
+                                  value = json.loads(data)
+                              except ValueError as error:
+                                  selected['progressRecords'].append({'path': relative,
+                                      'parseError': str(error), 'originalBytesRetainedInBundle': True})
+                                  continue
+                              if isinstance(value, list) and len(value) == 1:
+                                  value = value[0]
+                              if not isinstance(value, dict):
+                                  selected['progressRecords'].append({'path': relative,
+                                      'jsonType': type(value).__name__, 'originalBytesRetainedInBundle': True})
+                                  continue
+                              keys = ['actor', 'instance', 'steps', 'gates', 'children', 'calls', 'completed',
+                                      'allChildrenReaped', 'failure', 'controlFailures', 'teardownFailures']
+                              selected['progressRecords'].append({'path': relative,
+                                  'selectedFields': brief({key: value[key] for key in keys if key in value})})
+                      index = {'sourceArtifact': 14146819533, 'sourceArchiveSha256': archive_sha,
+                               'sourceReportSha256': report_sha, 'retainedDirectory': str(directory),
+                               'copiedOriginalBytes': copied, 'skipped': skipped,
+                               'inventory': inventory, 'diagnosticOnlyNotCaptureRestoration': True,
+                               'displayBounds': {'maxDepth': 6, 'maxListItems': 80, 'maxString': 1024}}
+                      bundle.writestr('progress-index.json', json.dumps(index, ensure_ascii=True, indent=2))
+                  selected['smallBundle'] = {'bytes': bundle_path.stat().st_size,
+                      'sha256': hashlib.sha256(bundle_path.read_bytes()).hexdigest(),
+                      'originalLogicalBytesCopied': used, 'copiedFiles': len(copied),
+                      'skippedFiles': len(skipped)}
+
           output = json.dumps(selected, ensure_ascii=True, indent=2)
           (Path(os.environ['RUNNER_TEMP']) / 'selected-retained-failure.json').write_text(output + '\n')
           print('RETAINED_FAILURE_JSON_BEGIN')
           print(output)
           print('RETAINED_FAILURE_JSON_END')
           PY
+      - name: Retain the small original progress records
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
+        with:
+          name: failed-case-progress-43673106847
+          path: ${{ runner.temp }}/failed-case-progress.zip
+          retention-days: 7
+          if-no-files-found: error

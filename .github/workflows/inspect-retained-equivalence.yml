@@ -37,7 +37,7 @@ jobs:
         shell: bash
         run: |
           python3 - <<'PY'
-          import hashlib, json, os, zipfile
+          import hashlib, json, os, subprocess, tempfile, zipfile
           from pathlib import Path, PurePosixPath
 
           archive = Path(os.environ['RUNNER_TEMP']) / 'retained-equivalence.zip'
@@ -58,13 +58,32 @@ jobs:
               report_member = unique_member('.equivalence-results/full.json')
               print(json.dumps({'reportMember': report_member.filename,
                                 'reportBytes': report_member.file_size}))
-              assert report_member.file_size <= 512 * 1024 * 1024, 'Report exceeds diagnostic JSON memory bound'
-              with retained.open(report_member) as stream:
-                  report_bytes = stream.read()
-              report_sha = hashlib.sha256(report_bytes).hexdigest()
+              # jq streams the existing report; only selected small fields are retained.
+              fields = ['status', 'errors', 'failedReferenceCaseId', 'rejectedRuntimeEvidence']
+              condition = ' or '.join('.[0][0] == ' + json.dumps(key) for key in fields)
+              select = 'select(length == 2 and (' + condition + '))'
+              report_hash = hashlib.sha256()
+              with tempfile.TemporaryFile() as leaves, tempfile.TemporaryFile() as errors:
+                  reader = subprocess.Popen(['jq', '--stream', '-c', select], stdin=subprocess.PIPE,
+                                            stdout=leaves, stderr=errors)
+                  try:
+                      with retained.open(report_member) as stream:
+                          while block := stream.read(1024 * 1024):
+                              report_hash.update(block)
+                              reader.stdin.write(block)
+                  finally:
+                      reader.stdin.close()
+                      returncode = reader.wait()
+                  errors.seek(0)
+                  if returncode:
+                      raise ValueError('Retained JSON stream read failed: ' + errors.read(4096).decode(errors='replace'))
+                  assert leaves.tell() <= 2 * 1024 * 1024, 'Selected diagnostic fields exceed bound'
+                  leaves.seek(0)
+                  small = subprocess.run(['jq', '-s', 'reduce .[] as [$p,$v] ({}; setpath($p;$v))'],
+                                         stdin=leaves, stdout=subprocess.PIPE, check=True)
+                  report = json.loads(small.stdout)
+              report_sha = report_hash.hexdigest()
               assert report_sha == '34213268069115e5b65cbd95b62ad687049f7dc2880ca37446da7687d0929ec5'
-              report = json.loads(report_bytes)
-              del report_bytes
               selected = {'sourceRun': 43673106847, 'sourceArtifact': 14146819533,
                           'archiveSha256': archive_sha, 'reportSha256': report_sha,
                           'status': report.get('status'), 'errors': report.get('errors'),

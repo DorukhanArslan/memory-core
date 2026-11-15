@@ -22,7 +22,7 @@ function directory(value,missing=false){
   const parent=path.dirname(cursor);if(parent===cursor)break;cursor=parent;}
  return value;
 }
-function identity(value){const s=fs.lstatSync(value,{bigint:true});return{device:String(s.dev),inode:String(s.ino),mode:Number(s.mode),uid:Number(s.uid)};}
+function identity(value){const s=fs.lstatSync(value,{bigint:true});return{device:String(s.dev),inode:BigInt.asUintN(64,s.ino).toString(),mode:Number(s.mode),uid:Number(s.uid)};}
 function ancestors(value){
  directory(value,true);const rows=[];let cursor=value;
  while(true){try{fs.lstatSync(path.join(cursor,'.git'));throw Error('Host v4 actual execution path has Git ancestry');}

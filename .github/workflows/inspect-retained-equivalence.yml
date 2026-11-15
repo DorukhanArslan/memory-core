@@ -37,7 +37,7 @@ jobs:
         shell: bash
         run: |
           python3 - <<'PY'
-          import hashlib, json, os, subprocess, tempfile, zipfile
+          import hashlib, json, os, zipfile
           from pathlib import Path, PurePosixPath
 
           archive = Path(os.environ['RUNNER_TEMP']) / 'retained-equivalence.zip'
@@ -58,35 +58,29 @@ jobs:
               report_member = unique_member('.equivalence-results/full.json')
               print(json.dumps({'reportMember': report_member.filename,
                                 'reportBytes': report_member.file_size}))
-              # jq streams the existing report; only selected small fields are retained.
-              fields = ['status', 'errors', 'failedReferenceCaseId', 'rejectedRuntimeEvidence']
-              condition = ' or '.join('.[0][0] == ' + json.dumps(key) for key in fields)
-              select = 'select(length == 2 and (' + condition + '))'
+              # This producer appends these failure fields and three terminal fields.
+              # Read their authenticated suffix, preserving Python/JS surrogate escapes.
+              # This is diagnostic extraction, not a full acceptance validation.
               report_hash = hashlib.sha256()
-              with tempfile.TemporaryFile() as leaves, tempfile.TemporaryFile() as errors:
-                  reader = subprocess.Popen(['jq', '--stream', '-c', select], stdin=subprocess.PIPE,
-                                            stdout=leaves, stderr=errors)
-                  try:
-                      with retained.open(report_member) as stream:
-                          while block := stream.read(1024 * 1024):
-                              report_hash.update(block)
-                              reader.stdin.write(block)
-                  finally:
-                      reader.stdin.close()
-                      returncode = reader.wait()
-                  errors.seek(0)
-                  if returncode:
-                      raise ValueError('Retained JSON stream read failed: ' + errors.read(4096).decode(errors='replace'))
-                  assert leaves.tell() <= 2 * 1024 * 1024, 'Selected diagnostic fields exceed bound'
-                  leaves.seek(0)
-                  small = subprocess.run(['jq', '-s', 'reduce .[] as [$p,$v] ({}; setpath($p;$v))'],
-                                         stdin=leaves, stdout=subprocess.PIPE, check=True)
-                  report = json.loads(small.stdout)
+              tail = b''
+              with retained.open(report_member) as stream:
+                  while block := stream.read(1024 * 1024):
+                      report_hash.update(block)
+                      tail = (tail + block)[-8 * 1024 * 1024:]
               report_sha = report_hash.hexdigest()
               assert report_sha == '34213268069115e5b65cbd95b62ad687049f7dc2880ca37446da7687d0929ec5'
+              marker = b',"failedReferenceCaseId":'
+              assert tail.count(marker) == 1, 'Failure suffix is missing or ambiguous'
+              suffix = b'{' + tail[tail.index(marker) + 1:]
+              report = json.loads(suffix)
+              assert list(report) == ['failedReferenceCaseId', 'rejectedRuntimeEvidence',
+                                      'durationSeconds', 'finishedAt', 'fullScopePassed']
+              assert report['fullScopePassed'] is False
+              assert len(report['rejectedRuntimeEvidence']) == 1
+              assert report['rejectedRuntimeEvidence'][0]['caseIds'] == [report['failedReferenceCaseId']]
               selected = {'sourceRun': 43673106847, 'sourceArtifact': 14146819533,
                           'archiveSha256': archive_sha, 'reportSha256': report_sha,
-                          'status': report.get('status'), 'errors': report.get('errors'),
+                          'extraction': 'Authenticated terminal failure fields; no acceptance validation or score',
                           'failedReferenceCaseId': report.get('failedReferenceCaseId'),
                           'rejectedRuntimeEvidence': report.get('rejectedRuntimeEvidence'),
                           'retainedFailureDetails': [], 'testsExecuted': False}

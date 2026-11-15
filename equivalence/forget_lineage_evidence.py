@@ -1,7 +1,9 @@
 """Bind this zero-credit baseline's observations to complete retained originals."""
 import hashlib
+import base64
 import json
 from pathlib import Path
+import zlib
 
 from equivalence.forget_lineage_profile import canonical
 
@@ -15,6 +17,18 @@ def _bytes(record):
     if len(data) != record["size"] or hashlib.sha256(data).hexdigest() != record["sha256"]:
         raise ValueError("A retained physical byte record changed")
     return data
+
+
+def physical_snapshot(captured):
+    if captured.get("encoding") != "gzip-json-base64" or not 0 <= captured["uncompressedBytes"] <= 64 * 1024**2:
+        raise ValueError("Unsupported or excessive lossless physical snapshot")
+    decoder = zlib.decompressobj(16 + zlib.MAX_WBITS)
+    decoded = decoder.decompress(base64.b64decode(captured["data"], validate=True), captured["uncompressedBytes"] + 1)
+    if (not decoder.eof or decoder.unused_data or decoder.unconsumed_tail
+            or len(decoded) != captured["uncompressedBytes"]
+            or hashlib.sha256(decoded).hexdigest() != captured["sha256"]):
+        raise ValueError("The complete compressed physical snapshot changed")
+    return json.loads(decoded)
 
 
 def validate_native(case, public, snapshots, evidence):
@@ -50,7 +64,7 @@ def validate_native(case, public, snapshots, evidence):
     if len(raw["physical"]) != len(operations) + 1:
         raise ValueError("Every operation must retain its complete physical state")
     for captured in raw["physical"]:
-        physical = captured["snapshot"]
+        physical = physical_snapshot(captured)
         for root in (physical["fixture"], physical["state"]):
             for record in root["files"].values():
                 _bytes(record)

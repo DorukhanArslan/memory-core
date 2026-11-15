@@ -68,7 +68,7 @@ def main():
         print(json.dumps({"caseStarted": case["id"]}), flush=True)
         try:
             native = _oracle(args.node.resolve(), ROOT / "equivalence/release-oracle.mjs",
-                             args.reference.resolve(), [case], 180, release_runtime=runtime)
+                             args.reference.resolve(), [case], 120, release_runtime=runtime)
             write(out / (case["id"] + ".native.json"), native)
             actual = native["results"][0]
             if actual["ok"] is not True:

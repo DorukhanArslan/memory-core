@@ -77,8 +77,10 @@ its six failures; later test/map corrections do not relabel that execution.
 The fresh hosted differential run fails globally with
 `forget-index-fence-evidence-invalid`, exit 2, summary `{}` and no case IDs.
 Inspection of the existing artifact identifies a timed-out Native keyword
-case; its exact waiting point remains unproved. No comparison was rerun,
-and this is not labeled as the fourteen known mismatches.
+case at step 19: the observer rejects a genuine file notification arriving
+1.240903 ms before the writer's post-await receipt. This observer bug is not
+yet fixed. No comparison was rerun, and this is not labeled as the fourteen
+known mismatches.
 Overall CI is not green, and [PR #18](https://github.com/DorukhanArslan/memory-core/pull/18)
 remains draft and unmerged. Local full004 was prepared but never started.
 At the user's request, further long comparisons are deferred. The immediate
@@ -164,8 +166,8 @@ and [passive notice packet](next_turn_notice_observation_closeout.md) retain the
 original zero-credit identities. The older 71/128 and 72/128 full reports remain
 historical evidence and are not rewritten by full003.
 
-Next, locate the timed-out Native keyword case's waiting point in its existing
-gate and trace records.
+Next, correct that observer's publication/delivery association while keeping
+stale notifications rejected; preserve the original failed capture.
 A complete comparison and independent score assessment remain deferred to the
 package's verification closeout. The next proposed separate contract is
 `forget.lineage-tombstones`: preview and then delete a conversation's linked

@@ -11,8 +11,8 @@ Later SDK corrections have bounded paired preflight evidence and **269 focused
 passing checks**. Current-source hosted Python 3.11/3.12 each pass **9,365 tests**,
 with 7,213 uncredited skips, zero failures and successful wheel/sdist consumers.
 The separate hosted differential run fails globally after its Native keyword
-case times out. Reading the existing artifact established that failure without
-rerunning a test; the exact waiting point remains unproved. Overall CI is not
+case times out. Reading the existing artifact established an observer time-order
+false rejection at step 19 without rerunning a test; its correction is pending. Overall CI is not
 green, PR #18 remains draft and unmerged,
 and no new local full004 was run. Further long comparisons are deferred at the
 user's request; the next step is diagnosis from existing evidence. These

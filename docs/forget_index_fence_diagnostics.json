@@ -3568,7 +3568,7 @@
       "failureCode": "forget-index-fence-evidence-invalid",
       "message": "Whole forget/index-fence execution/authority failed; no retry was made.",
       "reportSha256": "34213268069115e5b65cbd95b62ad687049f7dc2880ca37446da7687d0929ec5",
-      "causeEstablished": false,
+      "causeEstablished": true,
       "notRelabeledAsKnownFourteenMismatches": true,
       "completeFamilyReplayAndGuardFailedOriginalFinalCheck": true,
       "errors": [
@@ -3588,8 +3588,9 @@
         "querySyncBoundariesMatches": 8,
         "fifV6SmokeMatches": 1
       },
-      "observedFailure": "Native keyword case timed out",
-      "preciseWaitingPointEstablished": false
+      "observedFailure": "Native keyword step19 observer falsely rejects genuine notification before post-await rename receipt; outercaller times out",
+      "preciseWaitingPointEstablished": true,
+      "fixImplemented": false
     },
     "allTestsRequired": false,
     "overallCiGreenClaimed": false,
@@ -3707,14 +3708,14 @@
     "forgetIndexFenceConditions": 2,
     "focusedChecksPassed": 269,
     "currentSourceHostedPython311And312": "success",
-    "hostedDifferential": "globally blocked after Native keyword caller timeout; precise waiting point unproved",
+    "hostedDifferential": "globally blocked; step19 observer false rejection established from existing artifacts, correction pending",
     "full004Started": false,
     "full004DeferredAtUserRequestForLighterWorkflow": true,
     "temporaryCopyRemovalPartOfThisCloseout": false,
     "allPreservedTemporaryOriginalsRemainLive": true,
     "draftPullRequest": 18,
     "merged": false,
-    "immediateNextWork": "Locate the timed-out Native keyword case waiting point in existing gate and trace records; no automatic full rerun.",
+    "immediateNextWork": "Correct publication/delivery association in the watcher observer while retaining stale-notification rejection; no full rerun planned.",
     "nextFeatureAfterVerificationIssue": "forget.lineage-tombstones",
     "smallChangesUseFocusedChecksAndFullComparisonOnceAtVerificationCloseout": true
   },
@@ -3733,13 +3734,39 @@
     "observedReturnCode": -9,
     "protectedBytesUnchanged": true,
     "configuredNativeCallerTimeoutSeconds": 180,
-    "preciseWaitingPointEstablished": false,
+    "preciseWaitingPointEstablished": true,
     "testsRerun": false,
     "userFileUploadRequired": false,
     "newAcceptancePointsAwarded": 0,
     "localReceipt": {
       "path": "work/forget-index-fence/current-ci-bounded-diagnostic/automated-inspection-receipt.json",
       "sha256": "ee037541823ab99b0d404461d7a90e7d1dbe40cd24248b5c2dc3aff95c24225d"
+    },
+    "observerFalseRejectionEstablished": true
+  },
+  "currentHostedFailureRootAnalysis": {
+    "sourceArtifact": 14146819533,
+    "progressReadRun": 43715171529,
+    "watchChannelReadRun": 43716046208,
+    "smallOriginalFilesVerified": 40,
+    "fullWatchChannelDecodedRows": 17622,
+    "pendingStep": 19,
+    "barrierLabel": "selectedWatch",
+    "forgetCompleted": true,
+    "publicSearchReturnedTimeoutMs": 30000,
+    "memoryNotificationSequence": 17249,
+    "matchingSnapshotSequence": 17291,
+    "observerReceiptLagNs": 1240903,
+    "observerFalseRejectionEstablished": true,
+    "productForgetFailureEstablished": false,
+    "fixImplemented": false,
+    "oldSeedNotificationWouldPassIfTimeGuardRemoved": true,
+    "newTestsOrEnginesExecuted": false,
+    "newAcceptancePointsAwarded": 0,
+    "limits": "Persisted channel and authenticated prefix only; no claim about lost unflushed activity or future corrected-run success.",
+    "localRootAnalysis": {
+      "path": "work/forget-index-fence/current-ci-bounded-diagnostic/watch-barrier-root-cause.json",
+      "sha256": "cafc839465c892546a94a9cb5092089a8021608e1d6ffb6b012208571202c3b3"
     }
   }
 }

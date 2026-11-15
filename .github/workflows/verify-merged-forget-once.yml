@@ -1,0 +1,123 @@
+name: Verify merged forget package once
+
+on:
+  push:
+    branches: [verify/merged-forget-once]
+    paths: [.github/workflows/verify-merged-forget-once.yml]
+
+permissions:
+  contents: read
+
+jobs:
+  compare:
+    runs-on: ubuntu-latest
+    timeout-minutes: 240
+    env:
+      PYTHONDONTWRITEBYTECODE: "1"
+      LANGSMITH_TRACING: "false"
+      LANGCHAIN_TRACING_V2: "false"
+      OPENAI_API_KEY: ""
+      OPENAI_MODEL: ""
+      ANTHROPIC_API_KEY: ""
+      OPENROUTER_API_KEY: ""
+      MEMORY_CORE_LIVE_OPENAI: ""
+      MEMORY_CORE_DEMO_OPENAI_API_KEY: ""
+      MEMORY_CORE_DEMO_OPENAI_EMBEDDING_API_KEY: ""
+      OPENCLAW_ORACLE_REPO: ""
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
+        with:
+          persist-credentials: false
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
+        with:
+          ref: cdfb6e9c9b35f3c50dd12fc322371c1b217fcac5
+          path: .reference/merged-product
+          persist-credentials: false
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
+        with:
+          repository: openclaw/openclaw
+          ref: bcfc88812a35243893585dbeca87ca41b48272ca
+          path: .reference/openclaw
+          persist-credentials: false
+      - uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97
+        with:
+          python-version: "3.12"
+      - uses: actions/setup-node@249970729cb0ef3589644e2896645e5dc5ba9c38
+        with:
+          node-version: "24.16.0"
+      - uses: astral-sh/setup-uv@bec219d24cd3e171d82865faccec33120bb574f4
+        with:
+          version: "0.9.18"
+      - name: Install frozen development stack
+        run: uv sync --frozen
+      - name: Verify current source locations
+        run: uv run --frozen python -m equivalence.source_map --reference .reference/openclaw
+      - name: Prepare authenticated source dependencies
+        run: uv run --frozen python -m equivalence.dependencies --reference .reference/openclaw --destination .reference/npm --install
+      - name: Prepare authenticated official memory runtime
+        run: uv run --frozen python -m equivalence.release_runtime --reference .reference/openclaw --destination .reference/release-runtime --install
+      - name: Run exactly one full comparison
+        id: comparison
+        continue-on-error: true
+        run: uv run --frozen python .github/scripts/run_merged_comparison.py
+      - name: Independently replay the retained complete forget family
+        if: always() && steps.comparison.outcome != 'skipped'
+        id: replay
+        continue-on-error: true
+        run: >-
+          uv run --frozen python scripts/replay_forget_index_fence.py --version v6
+          --suite-report .equivalence-results/full.json
+          --native-capture-root .equivalence-results/forget-index-fence-v6
+          --sdk-capture-root .equivalence-results/forget-index-fence-v6
+          --reference .reference/openclaw --node "$(command -v node)"
+          --sdk-source-root . --adapter-root .
+          --output .equivalence-results/summary/forget-family-replay.json
+      - name: Assess the complete report and retained Host captures
+        if: always() && steps.comparison.outcome != 'skipped'
+        id: assessment
+        continue-on-error: true
+        run: >-
+          uv run --frozen python .github/scripts/assess_merged_comparison.py
+          --report .equivalence-results/full.json
+          --seal .equivalence-results/summary/source-seal.json
+          --fif-replay .equivalence-results/summary/forget-family-replay.json
+          --reference .reference/openclaw --node "$(command -v node)"
+          --release-runtime .reference/release-runtime
+          --output .equivalence-results/summary/assessment.json
+      - name: Retain the small review summary
+        if: always()
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
+        with:
+          name: merged-forget-summary
+          path: .equivalence-results/summary/
+          include-hidden-files: true
+          if-no-files-found: warn
+      - name: Retain original reports and captures separately
+        if: always()
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
+        with:
+          name: merged-forget-raw-evidence
+          path: |
+            .equivalence-results/
+            /var/tmp/memory-host-v4-*/
+            ${{ runner.temp }}/memory-core-once-*/
+          include-hidden-files: true
+          if-no-files-found: warn
+          compression-level: 6
+      - name: Preserve the original comparison and validation outcomes
+        if: always()
+        env:
+          REPLAY_OUTCOME: ${{ steps.replay.outcome }}
+          ASSESSMENT_OUTCOME: ${{ steps.assessment.outcome }}
+        run: |
+          python - <<'PY'
+          import json, os, sys
+          from pathlib import Path
+          path = Path('.equivalence-results/summary/os-exit.json')
+          code = json.loads(path.read_text())['actualReturnCode'] if path.is_file() else 2
+          # A fully authenticated replay can return 1 for a real public mismatch.
+          # The assessment requires its positive complete-authentication receipt.
+          if os.environ['REPLAY_OUTCOME'] not in {'success', 'failure'} or os.environ['ASSESSMENT_OUTCOME'] != 'success':
+              code = 2
+          sys.exit(code)
+          PY

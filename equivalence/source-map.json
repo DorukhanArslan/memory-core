@@ -1055,19 +1055,19 @@
           "path": "memory_core/host/managed_index.py",
           "symbol": "ManagedSQLiteMemoryStore.status",
           "anchor": "    def status(",
-          "line": 505
+          "line": 510
         },
         {
           "path": "memory_core/host/managed_index.py",
           "symbol": "ManagedSQLiteMemoryStore.search",
           "anchor": "    def search(",
-          "line": 939
+          "line": 944
         },
         {
           "path": "memory_core/host/managed_index.py",
           "symbol": "ManagedSQLiteMemoryStore._on_index_preparation_admitted",
           "anchor": "    def _on_index_preparation_admitted(",
-          "line": 866
+          "line": 871
         },
         {
           "path": "memory_core/tools/memory_search.py",
@@ -2045,7 +2045,7 @@
           "path": "memory_core/host/managed_index.py",
           "symbol": "ManagedSQLiteMemoryStore.search",
           "anchor": "    def search(",
-          "line": 939
+          "line": 944
         },
         {
           "path": "memory_core/host/managed_index.py",
@@ -2057,7 +2057,7 @@
           "path": "memory_core/host/managed_index.py",
           "symbol": "ManagedSQLiteMemoryStore._on_search_snapshot",
           "anchor": "    def _on_search_snapshot(",
-          "line": 546
+          "line": 551
         },
         {
           "path": "memory_core/host/managed_index.py",
@@ -2075,19 +2075,19 @@
           "path": "memory_core/host/managed_index.py",
           "symbol": "ManagedSQLiteMemoryStore.status",
           "anchor": "    def status(",
-          "line": 505
+          "line": 510
         },
         {
           "path": "memory_core/host/managed_index.py",
           "symbol": "ManagedSQLiteMemoryStore.close",
           "anchor": "    def close(",
-          "line": 1046
+          "line": 1051
         },
         {
           "path": "memory_core/host/managed_index.py",
           "symbol": "ManagedSQLiteMemoryStore._record_rebuild_request",
           "anchor": "    def _record_rebuild_request(",
-          "line": 873
+          "line": 878
         },
         {
           "path": "memory_core/tools/search_factory.py",
@@ -2303,7 +2303,7 @@
           "path": "memory_core/index/sqlite_store.py",
           "symbol": "SQLiteMemoryStore.search_path_candidates",
           "anchor": "    def search_path_candidates(",
-          "line": 1751
+          "line": 1752
         },
         {
           "path": "memory_core/index/keyword_search.py",
@@ -2534,7 +2534,7 @@
           "path": "memory_core/index/sqlite_store.py",
           "symbol": "SQLiteMemoryStore._finalize_keyword_only",
           "anchor": "    def _finalize_keyword_only(",
-          "line": 1588
+          "line": 1589
         },
         {
           "path": "memory_core/index/sqlite_store.py",
@@ -4296,7 +4296,7 @@
       "implementation": "partial",
       "notes": [
         "Runtime markers default to Memory Core identity; native marker behavior requires the explicit OpenClaw compatibility identity.",
-        "Current-time formatting takes an explicit host 12/24-hour format and uses UTC for blank or unknown zones; native code detects host format and falls back to the host zone. Python dates also stop at years 1\u20139999."
+        "Current-time formatting takes an explicit host 12/24-hour format and uses UTC for blank or unknown zones; native code detects host format and falls back to the host zone. Python dates also stop at years 1–9999."
       ]
     },
     {
@@ -5378,7 +5378,7 @@
       "notes": [
         "Python revision fencing is optional. The prepared publication owner checks and bumps the origins fence in its immediate transaction only when the origins ledger and index use the same database file.",
         "A private generation fences index/cache publication after a cooperating purge, including cache-only forgets. Chunk deletion cascades details/provenance/recall rows through foreign keys enabled on every store connection. Separate origins/index databases still have a tombstone/publication gap; full native concurrent forget/rebuild exclusion remains unproved.",
-        "The independently frozen thirteen-member forget-index-fence-v5-runtime family is appended after the unchanged 1452 definitions and requires both original acceptance points atomically. Original V1\u2013V4 inputs and captures remain immutable unregistered diagnostics. V5 uses the original supported all-true Native sync resolver and genuine SDK watcher; it preserves source-clock protocol 2 and search-effects protocol 3, and declares positive watcher readiness, committed-version delivery and original timer/publication settlement. Actual source versions are bound at business-call completion; source-proven absence is not a delivered fact. Seed watch work precedes old-builder admission; held-race watcher joins follow explicit dependency-safe release steps and the crash watcher remains alive through retry. No helper creates a producer, marks dirty, invokes a timer or supplies a kernel-event watermark. Whole original public results and all physical raw evidence remain retained through lossless file references and final byte/ownership/source/Node seals. prepare_forget_index_fence_bindings authenticates source and official compiled owners independently; validate_pair receives explicit Node/reference/SDK/adapter roots and both actual engine directories. Inventory and standalone diagnostics award no behavioral credit, and watcher scheduling gains no separate point; only every exact registered member matched with affirmative paired custody can verify either original condition. Native build reproduction remains unclaimed."
+        "The independently frozen thirteen-member forget-index-fence-v5-runtime family is appended after the unchanged 1452 definitions and requires both original acceptance points atomically. Original V1–V4 inputs and captures remain immutable unregistered diagnostics. V5 uses the original supported all-true Native sync resolver and genuine SDK watcher; it preserves source-clock protocol 2 and search-effects protocol 3, and declares positive watcher readiness, committed-version delivery and original timer/publication settlement. Actual source versions are bound at business-call completion; source-proven absence is not a delivered fact. Seed watch work precedes old-builder admission; held-race watcher joins follow explicit dependency-safe release steps and the crash watcher remains alive through retry. No helper creates a producer, marks dirty, invokes a timer or supplies a kernel-event watermark. Whole original public results and all physical raw evidence remain retained through lossless file references and final byte/ownership/source/Node seals. prepare_forget_index_fence_bindings authenticates source and official compiled owners independently; validate_pair receives explicit Node/reference/SDK/adapter roots and both actual engine directories. Inventory and standalone diagnostics award no behavioral credit, and watcher scheduling gains no separate point; only every exact registered member matched with affirmative paired custody can verify either original condition. Native build reproduction remains unclaimed."
       ]
     },
     {
@@ -6408,7 +6408,7 @@
           "path": "memory_core/host/managed_index.py",
           "symbol": "ManagedSQLiteMemoryStore.search",
           "anchor": "    def search(",
-          "line": 939
+          "line": 944
         },
         {
           "path": "memory_core/host/managed_maintenance.py",
@@ -6594,7 +6594,7 @@
           "path": "memory_core/host/managed_index.py",
           "symbol": "ManagedSQLiteMemoryStore.reindex",
           "anchor": "    def reindex(",
-          "line": 640
+          "line": 645
         },
         {
           "path": "memory_core/tools/memory_search.py",

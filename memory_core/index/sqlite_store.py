@@ -1479,10 +1479,11 @@ class SQLiteMemoryStore:
                     keyword = self._search_keyword_with_fallback(
                         db, query, candidates, source_filter, signal
                     )
-                    # Native enriches retained worker hits through a later live
-                    # read: a completed forget can remove their chunks meanwhile.
-                    # Keep the retrieval transaction open until this read ends.
-                    keyword = self.attach_recall_metadata(keyword, signal=signal)
+                    # WAL permits live enrichment while retrieval stays pinned.
+                    # In rollback mode a committing writer can block new readers
+                    # while waiting for this one, so reuse its snapshot there.
+                    metadata_db = None if db.execute("PRAGMA journal_mode").fetchone()[0] == "wal" else db
+                    keyword = self.attach_recall_metadata(keyword, db=metadata_db, signal=signal)
             vector: list[HybridVectorResult] = []
             if vector_ready and any(value != 0 for value in query_embedding):
                 match_exact_path = prepare_exact_path_matcher(query)

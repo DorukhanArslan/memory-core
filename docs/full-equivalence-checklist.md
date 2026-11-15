@@ -52,10 +52,37 @@ Comparisons must not normalize away behavior. A platform-specific path, generate
 Entries remain pending until their complete acceptance conditions are verified against `v2026.9.9`. Their detailed acceptance points and stable identifiers are in [scope.json](../equivalence/scope.json). A helper that already exists in Python still needs the new differential evidence. A known difference must stay visible until its implementation and tests agree. Bounded passing subsets are recorded below without closing the containing contract.
 
 <!-- CURRENT-VERIFICATION-START -->
-The latest complete local assessment has **73/128 verified conditions (57.0%)**,
-with **55 conditions remaining**. The fixed scope remains 64 contracts and 128
-conditions: **34 complete, five partial and 25 pending contracts**. This measures
-verified conditions, not effort or elapsed work.
+The latest complete assessment has **71/128 verified conditions (55.5%)**,
+with **57 conditions remaining**: **33 complete, five partial and 26 pending
+contracts**. This measures verified conditions, not effort or elapsed work.
+
+The [2026-11-15 full comparison](https://github.com/DorukhanArslan/memory-core/actions/runs/43737973896)
+measured the exact SDK merged in [PR #19](https://github.com/DorukhanArslan/memory-core/pull/19)
+at `cdfb6e9`, through clean comparison head `c3419a3`. It retained **1,465 cases:
+1,449 matches, 16 mismatches, zero blocked and no runner errors**. The full gate
+still fails (exit 1): **51 uncovered and six registered unresolved conditions**.
+The fixed reference and 64-contract, 128-condition scope are unchanged. Full report
+SHA-256: `2f3fa08295f8192d1932dea9aaadca950ac7f2f4be25564d6d4a4ab4ec94227b`.
+
+All **13 forget/index-fence scenarios match**, verifying both original conditions:
+a deleted note stays absent through older refreshes and restart. Query-sync and
+natural-turn outcome conditions are also verified in this run. Two error-message
+path differences reopen both `storage.path-safety` and `tools.get-contract`
+conditions; both implementations still reject the outside-workspace reads.
+Compared with the historical 73/128 below, forget/index-fence adds two conditions
+and these two reopened contracts remove four, yielding 71/128. The original
+14 mismatched complete public-result pairs remain unchanged.
+
+The subsequent [PR #20](https://github.com/DorukhanArslan/memory-core/pull/20)
+aligns the SDK's home-directory abbreviation in refusal messages. The earlier
+two-case diagnostic and that fix's focused checks and Native formatter comparisons
+award no acceptance points. No full comparison was rerun after that fix; the 71/128
+measurement belongs to the exact SDK above. Earlier failures remain retained.
+Next is to resolve the two filesystem comparison differences with narrowly
+scoped evidence; another full run requires separate user approval.
+
+**Historical query-sync assessment (`d6bb805`, 73/128):** The following evidence
+belongs to that earlier SDK and does not describe the latest full run.
 
 The [query-sync boundary closeout](query_sync_boundaries_closeout.md) verifies the
 original `indexing.query-sync.boundaries` condition. Eight input-only schedules
@@ -122,10 +149,8 @@ and [passive notice packet](next_turn_notice_observation_closeout.md) retain the
 original zero-credit identities. The older 71/128 and 72/128 full reports remain
 historical evidence and are not rewritten by this complete assessment.
 
-Next is the existing unverified `forget.index-fence` contract: make sure a deleted
-note cannot return from an older refresh. For example, delete an old preference
-while a refresh is running, then check that the old preference stays absent after
-the refresh and after restart.
+That earlier assessment preceded the now-verified `forget.index-fence` batch
+recorded above.
 
 The preceding [query-sync outcome closeout](query_sync_outcomes_closeout.md)
 historically verified **71 → 72/128** on clean `aa99a933`; its original capture and
@@ -177,12 +202,14 @@ package consumers. Those earlier restart packets award zero conditions and retai
 completes the two original restart conditions against its clean `9d13b19` catalog,
 reaching 66/128 before the update/isolation and natural next-turn packages.
 
+**Current measured contract totals:**
+
 | Contract status | Contracts | Verified conditions | Remaining conditions |
 | --- | ---: | ---: | ---: |
-| Complete | 34 | 68 | 0 |
+| Complete | 33 | 66 | 0 |
 | Partial | 5 | 5 | 5 |
-| Pending verification | 25 | 0 | 50 |
-| Total | 64 | 73 | 55 |
+| Pending verification | 26 | 0 | 52 |
+| Total | 64 | 71 | 57 |
 
 Pending verification can include existing implementation. Partial contracts retain one open
 condition. Infrastructure sections 1–3 remain **20/22 tasks completed**; infrastructure and
@@ -194,7 +221,7 @@ Current status of all 64 contracts:
 | No. | Contract | Status | Verified conditions |
 | ---: | --- | --- | ---: |
 | 1 | `storage.discovery` | Complete | 2/2 |
-| 2 | `storage.path-safety` | Complete | 2/2 |
+| 2 | `storage.path-safety` | Pending verification | 0/2 |
 | 3 | `storage.atomic-writes` | Complete | 2/2 |
 | 4 | `storage.workspace-isolation` | Complete | 2/2 |
 | 5 | `lexical.tokenization` | Complete | 2/2 |
@@ -215,7 +242,7 @@ Current status of all 64 contracts:
 | 20 | `retrieval.temporal-decay` | Complete | 2/2 |
 | 21 | `retrieval.importance-project` | Complete | 2/2 |
 | 22 | `tools.search-contract` | Complete | 2/2 |
-| 23 | `tools.get-contract` | Complete | 2/2 |
+| 23 | `tools.get-contract` | Pending verification | 0/2 |
 | 24 | `tools.deadline-cooldown` | Complete | 2/2 |
 | 25 | `tools.unavailable-partial` | Complete | 2/2 |
 | 26 | `sessions.corpus-admission` | Complete | 2/2 |
@@ -242,7 +269,7 @@ Current status of all 64 contracts:
 | 47 | `dreaming.deep` | Pending verification | 0/2 |
 | 48 | `dreaming.diary-provenance` | Pending verification | 0/2 |
 | 49 | `forget.lineage-tombstones` | Pending verification | 0/2 |
-| 50 | `forget.index-fence` | Pending verification | 0/2 |
+| 50 | `forget.index-fence` | Complete | 2/2 |
 | 51 | `trust.secret-redaction` | Pending verification | 0/2 |
 | 52 | `trust.configured-redaction` | Partial | 1/2 |
 | 53 | `heartbeat.scratch` | Pending verification | 0/2 |
@@ -260,8 +287,9 @@ Current status of all 64 contracts:
 
 <!-- CURRENT-VERIFICATION-END -->
 
-The integrated path/read proof now verifies both `storage.path-safety` conditions
-with all eleven families and 99 genuine whole-tool calls. Its literal family/input
+The historical integrated path/read proof verified both `storage.path-safety`
+conditions; the latest full measurement above reopens them. That earlier proof
+uses all eleven families and 99 genuine whole-tool calls. Its literal family/input
 guard rejects reduced or helper-only claims. The corrected11 and legacy12 packets
 retain their original empty coverage metadata and hashes; fresh registered proof
 is recorded in the integrated closeout below. [Path proof](storage_path_safety_proof.md)
@@ -271,7 +299,7 @@ pre-open race authority, full raw filesystem evidence and broader SDK-only limit
 ### Storage and workspace
 
 - [x] **`storage.discovery` — Discover exactly the eligible memory files.** Compare roots, nested Markdown, case sensitivity, order, hidden artifacts and disappearing files. Exclude or admit symlinks and non-regular files exactly as the pinned reference does.
-- [x] **`storage.path-safety` — Enforce memory path and read boundaries.** Exercise absolute, relative, traversal, encoded and symlink paths. Compare rejected operations, result shapes and absence of unintended writes.
+- [ ] **`storage.path-safety` — Enforce memory path and read boundaries.** Exercise absolute, relative, traversal, encoded and symlink paths. Compare rejected operations, result shapes and absence of unintended writes. Reopened by the latest full run's refusal-message path difference.
 - [x] **`storage.atomic-writes` — Publish writes atomically.** Compare append, replace, exclusive creation and concurrent rename outcomes. Inject write, flush, fsync and publication failures and inspect the surviving files.
 - [x] **`storage.workspace-isolation` — Keep workspace and subject state separate.** Reuse one host configuration across distinct workspaces and subjects. Prove files, indexes, recalls and maintenance state cannot cross the selected boundary.
 
@@ -304,7 +332,7 @@ pre-open race authority, full raw filesystem evidence and broader SDK-only limit
 ### Memory tool contract
 
 - [x] **`tools.search-contract` — Match memory_search inputs and results.** Compare definitions, accepted parameters, coercion, defaults, corpora and rejection errors. Compare complete ordered payloads, citations, warnings and source metadata. Verified for the declared provider-none memory/wiki profile; other lifecycle/provider/session contracts remain open.
-- [x] **`tools.get-contract` — Match memory_get inputs and results.** Compare allowed files, line windows, UTF-16 budgets, continuation hints and missing sources. Compare exact status/error shapes and returned source text. Verified for the declared portable read/wiki profile; OS-specific loop causes, patterns and filesystem races remain uncredited.
+- [ ] **`tools.get-contract` — Match memory_get inputs and results.** Compare allowed files, line windows, UTF-16 budgets, continuation hints and missing sources. Compare exact status/error shapes and returned source text. Reopened by the latest full run's refusal-message path difference; earlier portable read/wiki evidence remains historical.
 - [x] **`tools.deadline-cooldown` — Match deadlines and cooldowns.** Control clocks and slow providers to exercise absolute deadlines and cooldown transitions. Compare subsequent admission, provider call counts and memory/wiki/session independence. Verified under the declared controlled backend/timer profile; live provider latency, indexed manager startup and transcript visibility are uncredited.
 - [x] **`tools.unavailable-partial` — Match unavailable and partial corpus outcomes.** Fail individual providers and supplemental corpora independently. Compare partial results, timed-out flags, warnings and recovery on a later explicit query. Verified through complete controlled search/get factories and original source owners; general provider/network lifecycle remains uncredited.
 
@@ -349,7 +377,7 @@ pre-open race authority, full raw filesystem evidence and broader SDK-only limit
 ### Forget and provenance
 
 - [ ] **`forget.lineage-tombstones` — Match forget selection and tombstones.** Exercise dry-run and commit for direct, promoted, mixed-lineage and missing origins. Compare retained/deleted memory, lineage, tombstones and same-session replay admission.
-- [ ] **`forget.index-fence` — Match forget/index revision fences.** Interleave forget with rebuild, search and promotion using the same source revisions. Prove a stale rebuild cannot republish forgotten entries, including after restart.
+- [x] **`forget.index-fence` — Match forget/index revision fences.** Interleave forget with rebuild, search and promotion using the same source revisions. Prove a stale rebuild cannot republish forgotten entries, including after restart. Both original conditions are verified by all 13 declared scenarios in the latest full run; broader providers and interleavings remain unproved.
 
 ### Trust and redaction
 

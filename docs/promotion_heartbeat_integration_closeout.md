@@ -1,13 +1,20 @@
 # Promotion and heartbeat maintenance integration
 
-The latest [query-sync boundary closeout](query_sync_boundaries_closeout.md)
-records **73/128 verified conditions, 55 remaining**, in the complete current
+The [active checklist](full-equivalence-checklist.md) records the latest complete
+measurement: **71/128 verified conditions, 57 remaining**, with **33 complete,
+five partial and 26 pending contracts**. The full run measured SDK `cdfb6e9`:
+**1,465 cases, 1,449 matches, 16 mismatches and zero blocked/errors**. It verifies
+forget/index-fence and reopens four path-safety/get conditions. The later refusal
+message fix in PR #20 has no new full assessment and awards no additional points.
+
+The historical [query-sync boundary closeout](query_sync_boundaries_closeout.md)
+records **73/128 verified conditions, 55 remaining**, in its complete
 local catalog on clean code head `d6bb805`: **1,452 cases, 1,438 matches, 14
 mismatches and zero blocked/errors**. Independent audit verifies the original
 query-sync boundary and restores the original natural-turn outcome point after
 all four complete host cases match. The fixed scope remains 128 conditions.
-There are 34 complete, five partial and 25 pending contracts; the full gate still
-fails with 53 uncovered and two registered unresolved conditions.
+That historical assessment had 34 complete, five partial and 25 pending contracts;
+its full gate failed with 53 uncovered and two registered unresolved conditions.
 
 The changed provider-none on-search SDK passes **11,166 whole-suite tests** with
 zero failures and 1,974 uncredited skips. Both local wheel/sdist consumers pass;

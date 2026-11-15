@@ -36,7 +36,10 @@ RUNNER = "equivalence.host_turn_barrier_boundaries_native.run_native_case"
 
 
 def test_closed_six_cases_append_to_the_prior_catalog_and_keep_outcome_literals():
+    from equivalence.host_turn_barrier_v4 import OPERATION as host_v4_operation, business_case
+    # Reconstruct only the explicitly migrated wrappers to verify the immutable V1 history.
     complete = catalog()[:1452]
+    complete = [business_case(case) if case["operation"] == host_v4_operation else case for case in complete]
     validate_query_sync_boundary_registration(complete)
     assert complete[1444:] == query_sync_boundary_cases()
     registered = complete[:1444]

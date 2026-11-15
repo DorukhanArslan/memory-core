@@ -287,14 +287,11 @@ def _suite_adapter_hashes():
 
 def _suite_authority(frozen):
     cases = _registered_cases()
-    prior = json.dumps(cases[:1452], sort_keys=True, ensure_ascii=True,
-                       separators=(",", ":"), allow_nan=False).encode()
-    if (len(cases) != 1465 or cases[1452:] != frozen.build_cases()
-            or hashlib.sha256(prior).hexdigest() != OLD_DEFINITIONS_SHA256
-            or sum("fixtureSource" in case for case in cases) != 79
-            or sum("diagnosticOnly" in case for case in cases) != 1):
-        raise ValueError("Suite replay requires the unchanged 1452 definitions plus exact selected frozen thirteen")
-    frozen.validate_registration(cases)
+    from equivalence.catalog_migration import definition_authority
+    versions = {"forget-index-fence-v5-runtime": "v5", "forget-index-fence-v6-runtime": "v6"}
+    if frozen.OPERATION not in versions:
+        raise ValueError("Suite replay requires one explicitly supported frozen default family")
+    migration = definition_authority(cases, fif_version=versions[frozen.OPERATION])
     scope, scope_seal = _read_json(ROOT / "equivalence/scope.json", limit=1024 * 1024)
     reference = _seal(ROOT / "equivalence/reference.json", limit=1024 * 1024)
     if (scope_seal["sha256"] != FIXED_SCOPE_SHA256 or len(scope["requirements"]) != 64
@@ -303,7 +300,8 @@ def _suite_authority(frozen):
     return cases, scope, {"scope": scope_seal, "reference": reference,
                          "casesModule": _seal(ROOT / "equivalence/cases.py"),
                          "adapters": _suite_adapter_hashes(),
-                         "registeredCases": 1465, "priorDefinitionsSha256": OLD_DEFINITIONS_SHA256}
+                         "registeredCases": 1465, "priorDefinitionsSha256": OLD_DEFINITIONS_SHA256,
+                         "definitionMigration": migration}
 
 
 def _suite_reference(item, side, root):
@@ -330,7 +328,7 @@ def _suite_reference(item, side, root):
 
 
 def _admit_suite_report(args, authority, report, frozen):
-    """Stream the actual full report, retaining only fixed metadata and V5 rows."""
+    """Stream the actual full report, retaining only fixed metadata and selected frozen family rows."""
     from equivalence.harness import _same_json
     from equivalence.strict_report_reader import Reader
 
@@ -340,6 +338,9 @@ def _admit_suite_report(args, authority, report, frozen):
     path, before = _file(args.suite_report, limit=SUITE_REPORT_LIMIT)
     sealed = _seal(path, limit=SUITE_REPORT_LIMIT)
     selected, diagnostics, metadata = {}, {}, {}
+    host_ids = {row["currentId"] for row in suite["definitionMigration"]["hostReplacements"]}
+    host_rows = {}
+    host_requirement = None
     case_index = 0
     requirements_index = 0
     counts = {"matched": 0, "mismatched": 0, "blocked": 0}
@@ -352,10 +353,10 @@ def _admit_suite_report(args, authority, report, frozen):
     selected_requirement = None
     keep = {"schemaVersion", "kind", "mode", "status", "reference", "manifestSha256", "implementation",
             "adapterSha256", "casesSha256", "forgetIndexFenceNode", "forgetIndexFenceBindings",
-            "summary", "fullScopePassed", "startedAt", "finishedAt", "durationSeconds", "referenceExecution"}
+            "summary", "fullScopePassed", "startedAt", "finishedAt", "durationSeconds", "referenceExecution", "definitionMigration"}
 
     def accept(key, value, array):
-        nonlocal case_index, requirements_index, selected_requirement
+        nonlocal case_index, requirements_index, selected_requirement, host_requirement
         if array == "array-done":
             arrays.add(key)
             return
@@ -382,6 +383,14 @@ def _admit_suite_report(args, authority, report, frozen):
                         or "evidenceError" in value or "code" in value):
                     raise ValueError("A V5 suite row lost its frozen metadata, whole public results or paired custody")
                 selected[value["id"]] = value
+            if expected["id"] in host_ids:
+                if (value.get("runtimeEvidenceValidated") is not True
+                        or value["status"] not in {"matched", "mismatched"}
+                        or not isinstance(value.get("python"), dict) or not isinstance(value.get("openclaw"), dict)
+                        or "evidenceError" in value or "code" in value
+                        or (value["status"] == "matched") is not _same_json(value["python"], value["openclaw"])):
+                    raise ValueError("A migrated Host suite row lost its whole public results or affirmative custody flag")
+                host_rows[value["id"]] = value
         elif key == "runtimeDiagnostics":
             if not isinstance(value, dict) or value.get("id") not in registered_ids:
                 raise ValueError("The full suite contains foreign runtime evidence")
@@ -410,6 +419,8 @@ def _admit_suite_report(args, authority, report, frozen):
             requirements_index += 1
             if expected["id"] == "forget.index-fence":
                 selected_requirement = value
+            if expected["id"] == "host.turn-barrier":
+                host_requirement = value
         elif key == "errors":
             raise ValueError("The original full suite contains a failed final check")
         elif key == "uncoveredAcceptance":
@@ -432,6 +443,7 @@ def _admit_suite_report(args, authority, report, frozen):
     del reader  # Release the last decoded wire buffer before opening raw captures.
     if (not {"cases", "runtimeDiagnostics", "requirements", "errors", "uncoveredAcceptance"} <= arrays
             or case_index != 1465 or requirements_index != 64 or len(selected) != 13
+            or set(host_rows) != host_ids
             or set(diagnostics) != {(identifier, side) for identifier in frozen.CASE_HASHES for side in ("native", "python")}):
         raise ValueError("The full suite is incomplete or omits a V5 physical engine capture")
     manifest = metadata.get("manifestSha256", {})
@@ -446,6 +458,8 @@ def _admit_suite_report(args, authority, report, frozen):
             or type(metadata.get("durationSeconds")) not in (int, float) or metadata["durationSeconds"] < 0
             or manifest.get("scope") != suite["scope"]["sha256"]
             or manifest.get("reference") != suite["reference"]["sha256"]
+            or suite["definitionMigration"]["fifVersion"] == "v6"
+            and not _same_json(metadata.get("definitionMigration"), suite["definitionMigration"])
             or metadata.get("casesSha256") != suite["casesModule"]["sha256"]
             or not _same_json(metadata.get("adapterSha256"), suite["adapters"])
             or not _same_json(metadata.get("reference"), authority["reference"])
@@ -479,8 +493,15 @@ def _admit_suite_report(args, authority, report, frozen):
     if (selected_requirement is None or any(point["matchedCaseIds"] != (list(frozen.CASE_HASHES) if all_match else [])
                                            for point in selected_requirement["acceptance"])):
         raise ValueError("The original full suite did not preserve the atomic two-point family gate")
+    if host_ids:
+        outcome = next((point for point in host_requirement["acceptance"] if point["id"] == "host.turn-barrier.outcomes"), None) if host_requirement else None
+        host_match = all(row["status"] == "matched" for row in host_rows.values())
+        expected_host_ids = [case["id"] for case in definitions if case["id"] in host_ids]
+        if outcome is None or outcome["matchedCaseIds"] != (expected_host_ids if host_match else []):
+            raise ValueError("The migrated Host outcome lost its exact four-member atomic gate")
     report["sourceReports"].append({"mode": "registered-suite", "report": sealed, "registeredCases": 1465,
-                                    "fixedAcceptancePoints": 128, "sourceStatus": metadata["status"]})
+                                    "fixedAcceptancePoints": 128, "sourceStatus": metadata["status"],
+                                    "retainedWholeHostCases": len(host_rows)})
     report["suiteAuthority"] = suite
     result = {}
     seals = [sealed, suite["scope"], suite["reference"], suite["casesModule"]]

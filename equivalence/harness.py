@@ -330,7 +330,10 @@ def _validate_scope(scope: Any, cases: Any) -> tuple[list[dict], dict[str, set[s
     from equivalence.host_turn_barrier import validate_registration as validate_host_turn_barrier_registration
 
     try:
-        validate_host_turn_barrier_registration(cases)
+        if any(case.get("operation") == "host-turn-barrier-v4-runtime" for case in cases):
+            _validate_host_turn_barrier_v4_registration(cases)
+        else:
+            validate_host_turn_barrier_registration(cases)
     except ValueError as error:
         raise HarnessError("cases-invalid", str(error)) from None
     from equivalence.host_turn_barrier_boundaries import validate_registration as validate_host_turn_barrier_boundaries_registration
@@ -371,6 +374,9 @@ def _oracle(node: Path, script: Path, checkout: Path, cases: list[dict], timeout
             release_runtime: dict | None = None) -> dict:
     if not script.is_file():
         raise HarnessError("oracle-missing", "The independent TypeScript oracle runner is missing.")
+    host_v4_case = len(cases) == 1 and cases[0]["operation"] == "host-turn-barrier-v4-runtime"
+    if any(case.get("operation") == "host-turn-barrier-v4-runtime" for case in cases) and not host_v4_case:
+        raise HarnessError("host-turn-barrier-v4-capability-invalid", "Host V4 requires one exact isolated dispatch.")
     boundary_case = len(cases) == 1 and cases[0]["operation"] == "host-turn-barrier-boundaries-runtime"
     identity_boundary_case = len(cases) == 1 and cases[0]["operation"] == "index-identity-boundaries-runtime"
     if any(case.get("operation") == "index-identity-boundaries-runtime" for case in cases) and not identity_boundary_case:
@@ -452,6 +458,45 @@ def _oracle(node: Path, script: Path, checkout: Path, cases: list[dict], timeout
                     "evidenceDirectory": native["evidenceDirectory"]}
         except Exception as error:
             failure = HarnessError("host-update-evidence-invalid", "Whole host update execution/authority failed; no retry was made.")
+            failure.rejected_evidence = {"caseIds": [cases[0]["id"]], "coverageCredit": False,
+                                         "retainedDirectory": str(attempt), "reason": str(error)}
+            raise failure from error
+    if len(cases) == 1 and cases[0]["operation"] == "host-turn-barrier-v4-runtime":
+        from equivalence.host_turn_barrier_v4 import validate_case
+        from equivalence.host_turn_barrier_v4_native import run_native_case
+        from equivalence.host_turn_barrier_native import NATIVE_KIND
+
+        try:
+            validate_case(cases[0], registered=True)
+        except ValueError as error:
+            raise HarnessError("cases-invalid", str(error)) from None
+        if release_runtime is None:
+            raise HarnessError("release-runtime-unavailable", "Host V4 requires its authenticated release runtime.")
+        retained = ROOT / ".equivalence-results" / "host-turn-barrier-v4"
+        retained.mkdir(parents=True, exist_ok=True)
+        attempt = Path(tempfile.mkdtemp(prefix="attempt-", dir=retained)) / "case"
+        try:
+            native = run_native_case(cases[0], node, release_runtime, attempt,
+                                     reference_root=checkout, timeout=timeout, registered=True)
+            if native.get("kind") != NATIVE_KIND:
+                raise ValueError("The Host V4 runner returned another original transport kind")
+            evidence = attempt / "evidence/native-raw.json"
+            info = evidence.lstat()
+            if not stat.S_ISREG(info.st_mode) or info.st_nlink != 1 or info.st_size > 32 * 1024 * 1024:
+                raise ValueError("Invalid original Host V4 diagnostic file")
+            raw = evidence.read_bytes()
+            snapshots = _json(raw.decode("utf-8"))
+            if not _same_json(snapshots, native["runtimeDiagnostics"]) or not isinstance(snapshots, list) or len(snapshots) != 1:
+                raise ValueError("Original Host V4 diagnostics differ from their actual retained file")
+            return {"kind": "official-release-runtime-comparison", "sources": [],
+                    "results": native["results"], "releaseSources": native["releaseSources"],
+                    "releaseTrace": native["releaseTrace"],
+                    "runtimeDiagnostics": [{"id": cases[0]["id"], "sha256": hashlib.sha256(raw).hexdigest(),
+                                            "rawSnapshots": snapshots, "validationStatus": "verified",
+                                            "evidenceDirectory": str(attempt)}],
+                    "evidenceDirectory": native["evidenceDirectory"]}
+        except Exception as error:
+            failure = HarnessError("host-turn-barrier-v4-evidence-invalid", "Original Host V4 execution/authority failed; no retry was made.")
             failure.rejected_evidence = {"caseIds": [cases[0]["id"]], "coverageCredit": False,
                                          "retainedDirectory": str(attempt), "reason": str(error)}
             raise failure from error
@@ -910,9 +955,31 @@ def _host_update_isolation_family_complete(rows: list[dict]) -> bool:
     return True
 
 
+def _validate_host_turn_barrier_v4_registration(cases: list[dict]) -> None:
+    from equivalence.host_turn_barrier_v4 import OPERATION, POINTS, build_cases, registered_case
+    from equivalence.host_turn_barrier_boundaries import OPERATION as boundary_operation
+
+    family = [case for case in cases if case.get("operation") == OPERATION
+              or case.get("requirement") == "host.turn-barrier" and case.get("operation") != boundary_operation
+              or set(case.get("covers", ())) & set(POINTS)]
+    if not family:
+        return
+    expected = [registered_case(case) for case in build_cases()]
+    if len(family) != 4 or {case.get("id") for case in family} != {case["id"] for case in expected}:
+        raise ValueError("Host V4 outcomes require all four exact registered wrappers atomically")
+    approved = {case["id"]: case for case in expected}
+    if any(not _same_json(case, approved[case["id"]]) for case in family):
+        raise ValueError("Host V4 registration changed its whole frozen wrapper or original point membership")
+
+
 def _host_turn_barrier_family_complete(rows: list[dict]) -> bool:
     """The natural follow-up outcome is not credited without every exact, validated match."""
-    from equivalence.host_turn_barrier import CASE_HASHES, OPERATION, POINTS, REQUIREMENT, validate_registration
+    if any(row.get("operation") == "host-turn-barrier-v4-runtime" for row in rows):
+        from equivalence.host_turn_barrier_v4 import CASE_HASHES, OPERATION, POINTS
+        REQUIREMENT = "host.turn-barrier"
+        validate_registration = _validate_host_turn_barrier_v4_registration
+    else:
+        from equivalence.host_turn_barrier import CASE_HASHES, OPERATION, POINTS, REQUIREMENT, validate_registration
     from equivalence.host_turn_barrier_boundaries import OPERATION as boundary_operation
 
     family = [row for row in rows if row.get("operation") == OPERATION
@@ -1146,6 +1213,53 @@ def _seal_forget_index_fence_references(report: dict, expected_references: dict)
             raise HarnessError("runtime-evidence-changed", "Referenced forget/index-fence raw custody changed before the final seal.") from error
 
 
+def _seal_host_v4_references(report: dict, expected: dict) -> None:
+    """Keep each migrated Host's whole inline view bound to its retained original file."""
+    root = ROOT / ".equivalence-results/host-turn-barrier-v4"
+    for row in report["cases"]:
+        if row.get("operation") != "host-turn-barrier-v4-runtime":
+            continue
+        try:
+            entries = [item for item in report["runtimeDiagnostics"] if item.get("id") == row["id"]]
+            sides = [item.get("side") for item in entries]
+            if len(set(sides)) != len(sides) or any(side not in {"native", "python"} for side in sides):
+                raise ValueError("Host V4 duplicated or changed an original capture side")
+            if {(row["id"], side) for side in sides} != {key for key in expected if key[0] == row["id"]}:
+                raise ValueError("Host V4 omitted a selected retained original file")
+            for item in entries:
+                retained = expected[row["id"], item["side"]]
+                if {key: item[key] for key in ("evidenceDirectory", "sha256")} != retained:
+                    raise ValueError("Host V4 changed its authenticated original locator")
+                directory = Path(item["evidenceDirectory"])
+                filename = "evidence/native-raw.json" if item["side"] == "native" else "python-raw.json"
+                path = directory / filename
+                if (not directory.is_absolute() or ".." in directory.parts or not directory.is_relative_to(root)
+                        or directory.resolve(strict=True) != directory or path.resolve(strict=True) != path
+                        or root.resolve(strict=True) != root):
+                    raise ValueError("Host V4 escaped its owned physical capture root")
+                before = path.lstat()
+                maximum = (32 if item["side"] == "native" else 16) * 1024 * 1024
+                if not stat.S_ISREG(before.st_mode) or before.st_nlink != 1 or before.st_size > maximum:
+                    raise ValueError("Host V4 original file changed ownership or exceeded its unchanged raw bound")
+                with path.open("rb") as stream:
+                    if _forget_index_fence_file_identity(os.fstat(stream.fileno())) != _forget_index_fence_file_identity(before):
+                        raise ValueError("Host V4 original file changed before open")
+                    data = stream.read(before.st_size + 1)
+                    after = os.fstat(stream.fileno())
+                if (len(data) != before.st_size
+                        or _forget_index_fence_file_identity(after) != _forget_index_fence_file_identity(before)
+                        or _forget_index_fence_file_identity(path.lstat()) != _forget_index_fence_file_identity(before)
+                        or hashlib.sha256(data).hexdigest() != item["sha256"]
+                        or not _same_json(_json(data.decode("utf-8")), item["rawSnapshots"])):
+                    raise ValueError("Host V4 whole original file or inline capture changed after custody validation")
+            if row.get("runtimeEvidenceValidated") is True and (
+                    set(sides) != {"native", "python"} or any(item["validationStatus"] != "verified" for item in entries)):
+                raise ValueError("Host V4 paired credit lacks both affirmatively verified original files")
+        except (KeyError, TypeError, OSError, ValueError, RuntimeError) as error:
+            row.update(status="blocked", runtimeEvidenceValidated=False, code="host-turn-barrier-v4-evidence-changed")
+            raise HarnessError("runtime-evidence-changed", "Retained Host V4 original custody changed before the final seal.") from error
+
+
 def _validate_forget_index_fence_pair(case: dict, original: dict, snapshots: list,
                                     native_result: dict, sdk_result: dict, *, node: Path,
                                     checkout: Path, sdk_directory: Path) -> None:
@@ -1258,6 +1372,7 @@ def run_suite(*, checkout: Path, node: Path, smoke: bool = False,
     }
     resources = ExitStack()
     forget_reference_seals = {}
+    host_v4_reference_seals = {}
     try:
         target, scope = _load(reference_path), _load(scope_path)
         if not isinstance(target, dict):
@@ -1267,6 +1382,10 @@ def run_suite(*, checkout: Path, node: Path, smoke: bool = False,
             cases = build_cases() if cases is None else cases
             python_runner = run_python if python_runner is None else python_runner
         requirements, _ = _validate_scope(scope, cases)
+        if not smoke and len(cases) == 1465:
+            from equivalence.catalog_migration import definition_authority
+
+            report["definitionMigration"] = definition_authority(cases, fif_version="v6")
         runtime_operations = {
             "index-lifecycle-runtime", "flush-trigger-runtime", "flush-execution-runtime",
             "exact-path-runtime",
@@ -1288,6 +1407,7 @@ def run_suite(*, checkout: Path, node: Path, smoke: bool = False,
             "host-restart-session-runtime",
             "host-update-isolation-runtime",
             "host-turn-barrier-runtime",
+            "host-turn-barrier-v4-runtime",
             "host-turn-barrier-boundaries-runtime",
             "index-identity-boundaries-runtime",
             "query-sync-outcomes-runtime",
@@ -1630,7 +1750,7 @@ def run_suite(*, checkout: Path, node: Path, smoke: bool = False,
                 report["hostUpdateIsolationBindings"] = prepare_host_update_isolation_bindings(
                     checkout, Path(runtime_config["runtimeRoot"]))
                 report["hostUpdateIsolationNode"] = prepare_model_node_authority(node)
-            if any(case["operation"] == "host-turn-barrier-runtime" for case in runtime_cases):
+            if any(case["operation"] in {"host-turn-barrier-runtime", "host-turn-barrier-v4-runtime"} for case in runtime_cases):
                 from equivalence.host_turn_barrier_bindings import prepare_host_turn_barrier_bindings
                 from equivalence.model_runtime_authority import prepare_model_node_authority
 
@@ -1679,7 +1799,7 @@ def run_suite(*, checkout: Path, node: Path, smoke: bool = False,
                 try:
                     native = _oracle(node, ROOT / "equivalence/release-oracle.mjs", checkout, [case],
                                      max(timeout_seconds, 180 if case["operation"] in {"host-turn-barrier-boundaries-runtime", "query-sync-boundaries-runtime", "forget-index-fence-v6-runtime"} else
-                                         120 if case["operation"] in {"host-turn-barrier-runtime", "index-identity-boundaries-runtime", "query-sync-outcomes-runtime"} else 60),
+                                         120 if case["operation"] in {"host-turn-barrier-runtime", "host-turn-barrier-v4-runtime", "index-identity-boundaries-runtime", "query-sync-outcomes-runtime"} else 60),
                                      release_runtime=runtime_config)
                 except HarnessError:
                     report["failedReferenceCaseId"] = case["id"]
@@ -1694,6 +1814,10 @@ def run_suite(*, checkout: Path, node: Path, smoke: bool = False,
                     )
                 report["runtimeDiagnostics"].extend(
                     {"side": "native", **diagnostic} for diagnostic in native["runtimeDiagnostics"])
+                if case["operation"] == "host-turn-barrier-v4-runtime":
+                    for diagnostic in native["runtimeDiagnostics"]:
+                        host_v4_reference_seals[case["id"], "native"] = {
+                            key: diagnostic[key] for key in ("evidenceDirectory", "sha256")}
                 if case["operation"] == "forget-index-fence-v6-runtime":
                     for diagnostic in native["runtimeDiagnostics"]:
                         forget_reference_seals[case["id"], "native"] = dict(diagnostic["rawSnapshotReference"])
@@ -1908,10 +2032,11 @@ def run_suite(*, checkout: Path, node: Path, smoke: bool = False,
                 try:
                     python_case = deepcopy(case)
                     if case in python_diagnostic_cases:
-                        if case["operation"] in {"index-identity-boundaries-runtime", "query-sync-outcomes-runtime", "query-sync-boundaries-runtime", "forget-index-fence-v6-runtime"}:
+                        if case["operation"] in {"index-identity-boundaries-runtime", "query-sync-outcomes-runtime", "query-sync-boundaries-runtime", "forget-index-fence-v6-runtime", "host-turn-barrier-v4-runtime"}:
                             # Keep the original child paths and bytes for the post-run
                             # semantic replay, including failed SDK captures.
-                            family = ("forget-index-fence-v6" if case["operation"] == "forget-index-fence-v6-runtime" else
+                            family = ("host-turn-barrier-v4" if case["operation"] == "host-turn-barrier-v4-runtime" else
+                                      "forget-index-fence-v6" if case["operation"] == "forget-index-fence-v6-runtime" else
                                       "query-sync-boundaries" if case["operation"] == "query-sync-boundaries-runtime" else
                                       "query-sync-outcomes" if case["operation"] == "query-sync-outcomes-runtime"
                                       else "index-identity-boundaries")
@@ -1927,6 +2052,9 @@ def run_suite(*, checkout: Path, node: Path, smoke: bool = False,
                             if case["operation"] == "turn-trust-runtime" else
                             "authenticated-all-source-redaction-policy" if case in policy_source_cases else "authenticated-official-release"
                         )
+                    if case["operation"] == "host-turn-barrier-v4-runtime":
+                        python_case["_hostTurnBarrierV4Authorities"] = {
+                            "node": node, "runtime": runtime_config, "reference_root": checkout}
                     python = python_runner(python_case)
                     if case in python_diagnostic_cases:
                         evidence = directory / "python-raw.json"
@@ -1985,6 +2113,27 @@ def run_suite(*, checkout: Path, node: Path, smoke: bool = False,
                                 raise ValueError("Host update requires one authenticated original and SDK capture")
                             validate_pair(case, original["rawSnapshots"][0], snapshots[0], native["result"], python)
                             update_diagnostic["validationStatus"] = "verified"
+                            row["runtimeEvidenceValidated"] = True
+                        if case["operation"] == "host-turn-barrier-v4-runtime":
+                            from equivalence.host_turn_barrier_v4_evidence import validate_pair
+
+                            diagnostic = {"id": case["id"], "side": "python", "sha256": hashlib.sha256(raw).hexdigest(),
+                                          "rawSnapshots": snapshots, "validationStatus": "unverified",
+                                          "evidenceDirectory": str(directory)}
+                            report["runtimeDiagnostics"].append(diagnostic)
+                            host_v4_reference_seals[case["id"], "python"] = {
+                                key: diagnostic[key] for key in ("evidenceDirectory", "sha256")}
+                            original = next(item for item in report["runtimeDiagnostics"]
+                                            if item["side"] == "native" and item["id"] == case["id"])
+                            if (original.get("validationStatus") != "verified"
+                                    or len(original["rawSnapshots"]) != 1 or len(snapshots) != 1):
+                                raise ValueError("Host V4 needs one authenticated original capture per engine")
+                            if validate_pair(case, original["rawSnapshots"][0], snapshots[0], native["result"], python,
+                                    native_directory=Path(original["evidenceDirectory"]), sdk_directory=directory,
+                                    approved_node=node, approved_runtime=runtime_config, approved_reference=checkout,
+                                    approved_source_root=ROOT, registered=True) is not True:
+                                raise ValueError("Host V4 custody did not affirmatively validate")
+                            diagnostic["validationStatus"] = "verified"
                             row["runtimeEvidenceValidated"] = True
                         if case["operation"] == "host-turn-barrier-runtime":
                             from equivalence.host_turn_barrier_evidence import validate_pair
@@ -2075,7 +2224,7 @@ def run_suite(*, checkout: Path, node: Path, smoke: bool = False,
                             row["runtimeEvidenceValidated"] = True
                         diagnostic_key = "sourceDiagnostics" if case in source_diagnostic_cases else "runtimeDiagnostics"
                         if case["operation"] not in {"promotion-apply-family-runtime", "host-restart-session-runtime",
-                                                     "host-update-isolation-runtime", "host-turn-barrier-runtime",
+                                                     "host-update-isolation-runtime", "host-turn-barrier-runtime", "host-turn-barrier-v4-runtime",
                                                      "host-turn-barrier-boundaries-runtime", "index-identity-boundaries-runtime", "query-sync-outcomes-runtime", "query-sync-boundaries-runtime", "forget-index-fence-v6-runtime"}:
                             report[diagnostic_key].append({
                                 "id": case["id"], "side": "python", "sha256": hashlib.sha256(raw).hexdigest(),
@@ -2084,7 +2233,7 @@ def run_suite(*, checkout: Path, node: Path, smoke: bool = False,
                     # Reject non-JSON outputs and non-finite values explicitly.
                     python = _json(json.dumps(python, ensure_ascii=False, allow_nan=False))
                     row["status"] = "matched" if _same_json(python, native["result"]) else "mismatched"
-                    if case["operation"] == "forget-index-fence-v6-runtime":
+                    if case["operation"] in {"forget-index-fence-v6-runtime", "host-turn-barrier-v4-runtime"}:
                         row.update(python=python, openclaw=native["result"])
                     if row["status"] == "mismatched":
                         row.update(operation=case["operation"], input=case["input"],
@@ -2092,7 +2241,7 @@ def run_suite(*, checkout: Path, node: Path, smoke: bool = False,
                 except Exception as error:
                     row.update(status="blocked", code="python-case-failed")
                     if case["operation"] in {"promotion-apply-family-runtime", "host-restart-session-runtime",
-                                             "host-update-isolation-runtime", "host-turn-barrier-runtime",
+                                             "host-update-isolation-runtime", "host-turn-barrier-runtime", "host-turn-barrier-v4-runtime",
                                              "host-turn-barrier-boundaries-runtime", "index-identity-boundaries-runtime", "query-sync-outcomes-runtime", "query-sync-boundaries-runtime", "forget-index-fence-v6-runtime"}:
                         row["evidenceError"] = {"name": type(error).__name__, "message": str(error)}
                     if case["operation"] == "host-update-isolation-runtime" and python_diagnostics is not None:
@@ -2108,6 +2257,7 @@ def run_suite(*, checkout: Path, node: Path, smoke: bool = False,
                         snapshots = raw = None
             report["cases"].append(row)
         _seal_forget_index_fence_references(report, forget_reference_seals)
+        _seal_host_v4_references(report, host_v4_reference_seals)
         if "forgetIndexFenceBindings" in report:
             _seal_forget_index_fence_authorities(
                 report, checkout=checkout, node=node, runtime_root=Path(runtime_config["runtimeRoot"]))

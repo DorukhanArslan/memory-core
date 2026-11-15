@@ -188,6 +188,7 @@ jobs:
             .equivalence-results/query-sync-boundaries/**
             .equivalence-results/forget-index-fence-v6-acceptance/**
             .equivalence-results/forget-index-fence-v6/**
+            .equivalence-results/host-turn-barrier-v4/**
           # The reports live in a dot-directory, which this action skips unless told otherwise.
           include-hidden-files: true
           if-no-files-found: ignore

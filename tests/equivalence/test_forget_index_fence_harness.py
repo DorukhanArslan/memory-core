@@ -40,10 +40,15 @@ def _rows():
     return [dict(case, status="matched", runtimeEvidenceValidated=True) for case in build_cases()]
 
 
-def test_append_preserves_every_prior_definition_annotation_and_original_scope():
+def test_explicit_migration_preserves_all_nonwhitelisted_definitions_annotations_and_scope():
     registered, family = catalog(), build_cases()
     assert len(registered) == 1465 and registered[1452:] == family
-    previous = registered[:1452]
+    from equivalence.catalog_migration import definition_authority
+    from equivalence.host_turn_barrier_v4 import OPERATION as host_operation, business_case
+    migration = definition_authority(registered, fif_version="v6")
+    assert migration["originalPrefixUnchanged"] is False
+    assert len(migration["hostReplacements"]) == 4 and len(migration["fifReplacements"]) == 13
+    previous = [business_case(case) if case["operation"] == host_operation else case for case in registered[:1452]]
     wire = json.dumps(previous, sort_keys=True, ensure_ascii=True,
                       separators=(",", ":"), allow_nan=False).encode()
     assert hashlib.sha256(wire).hexdigest() == "0fa31b6393c65303f4fa2e1663671e4ef60eb15edc563f05aba218c8c408349c"
@@ -153,7 +158,7 @@ def test_changed_family_or_partial_coverage_cannot_borrow_acceptance(attack):
     assert failure.value.code == "cases-invalid"
 
 
-@pytest.mark.parametrize("previous", [v1_cases, v2_cases, v3_cases, v4_cases], ids=["v1", "v2", "v3", "v4"])
+@pytest.mark.parametrize("previous", [v1_cases, v2_cases, v3_cases, v4_cases, v5_cases], ids=["v1", "v2", "v3", "v4", "v5"])
 def test_previous_diagnostics_cannot_supply_v4_registration_or_credit(previous):
     original = previous()
     with pytest.raises(ValueError, match="thirteen"):
@@ -232,7 +237,7 @@ def test_native_rejects_changed_v5_controls_before_transport_entry(native_transp
     assert not (tmp_path / ".equivalence-results").exists()
 
 
-@pytest.mark.parametrize("previous", [v1_cases, v2_cases, v3_cases, v4_cases], ids=["v1", "v2", "v3", "v4"])
+@pytest.mark.parametrize("previous", [v1_cases, v2_cases, v3_cases, v4_cases, v5_cases], ids=["v1", "v2", "v3", "v4", "v5"])
 def test_previous_native_dispatch_cannot_fall_back_to_an_unregistered_capability(native_transport, tmp_path, previous):
     with pytest.raises(HarnessError) as failure:
         _native(tmp_path, previous()[:1], runtime={"label": "unit only"})

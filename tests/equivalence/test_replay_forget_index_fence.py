@@ -482,11 +482,15 @@ def suite_packet(packet, monkeypatch):
     for root in packet["roots"]:
         (root / "report.json").unlink()  # Suite mode must not need a collector surrogate.
     rows, diagnostics = [], []
+    host_ids = {row["currentId"] for row in cli._suite_authority(packet["frozen"])[2]["definitionMigration"]["hostReplacements"]}
     for definition in definitions:
         row = {key: deepcopy(definition[key]) for key in ("id", "operation", "input", "requirement", "covers")}
         row.update({key: deepcopy(definition[key]) for key in
                     ("normalizationPolicy", "driverScope", "declaredDeviation") if key in definition})
         row["status"] = "matched"
+        if definition["id"] in host_ids:
+            row.update(runtimeEvidenceValidated=True, python={"UNIT_HOST_WHOLE": [False, 0, None]},
+                       openclaw={"UNIT_HOST_WHOLE": [False, 0, None]})
         if definition["id"] in captures:
             native_dir, sdk_dir = captures[definition["id"]]
             row.update(runtimeEvidenceValidated=True,
@@ -509,7 +513,7 @@ def suite_packet(packet, monkeypatch):
             identifiers = [case["id"] for case in definitions if point["id"] in case["covers"]]
             if not identifiers:
                 uncovered.append(point["id"])
-            acceptance.append({"id": point["id"], "caseIds": identifiers, "matchedCaseIds": []})
+            acceptance.append({"id": point["id"], "caseIds": identifiers, "matchedCaseIds": identifiers if point["id"] == "host.turn-barrier.outcomes" else []})
         requirements.append({"id": requirement["id"], "required": requirement["required"], "acceptance": acceptance,
                              "registeredCases": sum(case["requirement"] == requirement["id"] for case in definitions)})
     report = {"schemaVersion": 1, "kind": "pinned-differential-acceptance", "mode": "full", "status": "mismatched",
@@ -524,6 +528,7 @@ def suite_packet(packet, monkeypatch):
               "fullScopePassed": False, "startedAt": "2026-11-14T00:00:00+00:00", "finishedAt": "2026-11-14T00:01:00+00:00",
               "durationSeconds": 60.0, "referenceExecution": {"trackedTypeScriptCaseIds": [],
                                                             "compiledReleaseCaseIds": [case["id"] for case in definitions]},
+              "definitionMigration": cli._suite_authority(packet["frozen"])[2]["definitionMigration"],
               "cases": rows, "runtimeDiagnostics": diagnostics, "requirements": requirements,
               "uncoveredAcceptance": uncovered, "errors": []}
     path = packet["tmp"] / "full-1465.json"
@@ -822,3 +827,53 @@ def test_suite_ceiling_does_not_expand_collector_or_engine_packet_limits(packet,
                 "rawSnapshotReference": {"directory": str(directory), "file": filename,
                                          "bytes": limit + 1, "sha256": "0" * 64},
             }, kind, root)
+
+
+@pytest.mark.parametrize("packet", ["v6"], indirect=True)
+@pytest.mark.parametrize("attack", ["missing-public", "unaffirmed-custody", "integer-custody", "whole-public-delta", "host-point", "migration-claim"])
+def test_suite_migration_requires_all_four_whole_host_rows_and_exact_atomic_membership(suite_packet, attack):
+    packet = suite_packet
+    migration = packet["suite"]["definitionMigration"]
+    selected_id = migration["hostReplacements"][0]["currentId"]
+    row = next(item for item in packet["suite"]["cases"] if item["id"] == selected_id)
+    if attack == "missing-public":
+        del row["python"]
+    elif attack == "unaffirmed-custody":
+        row["runtimeEvidenceValidated"] = False
+    elif attack == "integer-custody":
+        row["runtimeEvidenceValidated"] = 1
+    elif attack == "whole-public-delta":
+        row["python"]["UNIT_HOST_WHOLE"].append("undropped actual delta")
+    elif attack == "host-point":
+        requirement = next(item for item in packet["suite"]["requirements"] if item["id"] == "host.turn-barrier")
+        next(item for item in requirement["acceptance"] if item["id"] == "host.turn-barrier.outcomes")["matchedCaseIds"] = []
+    else:
+        migration["originalPrefixUnchanged"] = True
+    packet["save_suite"]()
+    output = packet["tmp"] / "rejected-host-migration.json"
+    assert packet["cli"].main(packet["suite_args"](output)) == 2
+    result = json.loads(output.read_text())
+    assert result["errors"] and result["validCompleteBaseline"] is False
+    assert result["acceptancePointsAwarded"] == 0 and packet["calls"] == []
+
+
+@pytest.mark.parametrize("packet", ["v6"], indirect=True)
+def test_truthful_host_mismatch_remains_an_admissible_complete_baseline_for_independent_fif_replay(suite_packet):
+    packet = suite_packet
+    selected_id = packet["suite"]["definitionMigration"]["hostReplacements"][0]["currentId"]
+    row = next(item for item in packet["suite"]["cases"] if item["id"] == selected_id)
+    row["python"]["UNIT_HOST_WHOLE"].append("actual undropped Host delta")
+    row["status"] = "mismatched"
+    packet["suite"]["summary"].update(matched=1451, mismatched=14)
+    requirement = next(item for item in packet["suite"]["requirements"] if item["id"] == "host.turn-barrier")
+    outcome = next(item for item in requirement["acceptance"] if item["id"] == "host.turn-barrier.outcomes")
+    outcome["matchedCaseIds"] = []
+    packet["save_suite"]()
+    output = packet["tmp"] / "truthful-independent-host-mismatch.json"
+    assert packet["cli"].main(packet["suite_args"](output)) == 1
+    result = json.loads(output.read_text())
+    assert result["validCompleteBaseline"] is True and result["errors"] == []
+    assert result["summary"] == {"match": 0, "mismatch": 13, "blocked": 0}
+    assert len(packet["calls"]) == 13
+    assert result["sourceReports"][0]["retainedWholeHostCases"] == 4
+    assert result["acceptancePointsAwarded"] == 0 and result["fullScopePassed"] is False

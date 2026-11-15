@@ -2,6 +2,7 @@
 from __future__ import annotations
 
 import argparse
+import hashlib
 import json
 from pathlib import Path
 import sys
@@ -44,6 +45,8 @@ def main() -> int:
         args.report.write_text(json.dumps(report, ensure_ascii=True, separators=(",", ":"),
                                           allow_nan=False) + "\n",
                                encoding="utf-8")
+        with args.report.open("rb") as retained:
+            report_sha256 = hashlib.file_digest(retained, "sha256").hexdigest()
     except (OSError, ValueError):
         print("Equivalence report could not be retained.", file=sys.stderr)
         return 2
@@ -53,7 +56,8 @@ def main() -> int:
                                             if row.get("status") == "mismatched"],
                       "blockedCaseIds": [row["id"] for row in report.get("cases", [])
                                          if row.get("status") == "blocked"],
-                      "fullScopePassed": report["fullScopePassed"], "report": str(args.report)}))
+                      "fullScopePassed": report["fullScopePassed"], "report": str(args.report),
+                      "reportSha256": report_sha256}))
     return code
 
 

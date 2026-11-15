@@ -1,4 +1,5 @@
 """The acceptance CLI must retain complete original Unicode observations."""
+import hashlib
 import json
 from pathlib import Path
 import sys
@@ -36,6 +37,7 @@ def test_report_retains_literal_surrogates_and_full_mismatch_without_changing_st
     assert summary["fullScopePassed"] is False
     assert summary["mismatchedCaseIds"] == [fixture["id"]]
     assert summary["blockedCaseIds"] == []
+    assert summary["reportSha256"] == hashlib.sha256(destination.read_bytes()).hexdigest()
     assert "İstanbul" not in output.out and "actual retained mismatch" not in output.out
 
 
@@ -71,7 +73,11 @@ def test_compact_report_preserves_nested_values_and_suite_return_code(
     assert len(payload) < len(json.dumps(report, ensure_ascii=True, indent=2).encode("utf-8"))
     output = capsys.readouterr()
     assert not output.err
-    assert json.loads(output.out)["status"] == status
+    summary = json.loads(output.out)
+    assert summary["status"] == status
+    assert summary["reportSha256"] == hashlib.sha256(payload).hexdigest()
+    assert set(summary) == {"mode", "status", "summary", "errors", "mismatchedCaseIds",
+                            "blockedCaseIds", "fullScopePassed", "report", "reportSha256"}
 
 
 @pytest.mark.parametrize("value", [float("nan"), float("inf"), float("-inf")])
@@ -107,6 +113,35 @@ def test_report_write_failure_returns_retention_error_without_summary(tmp_path, 
     monkeypatch.setattr(Path, "write_text", reject_write)
     assert check_equivalence.main() == 2
     assert not destination.exists()
+    output = capsys.readouterr()
+    assert output.out == ""
+    assert output.err == "Equivalence report could not be retained.\n"
+
+
+def test_report_hash_failure_preserves_actual_bytes_and_returns_retention_error_without_summary(
+    tmp_path, monkeypatch, capsys,
+):
+    report = {"mode": "full", "status": "passed", "summary": {}, "errors": [],
+              "fullScopePassed": True, "cases": [], "actual": [True, None, "\ud800\nİstanbul 😀"]}
+    monkeypatch.setattr(check_equivalence, "run_suite", lambda **kwargs: (report, 0))
+    destination = tmp_path / "report.json"
+    monkeypatch.setattr(sys, "argv", [
+        "check_equivalence.py", "--reference", str(tmp_path), "--node", str(tmp_path / "node"),
+        "--report", str(destination),
+    ])
+    expected = json.dumps(report, ensure_ascii=True, allow_nan=False, separators=(",", ":")).encode() + b"\n"
+    observed = []
+
+    def reject_hash(stream, algorithm):
+        assert Path(stream.name) == destination and stream.mode == "rb"
+        assert algorithm == "sha256" and destination.read_bytes() == expected
+        observed.append(stream)
+        raise OSError("actual retained report could not be hashed")
+
+    monkeypatch.setattr(check_equivalence.hashlib, "file_digest", reject_hash)
+    assert check_equivalence.main() == 2
+    assert len(observed) == 1 and observed[0].closed
+    assert destination.read_bytes() == expected
     output = capsys.readouterr()
     assert output.out == ""
     assert output.err == "Equivalence report could not be retained.\n"

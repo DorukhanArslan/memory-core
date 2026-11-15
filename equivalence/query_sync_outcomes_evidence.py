@@ -6,6 +6,7 @@ Full public details are compared; engine-specific state remains evidence.
 """
 from __future__ import annotations
 
+import ast
 import hashlib
 import json
 import math
@@ -22,6 +23,13 @@ STAGES = ("initial", "afterMutation", "afterFirstClose", "afterFinalClose")
 PRIVATE_MISSING = {"$sdkPrivate": "HYBRID_METADATA_MISSING"}
 NATIVE_METHODS = {"status", "search", "sync", "syncAdmitted", "syncPublishedIndexInBackground", "runSync", "syncMemoryFiles", "markMemoryWatchDirty", "prepareKeywordSearch", "close", "awaitManagerIdle", "takeReindexRetryStateForMaintenance", "adoptReindexRetryState"}
 PRIVATE_FIELDS = {"importance", "triggers", "project_key", "provenance", "source_mtime", "_vector_id"}
+# Complete reviewed producer bodies, including all queued-job mutations. The
+# old 65e9a585/baseline producer has no watcher generation; the 13b54e07 producer
+# captures the admitted owner's ready generation. Unknown bodies fail closed.
+SDK_JOB_PRODUCERS = {
+    "4096f69cde73ebc0f369d267dcbf73341c42006848185f083f65683c71e7876a": False,
+    "5001e55c2c94a564bf561a073bf63ed7c64adde4be61da35697d135c1d974dce": True,
+}
 
 
 def _one(rows, predicate, message):
@@ -583,6 +591,70 @@ def _sdk_owners(case, raw, events, snapshots):
     return owners["first"]["ownerId"], owners["reopened"]["ownerId"]
 
 
+def _sdk_publication_job_schema(raw):
+    """Choose a closed schema from the authenticated actual producer source."""
+    binding = _one(raw["implementationBindings"], lambda row: row["module"] == "memory_core.host.managed_index",
+                   "SDK publication producer has no unique actual implementation binding")
+    recorded, root = Path(binding["path"]), Path(raw["implementationRoot"])
+    relative = Path("memory_core/host/managed_index.py")
+    require(root.is_absolute() and ".." not in root.parts and recorded == root / relative,
+            "query-sync SDK publication producer borrowed another source module")
+    selected = ROOT.resolve(strict=True) / relative
+    require(selected.is_file() and selected.resolve(strict=True) == selected,
+            "query-sync SDK publication producer source is missing or aliased")
+    payload = selected.read_bytes()
+    require(hashlib.sha256(payload).hexdigest() == binding["sha256"],
+            "query-sync SDK publication producer differs from independently selected source bytes")
+    try:
+        tree = ast.parse(payload.decode("utf8"))
+    except (UnicodeError, SyntaxError) as error:
+        raise ValueError("query-sync SDK publication producer source is invalid") from error
+    owner = _one(tree.body, lambda node: isinstance(node, ast.ClassDef) and node.name == "ManagedSQLiteMemoryStore",
+                 "SDK publication producer has no unique actual managed class")
+    producer = _one(owner.body, lambda node: isinstance(node, ast.FunctionDef) and node.name == "_submit_memory_publication",
+                    "SDK publication producer method was omitted or duplicated")
+    # Python 3.12 adds this empty structural field. It changes neither the
+    # reviewed function nor the stable 3.11/3.12 syntax fingerprint.
+    for node in ast.walk(producer):
+        if hasattr(node, "type_params"):
+            require(node.type_params == [], "query-sync SDK publication producer has unreviewed generic parameters")
+            del node.type_params
+    fingerprint = hashlib.sha256(ast.dump(producer, include_attributes=False).encode()).hexdigest()
+    require(fingerprint in SDK_JOB_PRODUCERS,
+            "query-sync SDK publication producer has an unreviewed queued-job schema")
+    modern = SDK_JOB_PRODUCERS[fingerprint]
+    lifecycle = _one(owner.body, lambda node: isinstance(node, ast.FunctionDef) and node.name == "lifecycle_snapshot",
+                     "SDK publication producer has no unique actual lifecycle snapshot")
+    ready = [value for node in ast.walk(lifecycle) if isinstance(node, ast.Dict)
+             for key, value in zip(node.keys, node.values, strict=True)
+             if isinstance(key, ast.Constant) and key.value == "watchReadyGeneration"]
+    if modern:
+        require(len(ready) == 1 and isinstance(ready[0], ast.Attribute)
+                and isinstance(ready[0].value, ast.Name) and ready[0].value.id == "self"
+                and ready[0].attr == "_memory_watch_ready_generation",
+                "query-sync SDK publication generation lacks its original lifecycle source binding")
+    else:
+        require(not ready, "query-sync legacy SDK publication schema borrowed a watcher lifecycle")
+    return modern
+
+
+def _sdk_publication_job(raw, call, submit, own):
+    expected = {"id": call["jobId"], "readRevision": submit["readRevision"], "state": "queued"}
+    if _sdk_publication_job_schema(raw):
+        generation = submit["before"].get("watchReadyGeneration")
+        require(type(generation) is int and generation >= 0
+                and type(call["jobAtEntry"].get("watchGeneration")) is int
+                and type(own.get("watchGeneration")) is int
+                and own["watchGeneration"] == generation,
+                "query-sync SDK publication job changed its actual admitted watcher generation")
+        expected["watchGeneration"] = generation
+    else:
+        require("watchReadyGeneration" not in submit["before"] and "watchGeneration" not in own,
+                "query-sync legacy SDK publication job added unproved watcher state")
+    require(_same(call["jobAtEntry"], expected) and _same(own["readRevision"], submit["readRevision"]),
+            "query-sync SDK actual publication job detached from its admitted pinned revision or generation")
+
+
 def _sdk_reads(case, raw, result, events, tools):
     require(len(raw["readAdmissions"]) == len(tools), "query-sync SDK omitted actual pinned reader admission")
     for label, (_, _, search) in tools.items():
@@ -671,9 +743,7 @@ def _sdk_reads(case, raw, result, events, tools):
                           and call["jobId"] not in {job["id"] for job in row["before"]["jobs"]}
                           and call["jobId"] in {job["id"] for job in row["lifecycleAfter"]["memoryPublication"]["jobs"]},
                           "SDK actual worker lost its unique original job admission")
-            require(call["jobAtEntry"] == {"id": call["jobId"], "readRevision": submit["readRevision"], "state": "queued"}
-                    and own["readRevision"] == submit["readRevision"],
-                    "query-sync SDK actual publication job detached from its admitted pinned revision")
+            _sdk_publication_job(raw, call, submit, own)
         else:
             require(call["method"] == "_submit_memory_publication",
                     "query-sync SDK added unreviewed manual publication method")

@@ -195,6 +195,29 @@ jobs:
                       'originalLogicalBytesCopied': used, 'copiedFiles': len(copied),
                       'skippedFiles': len(skipped)}
 
+                  # This single complete channel fits the transfer bound when retained alone.
+                  gate = json.loads(retained.read(unique_member(suffix + '/gates/keywordReply.hit.json')))
+                  assert gate['actor'] == 'foreground' and gate['threadId'] == 0
+                  event_name = 'evidence/' + str(gate['pid']) + '-0-events.jsonl'
+                  event_member = unique_member(suffix + '/' + event_name)
+                  assert event_member.file_size <= 30 * 1024 * 1024
+                  event_bytes = retained.read(event_member)
+                  actor = json.loads(retained.read(unique_member(suffix + '/evidence/foreground-1-raw.json')))
+                  channel = next(row for row in actor['passiveChannels']
+                                 if row['pid'] == gate['pid'] and row['threadId'] == 0)
+                  assert channel['publishedBytes'] == channel['persistedBytes']
+                  assert hashlib.sha256(event_bytes[:channel['persistedBytes']]).hexdigest() == channel['sha256']
+                  event_index = {'sourceArtifact': 14146819533, 'sourceArchiveSha256': archive_sha,
+                      'sourceReportSha256': report_sha, 'path': event_name, 'bytes': len(event_bytes),
+                      'sha256': hashlib.sha256(event_bytes).hexdigest(), 'committedPrefix': channel,
+                      'diagnosticOnlyNotCaptureRestoration': True}
+                  event_bundle = Path(os.environ['RUNNER_TEMP']) / 'foreground-watch-events.zip'
+                  with zipfile.ZipFile(event_bundle, 'w', compression=zipfile.ZIP_DEFLATED) as bundle:
+                      bundle.writestr(event_name, event_bytes)
+                      bundle.writestr('watch-events-index.json', json.dumps(event_index, ensure_ascii=True, indent=2))
+                  selected['watchEventsBundle'] = {'bytes': event_bundle.stat().st_size,
+                      'sha256': hashlib.sha256(event_bundle.read_bytes()).hexdigest(), 'source': event_index}
+
           output = json.dumps(selected, ensure_ascii=True, indent=2)
           (Path(os.environ['RUNNER_TEMP']) / 'selected-retained-failure.json').write_text(output + '\n')
           print('RETAINED_FAILURE_JSON_BEGIN')
@@ -206,5 +229,12 @@ jobs:
         with:
           name: failed-case-progress-43673106847
           path: ${{ runner.temp }}/failed-case-progress.zip
+          retention-days: 7
+          if-no-files-found: error
+      - name: Retain the complete foreground watch channel
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
+        with:
+          name: foreground-watch-events-43673106847
+          path: ${{ runner.temp }}/foreground-watch-events.zip
           retention-days: 7
           if-no-files-found: error

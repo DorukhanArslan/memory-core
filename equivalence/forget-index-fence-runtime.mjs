@@ -19,16 +19,16 @@ const sealed=value=>{const serializedJSON=JSON.stringify(value);return{serialize
 const privateValue=value=>{const type=value===undefined?'undefined':value===null?'null':typeof value;
  try{return{type,v8Hex:serialize(value).toString('hex')};}catch(error){return{type,serializationError:{name:error.name,message:error.message}};}};
 export function assertNativeLiteralVersion(input,caseId,operation){
- if(!['forget-index-fence-v3','forget-index-fence-v4','forget-index-fence-v5'].includes(input?.kind)||
+ if(!['forget-index-fence-v3','forget-index-fence-v4','forget-index-fence-v5','forget-index-fence-v6'].includes(input?.kind)||
   operation!==undefined&&operation!==input.kind+'-runtime'||
-  /^forget-index-fence-v[345]-/u.test(caseId??'')&&!caseId.startsWith(input.kind+'-'))throw Error('Owned original fixture required');
+  /^forget-index-fence-v[3456]-/u.test(caseId??'')&&!caseId.startsWith(input.kind+'-'))throw Error('Owned original fixture required');
  return input.kind;
 }
 export function captureResolvedManagerSettings(owner,inputKind,reference){
  const actual=owner.settings,serializedJSON=JSON.stringify(actual),descriptor=Object.getOwnPropertyDescriptor(owner,'settings');
- const required=['forget-index-fence-v4','forget-index-fence-v5'].includes(inputKind),admitted=!required||
-  actual?.sync?.watch===(inputKind==='forget-index-fence-v5')&&actual?.sync?.onSearch===true&&
-  actual?.sync?.onSessionStart===(inputKind==='forget-index-fence-v5');
+ const required=['forget-index-fence-v4','forget-index-fence-v5','forget-index-fence-v6'].includes(inputKind),admitted=!required||
+  actual?.sync?.watch===(['forget-index-fence-v5','forget-index-fence-v6'].includes(inputKind))&&actual?.sync?.onSearch===true&&
+  actual?.sync?.onSessionStart===(['forget-index-fence-v5','forget-index-fence-v6'].includes(inputKind));
  return{property:'settings',sourceModule:'dist/extensions/memory-core/manager-runtime.js',sourceSymbol:'MemoryIndexManager.settings',
   receiverRef:reference(owner),constructorRef:reference(owner.constructor),settingsRef:reference(actual),value:plain(actual),
   privateValue:privateValue(actual),serializedJSON,sha256:hash(serializedJSON),readAtNs:process.hrtime.bigint().toString(),
@@ -272,7 +272,7 @@ export async function runForgetIndexFenceRuntime(input,config){
       command.termination={...owned.record.exit,reapedAtNs:owned.record.reapedAtNs,pid:owned.record.pid};
       result.calls[`forget:${command.label}`]={operation:'forget',label:command.label,
        outcome:{status:'terminated',signal:owned.record.exit.signal}};
-      if(input.kind==='forget-index-fence-v5'){
+      if(['forget-index-fence-v5','forget-index-fence-v6'].includes(input.kind)){
        const gate=raw.gates.find(gate=>gate.actor===step.actor&&gate.boundary==='forget.marker-committed-before-purge'&&gate.killWhileHeld);
        const receipt=interruptedSourceCallReceipt(owned.record,command,gate),key=receipt.callKey;
        if(sourceVersions.has(key)||interruptedSources.has(key))throw Error('Duplicate interrupted original source call receipt');
@@ -615,7 +615,7 @@ export async function runForgetIndexFenceActor(request){
      subagent:{complete:async request=>{const completion={request:plain(request)};(entry.completions??=[]).push(completion);
       const facts={sourceOwner:'consolidateMemory.actual-subagent-complete-await',request:plain(request),
        originalStack:new Error('Original consolidation completion callback').stack};
-      if(input.kind==='forget-index-fence-v5')await controller().pauseAsync('promotion.model-planning-before-final-lock',facts);
+      if(['forget-index-fence-v5','forget-index-fence-v6'].includes(input.kind))await controller().pauseAsync('promotion.model-planning-before-final-lock',facts);
       else controller().pause('promotion.model-planning-before-final-lock',facts);
       const returned={text:declared.consolidation.completion.text};completion.returned=returned;return returned;
      }}};}
@@ -655,7 +655,7 @@ export async function runForgetIndexFenceActor(request){
     {status:'rejected',error:{message:error.message,...(error.code===undefined?{}:{code:error.code})}}};
    else entry.infrastructureError=err(error);
   }finally{entry.settledAtNs=process.hrtime.bigint().toString();if(sourceKind){sourceClock.endCall();
-    if(input.kind==='forget-index-fence-v5'&&!sourceClock.blocked())entry.sourceVersions=sourceClock.captureCompletedVersions(`${sourceKind}:${label}`);}
+    if(['forget-index-fence-v5','forget-index-fence-v6'].includes(input.kind)&&!sourceClock.blocked())entry.sourceVersions=sourceClock.captureCompletedVersions(`${sourceKind}:${label}`);}
    raw.sourceClock={protocol:input.clock.sourceWriteClock.protocol,receipts:sourceClock.receipts(),failures:sourceClock.failures(),blocked:sourceClock.blocked()};
    raw.controlFailures=controller().controlFailures;
    controller().flush();persist();}

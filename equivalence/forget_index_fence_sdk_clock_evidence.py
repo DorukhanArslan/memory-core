@@ -389,7 +389,7 @@ def validate_sdk_clock_v2(case, observation, process, events, returns, *, record
         if row["scope"] is not None:
             watch = row["scope"].get("kind") == "watch"
             if watch:
-                require(value["kind"] == "forget-index-fence-v5", "An SDK legacy read acquired an undeclared watcher scope")
+                require(value["kind"] in {"forget-index-fence-v5", "forget-index-fence-v6"}, "An SDK legacy read acquired an undeclared watcher scope")
                 public = None
             else:
                 key, _, public = scope(row["scope"])
@@ -413,7 +413,7 @@ def validate_sdk_clock_v2(case, observation, process, events, returns, *, record
                         "SDK watch source read lost its independently authenticated original worker")
                 _same(row["scope"], source_read_watch_scopes[workers[0]["sequence"]],
                       "SDK watcher read borrowed another detector generation or invented a public tick")
-            elif value["kind"] in {"forget-index-fence-v3", "forget-index-fence-v4", "forget-index-fence-v5"} and "returnSeq" in public and _ns(row["atNs"]) >= _ns(events[public["returnSeq"]]["atNs"]):
+            elif value["kind"] in {"forget-index-fence-v3", "forget-index-fence-v4", "forget-index-fence-v5", "forget-index-fence-v6"} and "returnSeq" in public and _ns(row["atNs"]) >= _ns(events[public["returnSeq"]]["atNs"]):
                 workers = [worker for worker in source_read_workers if worker["callLabel"] == call["callLabel"]
                            and worker["callKind"] == call["callKind"] == "search"
                            and worker["threadId"] == call["threadId"] and worker["sequence"] in returns

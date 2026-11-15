@@ -16,7 +16,10 @@ _WATCH_SCOPE = {"kind", "label", "origin", "watcherObjectId", "storeObjectId", "
 
 
 def _closed_watch_case(case):
-    from equivalence.forget_index_fence_v5 import validate_case
+    if isinstance(case, dict) and case.get("operation") == "forget-index-fence-v6-runtime":
+        from equivalence.forget_index_fence_v6 import validate_case
+    else:
+        from equivalence.forget_index_fence_v5 import validate_case
     return validate_case(case)
 
 

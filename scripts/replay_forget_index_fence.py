@@ -194,7 +194,7 @@ def _admit_reports(roots, authority, report, frozen, version):
             raise ValueError("A source collector report lacks complete final authentication or selected frozen scope")
         execution = source.get("execution")
         if (not isinstance(execution, dict)
-                or version in {"v3", "v4", "v5"} and execution.get("inputVersion") != version
+                or version in {"v3", "v4", "v5", "v6"} and execution.get("inputVersion") != version
                 or "inputVersion" in execution and execution["inputVersion"] != version):
             raise ValueError("A collector report does not belong to the explicitly selected input version")
         identity, node = source.get("implementationIdentity"), source.get("node")
@@ -536,7 +536,7 @@ def _error(error):
 
 def main(argv=None):
     parser = argparse.ArgumentParser(description=__doc__)
-    parser.add_argument("--version", choices=("v2", "v3", "v4", "v5"), default="v2")
+    parser.add_argument("--version", choices=("v2", "v3", "v4", "v5", "v6"), default="v2")
     selection = parser.add_mutually_exclusive_group(required=True)
     selection.add_argument("--capture-root", type=Path, action="append")
     selection.add_argument("--suite-report", type=Path)

@@ -150,7 +150,10 @@ def _interrupted_source(case, stopped, *, raw, processes, observations, frontier
 def validate_sdk_watch_transport_v5(case, raw, processes, observations, watch_proofs):
     """Bind frozen host steps to genuine actor RPCs and side-local source facts."""
     from equivalence.forget_index_fence_evidence import _ns, _same, _same_json, require
-    from equivalence.forget_index_fence_v5 import validate_case
+    if isinstance(case, dict) and case.get("operation") == "forget-index-fence-v6-runtime":
+        from equivalence.forget_index_fence_v6 import validate_case
+    else:
+        from equivalence.forget_index_fence_v5 import validate_case
 
     validate_case(case)
     _same(raw["input"], case["input"], "SDK watcher host used another frozen input")

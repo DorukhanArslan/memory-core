@@ -84,7 +84,10 @@ def validate_native_watch_v5(case, raw, actors, commands, passive, context, impo
         _sealed_json,
         _ns, _same, _sha, require,
     )
-    from equivalence.forget_index_fence_v5 import validate_case
+    if isinstance(case, dict) and case.get("operation") == "forget-index-fence-v6-runtime":
+        from equivalence.forget_index_fence_v6 import validate_case
+    else:
+        from equivalence.forget_index_fence_v5 import validate_case
 
     validate_case(case)
     protocol = case['input']['observationPolicy']['watchEffects']['protocol']

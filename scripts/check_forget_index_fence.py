@@ -16,7 +16,7 @@ import traceback
 ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT))
 
-from equivalence import forget_index_fence_v2, forget_index_fence_v3, forget_index_fence_v4, forget_index_fence_v5  # noqa: E402
+from equivalence import forget_index_fence_v2, forget_index_fence_v3, forget_index_fence_v4, forget_index_fence_v5, forget_index_fence_v6  # noqa: E402
 from equivalence.forget_index_fence_bindings import prepare_forget_index_fence_bindings  # noqa: E402
 from equivalence.forget_index_fence_evidence import replay_case  # noqa: E402
 from equivalence.forget_index_fence_native import run_native_case  # noqa: E402
@@ -47,7 +47,7 @@ def error_record(error):
 def main(argv=None):
     parser = argparse.ArgumentParser(description=__doc__)
     versions = {"v2": forget_index_fence_v2, "v3": forget_index_fence_v3, "v4": forget_index_fence_v4,
-                "v5": forget_index_fence_v5}
+                "v5": forget_index_fence_v5, "v6": forget_index_fence_v6}
     parser.add_argument("--version", choices=tuple(versions), default="v2")
     parser.add_argument("--reference", type=Path, required=True)
     parser.add_argument("--node", type=Path, required=True)
@@ -118,17 +118,17 @@ def main(argv=None):
                                                             approved_reference=reference,
                                                             **({"approved_adapter_root": ROOT}
                                                                if args.version != "v2" else {}))
-                        if args.version == "v5" and (
+                        if args.version in {"v5", "v6"} and (
                                 not isinstance(row["structuralReplay"], dict)
                                 or row["structuralReplay"].get("validated") is not True
                                 or type(row["structuralReplay"].get("publicMatch")) is not bool
                                 or type(row["structuralReplay"].get("acceptancePointsAwarded")) is not int
                                 or row["structuralReplay"]["acceptancePointsAwarded"] != 0):
-                            raise ValueError("V5 requires affirmative independent zero-credit custody before comparison")
+                            raise ValueError("V5/V6 requires affirmative independent zero-credit custody before comparison")
                         row["differences"] = differences(native_result, sdk_result)
-                        if (args.version == "v5"
+                        if (args.version in {"v5", "v6"}
                                 and row["structuralReplay"]["publicMatch"] is not (not row["differences"])):
-                            raise ValueError("V5 independent custody parity differs from the whole actual results")
+                            raise ValueError("V5/V6 independent custody parity differs from the whole actual results")
                         row["status"] = "mismatch" if row["differences"] else "match"
                     except Exception as error:
                         row["custodyError"] = error_record(error)

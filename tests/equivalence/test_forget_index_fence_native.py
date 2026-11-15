@@ -142,9 +142,10 @@ def test_additive_v4_dispatch_is_closed_and_retains_v3_control_protocol(monkeypa
     assert native._contract("forget-index-fence-v3-runtime") == "equivalence.forget_index_fence_v3"
     assert native._contract("forget-index-fence-v4-runtime") == "equivalence.forget_index_fence_v4"
     assert native._contract("forget-index-fence-v5-runtime") == "equivalence.forget_index_fence_v5"
+    assert native._contract("forget-index-fence-v6-runtime") == "equivalence.forget_index_fence_v6"
     with pytest.raises(ValueError, match="Unknown"):
-        native._contract("forget-index-fence-v6-runtime")
-    assert len(calls) == 3
+        native._contract("forget-index-fence-v7-runtime")
+    assert len(calls) == 4
     assert native.PROFILE_KEY == "forgetIndexFenceV3Profile"
     assert native.BOOTSTRAP_EVENT == "forget-index-fence-v3-bootstrap"
 

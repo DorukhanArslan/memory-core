@@ -46,9 +46,9 @@ BOUNDARIES = frozenset({
     "promotion.source-planned-before-final-lock",
     "forget.marker-commit-or-original-workspace-or-writer-wait",
 })
-SEARCH_EFFECT_KINDS = frozenset({"forget-index-fence-v3", "forget-index-fence-v4", "forget-index-fence-v5"})
+SEARCH_EFFECT_KINDS = frozenset({"forget-index-fence-v3", "forget-index-fence-v4", "forget-index-fence-v5", "forget-index-fence-v6"})
 PROFILE_MODULES = {f"forget-index-fence-v{version}": f"equivalence.forget_index_fence_v{version}"
-                   for version in (2, 3, 4, 5)}
+                   for version in (2, 3, 4, 5, 6)}
 
 
 def _serialized(value):
@@ -58,10 +58,11 @@ def _serialized(value):
 def _capture_dispatch_packet(dispatch):
     """Use retained V5 stdout instead of serializing its parsed value twice."""
     packet = dict.copy(dispatch)
-    v5 = dispatch.get("kind") == "forget-index-fence-v5-sdk-dispatch"
-    input_v5 = dispatch.get("input", {}).get("kind") == "forget-index-fence-v5"
-    if v5 != input_v5:
-        raise ValueError("The compact SDK packet requires matching closed V5 identities")
+    kind = dispatch.get("input", {}).get("kind")
+    v5 = dispatch.get("kind") in {"forget-index-fence-v5-sdk-dispatch", "forget-index-fence-v6-sdk-dispatch"}
+    input_v5 = kind in {"forget-index-fence-v5", "forget-index-fence-v6"}
+    if v5 != input_v5 or v5 and dispatch.get("kind") != kind + "-sdk-dispatch":
+        raise ValueError("The compact SDK packet requires matching closed V5/V6 identities")
     if "observationEncoding" in dispatch:
         raise ValueError("A live SDK dispatch cannot already contain an observation encoding")
     if v5 and any(field in dispatch for field in (
@@ -1237,7 +1238,7 @@ class _SdkActor:
         record["classMro"] = _type_identity(type(self.owner))["mro"]
         record["constructorCode"] = _code_identity(ManagedSQLiteMemoryStore.__init__.__code__)
         record["searchMaintenance"] = _search_maintenance_binding(self.owner, config.get("sync"))
-        if self.value["kind"] == "forget-index-fence-v5":
+        if self.value["kind"] in {"forget-index-fence-v5", "forget-index-fence-v6"}:
             record["memoryWatcher"] = {"present": watcher is not None,
                 "objectId": str(id(watcher)) if watcher is not None else None,
                 "classMro": _type_identity(type(watcher))["mro"] if watcher is not None else None,
@@ -1474,7 +1475,7 @@ class _SdkActor:
                 if kind == "sync":
                     call["outcome"] = {"status": "rejected", "isTypedConflict": isinstance(error, MemoryIndexRevisionConflictError)}
             finally:
-                if self.value["kind"] == "forget-index-fence-v5":
+                if self.value["kind"] in {"forget-index-fence-v5", "forget-index-fence-v6"}:
                     try:
                         self._capture_watch_targets(call)
                     except BaseException as error:
@@ -1675,12 +1676,12 @@ class _SdkActor:
             "datetimeClockFailures": _observation_copy(self.datetime_proxy.failures),
             **_source_clock_observation(self.source_clock),
             "queuedSearchTasks": [row for row in self.observer.task_receipts()
-                if self.value["kind"] != "forget-index-fence-v5" or row["scope"]["kind"] == "search"],
+                if self.value["kind"] not in {"forget-index-fence-v5", "forget-index-fence-v6"} or row["scope"]["kind"] == "search"],
             **({"queuedWatchTasks": [row for row in self.observer.task_receipts() if row["scope"]["kind"] == "watch"],
                 "queuedOriginalTasks": self.observer.task_receipts(),
                 "watchReadyWaits": _observation_copy(self.watch_ready_waits),
                 "watchEffectWaits": _observation_copy(self.watch_effect_waits)}
-               if self.value["kind"] == "forget-index-fence-v5" else {}),
+               if self.value["kind"] in {"forget-index-fence-v5", "forget-index-fence-v6"} else {}),
             "searchEffectWaits": _observation_copy(self.search_effect_waits),
             "ppid": os.getppid(), "wallClockNowMs": self.wall_ms,
             "providerIdentity": _encode(self.owner._index_provider()) if self.owner is not None else {"unacquired": True},
@@ -1730,7 +1731,7 @@ class _SdkActor:
                 with self.observer.call_scope(label, "search", self.wall_ms):
                     returned = _await_existing_search_effects(binding["tool"], self.owner, tasks, receipt,
                         timeout=PROCESS_TIMEOUT_SECONDS - 5,
-                        partition_watch=self.value["kind"] == "forget-index-fence-v5")
+                        partition_watch=self.value["kind"] in {"forget-index-fence-v5", "forget-index-fence-v6"})
                 binding["effectsSettled"] = True
                 return returned
             except BaseException as error:
@@ -2319,7 +2320,7 @@ def run_forget_index_fence_sdk_case(value, *, evidence_directory=None, sdk_root=
         "sourceProvenanceBefore": _sdk_sources(selected_sdk)}
     if value["kind"] in SEARCH_EFFECT_KINDS:
         dispatch["adapterProvenanceBefore"] = _adapter_sources(value["kind"])
-    binary_streams = value["kind"] == "forget-index-fence-v5"
+    binary_streams = value["kind"] in {"forget-index-fence-v5", "forget-index-fence-v6"}
     with subprocess.Popen(argv, cwd=ROOT, env=environment, stdin=subprocess.PIPE,
         stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=not binary_streams) as child:
         dispatch["pid"] = child.pid

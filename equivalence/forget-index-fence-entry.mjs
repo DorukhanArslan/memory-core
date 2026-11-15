@@ -16,7 +16,7 @@ if(actor==='coordinator'){
   if(!isDeepStrictEqual(testCase.input.gates,profile.gates)||!isDeepStrictEqual(profile.actorClocks,expectedClocks)||
    profile.recoveryNowMs!==testCase.input.clock.recoveryNowMs||!isDeepStrictEqual(profile.sourceWriteClock,testCase.input.clock.sourceWriteClock)||
    !isDeepStrictEqual(profile.searchEffects,testCase.input.observationPolicy.searchEffects)||
-   testCase.input.kind==='forget-index-fence-v5'&&!isDeepStrictEqual(profile.watchEffects,testCase.input.observationPolicy.watchEffects))throw Error('Fence capability substituted declared controls or wall phases');
+   ['forget-index-fence-v5','forget-index-fence-v6'].includes(testCase.input.kind)&&!isDeepStrictEqual(profile.watchEffects,testCase.input.observationPolicy.watchEffects))throw Error('Fence capability substituted declared controls or wall phases');
   const {runForgetIndexFenceRuntime}=await import('./forget-index-fence-runtime.mjs');
   const result=await runForgetIndexFenceRuntime(testCase.input,{caseId:testCase.id,operation:testCase.operation,runtimeRoot:context.runtime.runtimeRoot,
    evidenceDirectory:context.evidenceDirectory,stateDirectory:context.stateDirectory,configPath:context.configPath,gateDirectory:context.gateDirectory});

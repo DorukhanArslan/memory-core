@@ -182,9 +182,10 @@ assert.equal(commandScopes.current(),null);Worker.prototype.emit=emit;
 """)
 
 
+@pytest.mark.parametrize("version", [5, 6])
 @pytest.mark.parametrize("checkpoint", ["progress", "release"])
-def test_actual_planning_gate_rejects_borrowed_observed_command_context(node, tmp_path, checkpoint):
-    _run(node, tmp_path, "const checkpoint=" + json.dumps(checkpoint) + ";\n" + r"""
+def test_actual_planning_gate_rejects_borrowed_observed_command_context(node, tmp_path, checkpoint, version):
+    _run(node, tmp_path, "const version=" + str(version) + ";const checkpoint=" + json.dumps(checkpoint) + ";\n" + r"""
 await(async(actualClock)=>{
  const source=fs.readFileSync(preloadPath,'utf8'),start=source.indexOf('async function pauseAsync(boundary,facts={}){'),
   end=source.indexOf('\nglobalThis[Symbol.for(',start);
@@ -194,7 +195,7 @@ await(async(actualClock)=>{
  const commandScopes={...actualScopes,current:()=>borrowNow?borrowed:actualScopes.current()};
  let sequence=0;
  const failures=[],rows=[],fired=new Set(),gate={name:'promotionPlan',actor:'promoter',callLabel:'stored',boundary:'promotion.model-planning-before-final-lock'};
- const profile={kind:'forget-index-fence-v5'},context={gateDirectory:directory},actor='promoter';
+ const profile={kind:`forget-index-fence-v${version}`},context={gateDirectory:directory},actor='promoter';
  const matching=boundary=>boundary===gate.boundary?[gate]:[],trace=()=>{},flush=()=>true;
  const event=(name,fields)=>rows.push({name,...fields}),controlFailure=(reason,error)=>failures.push({reason,error});
  const originalTimeout=setTimeout,originalImmediate=setImmediate,setWallClock=()=>assert.fail('No declared phase change');
@@ -222,9 +223,9 @@ def test_both_v5_planning_boundaries_await_async_control_and_keep_legacy_sync_mo
     runtime = (ROOT / "equivalence/forget-index-fence-runtime.mjs").read_text()
     assert "'promotion.model-planning-before-final-lock':'deferred-original-model-completion'" in preload
     assert "'promotion.source-planned-before-final-lock':'deferred-original-realpath-return'" in preload
-    assert "if(input.kind==='forget-index-fence-v5')await controller().pauseAsync('promotion.model-planning-before-final-lock',facts)" in runtime
+    assert "if(['forget-index-fence-v5','forget-index-fence-v6'].includes(input.kind))await controller().pauseAsync('promotion.model-planning-before-final-lock',facts)" in runtime
     assert "else controller().pause('promotion.model-planning-before-final-lock',facts)" in runtime
-    assert "if(profile.kind==='forget-index-fence-v5')await pauseAsync('promotion.source-planned-before-final-lock',facts)" in preload
+    assert "if(['forget-index-fence-v5','forget-index-fence-v6'].includes(profile.kind))await pauseAsync('promotion.source-planned-before-final-lock',facts)" in preload
     assert "else pause('promotion.source-planned-before-final-lock',facts)" in preload
     assert "withCommandScope(command,()=>executeScoped(command))" in runtime
     assert "setCallLabel" not in runtime + preload

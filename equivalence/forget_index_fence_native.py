@@ -63,7 +63,8 @@ def _contract(operation="forget-index-fence-v3-runtime"):
     # transport alone neither loads that manifest nor launches either engine.
     modules = {"forget-index-fence-v3-runtime": "equivalence.forget_index_fence_v3",
                "forget-index-fence-v4-runtime": "equivalence.forget_index_fence_v4",
-               "forget-index-fence-v5-runtime": "equivalence.forget_index_fence_v5"}
+               "forget-index-fence-v5-runtime": "equivalence.forget_index_fence_v5",
+               "forget-index-fence-v6-runtime": "equivalence.forget_index_fence_v6"}
     if operation not in modules:
         raise ValueError("Unknown forget/index-fence literal operation")
     return import_module(modules[operation])
@@ -73,7 +74,8 @@ def _validated_case(case):
     operation = case.get("operation")
     kinds = {"forget-index-fence-v3-runtime": "forget-index-fence-v3",
              "forget-index-fence-v4-runtime": "forget-index-fence-v4",
-             "forget-index-fence-v5-runtime": "forget-index-fence-v5"}
+             "forget-index-fence-v5-runtime": "forget-index-fence-v5",
+             "forget-index-fence-v6-runtime": "forget-index-fence-v6"}
     if operation not in kinds or case.get("input", {}).get("kind") != kinds[operation]:
         raise ValueError("Forget/index-fence mixed or unknown literal versions")
     contract = _contract(operation)
@@ -120,12 +122,12 @@ def prepare_profile(case, authority):
         if type(recovery) is not int:
             raise ValueError("Forget/index-fence recovery wall phase must be an exact integer")
         profile["recoveryNowMs"] = recovery
-    if case["input"]["kind"] == "forget-index-fence-v5":
+    if case["input"]["kind"] in {"forget-index-fence-v5", "forget-index-fence-v6"}:
         watch = case["input"].get("observationPolicy", {}).get("watchEffects")
         if (not isinstance(watch, dict) or watch.get("protocol") != "original-watch-effects-v5"
                 or type(watch.get("maxReferencesPerBarrier")) is not int
                 or not 1 <= watch["maxReferencesPerBarrier"] <= 1024):
-            raise ValueError("V5 requires its declared original watcher control policy")
+            raise ValueError("V5/V6 requires its declared original watcher control policy")
         profile["watchEffects"] = deepcopy(watch)
     return profile
 

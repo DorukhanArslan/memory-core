@@ -33,8 +33,9 @@ def _dispatch(version=5):
             "adapterProvenanceAfter": {"root": "/adapter/source root", "sourceSha256": "adapter-after"}}
 
 
-def test_v5_packet_omits_only_duplicate_observation_and_authenticates_exact_utf8_stdout():
-    dispatch = _dispatch()
+@pytest.mark.parametrize("version", [5, 6])
+def test_v5_packet_omits_only_duplicate_observation_and_authenticates_exact_utf8_stdout(version):
+    dispatch = _dispatch(version)
     original = deepcopy(dispatch)
     observation = dispatch["observation"]
     packet = sdk._capture_dispatch_packet(dispatch)
@@ -108,6 +109,9 @@ def test_legacy_dispatches_keep_full_observation_and_all_original_fields_without
 
 
 @pytest.mark.parametrize("dispatch_kind,input_kind", [
+    ("forget-index-fence-v5-sdk-dispatch", "forget-index-fence-v6"),
+    ("forget-index-fence-v6-sdk-dispatch", "forget-index-fence-v5"),
+    ("forget-index-fence-v6-sdk-dispatch", "forget-index-fence-v4"),
     ("forget-index-fence-v5-sdk-dispatch", "forget-index-fence-v4"),
     ("forget-index-fence-v4-sdk-dispatch", "forget-index-fence-v5"),
     ("forget-index-fence-v5-sdk-dispatch", "forget-index-fence-v99"),

@@ -33,8 +33,11 @@ def _closed_effects_case(case):
     elif kind == "forget-index-fence-v5":
         from equivalence.forget_index_fence_v5 import validate_case
         version = 5
+    elif kind == "forget-index-fence-v6":
+        from equivalence.forget_index_fence_v6 import validate_case
+        version = 6
     else:
-        raise ValueError("SDK effects require an exact frozen V3, V4 or V5 case")
+        raise ValueError("SDK effects require an exact frozen V3, V4, V5 or V6 case")
     validate_case(case)
     return version
 
@@ -57,7 +60,7 @@ def validate_sdk_effects_v3(case, observation, process, events, returns, *, reco
     producer_names = {"ManagedSQLiteMemoryStore._run_memory_publication", "_record_search_recalls"}
     calls = [row for row in events.values() if row["event"] == "original-call"]
     watch_proof = {"workers": []}
-    if version == 5:
+    if version in {5, 6}:
         from equivalence.forget_index_fence_sdk_watch_evidence import validate_sdk_watch_v5
         watch_proof = validate_sdk_watch_v5(case, observation, process, events, returns,
             recorded_root=recorded, approved_sdk_root=approved,
@@ -256,15 +259,15 @@ def validate_sdk_effects_v3(case, observation, process, events, returns, *, reco
         tasks[fid], worker_calls[fid] = task, worker
 
     submitted = {row["sequence"] for row in calls if row["name"] == "ThreadPoolExecutor.submit"
-                 and (version != 5 or row["callKind"] == "search")}
+                 and (version not in {5, 6} or row["callKind"] == "search")}
     require(submitted == {task["submitSequence"] for task in tasks.values()},
             "SDK effects omitted or fabricated an actual original submission")
     require(all(row["sequence"] in {worker["sequence"] for worker in worker_calls.values()}
-                for row in calls if row["name"] in producer_names and (version != 5 or row["callKind"] == "search")),
+                for row in calls if row["name"] in producer_names and (version not in {5, 6} or row["callKind"] == "search")),
             "SDK effects omitted a source-owned queued worker")
     original_tasks = dict(tasks)
     original_workers = dict(worker_calls)
-    if version == 5:
+    if version in {5, 6}:
         for task in observation["queuedWatchTasks"]:
             fid = task["futureObjectId"]
             matching = [row for row in watch_proof["workers"] if row["code"] == task["functionCode"]
@@ -304,7 +307,7 @@ def validate_sdk_effects_v3(case, observation, process, events, returns, *, reco
         fields = {"label", "actor", "pid", "publicReturnSequence", "factoryCapabilities", "enteredAtNs",
                 "toolObjectId", "storeObjectId", "conditionObjectId", "tasksAtEntry", "conditionWaits", "recall",
                 "publisherBefore", "publisherAfter", "publisherFutures", "returnedAtNs", "tasksAtReturn"}
-        if version == 5:
+        if version in {5, 6}:
             fields.add("partition")
             require(wait.get("partition") == "retained-search-jobs",
                     "SDK V5 search barrier changed its actual source-qualified queue partition")
@@ -362,11 +365,11 @@ def validate_sdk_effects_v3(case, observation, process, events, returns, *, reco
                 submitted_job = events[task["submitSequence"]]["arguments"]["args"][0]
                 changed = {key for key, item in submitted_job.items()
                            if key != "state" and job.get(key) != item}
-                if version == 5 and task["scope"]["kind"] == "watch":
+                if version in {5, 6} and task["scope"]["kind"] == "watch":
                     worker = original_workers[task["futureObjectId"]]
                     if _ns(settled(worker)["atNs"]) < observed_at:
                         _same(job, task["job"], "SDK settled watcher condition state differs from its retained actual job")
-                if version == 5 and task["scope"]["kind"] == "watch" and changed:
+                if version in {5, 6} and task["scope"]["kind"] == "watch" and changed:
                     # The original watcher worker replans fullRebuild after its
                     # actual producer lease admits it. It is not an immutable
                     # submission epoch. Bind the settled value to the retained
@@ -450,7 +453,7 @@ def validate_sdk_effects_v3(case, observation, process, events, returns, *, reco
         # barrier itself cannot create a new producer or public search.
         worker_threads = [(worker["threadId"], _ns(worker["atNs"]), _ns(settled(worker)["atNs"]))
                           for fid, worker in worker_calls.items() if fid in own]
-        if version == 5:
+        if version in {5, 6}:
             worker_threads.extend((worker["threadId"], _ns(worker["atNs"]), _ns(settled(worker)["atNs"]))
                                   for worker in watch_proof["workers"])
         for row in calls:
@@ -509,6 +512,6 @@ def validate_sdk_effects_v3(case, observation, process, events, returns, *, reco
     require(adapter_source.relative_to(trusted_adapter).as_posix() == "equivalence/forget_index_fence_sdk.py"
             and adapter.is_absolute(), "SDK effects lost independently approved adapter ownership")
     proof = {"waits": waits, "workers": list(worker_calls.values())}
-    if version == 5:
+    if version in {5, 6}:
         proof["watchProof"] = watch_proof
     return proof

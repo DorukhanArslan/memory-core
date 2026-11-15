@@ -66,7 +66,7 @@ def collector(monkeypatch, tmp_path):
             "calls": calls, "control": control, "args": args, "tmp": tmp_path}
 
 
-@pytest.mark.parametrize("version", [None, "v2", "v3", "v4", "v5"])
+@pytest.mark.parametrize("version", [None, "v2", "v3", "v4", "v5", "v6"])
 def test_complete_selected_family_has_explicit_isolated_routes_and_zero_credit(collector, version):
     chosen = version or "v2"
     frozen = import_module(f"equivalence.forget_index_fence_{chosen}")
@@ -91,26 +91,28 @@ def test_complete_selected_family_has_explicit_isolated_routes_and_zero_credit(c
                           **({"approved_adapter_root": collector["program"]} if chosen != "v2" else {})}
 
 
+@pytest.mark.parametrize("version", ["v5", "v6"])
 @pytest.mark.parametrize("selection", ["foreign", "mixed", "duplicate"])
-def test_v5_rejects_wrong_or_repeated_members_before_any_dispatch(collector, selection):
+def test_v5_rejects_wrong_or_repeated_members_before_any_dispatch(collector, selection, version):
     v4 = import_module("equivalence.forget_index_fence_v4")
-    v5 = import_module("equivalence.forget_index_fence_v5")
+    v5 = import_module("equivalence.forget_index_fence_" + version)
     selected = ([next(iter(v4.CASE_HASHES))] if selection == "foreign" else
                 [next(iter(v5.CASE_HASHES)), next(iter(v4.CASE_HASHES))] if selection == "mixed" else
                 [next(iter(v5.CASE_HASHES))] * 2)
     output = collector["tmp"] / "rejected"
     extra = [part for case_id in selected for part in ("--case", case_id)]
     with pytest.raises(SystemExit) as failure:
-        collector["cli"].main(collector["args"](output, "v5", extra))
+        collector["cli"].main(collector["args"](output, version, extra))
     assert failure.value.code == 2 and not output.exists()
     assert all(not calls for calls in collector["calls"].values())
 
 
-def test_v5_capture_only_remains_blocked_and_uncredited(collector):
-    frozen = import_module("equivalence.forget_index_fence_v5")
+@pytest.mark.parametrize("version", ["v5", "v6"])
+def test_v5_capture_only_remains_blocked_and_uncredited(collector, version):
+    frozen = import_module("equivalence.forget_index_fence_" + version)
     output = collector["tmp"] / "pending"
     extra = ["--case", next(iter(frozen.CASE_HASHES)), "--defer-custody"]
-    assert collector["cli"].main(collector["args"](output, "v5", extra)) == 2
+    assert collector["cli"].main(collector["args"](output, version, extra)) == 2
     report = json.loads((output / "report.json").read_text())
     assert report["cases"][0]["custodyPending"] is True and report["cases"][0]["status"] == "blocked"
     assert report["candidateFamilyMatched"] is False and collector["calls"]["replay"] == []
@@ -124,11 +126,12 @@ def test_v5_capture_only_remains_blocked_and_uncredited(collector):
     {"validated": True, "publicMatch": True, "acceptancePointsAwarded": True},
     {"validated": True, "publicMatch": False, "acceptancePointsAwarded": 0},
 ])
-def test_v5_requires_actual_affirmative_custody_and_consistent_whole_parity(collector, value):
+@pytest.mark.parametrize("version", ["v5", "v6"])
+def test_v5_requires_actual_affirmative_custody_and_consistent_whole_parity(collector, value, version):
     collector["control"]["replay"] = value
-    case_id = next(iter(import_module("equivalence.forget_index_fence_v5").CASE_HASHES))
+    case_id = next(iter(import_module("equivalence.forget_index_fence_" + version).CASE_HASHES))
     output = collector["tmp"] / "guard-refused"
-    assert collector["cli"].main(collector["args"](output, "v5", ["--case", case_id])) == 2
+    assert collector["cli"].main(collector["args"](output, version, ["--case", case_id])) == 2
     report = json.loads((output / "report.json").read_text())
     assert report["cases"][0]["status"] == "blocked" and "custodyError" in report["cases"][0]
     assert report["candidateFamilyMatched"] is False and report["acceptancePointsAwarded"] == 0

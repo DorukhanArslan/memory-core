@@ -53,8 +53,9 @@ def test_actual_coordinator_retains_all_seventeen_whole_pairs_and_independent_at
     native_fif = ModuleType("equivalence.forget_index_fence_native")
     native_fif.NATIVE_KIND = "UNIT_FIF_NATIVE_ONLY"
     native_host = ModuleType("equivalence.host_turn_barrier_v4_native")
+    native_host.NATIVE_KIND = "UNIT_V4_NATIVE_ONLY"
     legacy_native = ModuleType("equivalence.host_turn_barrier_native")
-    legacy_native.NATIVE_KIND = "UNIT_HOST_NATIVE_ONLY"
+    legacy_native.NATIVE_KIND = "UNIT_LEGACY_NATIVE_ONLY"
     checked = []
     guard_fif = ModuleType("equivalence.forget_index_fence_evidence")
     guard_fif.validate_pair = lambda *args, **kwargs: True
@@ -94,7 +95,7 @@ def test_actual_coordinator_retains_all_seventeen_whole_pairs_and_independent_at
         raw = [{"label": "UNIT_NATIVE_CAPTURE_ONLY", "caseId": case["id"]}]
         (directory / "evidence").mkdir(parents=True)
         (directory / "evidence/native-raw.json").write_text(json.dumps(raw) + "\n")
-        return {"kind": legacy_native.NATIVE_KIND if is_host else native_fif.NATIVE_KIND,
+        return {"kind": native_host.NATIVE_KIND if is_host else native_fif.NATIVE_KIND,
                 "results": [{"id": case["id"], "ok": True, "result": result(case)}], "releaseSources": [],
                 "releaseTrace": {"label": "UNIT_TRACE_ONLY"}, "runtimeDiagnostics": raw, "evidenceDirectory": str(directory)}
     globals_checkout = checkout

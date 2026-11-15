@@ -463,8 +463,7 @@ def _oracle(node: Path, script: Path, checkout: Path, cases: list[dict], timeout
             raise failure from error
     if len(cases) == 1 and cases[0]["operation"] == "host-turn-barrier-v4-runtime":
         from equivalence.host_turn_barrier_v4 import validate_case
-        from equivalence.host_turn_barrier_v4_native import run_native_case
-        from equivalence.host_turn_barrier_native import NATIVE_KIND
+        from equivalence.host_turn_barrier_v4_native import NATIVE_KIND, run_native_case
 
         try:
             validate_case(cases[0], registered=True)

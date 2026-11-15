@@ -1,4 +1,5 @@
 name: Verify forget lineage outcomes once
+# One frozen 1,468-case measurement; retain the first result without retrying.
 
 on:
   push:

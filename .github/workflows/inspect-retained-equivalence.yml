@@ -1,0 +1,110 @@
+name: Inspect retained equivalence failure
+
+on:
+  push:
+    branches: [inspect-retained-equivalence-43673106847]
+    paths: [.github/workflows/inspect-retained-equivalence.yml]
+
+permissions:
+  actions: read
+
+jobs:
+  inspect:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - name: Download the existing artifact without rerunning tests
+        env:
+          GH_TOKEN: ${{ github.token }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          test "$GITHUB_REPOSITORY" = 'DorukhanArslan/memory-core'
+          gh api --method GET repos/DorukhanArslan/memory-core/actions/artifacts/14146819533 > "$RUNNER_TEMP/retained-artifact-metadata.json"
+          python3 - <<'PY'
+          import json, os
+          from pathlib import Path
+          metadata = json.loads((Path(os.environ['RUNNER_TEMP']) / 'retained-artifact-metadata.json').read_text())
+          assert metadata['id'] == 14146819533 and not metadata['expired']
+          assert metadata['workflow_run']['id'] == 43673106847
+          assert metadata['workflow_run']['head_sha'] == '5b729e9e9b6c344b28dc94675e4dc8dc06fff083'
+          assert metadata['size_in_bytes'] == 1740219107
+          assert metadata['digest'] == 'sha256:5d35a943b74dd0db2d061c17c5c0230be4303f53b7589dfc90197a693dacf050'
+          print('Pinned existing artifact metadata verified; no tests are executed.')
+          PY
+          gh api --method GET repos/DorukhanArslan/memory-core/actions/artifacts/14146819533/zip > "$RUNNER_TEMP/retained-equivalence.zip"
+      - name: Read the original failure from the retained ZIP
+        shell: bash
+        run: |
+          python3 - <<'PY'
+          import hashlib, json, os, zipfile
+          from pathlib import Path, PurePosixPath
+
+          archive = Path(os.environ['RUNNER_TEMP']) / 'retained-equivalence.zip'
+          with archive.open('rb') as stream:
+              archive_sha = hashlib.file_digest(stream, 'sha256').hexdigest()
+          assert archive_sha == '5d35a943b74dd0db2d061c17c5c0230be4303f53b7589dfc90197a693dacf050'
+
+          with zipfile.ZipFile(archive) as retained:
+              members = retained.infolist()
+
+              def unique_member(suffix):
+                  selected = [item for item in members
+                              if item.filename == suffix or item.filename.endswith('/' + suffix)]
+                  if len(selected) != 1:
+                      raise ValueError(f'Expected one member for {suffix!r}; found {len(selected)}')
+                  return selected[0]
+
+              report_member = unique_member('.equivalence-results/full.json')
+              print(json.dumps({'reportMember': report_member.filename,
+                                'reportBytes': report_member.file_size}))
+              assert report_member.file_size <= 512 * 1024 * 1024, 'Report exceeds diagnostic JSON memory bound'
+              with retained.open(report_member) as stream:
+                  report_bytes = stream.read()
+              report_sha = hashlib.sha256(report_bytes).hexdigest()
+              assert report_sha == '34213268069115e5b65cbd95b62ad687049f7dc2880ca37446da7687d0929ec5'
+              report = json.loads(report_bytes)
+              del report_bytes
+              selected = {'sourceRun': 43673106847, 'sourceArtifact': 14146819533,
+                          'archiveSha256': archive_sha, 'reportSha256': report_sha,
+                          'status': report.get('status'), 'errors': report.get('errors'),
+                          'failedReferenceCaseId': report.get('failedReferenceCaseId'),
+                          'rejectedRuntimeEvidence': report.get('rejectedRuntimeEvidence'),
+                          'retainedFailureDetails': [], 'testsExecuted': False}
+
+              for rejected in report.get('rejectedRuntimeEvidence', []):
+                  directory = PurePosixPath(rejected['retainedDirectory'])
+                  parts = directory.parts
+                  anchor = parts.index('.equivalence-results')
+                  suffix = '/'.join(parts[anchor:])
+                  detail = {'caseIds': rejected.get('caseIds'), 'reason': rejected.get('reason')}
+                  for name, limit in [('process.json', 1024 * 1024), ('stderr.log', 64 * 1024),
+                                      ('stdout.json', 4 * 1024 * 1024)]:
+                      try:
+                          item = unique_member(suffix + '/' + name)
+                          with retained.open(item) as stream:
+                              data = stream.read(limit + 1)
+                          truncated = len(data) > limit
+                          record = {'member': item.filename, 'bytes': item.file_size,
+                                    'truncated': truncated}
+                          if name == 'stderr.log':
+                              record['text'] = data[:limit].decode('utf-8', errors='replace')
+                          elif truncated:
+                              record['note'] = 'Not parsed: exceeds the declared diagnostic bound'
+                          else:
+                              value = json.loads(data)
+                              keys = (['returncode', 'timedOut', 'observationFailure', 'integrityError',
+                                       'protectedBytesUnchanged', 'contextPath', 'requestPath', 'pid', 'parentPid']
+                                      if name == 'process.json' else ['id', 'ok', 'error'])
+                              record['selectedFields'] = {key: value[key] for key in keys if key in value}
+                          detail[name] = record
+                      except (ValueError, KeyError, UnicodeError, zipfile.BadZipFile) as error:
+                          detail[name] = {'readError': str(error)}
+                  selected['retainedFailureDetails'].append(detail)
+
+          output = json.dumps(selected, ensure_ascii=True, indent=2)
+          (Path(os.environ['RUNNER_TEMP']) / 'selected-retained-failure.json').write_text(output + '\n')
+          print('RETAINED_FAILURE_JSON_BEGIN')
+          print(output)
+          print('RETAINED_FAILURE_JSON_END')
+          PY

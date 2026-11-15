@@ -1,6 +1,8 @@
-"""Real WAL forget interleavings between keyword retrieval and live enrichment."""
+"""Real publication interleavings during keyword retrieval and enrichment."""
 from contextlib import closing
+import sqlite3
 import threading
+import time
 
 from memory_core.config import MemoryConfig
 from memory_core.consolidation.forget import forget_memory_entries
@@ -16,7 +18,7 @@ NOW = 1794614400000
 QUERY = "aurorafresh"
 
 
-def _owners(tmp_path, *, retained_matches=False):
+def _owners(tmp_path, *, retained_matches=False, wal=True):
     root = tmp_path / "workspace"
     (root / "memory").mkdir(parents=True)
     (root / "MEMORY.md").write_text(
@@ -33,7 +35,8 @@ def _owners(tmp_path, *, retained_matches=False):
     writer = SQLiteMemoryStore(config, None, revision_fence=ledger.revision_fence("main"))
     reader.reindex(MemoryWorkspace(root))
     with closing(reader.connect()) as db:
-        assert db.execute("PRAGMA journal_mode=WAL").fetchone()[0] == "wal"
+        mode = db.execute("PRAGMA journal_mode=WAL" if wal else "PRAGMA journal_mode").fetchone()[0]
+        assert mode == ("wal" if wal else "delete")
     return reader, writer, ledger
 
 
@@ -159,3 +162,55 @@ def test_explicit_metadata_connection_keeps_its_caller_owned_snapshot_after_forg
         assert reader.attach_recall_metadata(candidates, db=db)
         assert reader.attach_recall_metadata(candidates) == []
         assert db.in_transaction
+
+
+def test_default_rollback_reader_finishes_while_publication_waits_to_commit(tmp_path, monkeypatch):
+    reader, writer, _ = _owners(tmp_path, wal=False)
+    path = reader.config.workspace_dir / "MEMORY.md"
+    old_text = path.read_text()
+    new_text = old_text.replace("durable", "replacement")
+    original_keyword = reader._search_keyword_with_fallback
+    original_written = writer._on_index_publication_write
+    written = threading.Event()
+    worker, outcome = None, {}
+
+    def publication_written(*arguments, **options):
+        returned = original_written(*arguments, **options)
+        written.set()
+        return returned
+
+    def publish_after_keyword(db, *arguments, **options):
+        nonlocal worker, outcome
+        hits = original_keyword(db, *arguments, **options)
+        assert hits and db.in_transaction
+        path.write_text(new_text)
+        worker, outcome = _start(lambda: writer.reindex(MemoryWorkspace(path.parent)))
+        assert written.wait(2), "The real publisher did not reach its commit boundary"
+        deadline = time.monotonic() + 2
+        with closing(sqlite3.connect(reader.path, timeout=0)) as probe:
+            while True:
+                try:
+                    with closing(probe.execute("SELECT id FROM chunks LIMIT 1")) as cursor:
+                        cursor.fetchall()
+                except sqlite3.OperationalError as error:
+                    assert error.sqlite_errorcode == sqlite3.SQLITE_BUSY
+                    # RESERVED permits new readers; BUSY proves the writer is
+                    # now PENDING while this real retrieval reader stays open.
+                    break
+                assert time.monotonic() < deadline, "The writer never blocked a new reader"
+                time.sleep(0.001)
+        return hits
+
+    monkeypatch.setattr(writer, "_on_index_publication_write", publication_written)
+    monkeypatch.setattr(reader, "_search_keyword_with_fallback", publish_after_keyword)
+    try:
+        hits = reader.search(QUERY, min_score=0)
+    finally:
+        if worker is not None:
+            worker.join(6)
+    assert worker is not None and not worker.is_alive()
+    assert "error" not in outcome, outcome
+    assert any("durable" in hit.snippet for hit in hits)
+    assert any("replacement" in row["text"] for row in writer.read_published_index()["chunks"])
+    monkeypatch.setattr(reader, "_search_keyword_with_fallback", original_keyword)
+    assert any("replacement" in hit.snippet for hit in reader.search(QUERY, min_score=0))

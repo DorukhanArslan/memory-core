@@ -1,9 +1,12 @@
 """Positive joins retain real source versions and actual admitted Futures."""
+from contextlib import closing
+import json
 import threading
 
 import pytest
 
 from memory_core.host import memory_watcher
+from memory_core.index.identity import INDEX_SYNC_TABLE, MEMORY_INDEX_META_KEY
 
 from tests.unit.test_managed_memory_watcher import _owner, _texts, _wait
 
@@ -96,6 +99,38 @@ def test_deletion_join_retains_real_removed_inode_and_publishes_absence(tmp_path
         delivery = returned["delivery"]["deliveries"][0]
         assert delivery["previousVersion"] == previous and delivery["version"] is None
         assert returned["status"] == "completed" and "MEMORY.md" not in _texts(store)
+    finally:
+        store.close()
+
+
+def test_refused_rebuild_never_acknowledges_a_real_delivered_version(tmp_path, monkeypatch):
+    root, _, store = _owner(tmp_path, monkeypatch)
+    try:
+        metadata = store.read_index_meta()
+        metadata["chunkingVersion"] += 1
+        with closing(store.connect()) as db, db:
+            db.execute("UPDATE memory_index_meta SET value=? WHERE key=?",
+                       (json.dumps(metadata), MEMORY_INDEX_META_KEY))
+            db.execute(f"UPDATE {INDEX_SYNC_TABLE} SET needs_rebuild=1 WHERE id=1")
+        before = store.read_published_index()
+        published = store.lifecycle_snapshot()["memoryPublication"]["watchPublishedGeneration"]
+        path = root / "MEMORY.md"
+        text = "- This delivered source must not overwrite a newer index.\n"
+        path.write_text(text)
+        versions = store.memory_watcher.capture_versions([path])
+
+        returned = store.wait_for_memory_watches(versions, timeout=5)
+
+        assert returned["status"] == "refused"
+        assert returned["delivery"]["targets"] == versions
+        assert returned["job"]["automaticRefusal"] == store.index_identity()
+        assert returned["job"]["returned"] == 0
+        assert "publishedWatchGeneration" not in returned["job"]
+        state = store.lifecycle_snapshot()["memoryPublication"]
+        assert state["watchPublishedGeneration"] == published and state["dirty"] is True
+        assert store.read_published_index() == before and path.read_text() == text
+        with closing(store.connect()) as db:
+            assert db.execute(f"SELECT needs_rebuild FROM {INDEX_SYNC_TABLE} WHERE id=1").fetchone()[0] == 1
     finally:
         store.close()
 

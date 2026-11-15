@@ -344,9 +344,9 @@ class ManagedSQLiteMemoryStore(SQLiteMemoryStore):
                 while True:
                     completed = next((job for job in self._memory_jobs
                         if job.get("publishedWatchGeneration", -1) >= target and job["state"] == "completed"), None)
-                    failed = next((job for job in reversed(self._memory_jobs)
-                        if job["watchGeneration"] >= target and job["state"] == "failed"), None)
-                    job = completed or (failed if not self._memory_active else None)
+                    unsuccessful = next((job for job in reversed(self._memory_jobs)
+                        if job["watchGeneration"] >= target and job["state"] in {"failed", "refused"}), None)
+                    job = completed or (unsuccessful if not self._memory_active else None)
                     if job is not None:
                         future = self._memory_job_futures.get(job["id"])
                         if future is None:
@@ -426,7 +426,7 @@ class ManagedSQLiteMemoryStore(SQLiteMemoryStore):
                 return
             self._local.memory_publisher = True
             job.update(state="running", threadId=threading.get_ident())
-        error = None
+        error, refused = None, None
         try:
             with self._operation("memory-background-publication"):
                 with (self._index_producer_guard(self._workspace)
@@ -448,8 +448,13 @@ class ManagedSQLiteMemoryStore(SQLiteMemoryStore):
                         for attempt in range(2):
                             try:
                                 retry = bool(job.get("fullRetry"))
-                                with self._automatic_reindex(full_retry=retry):
+                                with self._automatic_reindex(full_retry=retry) as intent:
                                     returned = self.reindex(self._workspace, force=retry)
+                                refused = intent.get("refused")
+                                if refused is not None:
+                                    with self._condition:
+                                        job.update(automaticRefusal=refused, returned=returned)
+                                    return
                                 break
                             except MemoryIndexRevisionConflictError:
                                 if attempt:
@@ -487,7 +492,7 @@ class ManagedSQLiteMemoryStore(SQLiteMemoryStore):
         finally:
             with self._condition:
                 if error is None:
-                    job["state"] = "completed"
+                    job["state"] = "refused" if refused is not None else "completed"
                 else:
                     job.update(state="failed", error=self._error(error))
                 self._memory_worker_token = None

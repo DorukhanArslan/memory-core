@@ -1055,19 +1055,19 @@
           "path": "memory_core/host/managed_index.py",
           "symbol": "ManagedSQLiteMemoryStore.status",
           "anchor": "    def status(",
-          "line": 505
+          "line": 510
         },
         {
           "path": "memory_core/host/managed_index.py",
           "symbol": "ManagedSQLiteMemoryStore.search",
           "anchor": "    def search(",
-          "line": 939
+          "line": 944
         },
         {
           "path": "memory_core/host/managed_index.py",
           "symbol": "ManagedSQLiteMemoryStore._on_index_preparation_admitted",
           "anchor": "    def _on_index_preparation_admitted(",
-          "line": 866
+          "line": 871
         },
         {
           "path": "memory_core/tools/memory_search.py",
@@ -2045,7 +2045,7 @@
           "path": "memory_core/host/managed_index.py",
           "symbol": "ManagedSQLiteMemoryStore.search",
           "anchor": "    def search(",
-          "line": 939
+          "line": 944
         },
         {
           "path": "memory_core/host/managed_index.py",
@@ -2057,7 +2057,7 @@
           "path": "memory_core/host/managed_index.py",
           "symbol": "ManagedSQLiteMemoryStore._on_search_snapshot",
           "anchor": "    def _on_search_snapshot(",
-          "line": 546
+          "line": 551
         },
         {
           "path": "memory_core/host/managed_index.py",
@@ -2075,19 +2075,19 @@
           "path": "memory_core/host/managed_index.py",
           "symbol": "ManagedSQLiteMemoryStore.status",
           "anchor": "    def status(",
-          "line": 505
+          "line": 510
         },
         {
           "path": "memory_core/host/managed_index.py",
           "symbol": "ManagedSQLiteMemoryStore.close",
           "anchor": "    def close(",
-          "line": 1046
+          "line": 1051
         },
         {
           "path": "memory_core/host/managed_index.py",
           "symbol": "ManagedSQLiteMemoryStore._record_rebuild_request",
           "anchor": "    def _record_rebuild_request(",
-          "line": 873
+          "line": 878
         },
         {
           "path": "memory_core/tools/search_factory.py",
@@ -2303,7 +2303,7 @@
           "path": "memory_core/index/sqlite_store.py",
           "symbol": "SQLiteMemoryStore.search_path_candidates",
           "anchor": "    def search_path_candidates(",
-          "line": 1751
+          "line": 1752
         },
         {
           "path": "memory_core/index/keyword_search.py",
@@ -2534,7 +2534,7 @@
           "path": "memory_core/index/sqlite_store.py",
           "symbol": "SQLiteMemoryStore._finalize_keyword_only",
           "anchor": "    def _finalize_keyword_only(",
-          "line": 1588
+          "line": 1589
         },
         {
           "path": "memory_core/index/sqlite_store.py",
@@ -6329,7 +6329,7 @@
           "path": "memory_core/host/managed_index.py",
           "symbol": "ManagedSQLiteMemoryStore.search",
           "anchor": "    def search(",
-          "line": 939
+          "line": 944
         },
         {
           "path": "memory_core/host/managed_maintenance.py",
@@ -6515,7 +6515,7 @@
           "path": "memory_core/host/managed_index.py",
           "symbol": "ManagedSQLiteMemoryStore.reindex",
           "anchor": "    def reindex(",
-          "line": 640
+          "line": 645
         },
         {
           "path": "memory_core/tools/memory_search.py",

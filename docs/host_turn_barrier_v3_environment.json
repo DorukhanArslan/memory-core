@@ -1,0 +1,114 @@
+{
+  "kind": "host-turn-barrier-v3-environment-contract",
+  "version": 3,
+  "acceptancePointsAwarded": 0,
+  "stage": "isolated-environment-natural-original-scheduling",
+  "businessPolicy": "Copy exact Host v1 business inputs. Run original full Native runReplyAgent and original SDK managed host. Retain every actual public/raw field and original error.",
+  "environment": {
+    "temporaryRoot": "/tmp",
+    "executionRoot": "fresh-owned-canonical-directory",
+    "layout": {
+      "cwd": "cwd",
+      "state": "state",
+      "workspace": "state/workspace"
+    },
+    "captureRoot": "separate-owned-canonical-directory-outside-execution-root",
+    "gitPolicy": "No .git entry of any type in any actual workspace or cwd ancestor through filesystem root, before dispatch and after actual exit. No configured repoRoot.",
+    "nativeInitialEnvironmentKeys": [
+      "LANG",
+      "MEMORY_EQ_RELEASE_CONTEXT",
+      "NODE_OPTIONS",
+      "PATH",
+      "TZ"
+    ],
+    "nativeRuntimeAddedEnvironmentKeys": [
+      "JITI_FS_CACHE",
+      "OPENCLAW_CONFIG_PATH",
+      "OPENCLAW_HOME",
+      "OPENCLAW_STATE_DIR"
+    ],
+    "sdkEnvironmentKeys": [
+      "LANG",
+      "OPENCLAW_HOME",
+      "OPENCLAW_STATE_DIR",
+      "PATH",
+      "PYTHONPATH",
+      "TZ"
+    ],
+    "inheritedEnvironment": "none beyond explicit sealed whitelists",
+    "projectFeaturePolicy": "Original feature remains enabled. Repository absence is an explicit physical environment input; no project flag, helper result or manager operation is replaced.",
+    "sdkStartup": "A source-sealed pre-exec observer records actual cwd/environment and execs the original host_turn_barrier_sdk_cli in the same PID/stdin/environment. Initial startup argv and executed original-host argv are both retained honestly.",
+    "pathMapping": "Actual executionRoot/cwd/state/workspace and separate captureRoot are recorded without rewriting original strings or outputs.",
+    "nativeRuntimeFixedEnvironmentValues": {
+      "JITI_FS_CACHE": "false"
+    },
+    "originalEnvironmentValueMappings": {
+      "nativeInitial": {
+        "PATH": "$NODE_PARENT + os.pathsep + os.defpath",
+        "LANG": "C.UTF-8",
+        "TZ": "UTC",
+        "NODE_OPTIONS": "--import=$SOURCE/equivalence/host-turn-barrier-v3-preload.mjs",
+        "MEMORY_EQ_RELEASE_CONTEXT": "$CAPTURE/context.json"
+      },
+      "nativeRuntimeAdded": {
+        "OPENCLAW_HOME": "$EXECUTION/state",
+        "OPENCLAW_STATE_DIR": "$EXECUTION/state",
+        "OPENCLAW_CONFIG_PATH": "$EXECUTION/state/openclaw.json",
+        "JITI_FS_CACHE": "false"
+      },
+      "sdk": {
+        "PATH": "$PYTHON_PARENT + os.pathsep + os.defpath",
+        "PYTHONPATH": "$SOURCE",
+        "LANG": "C.UTF-8",
+        "TZ": "UTC",
+        "OPENCLAW_HOME": "$EXECUTION/state",
+        "OPENCLAW_STATE_DIR": "$EXECUTION/state/state"
+      },
+      "sdkOriginalRequestDirectory": "$EXECUTION/state",
+      "injectedEnvironmentPolicy": "Require exact actual child dictionary. No unobserved interpreter/Node key or speculative locale allowance."
+    },
+    "originalLauncherSourceAuthority": [
+      {
+        "path": "equivalence/host_turn_barrier_native.py",
+        "sha256": "44c109a2cc7dd7702f88e93ef07424a1e1a5ef8b398b85e52ac762c4e9b8bf10",
+        "exactEnvironmentSnippet": "    env = {\"PATH\": str(node.parent) + os.pathsep + os.defpath, \"LANG\": \"C.UTF-8\", \"TZ\": \"UTC\",\n           \"NODE_OPTIONS\": f'--import={ROOT / \"equivalence\" / PRELOAD}',\n           \"MEMORY_EQ_RELEASE_CONTEXT\": str(context_path)}\n"
+      },
+      {
+        "path": "equivalence/host-turn-barrier-runtime.mjs",
+        "sha256": "7cc56a10be3ad03a9a9877a91034cd8207df80927cc81e85cc569c1ad5bd1396",
+        "exactEnvironmentSnippet": " process.env.OPENCLAW_STATE_DIR=directory;process.env.OPENCLAW_HOME=directory;process.env.OPENCLAW_CONFIG_PATH=runtimeConfig.configPath;\n process.env.JITI_FS_CACHE='false';"
+      },
+      {
+        "path": "equivalence/host_turn_barrier_sdk.py",
+        "sha256": "80b03c0eae35c332cda052a5276f15fade82818605e3dfc630df7b1ce3c6b37b",
+        "exactEnvironmentSnippet": "    environment = {\"PATH\": str(Path(sys.executable).parent) + os.pathsep + os.defpath,\n        \"PYTHONPATH\": str(ROOT), \"LANG\": \"C.UTF-8\", \"TZ\": \"UTC\",\n        \"OPENCLAW_HOME\": str(directory), \"OPENCLAW_STATE_DIR\": str(directory / \"state\")}\n"
+      }
+    ]
+  },
+  "frontier": {
+    "kind": "natural-original-watch-and-on-search",
+    "controllerGates": [],
+    "extraHostOperations": [],
+    "timersAndMonotonicClocks": "unmodified",
+    "originalWatchAndOnSearch": "enabled-under-original-policy",
+    "outcomes": "Every actual branch, warning, corpora field, hit, score and reply remains evidence. No expected result is supplied.",
+    "futureControls": "Any optional publication frontier requires another explicit frozen control version before execution. No absent original owner may be fabricated."
+  },
+  "custody": {
+    "before": "Source-qualified child records actual OS cwd, PID/PPID, explicit environment and canonical path/ancestor facts before original host dispatch. SDK exec preserves these OS facts and the original stdin.",
+    "after": "Coordinator checks all execution/capture paths and .git ancestry again after the observed OS exit; Native entry also retains a post-host environment observation.",
+    "sources": "Seal input/contract, all adapter/entry/preload/source bytes, approved original reference/runtime and Node/Python identities before engines; reject any changed source or foreign capture.",
+    "businessReplay": "Unchanged Host v1 business custody validators validate actual original Native/SDK observations. V2 environment admission is additional and cannot weaken those checks.",
+    "retention": "Retain original stdout/stderr/raw packets, traces and actual state DB/WAL/SHM bytes separately. No execution-root cleanup until actual exit and verified lossless archive/restore proof."
+  },
+  "scope": {
+    "registeredByDefault": false,
+    "oldFourHostCasesUntouched": true,
+    "original1452DefinitionsUntouched": true,
+    "old80AnnotationsUntouched": true,
+    "frozen15ForgetInputFilesUntouched": true,
+    "fixedRequirements": 64,
+    "fixedAcceptancePoints": 128,
+    "promotion": "Requires explicit root review after actual proof and exact Host/FIF version migration; do not claim old1452 prefix unchanged after later replacement."
+  }
+}

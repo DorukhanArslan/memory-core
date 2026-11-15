@@ -1,0 +1,184 @@
+{
+  "kind": "host-turn-barrier-v3-freeze-design",
+  "version": 3,
+  "status": "frozen-before-first-v3-original-engine",
+  "acceptancePointsAwarded": 0,
+  "candidateCoverage": [
+    "host.turn-barrier.outcomes"
+  ],
+  "sourceBase": "13b54e07bffe292599dab0ff5d89ea54e94e207a",
+  "previousUnexecutedFreeze": {
+    "commit": "f40354ebde107a8183efdf207e8e38102d6da455",
+    "allThreeV2FilesUnchanged": true
+  },
+  "environmentContract": {
+    "path": "docs/host_turn_barrier_v3_environment.json",
+    "bytes": 6385,
+    "sha256": "dee164f3a52ea7a8ae839844790dd5ec1664f2a31bd4019077110065ec60eed2"
+  },
+  "manifest": {
+    "path": "docs/host_turn_barrier_v3_literals.json",
+    "bytes": 18751,
+    "sha256": "ac55a8e9a56bf93b4c8694cbffa0ddfb118dc3568a46d7bb742b0f0e1e6bf94f"
+  },
+  "v3CaseWireSha256": {
+    "host-turn-barrier-v3-cold-ascii": "5daf83c8f0a4e2340cef1c052eec56e0dbea08363790c88e6ccc97273c94ef4e",
+    "host-turn-barrier-v3-warm-ascii": "ccfe267de03bf4de8a380a22b3bb31fbe72e8242f0a796f454b3a5367689a8d7",
+    "host-turn-barrier-v3-cold-unicode": "b14412f7213fa398f2c6f0ca3201e7ff2a248f0013fd05b32575685e933a8895",
+    "host-turn-barrier-v3-warm-unicode": "5b85eed307c5f8a88ccccf3bb48cea32863c3778ae9da391fecd295b92c6af7c"
+  },
+  "v1BusinessCaseWireSha256": {
+    "host-turn-barrier-cold-ascii": "f15b6b765b7998301945a42e5028a30cbc759fb8251c7e814b35778a88a06e66",
+    "host-turn-barrier-warm-ascii": "a66a8fd95c63ece444cfa50d4c575de504ae1d05b9a9d3dcd5367809b93d0da3",
+    "host-turn-barrier-cold-unicode": "76f267e1c678d0ec7ffac28e309bea3360bd31f75230ebf59c6f8a6bdec06a65",
+    "host-turn-barrier-warm-unicode": "cf7ce1144290e45d8bffa4fc230bbb5fcd26569787bccf149282a66455468750"
+  },
+  "canonicalBusinessDiff": [],
+  "canonicalV2ToV3OuterDiff": [
+    {
+      "oldId": "host-turn-barrier-v2-cold-ascii",
+      "newId": "host-turn-barrier-v3-cold-ascii",
+      "changedPaths": [
+        "$.id",
+        "$.operation",
+        "$.input.version",
+        "$.input.environment.contractSha256"
+      ],
+      "businessDiff": []
+    },
+    {
+      "oldId": "host-turn-barrier-v2-warm-ascii",
+      "newId": "host-turn-barrier-v3-warm-ascii",
+      "changedPaths": [
+        "$.id",
+        "$.operation",
+        "$.input.version",
+        "$.input.environment.contractSha256"
+      ],
+      "businessDiff": []
+    },
+    {
+      "oldId": "host-turn-barrier-v2-cold-unicode",
+      "newId": "host-turn-barrier-v3-cold-unicode",
+      "changedPaths": [
+        "$.id",
+        "$.operation",
+        "$.input.version",
+        "$.input.environment.contractSha256"
+      ],
+      "businessDiff": []
+    },
+    {
+      "oldId": "host-turn-barrier-v2-warm-unicode",
+      "newId": "host-turn-barrier-v3-warm-unicode",
+      "changedPaths": [
+        "$.id",
+        "$.operation",
+        "$.input.version",
+        "$.input.environment.contractSha256"
+      ],
+      "businessDiff": []
+    }
+  ],
+  "canonicalEnvironmentDiff": [
+    {
+      "path": "$.kind",
+      "before": "host-turn-barrier-v2-environment-contract",
+      "after": "host-turn-barrier-v3-environment-contract"
+    },
+    {
+      "path": "$.version",
+      "before": 2,
+      "after": 3
+    },
+    {
+      "path": "$.environment.nativeRuntimeAddedEnvironmentKeys",
+      "before": [
+        "OPENCLAW_CONFIG_PATH",
+        "OPENCLAW_HOME",
+        "OPENCLAW_STATE_DIR"
+      ],
+      "after": [
+        "JITI_FS_CACHE",
+        "OPENCLAW_CONFIG_PATH",
+        "OPENCLAW_HOME",
+        "OPENCLAW_STATE_DIR"
+      ]
+    },
+    {
+      "path": "$.environment.nativeRuntimeFixedEnvironmentValues",
+      "beforePresent": false,
+      "after": {
+        "JITI_FS_CACHE": "false"
+      }
+    },
+    {
+      "path": "$.environment.originalEnvironmentValueMappings",
+      "beforePresent": false,
+      "after": {
+        "nativeInitial": {
+          "PATH": "$NODE_PARENT + os.pathsep + os.defpath",
+          "LANG": "C.UTF-8",
+          "TZ": "UTC",
+          "NODE_OPTIONS": "--import=$SOURCE/equivalence/host-turn-barrier-v3-preload.mjs",
+          "MEMORY_EQ_RELEASE_CONTEXT": "$CAPTURE/context.json"
+        },
+        "nativeRuntimeAdded": {
+          "OPENCLAW_HOME": "$EXECUTION/state",
+          "OPENCLAW_STATE_DIR": "$EXECUTION/state",
+          "OPENCLAW_CONFIG_PATH": "$EXECUTION/state/openclaw.json",
+          "JITI_FS_CACHE": "false"
+        },
+        "sdk": {
+          "PATH": "$PYTHON_PARENT + os.pathsep + os.defpath",
+          "PYTHONPATH": "$SOURCE",
+          "LANG": "C.UTF-8",
+          "TZ": "UTC",
+          "OPENCLAW_HOME": "$EXECUTION/state",
+          "OPENCLAW_STATE_DIR": "$EXECUTION/state/state"
+        },
+        "sdkOriginalRequestDirectory": "$EXECUTION/state",
+        "injectedEnvironmentPolicy": "Require exact actual child dictionary. No unobserved interpreter/Node key or speculative locale allowance."
+      }
+    },
+    {
+      "path": "$.environment.originalLauncherSourceAuthority",
+      "beforePresent": false,
+      "after": [
+        {
+          "path": "equivalence/host_turn_barrier_native.py",
+          "sha256": "44c109a2cc7dd7702f88e93ef07424a1e1a5ef8b398b85e52ac762c4e9b8bf10",
+          "exactEnvironmentSnippet": "    env = {\"PATH\": str(node.parent) + os.pathsep + os.defpath, \"LANG\": \"C.UTF-8\", \"TZ\": \"UTC\",\n           \"NODE_OPTIONS\": f'--import={ROOT / \"equivalence\" / PRELOAD}',\n           \"MEMORY_EQ_RELEASE_CONTEXT\": str(context_path)}\n"
+        },
+        {
+          "path": "equivalence/host-turn-barrier-runtime.mjs",
+          "sha256": "7cc56a10be3ad03a9a9877a91034cd8207df80927cc81e85cc569c1ad5bd1396",
+          "exactEnvironmentSnippet": " process.env.OPENCLAW_STATE_DIR=directory;process.env.OPENCLAW_HOME=directory;process.env.OPENCLAW_CONFIG_PATH=runtimeConfig.configPath;\n process.env.JITI_FS_CACHE='false';"
+        },
+        {
+          "path": "equivalence/host_turn_barrier_sdk.py",
+          "sha256": "80b03c0eae35c332cda052a5276f15fade82818605e3dfc630df7b1ce3c6b37b",
+          "exactEnvironmentSnippet": "    environment = {\"PATH\": str(Path(sys.executable).parent) + os.pathsep + os.defpath,\n        \"PYTHONPATH\": str(ROOT), \"LANG\": \"C.UTF-8\", \"TZ\": \"UTC\",\n        \"OPENCLAW_HOME\": str(directory), \"OPENCLAW_STATE_DIR\": str(directory / \"state\")}\n"
+        }
+      ]
+    }
+  ],
+  "guardDesign": [
+    "Reject altered v3 input/contract, undeclared control fields or legacy v1/v2 capture substitution.",
+    "Record actual OS cwd and workspace/capture path identities; invoke actual pinned original findGitRoot with authenticated transitive imports and retain actual returns before/after execution.",
+    "Require native initial5+original runtime4 values exactly; SDK6 original relative values exactly, including state/state. No injected-key allowance.",
+    "Bind actual same-PID SDK startup sys.orig_argv/os.getcwd/env/executable to exact exec vector and unchanged original stdin; retain both launch and executed argv honestly.",
+    "Validate unchanged v1 business custody plus complete original public/raw results, without result edits, waits, tolerances or feature disabling."
+  ],
+  "registeredByDefault": false,
+  "registeredWrapperTransform": "After explicit root promotion only, exact immutable V3 outer probe except covers restored to that exact original V1 case covers. No other field may differ.",
+  "futureWholeReportPolicy": "Retain all4 HostV3 Native+SDK whole public payloads alongside13 FIF payloads for17 exact comparisons.",
+  "originalsStarted": false,
+  "preserved": [
+    "Original Host v1 modules/inputs/contracts/captures/13b variance",
+    "Unexecuted f403 Host v2 trio",
+    "Original1452 definitions/80 annotations until explicit reviewed migration",
+    "All15 frozen FIF files",
+    "64 requirements/128 conditions"
+  ]
+}

@@ -6,6 +6,7 @@ are distinct facts; this module never rewrites a capture to resemble Host v1.
 from __future__ import annotations
 
 import json
+import os
 from pathlib import Path
 from urllib.parse import unquote, urlparse
 
@@ -55,7 +56,15 @@ def git_capture(capture, phase, context_path, mapping, *, node, runtime, referen
     """Consume every original-helper call/import/process fact, not a null label."""
     context_path = regular(context_path)
     context = read_json(context_path)
-    require(context["runtime"] == runtime and context["approvedNodeRuntime"] == node
+    clean_environment = {"PATH": str(Path(node["execPath"]).parent) + os.pathsep + os.defpath,
+                         "LANG": "C.UTF-8", "TZ": "UTC"}
+    require(isinstance(context, dict) and set(context) == {
+                "schemaVersion", "kind", "contractSha256", "paths", "expectedEnvironment",
+                "approvedNodeRuntime", "runtime", "referenceRoot", "probe"}
+            and type(context["schemaVersion"]) is int and context["schemaVersion"] == 1
+            and context["kind"] == "host-turn-barrier-v4-git-probe-context"
+            and context["expectedEnvironment"] == clean_environment
+            and context["runtime"] == runtime and context["approvedNodeRuntime"] == node
             and context["referenceRoot"] == str(reference)
             and context["contractSha256"] == CONTRACT_SHA256
             and context["paths"] == {"cwd": mapping["cwd"], "workspace": mapping["workspace"]}
@@ -74,7 +83,7 @@ def git_capture(capture, phase, context_path, mapping, *, node, runtime, referen
             and process.get("pid") == proof["pid"] and process.get("coordinatorPid") == parent_pid
             and proof["ppid"] == parent_pid and process["argv"] == argv
             and process["cwd"] == proof["cwd"] == mapping["cwd"]
-            and process["environment"] == proof["environment"] == context["expectedEnvironment"]
+            and process["environment"] == proof["environment"] == clean_environment
             and proof["argv"] == argv and proof["execArgv"] == []
             and strict_json(process["stdin"]) == context["paths"]
             and strict_json(process["stdout"]) == proof,
@@ -126,7 +135,9 @@ def git_capture(capture, phase, context_path, mapping, *, node, runtime, referen
 
 
 def _native_environment(case, raw, result, capture, *, node, runtime, reference, registered):
-    from equivalence.host_turn_barrier_v4_native import ENTRY, LOCAL, PROFILE_KIND, validate_traces
+    from equivalence.host_turn_barrier_v4_native import (
+        ENTRY, LOCAL, PROFILE_KIND, process_timeout, validate_traces,
+    )
 
     context = read_json(capture / "context.json")
     env_path = capture / "host-v4-environment-context.json"
@@ -174,7 +185,8 @@ def _native_environment(case, raw, result, capture, *, node, runtime, reference,
             and process["sourceFilesBefore"] == process["sourceFilesAfter"] == env["sourceFiles"]
             and process["contextSha256"] == digest(capture / "context.json")
             and process["environmentContextSha256"] == digest(env_path)
-            and process["timeoutSeconds"] == 180,
+            and type(process["timeoutSeconds"]) is int
+            and process["timeoutSeconds"] == process_timeout(registered),
             "Host v4 Native process/exit/source facts changed")
     require(raw["fixtureBase"] == mapping["state"]
             and raw["config"]["agents"]["defaults"].get("repoRoot") is None,

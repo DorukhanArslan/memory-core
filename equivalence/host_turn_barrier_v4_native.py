@@ -112,11 +112,21 @@ def validate_traces(directory, context, runtime, authority, *, process_pid, pare
             "traces": [{"name": p.name, "sha256": digest(p), "text": p.read_text()} for p in traces]}
 
 
-def run_native_case(case, node, runtime, directory, *, reference_root, timeout=180, registered=False):
+def process_timeout(registered):
+    """Preserve both existing entry-point bounds without widening either."""
+    if type(registered) is not bool:
+        raise ValueError("Host v4 requires an explicit Boolean registration mode")
+    return 120 if registered else 180
+
+
+def run_native_case(case, node, runtime, directory, *, reference_root, timeout=None, registered=False):
     """One original full host in the explicitly frozen isolated environment."""
     validate_case(case, registered=registered)
-    if type(timeout) is not int or timeout != 180:
-        raise ValueError("Host v4 preserves the original Native 180 second process bound")
+    expected_timeout = process_timeout(registered)
+    if timeout is None:
+        timeout = expected_timeout
+    if type(timeout) is not int or timeout != expected_timeout:
+        raise ValueError(f"Host v4 preserves the original Native {expected_timeout} second process bound")
     node = Path(node).resolve(strict=True)
     authority = prepare_model_node_authority(node)
     directory = Path(directory).absolute()

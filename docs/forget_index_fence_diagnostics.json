@@ -1415,7 +1415,9 @@
     "hostedDifferentialCompletedGloballyBlocked": true,
     "full004DeferredAtUserRequestForLighterWorkflow": true,
     "temporaryCopyRemovalExcludedFromCurrentCloseout": true,
-    "noNewLongRunOrUnlinkStartedForCloseout": true
+    "noNewLongRunOrUnlinkStartedForCloseout": true,
+    "currentHostedFailureIdentifiedFromExistingArtifact": true,
+    "userFileUploadRequired": false
   },
   "watcherPublicationReadOnlyAudit": {
     "receipt": {
@@ -3585,7 +3587,9 @@
         "hostNextTurnMatches": 4,
         "querySyncBoundariesMatches": 8,
         "fifV6SmokeMatches": 1
-      }
+      },
+      "observedFailure": "Native keyword case timed out",
+      "preciseWaitingPointEstablished": false
     },
     "allTestsRequired": false,
     "overallCiGreenClaimed": false,
@@ -3703,15 +3707,39 @@
     "forgetIndexFenceConditions": 2,
     "focusedChecksPassed": 269,
     "currentSourceHostedPython311And312": "success",
-    "hostedDifferential": "globally blocked; exact cause unproved",
+    "hostedDifferential": "globally blocked after Native keyword caller timeout; precise waiting point unproved",
     "full004Started": false,
     "full004DeferredAtUserRequestForLighterWorkflow": true,
     "temporaryCopyRemovalPartOfThisCloseout": false,
     "allPreservedTemporaryOriginalsRemainLive": true,
     "draftPullRequest": 18,
     "merged": false,
-    "immediateNextWork": "Bounded read-only diagnosis of the current hosted authority failure from retained evidence; no automatic full rerun.",
+    "immediateNextWork": "Locate the timed-out Native keyword case waiting point in existing gate and trace records; no automatic full rerun.",
     "nextFeatureAfterVerificationIssue": "forget.lineage-tombstones",
     "smallChangesUseFocusedChecksAndFullComparisonOnceAtVerificationCloseout": true
+  },
+  "currentHostedFailureInspection": {
+    "sourceRun": 43673106847,
+    "sourceArtifact": 14146819533,
+    "diagnosticRun": 43707458327,
+    "diagnosticJob": 132791519454,
+    "diagnosticUrl": "https://github.com/DorukhanArslan/memory-core/actions/runs/43707458327",
+    "diagnosticConclusion": "success",
+    "sourceReportSha256": "34213268069115e5b65cbd95b62ad687049f7dc2880ca37446da7687d0929ec5",
+    "sourceArchiveSha256": "5d35a943b74dd0db2d061c17c5c0230be4303f53b7589dfc90197a693dacf050",
+    "failedReferenceCaseId": "forget-index-fence-v6-keyword-worker-before-forget-enrichment-after",
+    "reason": "Actual forget/index-fence caller timed out; complete streams retained without retry",
+    "observedTimedOut": true,
+    "observedReturnCode": -9,
+    "protectedBytesUnchanged": true,
+    "configuredNativeCallerTimeoutSeconds": 180,
+    "preciseWaitingPointEstablished": false,
+    "testsRerun": false,
+    "userFileUploadRequired": false,
+    "newAcceptancePointsAwarded": 0,
+    "localReceipt": {
+      "path": "work/forget-index-fence/current-ci-bounded-diagnostic/automated-inspection-receipt.json",
+      "sha256": "ee037541823ab99b0d404461d7a90e7d1dbe40cd24248b5c2dc3aff95c24225d"
+    }
   }
 }

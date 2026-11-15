@@ -56,8 +56,15 @@ failed globally with `forget-index-fence-evidence-invalid`, exit 2, summary
 failed; no retry was made." The report SHA-256 is
 `34213268069115e5b65cbd95b62ad687049f7dc2880ca37446da7687d0929ec5`.
 The downstream complete-family replay and guard steps fail the original
-report's final check. This is not attributed to the fourteen known mismatches;
-its cause has not been established. Overall CI is not green.
+report's final check. Reading the existing artifact in a separate
+[diagnostic job](https://github.com/DorukhanArslan/memory-core/actions/runs/43707458327)
+identified the failed Native case:
+`forget-index-fence-v6-keyword-worker-before-forget-enrichment-after`.
+Its process records `timedOut: true`, return code `-9` and unchanged protected
+bytes. The registered caller has a 180-second limit. Its exact waiting point
+is still unproved; this is not attributed to the fourteen known mismatches.
+The diagnostic job verified the original ZIP and report hashes and read the
+retained failure records without rerunning any comparison. Overall CI is not green.
 
 Local full003 remains its own historical measurement. It lost the earlier
 query-sync and host-turn outcome points, while their separate boundary points
@@ -97,7 +104,8 @@ interleaving. The older four-extra-hosted-mismatch investigation stays paused.
 
 ## Next work
 
-First diagnose the current hosted authority failure from retained evidence.
+First locate the timed-out Native keyword case's waiting point in its existing
+gate and trace records.
 When full verification resumes, perform one complete comparison and independent
 assessment for the finished package, rather than repeating it after small
 changes. The score stays 71/128 until that evidence supports an update.

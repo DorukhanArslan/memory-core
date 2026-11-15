@@ -9,7 +9,8 @@ The current v2026.9.9 [checklist](full-equivalence-checklist.md) records
 [forget/index-fence partial closeout](forget_index_fence_closeout.md) describes
 the SDK fixes, passing bounded preflights and current-source software checks.
 Hosted Python 3.11/3.12 each pass 9,365 tests, but the separate differential
-run fails globally with an undiagnosed authority error. No full004 or new
+run fails globally after a Native keyword case times out; the exact waiting
+point remains unproved. This was identified from existing evidence. No full004 or new
 acceptance credit is claimed; PR #18 remains draft and unmerged. Source
 classification stays `partial`, source-build reproduction stays false and
 full equivalence is not established. These results do not promote any

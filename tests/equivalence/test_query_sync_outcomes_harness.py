@@ -15,12 +15,27 @@ from equivalence.query_sync_boundaries import (
 )
 
 
+def _historical_prefix(registered):
+    """Restore only the four authenticated Host wrappers for immutable old hashes."""
+    from equivalence.catalog_migration import definition_authority
+    from equivalence.host_turn_barrier_v4 import business_case
+
+    migration = definition_authority(registered, fif_version="v6")
+    assert [row["index"] for row in migration["hostReplacements"]] == [1407, 1408, 1409, 1410]
+    prefix = deepcopy(registered[:1452])
+    for replacement in migration["hostReplacements"]:
+        index = replacement["index"]
+        assert prefix[index]["id"] == replacement["currentId"]
+        prefix[index] = business_case(prefix[index])
+    return prefix
+
+
 def _rows():
     return [dict(case, status="matched", runtimeEvidenceValidated=True) for case in family_cases()]
 
 
 def test_registration_appends_exact_family_and_retains_all_1437_prior_case_fields():
-    registered = build_cases()
+    registered = _historical_prefix(build_cases())
     validate_boundary_registration(registered)
     assert registered[1444:] == boundary_cases()
     cases = registered[:1444]

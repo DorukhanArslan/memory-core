@@ -1,0 +1,3808 @@
+{
+  "kind": "forget-index-fence-acceptance-diagnostics",
+  "preparedAt": "2026-11-15",
+  "status": "partial-implementation-closeout-71-of128-observer-corrected-focused-checks-passed-full-comparison-deferred",
+  "method": "Existing sealed receipts and source-bound artifact inspection retain their original execution results. The subsequent watcher-observer correction is checked only with builtin lifecycle, pure validator and source-anchor regressions. No new original memory engine, long comparison or temporary-copy removal is performed. Latest independently assessed coverage remains 71/128; complete equivalence and merge readiness are not claimed.",
+  "fixedContract": {
+    "reference": {
+      "tag": "v2026.9.9",
+      "commit": "bcfc88812a35243893585dbeca87ca41b48272ca",
+      "sourceBuildReproduced": false,
+      "runtimeQualification": "Authenticated official compiled runtime with qualified pinned-source hashes; tag build not reproduced."
+    },
+    "scopeSha256": "a8e066e63970dd0be734485d62a5932640894b8c0a42f47ac3eb67f784cbc7b9",
+    "requiredContracts": 64,
+    "totalConditions": 128,
+    "targetOriginalContract": "forget.index-fence",
+    "targetOriginalPoints": [
+      "forget.index-fence.outcomes",
+      "forget.index-fence.boundaries"
+    ],
+    "priorDefinitions": {
+      "count": 1452,
+      "canonicalSha256": "0fa31b6393c65303f4fa2e1663671e4ef60eb15edc563f05aba218c8c408349c",
+      "builderAnnotations": 80,
+      "fixtureSourceAnnotations": 79,
+      "diagnosticOnlyAnnotations": 1,
+      "historicalDefinitionRecordOnly": true
+    },
+    "requiredGate": "Both existing points require the exact complete thirteen-member frozen family of the same declared version, every complete public pair matched, literal true independently source-validated paired runtime custody, and atomic inclusion in the complete catalog. No subset or mixed-version credit.",
+    "v3Freeze": {
+      "primaryCommit": "35ce6fc",
+      "sourceCommit": "b8d0df246811b3ca68064b264cd57627f68ec733",
+      "manifestSha256": "acdcbfa022d43c9ab58dbfc43bfa1987798d5aa4a02f3f535bd44db2d449b01c",
+      "cases": 13,
+      "newActualEffectWaitSteps": 101,
+      "businessInputsAndClocksIdenticalToV2": true,
+      "enginesStarted": true
+    },
+    "frozenInputs": [
+      {
+        "path": "equivalence/forget_index_fence.py",
+        "bytes": 5513,
+        "sha256": "df365f400dbd1832e39209ba537c4c9e85a3aaa7de91b33bb1921eb78f7174d9"
+      },
+      {
+        "path": "docs/forget_index_fence_literals.json",
+        "bytes": 486668,
+        "sha256": "3e2e1590dde362027f0910efc2653822b19bb74a27e9b56e9c9cda4637fc3682"
+      },
+      {
+        "path": "docs/forget_index_fence_plan.md",
+        "bytes": 20551,
+        "sha256": "81f992e64a12f0d1ce7435e3883b037f3cccb4d96b67735e30cf1e7cfadf5832"
+      },
+      {
+        "path": "equivalence/forget_index_fence_v2.py",
+        "bytes": 5647,
+        "sha256": "e20505bf3f6501efb0b1fceb581cedc515a47fabe5a82f4e595b646ade9557cc"
+      },
+      {
+        "path": "docs/forget_index_fence_v2_literals.json",
+        "bytes": 621903,
+        "sha256": "c562fca43a1ec7fbb320da55cd2c0bb2201ab1392230c2398cccdf82a9111854"
+      },
+      {
+        "path": "docs/forget_index_fence_v2_plan.md",
+        "bytes": 13630,
+        "sha256": "0df1c7b48c6ff6f75eed881499fa6ceed1a761d95763a4a1d4b4dbffeb4e88d3"
+      },
+      {
+        "path": "equivalence/forget_index_fence_v3.py",
+        "bytes": 5722,
+        "sha256": "d0ffb0c88635d04994f7c0019346a389c823fd4f2e9bed3064e94a9059a66bc5"
+      },
+      {
+        "path": "docs/forget_index_fence_v3_literals.json",
+        "bytes": 689116,
+        "sha256": "acdcbfa022d43c9ab58dbfc43bfa1987798d5aa4a02f3f535bd44db2d449b01c"
+      },
+      {
+        "path": "docs/forget_index_fence_v3_plan.md",
+        "bytes": 19074,
+        "sha256": "376873a6111486b5f8612c8db8401d535131d102cd1bcfd2c5484ee11d9ea62b"
+      },
+      {
+        "path": "equivalence/forget_index_fence_v4.py",
+        "bytes": 5733,
+        "sha256": "5e4716b4fbaa68d4f6f7bbaf7f8aeba2bb867bab951a21d786a504c75a8cfc72"
+      },
+      {
+        "path": "docs/forget_index_fence_v4_literals.json",
+        "bytes": 691027,
+        "sha256": "d8945f9d1bf1aadc5b33c83a6a8a250e13ecefd4d51698e5cf170b8e8d8b6fd2"
+      },
+      {
+        "path": "docs/forget_index_fence_v4_plan.md",
+        "bytes": 22290,
+        "sha256": "00a3986598833ade6030a46e19d9c47a4d7f83fea04a9ef70a464ec55fa46cde"
+      },
+      {
+        "path": "equivalence/forget_index_fence_v5.py",
+        "bytes": 5799,
+        "sha256": "13be80d22c3070ecdbf368d327bbc71e1b35ea9ba9c933d761baacddff353cff"
+      },
+      {
+        "path": "docs/forget_index_fence_v5_literals.json",
+        "bytes": 797666,
+        "sha256": "a1da290cb134aca47678f97b7e2e182a48b746863857a3e3f5c9365db02aae83"
+      },
+      {
+        "path": "docs/forget_index_fence_v5_plan.md",
+        "bytes": 23040,
+        "sha256": "ac961b10dbcb52e774cffaa6c14198451c55fcec590afe151acaa80027dd7aae"
+      }
+    ],
+    "v4CaseCount": 13,
+    "v4Freeze": {
+      "primaryCommit": "64ec87c",
+      "sourceCommit": "27540eedc523099ee970ce2ff2fb8c749f083ff7",
+      "manifestSha256": "d8945f9d1bf1aadc5b33c83a6a8a250e13ecefd4d51698e5cf170b8e8d8b6fd2",
+      "cases": 13,
+      "comparedToV3": "onlyversionidentities+sync.onSearchtrue/onSessionStartfalse/watchfalse; clocks/all101steps/otherbusinessinputsunchanged",
+      "nativeActorSourceCommit": "6973d58b5da942a97914ae7a523e32f8cb566b86",
+      "nativePrimaryCommit": "730276e",
+      "collectorPrimaryCommit": "78701cd",
+      "originalsStarted": true,
+      "controlCarrier": "Native key/bootstrap/NATIVE_KIND v3, effects protocol v3, clocks v2; business kind/op/IDs V4"
+    },
+    "historicalV3Cases": [
+      {
+        "id": "forget-index-fence-v3-shared-clean-dryrun-unresolved-promotion-controls",
+        "scenario": "shared-clean-dryrun-unresolved-promotion-controls",
+        "covers": [
+          "forget.index-fence.outcomes",
+          "forget.index-fence.boundaries"
+        ]
+      },
+      {
+        "id": "forget-index-fence-v3-shared-old-full-complete-forget",
+        "scenario": "shared-old-full-complete-forget",
+        "covers": [
+          "forget.index-fence.outcomes",
+          "forget.index-fence.boundaries"
+        ]
+      },
+      {
+        "id": "forget-index-fence-v3-split-old-full-complete-forget",
+        "scenario": "split-old-full-complete-forget",
+        "covers": [
+          "forget.index-fence.outcomes",
+          "forget.index-fence.boundaries"
+        ]
+      },
+      {
+        "id": "forget-index-fence-v3-unfenced-on-search-old-full-complete-forget",
+        "scenario": "unfenced-on-search-old-full-complete-forget",
+        "covers": [
+          "forget.index-fence.outcomes",
+          "forget.index-fence.boundaries"
+        ]
+      },
+      {
+        "id": "forget-index-fence-v3-shared-postcheck-pending-forget",
+        "scenario": "shared-postcheck-pending-forget",
+        "covers": [
+          "forget.index-fence.outcomes",
+          "forget.index-fence.boundaries"
+        ]
+      },
+      {
+        "id": "forget-index-fence-v3-split-postcheck-pending-forget",
+        "scenario": "split-postcheck-pending-forget",
+        "covers": [
+          "forget.index-fence.outcomes",
+          "forget.index-fence.boundaries"
+        ]
+      },
+      {
+        "id": "forget-index-fence-v3-shared-marker-commit-process-kill",
+        "scenario": "shared-marker-commit-process-kill",
+        "covers": [
+          "forget.index-fence.outcomes",
+          "forget.index-fence.boundaries"
+        ]
+      },
+      {
+        "id": "forget-index-fence-v3-split-marker-commit-process-kill",
+        "scenario": "split-marker-commit-process-kill",
+        "covers": [
+          "forget.index-fence.outcomes",
+          "forget.index-fence.boundaries"
+        ]
+      },
+      {
+        "id": "forget-index-fence-v3-unfenced-on-search-marker-commit-process-kill",
+        "scenario": "unfenced-on-search-marker-commit-process-kill",
+        "covers": [
+          "forget.index-fence.outcomes",
+          "forget.index-fence.boundaries"
+        ]
+      },
+      {
+        "id": "forget-index-fence-v3-keyword-worker-before-forget-enrichment-after",
+        "scenario": "keyword-worker-before-forget-enrichment-after",
+        "covers": [
+          "forget.index-fence.outcomes",
+          "forget.index-fence.boundaries"
+        ]
+      },
+      {
+        "id": "forget-index-fence-v3-stored-promotion-model-plan-before-forget",
+        "scenario": "stored-promotion-model-plan-before-forget",
+        "covers": [
+          "forget.index-fence.outcomes",
+          "forget.index-fence.boundaries"
+        ]
+      },
+      {
+        "id": "forget-index-fence-v3-direct-absent-at-plan-retained-source-other-session-forgotten",
+        "scenario": "direct-absent-at-plan-retained-source-other-session-forgotten",
+        "covers": [
+          "forget.index-fence.outcomes",
+          "forget.index-fence.boundaries"
+        ]
+      },
+      {
+        "id": "forget-index-fence-v3-repeat-existing-tombstone-old-full-pending",
+        "scenario": "repeat-existing-tombstone-old-full-pending",
+        "covers": [
+          "forget.index-fence.outcomes",
+          "forget.index-fence.boundaries"
+        ]
+      }
+    ],
+    "v4FreezeAssumptionCorrection": {
+      "supportedSyncBlockClaimInFrozenPlanWasIncorrectForPin": true,
+      "frozenInputsChanged": false,
+      "actualConfigForwardedIntact": true,
+      "pinnedResolverHardcodesAllThreeSyncFlagsTrue": true,
+      "strictSchemaDefinesSyncFields": false,
+      "sameConfigurationRetryAuthorizedAsValidEvidence": false
+    },
+    "historicalV4Cases": [
+      {
+        "id": "forget-index-fence-v4-shared-clean-dryrun-unresolved-promotion-controls",
+        "scenario": "shared-clean-dryrun-unresolved-promotion-controls",
+        "covers": [
+          "forget.index-fence.outcomes",
+          "forget.index-fence.boundaries"
+        ]
+      },
+      {
+        "id": "forget-index-fence-v4-shared-old-full-complete-forget",
+        "scenario": "shared-old-full-complete-forget",
+        "covers": [
+          "forget.index-fence.outcomes",
+          "forget.index-fence.boundaries"
+        ]
+      },
+      {
+        "id": "forget-index-fence-v4-split-old-full-complete-forget",
+        "scenario": "split-old-full-complete-forget",
+        "covers": [
+          "forget.index-fence.outcomes",
+          "forget.index-fence.boundaries"
+        ]
+      },
+      {
+        "id": "forget-index-fence-v4-unfenced-on-search-old-full-complete-forget",
+        "scenario": "unfenced-on-search-old-full-complete-forget",
+        "covers": [
+          "forget.index-fence.outcomes",
+          "forget.index-fence.boundaries"
+        ]
+      },
+      {
+        "id": "forget-index-fence-v4-shared-postcheck-pending-forget",
+        "scenario": "shared-postcheck-pending-forget",
+        "covers": [
+          "forget.index-fence.outcomes",
+          "forget.index-fence.boundaries"
+        ]
+      },
+      {
+        "id": "forget-index-fence-v4-split-postcheck-pending-forget",
+        "scenario": "split-postcheck-pending-forget",
+        "covers": [
+          "forget.index-fence.outcomes",
+          "forget.index-fence.boundaries"
+        ]
+      },
+      {
+        "id": "forget-index-fence-v4-shared-marker-commit-process-kill",
+        "scenario": "shared-marker-commit-process-kill",
+        "covers": [
+          "forget.index-fence.outcomes",
+          "forget.index-fence.boundaries"
+        ]
+      },
+      {
+        "id": "forget-index-fence-v4-split-marker-commit-process-kill",
+        "scenario": "split-marker-commit-process-kill",
+        "covers": [
+          "forget.index-fence.outcomes",
+          "forget.index-fence.boundaries"
+        ]
+      },
+      {
+        "id": "forget-index-fence-v4-unfenced-on-search-marker-commit-process-kill",
+        "scenario": "unfenced-on-search-marker-commit-process-kill",
+        "covers": [
+          "forget.index-fence.outcomes",
+          "forget.index-fence.boundaries"
+        ]
+      },
+      {
+        "id": "forget-index-fence-v4-keyword-worker-before-forget-enrichment-after",
+        "scenario": "keyword-worker-before-forget-enrichment-after",
+        "covers": [
+          "forget.index-fence.outcomes",
+          "forget.index-fence.boundaries"
+        ]
+      },
+      {
+        "id": "forget-index-fence-v4-stored-promotion-model-plan-before-forget",
+        "scenario": "stored-promotion-model-plan-before-forget",
+        "covers": [
+          "forget.index-fence.outcomes",
+          "forget.index-fence.boundaries"
+        ]
+      },
+      {
+        "id": "forget-index-fence-v4-direct-absent-at-plan-retained-source-other-session-forgotten",
+        "scenario": "direct-absent-at-plan-retained-source-other-session-forgotten",
+        "covers": [
+          "forget.index-fence.outcomes",
+          "forget.index-fence.boundaries"
+        ]
+      },
+      {
+        "id": "forget-index-fence-v4-repeat-existing-tombstone-old-full-pending",
+        "scenario": "repeat-existing-tombstone-old-full-pending",
+        "covers": [
+          "forget.index-fence.outcomes",
+          "forget.index-fence.boundaries"
+        ]
+      }
+    ],
+    "cases": [
+      {
+        "id": "forget-index-fence-v5-shared-clean-dryrun-unresolved-promotion-controls",
+        "scenario": "shared-clean-dryrun-unresolved-promotion-controls",
+        "covers": [
+          "forget.index-fence.outcomes",
+          "forget.index-fence.boundaries"
+        ]
+      },
+      {
+        "id": "forget-index-fence-v5-shared-old-full-complete-forget",
+        "scenario": "shared-old-full-complete-forget",
+        "covers": [
+          "forget.index-fence.outcomes",
+          "forget.index-fence.boundaries"
+        ]
+      },
+      {
+        "id": "forget-index-fence-v5-split-old-full-complete-forget",
+        "scenario": "split-old-full-complete-forget",
+        "covers": [
+          "forget.index-fence.outcomes",
+          "forget.index-fence.boundaries"
+        ]
+      },
+      {
+        "id": "forget-index-fence-v5-unfenced-on-search-old-full-complete-forget",
+        "scenario": "unfenced-on-search-old-full-complete-forget",
+        "covers": [
+          "forget.index-fence.outcomes",
+          "forget.index-fence.boundaries"
+        ]
+      },
+      {
+        "id": "forget-index-fence-v5-shared-postcheck-pending-forget",
+        "scenario": "shared-postcheck-pending-forget",
+        "covers": [
+          "forget.index-fence.outcomes",
+          "forget.index-fence.boundaries"
+        ]
+      },
+      {
+        "id": "forget-index-fence-v5-split-postcheck-pending-forget",
+        "scenario": "split-postcheck-pending-forget",
+        "covers": [
+          "forget.index-fence.outcomes",
+          "forget.index-fence.boundaries"
+        ]
+      },
+      {
+        "id": "forget-index-fence-v5-shared-marker-commit-process-kill",
+        "scenario": "shared-marker-commit-process-kill",
+        "covers": [
+          "forget.index-fence.outcomes",
+          "forget.index-fence.boundaries"
+        ]
+      },
+      {
+        "id": "forget-index-fence-v5-split-marker-commit-process-kill",
+        "scenario": "split-marker-commit-process-kill",
+        "covers": [
+          "forget.index-fence.outcomes",
+          "forget.index-fence.boundaries"
+        ]
+      },
+      {
+        "id": "forget-index-fence-v5-unfenced-on-search-marker-commit-process-kill",
+        "scenario": "unfenced-on-search-marker-commit-process-kill",
+        "covers": [
+          "forget.index-fence.outcomes",
+          "forget.index-fence.boundaries"
+        ]
+      },
+      {
+        "id": "forget-index-fence-v5-keyword-worker-before-forget-enrichment-after",
+        "scenario": "keyword-worker-before-forget-enrichment-after",
+        "covers": [
+          "forget.index-fence.outcomes",
+          "forget.index-fence.boundaries"
+        ]
+      },
+      {
+        "id": "forget-index-fence-v5-stored-promotion-model-plan-before-forget",
+        "scenario": "stored-promotion-model-plan-before-forget",
+        "covers": [
+          "forget.index-fence.outcomes",
+          "forget.index-fence.boundaries"
+        ]
+      },
+      {
+        "id": "forget-index-fence-v5-direct-absent-at-plan-retained-source-other-session-forgotten",
+        "scenario": "direct-absent-at-plan-retained-source-other-session-forgotten",
+        "covers": [
+          "forget.index-fence.outcomes",
+          "forget.index-fence.boundaries"
+        ]
+      },
+      {
+        "id": "forget-index-fence-v5-repeat-existing-tombstone-old-full-pending",
+        "scenario": "repeat-existing-tombstone-old-full-pending",
+        "covers": [
+          "forget.index-fence.outcomes",
+          "forget.index-fence.boundaries"
+        ]
+      }
+    ],
+    "v5CaseCount": 13,
+    "v5Freeze": {
+      "sourceCommit": "a44262971ce4315809aeb66cb1fd2c08a8c506f9",
+      "primaryCommit": "4c07902",
+      "manifestSha256": "a1da290cb134aca47678f97b7e2e182a48b746863857a3e3f5c9365db02aae83",
+      "rootIndependentReview": "work/forget-index-fence/independent-review/v5-input-independent-review-001.json",
+      "rootIndependentReviewSha256": "98a00bfb8838f77a9839097cb8c789762cdafd0ac1866e8a91a88ad9b756e0e7",
+      "rootApprovedBeforeOriginals": true,
+      "originalsStarted": true
+    },
+    "frozenInputFileCount": 15,
+    "v5IndependentInputReview": {
+      "path": "work/forget-index-fence/independent-review/v5-input-independent-review-001.json",
+      "bytes": 1426,
+      "sha256": "98a00bfb8838f77a9839097cb8c789762cdafd0ac1866e8a91a88ad9b756e0e7"
+    },
+    "currentRegisteredDefinitions": 1465,
+    "registrationAwardsAcceptance": false,
+    "current1465CanonicalSha256": "b798a51b9b8e7985b6e60375b315bc407713bb8f88ad9e8a5767fbff40b23189",
+    "additionalV6FrozenInputs": [
+      {
+        "path": "equivalence/forget_index_fence_v6.py",
+        "sourceRoot": "/workspace/memory-core-fif-v6-protocol",
+        "bytes": 5807,
+        "sha256": "1460f18c5958a6a3abaf2a07f649f7138065c81f0d874b87b6809e615ef5f6fc"
+      },
+      {
+        "path": "docs/forget_index_fence_v6_literals.json",
+        "sourceRoot": "/workspace/memory-core-fif-v6-protocol",
+        "bytes": 797666,
+        "sha256": "ce4ee37230a9a814d7f8440e7e9cc513ae5140ee2980aa01c45480493ef4998d"
+      },
+      {
+        "path": "docs/forget_index_fence_v6_plan.md",
+        "sourceRoot": "/workspace/memory-core-fif-v6-protocol",
+        "bytes": 6948,
+        "sha256": "7e6a1dd37714eb1aea2011cc974d8061384c0ee3dae25b7aa2f73790aef5097f"
+      }
+    ],
+    "frozenForgetInputFilesTotal": 18,
+    "original15FrozenInputsImmutable": true,
+    "currentRegisteredCatalog": {
+      "primaryCommit": "b0b3778a184c5e29e3dc3a7e71030c3ff7e2f576",
+      "registeredCases": 1465,
+      "fixedRequirements": 64,
+      "fixedAcceptancePoints": 128,
+      "currentDefinitionsCanonicalSha256": "785b7e144526a4cab3e75a33893acf99dc43f1ce3c5d76d7e55ca2f7354f4c8f",
+      "current1452PrefixCanonicalSha256": "f3753dc1a02417a925160f4006c1cb75b31a1bfd2efd9ce3def7c96022b40ac0",
+      "original1452PrefixUnchanged": false,
+      "onlyFourHostIndicesReplaced": [
+        1407,
+        1408,
+        1409,
+        1410
+      ],
+      "original1452RestoredByExactHostReconstructionSha256": "0fa31b6393c65303f4fa2e1663671e4ef60eb15edc563f05aba218c8c408349c",
+      "tail13OnlyV5ToV6": true,
+      "reportWholePublicTargets": 31,
+      "selectedRuntimeDiagnostics": 34,
+      "selectedRuntimeTraces": 17,
+      "finalSharedPureTestsPassed": 468,
+      "finalSharedPureHonestSkips": 13,
+      "finalSharedPureSeconds": 84.75,
+      "ruffAndDiffPassed": true,
+      "noNewAcceptanceCredit": true,
+      "unchangedOriginal1452PrefixClaimWithdrawn": true,
+      "all1448OtherOldDefinitionsExact": true,
+      "all80BuilderAnnotationsExact": true,
+      "restoringExactlyFourOriginalHostBusinessCasesRecoversHistoricalHash": true
+    },
+    "currentOriginal1452PrefixUnchanged": false
+  },
+  "coverage": {
+    "lastCompletedAssessment": {
+      "verified": 71,
+      "remaining": 57,
+      "contracts": {
+        "complete": 32,
+        "pending": 25,
+        "partial": 7
+      },
+      "cases": {
+        "count": 1465,
+        "matched": 1443,
+        "mismatched": 18,
+        "blocked": 4
+      },
+      "uncovered": 51,
+      "registeredUnresolved": 6,
+      "sourceCommit": "13b54e07bffe292599dab0ff5d89ea54e94e207a",
+      "sourceSha256": "7865c61c075268a2dd09452411b6af70bb910a914cf2f729c66b59450c212fe0",
+      "sourceFiles": 162,
+      "fullScopePassed": false,
+      "status": "blocked",
+      "actualExit": 2,
+      "runnerErrors": [],
+      "completedAt": "2026-11-15T00:27:32.812555+00:00",
+      "elapsedSeconds": 5245.019967881992,
+      "report": {
+        "path": "/workspace/memory-core/work/forget-index-fence/full-003.json",
+        "bytes": 1232029587,
+        "sha256": "194a69ffda45a1af9a46bba87af17bc558739500bd4d5de19e9013d7b398795d"
+      },
+      "independentAssessment": {
+        "path": "work/forget-index-fence/independent-review/full-003-root-assessment-002-audit.json",
+        "bytes": 401964,
+        "sha256": "acbd2dc39279452b863dca04a397d50e7cca4e27c6fb6a969f3293b692718fb7"
+      },
+      "verifiedDeltaFromPrior73": -2,
+      "acceptancePointsAwarded": 0
+    },
+    "currentCompleteAssessment": {
+      "verified": 71,
+      "remaining": 57,
+      "contracts": {
+        "complete": 32,
+        "pending": 25,
+        "partial": 7
+      },
+      "cases": {
+        "count": 1465,
+        "matched": 1443,
+        "mismatched": 18,
+        "blocked": 4
+      },
+      "uncovered": 51,
+      "registeredUnresolved": 6,
+      "sourceCommit": "13b54e07bffe292599dab0ff5d89ea54e94e207a",
+      "sourceSha256": "7865c61c075268a2dd09452411b6af70bb910a914cf2f729c66b59450c212fe0",
+      "sourceFiles": 162,
+      "fullScopePassed": false,
+      "status": "blocked",
+      "actualExit": 2,
+      "runnerErrors": [],
+      "completedAt": "2026-11-15T00:27:32.812555+00:00",
+      "elapsedSeconds": 5245.019967881992,
+      "report": {
+        "path": "/workspace/memory-core/work/forget-index-fence/full-003.json",
+        "bytes": 1232029587,
+        "sha256": "194a69ffda45a1af9a46bba87af17bc558739500bd4d5de19e9013d7b398795d"
+      },
+      "independentAssessment": {
+        "path": "work/forget-index-fence/independent-review/full-003-root-assessment-002-audit.json",
+        "bytes": 401964,
+        "sha256": "acbd2dc39279452b863dca04a397d50e7cca4e27c6fb6a969f3293b692718fb7"
+      },
+      "verifiedDeltaFromPrior73": -2,
+      "acceptancePointsAwarded": 0
+    },
+    "verifiedDelta": -2,
+    "acceptancePointsAwardedByThisDraft": 0,
+    "standalonePacketsAwardAcceptance": false,
+    "testsConsumersOrCiAwardAcceptance": false,
+    "authoritativeVerifiedConditions": 71,
+    "authoritativeRemainingConditions": 57,
+    "newAcceptancePointsAwarded": 0,
+    "historicalPrior73Assessment": {
+      "verified": 73,
+      "remaining": 55,
+      "contracts": {
+        "complete": 34,
+        "partial": 5,
+        "pending": 25
+      },
+      "cases": {
+        "count": 1452,
+        "matched": 1438,
+        "mismatched": 14,
+        "blocked": 0
+      },
+      "uncovered": 53,
+      "registeredUnresolved": 2,
+      "sourceCommit": "d6bb805000b6023ddeaa02b6fe20a9118bc58a42",
+      "sourceSha256": "1b65f5cb9cabd7dfad07bfea7eb0dc05fbf29e846bc5648fe47d5637f0c83d9c",
+      "fullScopePassed": false
+    },
+    "priorVerified73NowHistorical": true
+  },
+  "sources": {
+    "baseline": {
+      "gitCommit": "65e9a5859cfd83dc92f44e9933297ca19e6cbb78",
+      "trackedWorkingTreeDirty": false,
+      "sourceSha256": "1b65f5cb9cabd7dfad07bfea7eb0dc05fbf29e846bc5648fe47d5637f0c83d9c",
+      "sourceFiles": 160
+    },
+    "correctedV3Historical": {
+      "gitCommit": "1cf632e544e505301828f85e69c4e5c0b0a4812b",
+      "sourceFiles": 161,
+      "sourceSha256": "86057af18cc8f5b47b3b4e94ce6731d5d90156b883f3e63ed3ba58ad00de8aeb",
+      "finalAllTrackedSeal": null
+    },
+    "v4Control001": {
+      "sourceFiles": 161,
+      "sourceSha256": "2f45be97d9b7c0bb64defe94c982933d89bb5a79a8b376961371454bc9a30d03",
+      "actualExecutionSourceSeal": {
+        "path": "work/forget-index-fence/v4-control-001-seal.json",
+        "bytes": 162940,
+        "sha256": "5172f6a7cc96db8864879f260b558d183b2560522911f2cf1101ba34de8d3cb8"
+      },
+      "finalAllTrackedSeal": {
+        "implementationAndAdaptersUnchanged": true,
+        "allTrackedFileBytesUnchanged": true,
+        "exitReceipt": {
+          "path": "work/forget-index-fence/v4-control-001-exit.json",
+          "bytes": 1349,
+          "sha256": "04cf43b369288b105a5531187de139cf78bf566c1877b8a3ace09277883ea7fd"
+        }
+      },
+      "gitCommit": "698732fea0b414b0a6bbfb3c384f9af4afa5144f",
+      "trackedWorkingTreeDirty": false
+    },
+    "historicalV5ProductionThroughFull003": {
+      "sourceFiles": 162,
+      "sourceSha256": "7865c61c075268a2dd09452411b6af70bb910a914cf2f729c66b59450c212fe0",
+      "finalAllTrackedSeal": null,
+      "historicalFull001AndWholeSuite001CodeCommit": "0c0c7048015888a84eeef06bec1effbdfecb912a",
+      "interruptedFull001CodeSeal": {
+        "path": "work/forget-index-fence/full-001-seal.json",
+        "bytes": 166459,
+        "sha256": "66657ebcd5418a3eafbcabbec3b01ed2ce11e0379403d0e39eeb8b192ce8a46e"
+      },
+      "finalPairedExecutionSourceSeal": null,
+      "historicalStorageAdapterCorrectionHead": "a6475ba55b4298cefe245c177e8a10b9379be44f",
+      "historicalFull002AndWholeSuite002CodeCommit": "836b6db9db85dc9bafcfec2b6d93495d01299635",
+      "historicalFull002CodeSeal": {
+        "path": "work/forget-index-fence/full-002-seal.json",
+        "bytes": 166735,
+        "sha256": "0edaa0685ade681c60602e8bb47e08594af1e7731c7d283a8f08172d7a2aac63"
+      },
+      "currentFull003CodeSeal": {
+        "path": "work/forget-index-fence/full-003-seal.json",
+        "bytes": 167429,
+        "sha256": "f82cc590ba36f203228d7101299b4ca52caef5a502c505b6d63f79b1419eb3b9"
+      },
+      "latestActualFull003CodeCommit": "13b54e07bffe292599dab0ff5d89ea54e94e207a",
+      "latestActualFull003AllTrackedSealReview": {
+        "exitReceipt": {
+          "path": "work/forget-index-fence/full-003-exit.json",
+          "bytes": 1217,
+          "sha256": "02dccd23d0aed5ad31b266cced7cc66f188ae85633988027e45ba1e109933eca"
+        },
+        "implementationAndAdaptersUnchanged": true,
+        "allTrackedFileBytesUnchanged": true,
+        "runnerSourceUnchanged": true
+      },
+      "full003ExecutedCodeCommit": "13b54e07bffe292599dab0ff5d89ea54e94e207a",
+      "full003ProductionUnchangedDuringActualExit": true
+    },
+    "currentProductionAfterFull003": {
+      "integratedHead": "763b25b66c1a97d82841b3e25fecfaecb11f53a5",
+      "sourceFiles": 162,
+      "sourceSha256": "03e33ba0daf2013064f28386450ea50ed180af141f045d74ce52309a1f4452ed",
+      "productionChange": "Normal keyword metadata uses a fresh reader while retaining the retrieval generation; explicit caller-owned DB semantics preserved.",
+      "wholeFinalCombinedRegressionPending": false,
+      "completeDifferentialAssessmentPending": true,
+      "acceptancePointsAwarded": 0,
+      "oldWhole002And13bHostedResultsRelabeled": false,
+      "latestHostMetadataProducerAdapterHead": "621c97b28bed800911968374296319483f7b3eb3",
+      "currentReviewedHead": "5b729e9e9b6c344b28dc94675e4dc8dc06fff083",
+      "executionAdaptersExactFailedB0bWholeSource": true,
+      "productionSdkUnchangedByTestMapCorrections": true,
+      "currentSourceHostedAllTestRegressionsComplete": true,
+      "localWhole003RetainsSixFailures": true
+    },
+    "actualExecutedHosted5bPy312": {
+      "branchHead": "5b729e9e9b6c344b28dc94675e4dc8dc06fff083",
+      "actualExecutedCommit": "f23a3d18324ea8a6963faafd4aaa7e8a0c38a768",
+      "actualTree": "d5ae32d759cd5b1e46ac9557fcf049455ebb766e",
+      "branchHeadTree": "d5ae32d759cd5b1e46ac9557fcf049455ebb766e",
+      "treesExactlyEqual": true,
+      "differentCommitsRelabelledAsSame": false,
+      "sourceQualification": {
+        "path": "work/forget-index-fence/hosted-5b-offline-py312-job132687284320.source-qualification.json",
+        "bytes": 1195,
+        "sha256": "824e940b0066110caabc6ab334a06cc3e220db0d3ac98eaede39a05a41231fab"
+      }
+    }
+  },
+  "observationPolicy": {
+    "profile": "provider-none-on-search-forget-index-fence-v5",
+    "functionalControlsNotFullyPassive": true,
+    "native": "Join genuine search-admitted recall Promises and already queued outer maintenance Promises held by the acquired original activeBackgroundSearchSyncs Set, retaining actual references through declared deferred waits.",
+    "sdk": "Join genuine search-admitted Future and actual queued publisher work using original owner, Future settlement, condition notifications and causal provenance.",
+    "deferredAfterForgetWaits": 3,
+    "newBusinessCallsFromWait": 0,
+    "monotonicWaitsWatchdogsAndProcessDeadlinesRemainReal": true,
+    "captureRepairOrExpectedOutputSubstitution": false,
+    "businessInputsAndClocksIdenticalToV3": true,
+    "v4SyncInput": {
+      "onSearch": true,
+      "onSessionStart": false,
+      "watch": false
+    },
+    "v4Same101EffectBarriersAndThreeDeferredPlacementsAsV3": true,
+    "v4SupportedProfileQualification": "CORRECTION: V4 attempted false/true/false sync settings and forwarded them intact, but pinned Native resolveSyncConfig hardcodes onSessionStart/onSearch/watch true and strict MemorySearchSchema has no sync fields. FrozenV4 claim of supported sync block is incorrect. No valid paired V4 product comparison or same-config retry follows.",
+    "v3DefaultWatcherEvidence": "Pinned Native resolves onSessionStart/onSearch/watch true. Retained V3 source-qualified file-watcher timer -> manager onChange -> sync(reason watch) -> actual publication lies outside search-admitted effect references. V4 attempted input did not disable it; original V3/V4 bytes remain unchanged and watcher timing remains unverified.",
+    "historicalV3BusinessInputsAndClocksIdenticalToV2": true,
+    "v3IntroducedExplicitEffectWaitSteps": 101,
+    "v4NewEffectWaitSteps": 0,
+    "currentV5Policy": {
+      "originalV3ConfigAndBusinessInputsClocksUnchanged": true,
+      "unsupportedSyncOverrides": false,
+      "watchEffectsProtocol": "original-watch-effects-v5",
+      "readySteps": 39,
+      "watchEffectsSteps": 31,
+      "originalSearchEffectsStepsPreserved": 101,
+      "extraRetryAcquires": 3,
+      "movedCrashForegroundCloseBlocks": 3,
+      "exactV3BusinessScheduleAfterRemovingNewStepsAndReversingApprovedMoves": true,
+      "positiveDelivery": "Each applicable original committed source version must bind its genuine delivered OS/Chokidar/inotify/stat-fallback fact, actual original settling timer/callback and corresponding actual managed publisher Future or original Native sync Promise.",
+      "noApplicableWriteOrOwnerAbsenceIsDeliveredFact": false,
+      "noNewProducerFromJoin": true,
+      "noOriginalSyncCallableReplacement": true,
+      "noGlobalOsDeliveryWatermarkClaim": true,
+      "originalDebounceMs": 1500,
+      "originalSourceSettleMs": 100,
+      "monotonicTimersRemainReal": true
+    }
+  },
+  "validV2Baseline": {
+    "report": {
+      "path": "work/forget-index-fence/v2-baseline-independent-review-001.json",
+      "sha256": "141006c9443c2ea87495ba4d4558cbba0e3f581f50b571140fa6b3cda912cd00"
+    },
+    "validCompleteBaseline": true,
+    "summary": {
+      "match": 0,
+      "mismatch": 13,
+      "blocked": 0
+    },
+    "errors": [],
+    "sourceFiles": 160,
+    "sourceSha256": "1b65f5cb9cabd7dfad07bfea7eb0dc05fbf29e846bc5648fe47d5637f0c83d9c",
+    "captureUnion": [
+      "v2-baseline-004 original case index 4",
+      "v2-baseline-005 remaining original 12 cases"
+    ],
+    "acceptancePointsAwarded": 0
+  },
+  "v3RetainedControls": [
+    {
+      "id": "control-001",
+      "report": {
+        "path": "work/forget-index-fence/v3-control-001/report.json",
+        "sha256": "0c2acdcf8c5a824793c4657f09a0f9f0e7ac064bc05efb7266e3bd92bade6465"
+      },
+      "validProductProof": false,
+      "acceptancePointsAwarded": 0,
+      "reason": "Native V3 kind admission rejected before original work; genuine SDK execution lacked original Future return proof after standard-library receiver cleanup."
+    },
+    {
+      "id": "control-002",
+      "report": {
+        "path": "work/forget-index-fence/v3-control-002/report.json",
+        "sha256": "c3ea6aae929cfa5a40e4d2a4c4d269c0b31d89b276a359848b9f7ddd9d2aa3db"
+      },
+      "validProductProof": false,
+      "acceptancePointsAwarded": 0,
+      "reason": "Native release JSON path became visible before its complete write; observer SyntaxError contaminated original sync. SDK custody valid separately; no paired credit."
+    },
+    {
+      "id": "control-003",
+      "report": {
+        "path": "work/forget-index-fence/v3-control-003/report.json",
+        "sha256": "2ba6054338cdc16bdf3c00c1c23c5cb8f3363c3ccd1f53cebbed8f2bdc7eac75"
+      },
+      "validPairedCustody": true,
+      "wholePublicDifferences": 26,
+      "summary": {
+        "match": 0,
+        "mismatch": 1,
+        "blocked": 0
+      },
+      "sourceFiles": 160,
+      "sourceSha256": "1b65f5cb9cabd7dfad07bfea7eb0dc05fbf29e846bc5648fe47d5637f0c83d9c",
+      "acceptancePointsAwarded": 0
+    },
+    {
+      "id": "control-004",
+      "report": {
+        "path": "work/forget-index-fence/v3-control-004/report.json",
+        "sha256": "2ff6270ff94c7903351b84db6422bea38c0b7acb7a53b5975babc1970aeba43f"
+      },
+      "validPairedCustody": true,
+      "wholePublicDifferences": 0,
+      "summary": {
+        "match": 1,
+        "mismatch": 0,
+        "blocked": 0
+      },
+      "sourceFiles": 161,
+      "sourceSha256": "86057af18cc8f5b47b3b4e94ce6731d5d90156b883f3e63ed3ba58ad00de8aeb",
+      "acceptancePointsAwarded": 0
+    },
+    {
+      "id": "fixed-remaining-001",
+      "report": {
+        "path": "work/forget-index-fence/v3-fixed-remaining-001/report.json",
+        "sha256": "16d0fe5140bc1f427bf834c2c53bbda7300f07d44a4418b4164cf76214a66d6b"
+      },
+      "summary": {
+        "match": 0,
+        "mismatch": 6,
+        "blocked": 1
+      },
+      "actualCollectorExit": 2,
+      "executedCases": 7,
+      "unexecutedRequestedCases": 5,
+      "sourceCommit": "1cf632e544e505301828f85e69c4e5c0b0a4812b",
+      "sourceSha256": "86057af18cc8f5b47b3b4e94ce6731d5d90156b883f3e63ed3ba58ad00de8aeb",
+      "validCompleteFamily": false,
+      "acceptancePointsAwarded": 0,
+      "observerFailure": "deepcopy observer.events concurrent mutation dictionary changed size, fatal envelope had no id; actualpendingfixSDKagent",
+      "retainedNativeProducerFinding": "Actualwatchtrue event chain read16500 file-watcher50/70/240->manager-watch-ops72-74->incrementalCOMMIT112740524884890, queuedsearchjobsalreadysettled",
+      "retainedSdkProductionFinding": "Stale3 plannedIDs whileblockedmarker; newerpublish7, new2MEMORYIDs escaped. Fixed56bb9b3 integrated72afc8e with102tests."
+    }
+  ],
+  "retention": {
+    "losslessCaptureArchiveManifest": {
+      "path": "work/forget-index-fence/retained-v1-v2-capture-archives/manifest.json",
+      "bytes": 863219,
+      "sha256": "8e642f43fe1ff5fafba50586438e4cee729b1bd07740c05d083815241d9ecb99"
+    },
+    "packetCount": 8,
+    "originalBytes": 9414730532,
+    "archiveBytes": 2658817267,
+    "allLogicalCaptureBytesUnchanged": true,
+    "memberSha256TypesAndBytesRecorded": true,
+    "oldFlatPathsRequireLosslessRehydration": true,
+    "baselineSdkArchive": {
+      "path": "work/forget-index-fence/baseline-sdk-1b65f5c.tar",
+      "sha256": "11ef041df8731fbeb380724f209d93703a7c750cee05b5454475d14ab4edc471"
+    },
+    "validatedV2SourceArchive": {
+      "path": "work/forget-index-fence/v2-validated-source-8dab550.tar",
+      "sha256": "64ad1f9c50d95bdef2d71a2603187222c810288dffab23534fe71a2f2e890f62"
+    },
+    "validatedV3BaselineSourceArchive": {
+      "path": "work/forget-index-fence/v3-validated-baseline-control-source-f795117.tar",
+      "sha256": "4def8bdfa93c815256642478c624ad7f37b74b49a63943a6fd36bd6448dc6226"
+    },
+    "v3LosslessCaptureArchives": {
+      "manifest": {
+        "path": "work/forget-index-fence/retained-v3-capture-archives/manifest.json",
+        "bytes": 572889,
+        "sha256": "a433d20506ac6b3c55d89c0eb8f5a7312cd3a4dbf153134ddbcbb1cf34cfe5e5"
+      },
+      "packetCount": 5,
+      "originalBytes": 5892641421,
+      "archiveBytes": 1798625712,
+      "allLogicalCaptureBytesUnchanged": true,
+      "memberSha256TypesAndBytesRecorded": true,
+      "liveReportsRetained": true,
+      "oldFlatRawPathsRequireLosslessRehydration": true
+    },
+    "failedWhole001TemporaryTree": {
+      "restorationReceipt": {
+        "path": "work/forget-index-fence/whole-suite-001-tmp-retained-lossless-archive.json",
+        "bytes": 1669,
+        "sha256": "7a566373ec9022befe5724c0c84099fc7eb855e04151313a3e77bb932bed96a1"
+      },
+      "proof": "work/forget-index-fence/retained-whole-suite-temp-archives/whole-suite-001-tmp-archive-proof.json",
+      "proofSha256": "481a7d50cfae703633b0725726d151bbc047a9c8398187d704b2efe82ee1cfe0",
+      "members": 326052,
+      "archiveBytes": 465800693,
+      "archiveSha256": "d77a9a0cd9c83ca5122a91b0fe8f4fdd6cf1ac8a91497396356576a1ad25bb38",
+      "manifest": "work/forget-index-fence/retained-whole-suite-temp-archives/whole-suite-001-tmp-members.jsonl.gz",
+      "manifestSha256": "645152111688aff579117e7e9e7657d2e25ec264f7cad2f3e348552dfcd5b060",
+      "sdkExplicitClearBeforeVerifiedRemoval": true,
+      "allFailedPacketBytesAndDatabaseSidecarsRetained": true,
+      "priorShmMtimeChangeQualifiedSeparately": true,
+      "fullOriginalRawMembersAndDatabaseSidecarsRetained": true,
+      "flatTreeRemovedOnlyAfterVerifiedArchive": true
+    },
+    "completedEquivalenceFamilyArchives": {
+      "manifest": "work/forget-index-fence/retained-completed-equivalence-family-archives/manifest.json",
+      "sha256": "05745f4f23d89576ba28c9170418b6ef7f75b6f489c26029437be6b899daa41d",
+      "families": 8,
+      "members": 14089,
+      "originalBytes": 4457612609,
+      "compressedBytes": 734153897,
+      "allMemberBytesTypesModesVerified": true,
+      "noWritableOpenFilesBeforeAndAfter": true,
+      "flatOriginalsRemovedOnlyAfterVerification": true,
+      "oldAuthoritativeFull002AndV5PreflightReferencesUntouched": true
+    },
+    "blockedFull002ExactArchive": {
+      "evidenceIndex": {
+        "path": "work/forget-index-fence/retained-full-002-exact-archives/final-evidence-index.json",
+        "sha256": "56c667dbf4d095905477f653dcfc7734e8cce4982a6b8302d85c2283149435af"
+      },
+      "proof": {
+        "path": "work/forget-index-fence/retained-full-002-exact-archives/full-002-retention-proof.json",
+        "sha256": "19e2c96d94dce02e185f6a538eecc578bb5d695046daacb5dbd25106c68f3a3f"
+      },
+      "restorationReceipt": {
+        "path": "work/forget-index-fence/full-002-exact-retained-lossless-archive.json",
+        "sha256": "3dd00a6ce2583e4ef69e81331f1f1c3840acc56992199d9e7160d2b2ccffcf74"
+      },
+      "archiveBytes": 1664440543,
+      "archiveSha256": "b4aeb7c5bc1e6da1e2b49e3392578bd64ca57e90f9e95ffd67d8c99e35cfc9e4",
+      "memberManifestSha256": "4251e012db840f6c8aeb479fa6c78a347b1c0a8a3089858f067d74b9025dab31",
+      "all1489MembersVerified": true,
+      "readLeasedRegularInodes": 1335,
+      "actualRetentionExit": 0,
+      "flat11AttemptRootsAndOriginalReportRemovedOnlyAfterVerification": true,
+      "originalReportSha256Preserved": "07db8b54f5fd4957ec2821fdd73e30956401b945604ee30c08005f3228ff3e61"
+    },
+    "historicalV5PreflightArchives": {
+      "index": {
+        "path": "work/forget-index-fence/retained-historical-v5-preflights-archives-001/final-evidence-index.json",
+        "sha256": "3f88b0623401c23957eb18a6714f01f74456a925bcfe364c79683d6ca6279a21"
+      },
+      "proof": {
+        "path": "work/forget-index-fence/retained-historical-v5-preflights-archives-001/historical-v5-retention-proof.json",
+        "sha256": "e7fb61997a9af357ddae48e02ce587ff175ca56f1a562534c86339fcc3b45430"
+      },
+      "restorationReceipt": {
+        "path": "work/forget-index-fence/historical-v5-preflights-retained-lossless-archive.json",
+        "sha256": "7c58fe8b3839737afbecf1f419c4a9395f4712019637420a2b18a49587837bcc"
+      },
+      "archiveBytes": 593001299,
+      "archiveSha256": "198bb85af7b043de8c038032101aae9b15e54c80c47dff59de3ce60fa5b8f024",
+      "all501MembersVerified": true,
+      "readLeasedRegularInodes": 426,
+      "actualRetentionExit": 0,
+      "onlyThreeExplicitCompletedRootsRemoved": true
+    },
+    "additionalCompletedHistoricalRetentions": {
+      "index": "work/forget-index-fence/additional-historical-retentions-completed-index.json",
+      "indexSha256": "8dc5ec050f2886ae580af759579edc1f636ed1242b65aea043a5b259c3984c94",
+      "verifiedArtifactCount": 41,
+      "onlyExplicitCompletedRoots": [
+        "v4-control-001",
+        "v5-native-control-002",
+        "v3-fixed-remaining-001 duplicate-report-and-empty-root-only"
+      ],
+      "all183MembersVerified": true,
+      "readLeasedRegularInodes": 145,
+      "allThreeActualRetentionExits": 0,
+      "grossAllocatedBytesReleased": 919375872,
+      "newRetainedAllocatedBytes": 196931584,
+      "netUniqueAllocatedBytesReclaimed": 722444288,
+      "exactV4SourceArchiveSha256": "0d31449adf4ed8dd75ef1fbaacb855d3af2770a12a32b4037bfd90432d65ee02",
+      "exactV4Source1120SealedBlobsVerified": true,
+      "activeNewPreflightPathsExcluded": true,
+      "oldBaselineExcluded": true,
+      "allAdjacentReceiptsAndSourcesRetained": true
+    },
+    "f549ExactProbeSourceKeeper": {
+      "archive": "work/forget-index-fence/source-f549881-v6-keyword-and-query7.tar.gz",
+      "archiveBytes": 15122277,
+      "archiveSha256": "3df37db71dcd0e1aa40376c769efb2063f2655e03d2a7159c5d639c743aa4244",
+      "manifest": "work/forget-index-fence/source-f549881-v6-keyword-and-query7-manifest.json",
+      "manifestBytes": 209335,
+      "manifestSha256": "802dcf21e77ef5c2e3d9dc84edf31d815e10e2e902697a674a7fcaada622b29f",
+      "all1155GitArchiveAndCurrentBytesMatchBothActualProbeSeals": true,
+      "gzipCrcAndEofVerified": true,
+      "sdkSourceFiles": 162,
+      "sdkSourceSha256": "03e33ba0daf2013064f28386450ea50ed180af141f045d74ce52309a1f4452ed"
+    },
+    "hostV4Blocked001ExactSourceKeeper": {
+      "archive": "work/forget-index-fence/source-2465e80-host-v4-blocked001.tar.gz",
+      "archiveBytes": 15169728,
+      "archiveSha256": "764c4201912094aa0c74baaa9f64c28300310da8327434a5615161cba2973366",
+      "manifest": "work/forget-index-fence/source-2465e80-host-v4-blocked001-manifest.json",
+      "manifestBytes": 213559,
+      "manifestSha256": "41bc3ca51f6d0cb62cf2b9d78e8a9772683dbe738b987fbfb38bdac62ccfc223",
+      "all1178ArchivedAndCurrentFilesMatchBothActualSeals": true,
+      "gzipCrcAndEofVerified": true
+    },
+    "hostV4Passed002ExactSourceKeeper": {
+      "archive": "work/forget-index-fence/source-621c97b-host-v4-passed002.tar.gz",
+      "archiveSha256": "eceff33fc50208200a4657827a6830d477e71dbb27fa00281006de2f17d18482",
+      "manifest": "work/forget-index-fence/source-621c97b-host-v4-passed002-manifest.json",
+      "manifestSha256": "f6a5d302f7dc875f7a028b4b11db86db071a8b8d1b34a4ba64fd0b1db4e67f3a",
+      "all1179GitCurrentAndBothActualSealBytesEqual": true,
+      "gzipCrcAndEofVerified": true
+    },
+    "b0bFailedWhole003ExactSourceKeeper": {
+      "archive": "work/forget-index-fence/source-b0b3778-whole003-failed.tar.gz",
+      "archiveBytes": 15186456,
+      "archiveSha256": "d703212beac0c5b24bb6a5fb5692372a48b89c48bae747a3ac1fbdfa075e4479",
+      "manifest": "work/forget-index-fence/source-b0b3778-whole003-failed-manifest.json",
+      "manifestBytes": 214460,
+      "manifestSha256": "78fb0cd4143feb41904fc478eca45d2a1a42a64b4810f39dc4d2fe5c31734658",
+      "all1184GitCurrentAndActualSealEqual": true,
+      "gzipCrcAndEofVerified": true
+    }
+  },
+  "implementationChanges": [
+    "Hold real ledger writer through actual index commit and ledger revision bump; distinguish captured absent revision from omitted capture. No split cross-file crash-atomicity claim.",
+    "Read actual opted-in index session tombstones on producers and restart; no catalog tombstone mirror or invented schema.",
+    "Pin coherent old reader generations while real queued full publication recovers; retain actual promotion workspace owner and managed publication policy.",
+    "Crash-safe actual SQLite sidecar rebuild lease spans prepare/publication/cleanup; waiting producers release local workspace guard between BUSY/LOCKED attempts. Forget marker/purge does not acquire producer lease.",
+    "Model-facing search factory queues only surfaced raw primary results through actual bound recall owner, origins, timezone and event sink. Explicit wait_for_recalls joins already submitted work; HostKit preserves settled dispatch without duplicate recording.",
+    "Refresh actual forget index selection after BEGIN IMMEDIATE writer admission, then select and purge in that same transaction. Earlier plan can be stale if a builder publishes while marker waits; returned counts describe actual committed purge. Retained V3 output is unchanged.",
+    "Managed on-search owns genuine eligible workspace memory-file notifications through Linux inotify or actual stat fallback, 1500ms debounce/100ms settling, and ordinary managed incremental publication through unchanged producer lease. On-write remains immediate. Ordinary close stops watcher and joins admitted work.",
+    "Positive lifecycle APIs capture actual original file versions, bind delivered detector generations to actual managed publisher Futures, and await genuine terminal work; they do not force, dirty, scan-trigger, create an owner or replace a target version. Settling caps acknowledgement at captured generation so new changes remain pending."
+  ],
+  "currentFocusedRegressions": {
+    "modules": 10,
+    "passed": 170,
+    "failed": 0,
+    "durationSeconds": 9.26,
+    "scope": "Historical corrected V3 source86057 combined relevant primary batch, not current final V4 whole suite; do not sum overlapping batches.",
+    "acceptancePointsAwarded": 0
+  },
+  "pendingFinalEvidence": {
+    "fullCatalog": {
+      "path": "/workspace/memory-core/work/forget-index-fence/full-003.json",
+      "bytes": 1232029587,
+      "sha256": "194a69ffda45a1af9a46bba87af17bc558739500bd4d5de19e9013d7b398795d"
+    },
+    "fullIndependentAudit": {
+      "path": "work/forget-index-fence/independent-review/full-003-root-assessment-002-audit.json",
+      "bytes": 401964,
+      "sha256": "acbd2dc39279452b863dca04a397d50e7cca4e27c6fb6a969f3293b692718fb7"
+    },
+    "wholeRegressions": {
+      "status": "completed-failed-on-actual-b0b-source",
+      "sourceCommit": "b0b3778a184c5e29e3dc3a7e71030c3ff7e2f576",
+      "passed": 9979,
+      "failed": 6,
+      "uncreditedSkipped": 6585,
+      "actualExit": 1,
+      "pytestSeconds": 1636.97,
+      "wrapperSeconds": 1641.068770037993,
+      "exitReceipt": {
+        "path": "work/forget-index-fence/whole-suite-003-exit.json",
+        "bytes": 2293,
+        "sha256": "2254813c99e39ab267ea0c3e929c3230f916c5ddd82154715b22f287ffc9d347"
+      },
+      "rootNegativeReview": {
+        "path": "work/forget-index-fence/independent-review/whole003-negative-root-review.json",
+        "bytes": 2172,
+        "sha256": "d593d242fc991ab136759a70dab9fb802f4a82b18715fcaa99fb8b6be4a8c169"
+      },
+      "noRelabelingAfterTargetedCorrections": true
+    },
+    "installedConsumers": {
+      "currentSourceHostedPython311": "success",
+      "currentSourceHostedPython312": "success",
+      "wheelAndSdistAndTyping": "success"
+    },
+    "newHostedResults": {
+      "offlineRun": 43673106858,
+      "offlineConclusion": "success",
+      "differentialRun": 43673106847,
+      "differentialConclusion": "failure",
+      "currentSourceOfflineTestsCompleted": true,
+      "differentialGloballyBlocked": true
+    },
+    "validSameVersionExact13IndependentReplay": null,
+    "v5PairedOriginalCapture": null,
+    "v5StrictIndependentCustodyReplay": null,
+    "requiredFinalPacket": "Complete acceptance remains deferred. First diagnose the current hosted authority failure using existing evidence. When verification resumes, perform one reviewed complete comparison, complete-family replay and independent score assessment for the finished package. No automatic full004, cleanup or repeated whole suite is required to close this partial implementation package.",
+    "permanentExact13Replay": null,
+    "rootFinalAcceptanceAudit": null,
+    "fullCatalogStatus": "blocked-with-four-unresolved-custody-cases",
+    "fullIndependentAuditMeaning": "Completed actual root assessment reports71/128 and zero new awards; this is not final acceptance approval.",
+    "freshFull004": null,
+    "wholeRegressionsForCurrent03e33Sdk": {
+      "status": "completed-failed-on-actual-b0b-source",
+      "sourceCommit": "b0b3778a184c5e29e3dc3a7e71030c3ff7e2f576",
+      "passed": 9979,
+      "failed": 6,
+      "uncreditedSkipped": 6585,
+      "actualExit": 1,
+      "pytestSeconds": 1636.97,
+      "wrapperSeconds": 1641.068770037993,
+      "exitReceipt": {
+        "path": "work/forget-index-fence/whole-suite-003-exit.json",
+        "bytes": 2293,
+        "sha256": "2254813c99e39ab267ea0c3e929c3230f916c5ddd82154715b22f287ffc9d347"
+      },
+      "rootNegativeReview": {
+        "path": "work/forget-index-fence/independent-review/whole003-negative-root-review.json",
+        "bytes": 2172,
+        "sha256": "d593d242fc991ab136759a70dab9fb802f4a82b18715fcaa99fb8b6be4a8c169"
+      },
+      "noRelabelingAfterTargetedCorrections": true
+    },
+    "v6CausalProbe": {
+      "status": "one-bounded-pair-strictly-validated",
+      "strictReplay": {
+        "path": "work/forget-index-fence/v6-keyword-frontier-preflight-001-independent-replay.json",
+        "bytes": 98998,
+        "sha256": "98964a4ffac7b2f4584433ae8627a907392712d2ecec9ca0e8b422d9be90d138"
+      },
+      "complete13CaseFamilyProven": false,
+      "acceptancePointsAwarded": 0
+    },
+    "newHostedResultsMeaning": "Both current-source hosted software suites and installed consumers pass. The separate hosted differential execution fails globally with an undiagnosed authority error; it supplies no new score.",
+    "hostV4Fresh002FinalProof": {
+      "strictReplay": {
+        "report": {
+          "path": "work/forget-index-fence/host-v4-nongit-preflight-002/independent-process-replay.json",
+          "bytes": 3345108,
+          "sha256": "18a56cfe622cbc7f021119efb8b334feb7bc3d3296abdaa7381b3d388e009893"
+        },
+        "actualExit": 0,
+        "elapsedSeconds": 17.689463807997527,
+        "allFourWholePublicMatch": true,
+        "beforeAfterAndEndInventoriesEqual": true,
+        "originalArtifactsUnchanged": true
+      },
+      "rootReview": {
+        "path": "work/forget-index-fence/independent-review/host-v4-preflight002-positive-root-review.json",
+        "bytes": 1881,
+        "sha256": "195b3251567ee662fb1915782ca96070f2f7ef4df1b0d813fc4cfc1f62fba2ff"
+      },
+      "acceptanceCredit": 0
+    },
+    "freshCorrected5bHostedAllTests": {
+      "python312": {
+        "status": "success",
+        "passed": 9365,
+        "uncreditedSkipped": 7213,
+        "failed": 0,
+        "seconds": 1390.36,
+        "consumersAndTyping": "success",
+        "actualSourceQualification": {
+          "path": "work/forget-index-fence/hosted-5b-offline-py312-job132687284320.source-qualification.json",
+          "bytes": 1195,
+          "sha256": "824e940b0066110caabc6ab334a06cc3e220db0d3ac98eaede39a05a41231fab"
+        }
+      },
+      "python311": {
+        "status": "success",
+        "passed": 9365,
+        "uncreditedSkipped": 7213,
+        "failed": 0,
+        "seconds": 1828.19,
+        "consumersAndTyping": "success",
+        "evidenceReview": {
+          "path": "work/forget-index-fence/hosted-5b-completed-ci-closeout-review.json",
+          "bytes": 2627,
+          "sha256": "267097b9c317374827ebd3fa07675f25a0c12fafa2cd26bb0daf4c3fc1132a6a"
+        }
+      },
+      "differential": {
+        "runId": 43673106847,
+        "url": "https://github.com/DorukhanArslan/memory-core/actions/runs/43673106847",
+        "latestKnownStatus": "completed",
+        "conclusion": "failure",
+        "jobId": 132687284350,
+        "actualExit": 2,
+        "summary": {},
+        "caseIds": [],
+        "failureCode": "forget-index-fence-evidence-invalid",
+        "message": "Whole forget/index-fence execution/authority failed; no retry was made.",
+        "reportSha256": "34213268069115e5b65cbd95b62ad687049f7dc2880ca37446da7687d0929ec5",
+        "causeEstablished": false,
+        "notRelabeledAsKnownFourteenMismatches": true,
+        "completeFamilyReplayAndGuardFailedOriginalFinalCheck": true,
+        "errors": [
+          {
+            "code": "forget-index-fence-evidence-invalid",
+            "message": "Whole forget/index-fence execution/authority failed; no retry was made."
+          }
+        ],
+        "mismatchedCaseIds": [],
+        "blockedCaseIds": [],
+        "retainedV6GuardTestsFailed": 13,
+        "retainedV6GuardTestsPassed": 7,
+        "artifactRetentionSucceeded": true,
+        "standaloneZeroCreditPackets": {
+          "coldRetryMatches": 2,
+          "hostNextTurnMatches": 4,
+          "querySyncBoundariesMatches": 8,
+          "fifV6SmokeMatches": 1
+        }
+      },
+      "overallCiGreen": false
+    },
+    "currentMigratedCatalogFullResult": {
+      "location": "hosted",
+      "run": 43673106847,
+      "status": "globally blocked",
+      "actualExit": 2,
+      "summary": {},
+      "caseIds": [],
+      "acceptancePointsAwarded": 0,
+      "independentlyAuditedNewScore": null
+    },
+    "latestMeasuredFullCatalogStillHistorical13bFull003": true,
+    "full004DeferredAtUserRequest": true
+  },
+  "historicalVerification": {
+    "wholeSuite": {
+      "sourceCommit": "d6bb805000b6023ddeaa02b6fe20a9118bc58a42",
+      "passed": 11166,
+      "uncreditedSkipped": 1974,
+      "appliesToCorrectedSdk": false
+    },
+    "pr17": {
+      "url": "https://github.com/DorukhanArslan/memory-core/pull/17",
+      "native": {
+        "status": "failed",
+        "matched": 1434,
+        "mismatched": 18,
+        "blocked": 0
+      },
+      "pythonConsumersPassed": true,
+      "overallGreen": false
+    }
+  },
+  "olderHeldHostedArtifacts": {
+    "userRequestedHold": true,
+    "accessedByThisWork": false,
+    "newNetworkPermissionRequested": false,
+    "causeReclassified": false
+  },
+  "limits": {
+    "sourceClassification": "partial",
+    "sourceBuildReproduced": false,
+    "allProvidersOrAllInterleavingsEstablished": false,
+    "splitDatabaseCrashAtomicityClaimed": false,
+    "fullOpenClawEquivalenceEstablished": false,
+    "physicalEnvironmentOrPublicationFrontierSolved": false,
+    "hostV4StrictReplayChecksCurrentDirectoryDeviceInodeUid": true,
+    "arbitraryTarRestorationRecreatesOldDirectoryInodes": false,
+    "losslessArchiveBytesGuaranteeFutureHostV4StrictReplay": false,
+    "hostDirectorySkeletonsAndSmallActualStatesMustRemainForStrictReplay": true
+  },
+  "proposedNextExistingContract": {
+    "id": "forget.lineage-tombstones",
+    "currentlyVerified": 0,
+    "totalOriginalConditions": 2,
+    "example": "Preview, then actually delete a conversation's linked notes and record tombstones that prevent relearning.",
+    "creditFromIndexFenceControls": 0,
+    "mixedOriginSemantics": "Native and SDK both delete the whole mixed-origin entry and report mixedLineage; do not promise to preserve another conversation's portion of that shared entry.",
+    "prerequisite": "Close the current package verification issue before starting this separate selector contract. Immediate follow-up is bounded read-only diagnosis of the new hosted authority failure; a future complete assessment remains deferred."
+  },
+  "subsequentPurgeFixFocusedRegressions": {
+    "passed": 102,
+    "failed": 0,
+    "scope": "Separate purge correction verification batch reported by execution owner. Not added to overlapping earlier170 or claimed as final whole suite.",
+    "acceptancePointsAwarded": 0
+  },
+  "v4UnsupportedControl001": {
+    "status": "blocked-unsupported-native-profile-not-product-mismatch",
+    "report": {
+      "path": "work/forget-index-fence/v4-control-001/report.json",
+      "sha256": "7a063292305661d7d818171f9a242c1f24ab72623f78148b10d1de7b7251ae76"
+    },
+    "actualCollectorExit": 2,
+    "elapsedSeconds": 202.77962906500034,
+    "startedAt": "2026-11-14T16:34:12.000778+00:00",
+    "finishedAt": "2026-11-14T16:37:34.779905+00:00",
+    "summary": {
+      "match": 0,
+      "mismatch": 0,
+      "blocked": 1
+    },
+    "errors": [],
+    "finalAuthenticationPassed": true,
+    "implementationAndAdaptersUnchanged": true,
+    "allTrackedFileBytesUnchanged": true,
+    "source": {
+      "gitCommit": "698732fea0b414b0a6bbfb3c384f9af4afa5144f",
+      "trackedWorkingTreeDirty": false,
+      "sourceSha256": "2f45be97d9b7c0bb64defe94c982933d89bb5a79a8b376961371454bc9a30d03",
+      "sourceFiles": 161
+    },
+    "nativeFailureReason": "resolved-search-sync-mode-mismatch",
+    "attemptedSync": {
+      "onSessionStart": false,
+      "onSearch": true,
+      "watch": false
+    },
+    "actualNativeSync": {
+      "onSessionStart": true,
+      "onSearch": true,
+      "watch": true
+    },
+    "originalConfigForwardedIntact": true,
+    "sourceAssumptionIncorrectNotForwardingBug": true,
+    "validPairedPublicComparison": false,
+    "acceptancePointsAwarded": 0,
+    "sdkOnly": {
+      "completed": true,
+      "strictIndependentCustodyValidated": true,
+      "rawCaptureSha256": "e8ffebf71e46075fb1adec37d2e09f363a41da1b716a35ef8465894d8b402621",
+      "validationReceipt": {
+        "path": "work/forget-index-fence/v4-control-001-sdk-only-validation.json",
+        "bytes": 202,
+        "sha256": "ec009d390575dafb8a73511d0956f7dcce6ca6928e4ef0597827370cc58883bb"
+      },
+      "acceptancePointsAwarded": 0,
+      "substitutesForMissingNativePair": false
+    },
+    "sourceProof": [
+      {
+        "path": "work/openclaw-v2026.9.9/src/agents/memory-search.ts",
+        "bytes": 11336,
+        "sha256": "a1edad1e59255c5657af97d636be2517a3704f2ca3950e4a06f06892647092b2",
+        "lines": "280-306",
+        "finding": "Original resolveSyncConfig hardcodes all three synchronization flags true; public resolver ignores attempted sync fields."
+      },
+      {
+        "path": ".reference/release-runtime/node_modules/openclaw/dist/memory-search-CIhUURbE.mjs",
+        "bytes": 8667,
+        "sha256": "e015aeaa8d8e062eb792ae58d2e4537e5b0f665ea97b946979e644444304a148",
+        "lines": "167-185",
+        "finding": "Authenticated compiled resolver matches pinned source all-true synchronization behavior."
+      },
+      {
+        "path": "work/openclaw-v2026.9.9/src/config/zod-schema.memory-search.ts",
+        "bytes": 2657,
+        "sha256": "a0472d761382b05c7878a7f6926765ac482c66fd0c3e322a7f807e3ac8e15776",
+        "finding": "MemorySearchSchema is strict and defines no sync fields."
+      }
+    ],
+    "frozenV4InputFilesUnchanged": true,
+    "sameConfigRetryNotAValidResolution": true
+  },
+  "nextWork": {
+    "status": "watcher-observer-corrected-focused-checks-passed-full-verification-deferred",
+    "latestActualAssessment": {
+      "verified": 71,
+      "remaining": 57,
+      "newAcceptancePointsAwarded": 0
+    },
+    "full003OriginalExitAndScoreUnchanged": true,
+    "allBoundedPreflightsStrictlyPassedWithZeroCredit": true,
+    "host001NeverRetroAdmitted": true,
+    "host002StrictReplayAndRootReviewPassed": true,
+    "defaultCatalogMigrationIntegrated": true,
+    "currentCatalogSha256": "785b7e144526a4cab3e75a33893acf99dc43f1ce3c5d76d7e55ca2f7354f4c8f",
+    "current1452PrefixSha256": "f3753dc1a02417a925160f4006c1cb75b31a1bfd2efd9ce3def7c96022b40ac0",
+    "unchangedOriginal1452PrefixClaimWithdrawn": true,
+    "currentSdkSourceSha256": "03e33ba0daf2013064f28386450ea50ed180af141f045d74ce52309a1f4452ed",
+    "currentSdkSourceFiles": 162,
+    "whole003ActualFailed": {
+      "passed": 9979,
+      "failed": 6,
+      "skippedUncredited": 6585,
+      "exit": 1
+    },
+    "reviewedTestMapOnlyCorrectionsTargetedPassed": 269,
+    "fresh5bHostedAllTestsPending": false,
+    "automaticSecondLocal13SdkWholeLoopRun": false,
+    "full004FinalSourceAndCapacityPreparationPending": false,
+    "freshFull004Started": false,
+    "freshFull004": null,
+    "permanentCompleteFamilyReplay": null,
+    "rootFinalAcceptanceAudit": null,
+    "mergeReady": false,
+    "olderHeldArtifactInvestigationResumed": false,
+    "ownedDocsOnlyNoIntegrationOrCommit": false,
+    "hostedCorrected5bPython312AllTestsAndConsumersSuccess": true,
+    "remaining5bPython311AndDifferentialPending": false,
+    "primaryAndTmp5b1184FilesEqual": true,
+    "actualTmpdirAndReviewedSupervisorV2Qualified": true,
+    "archiveOnly14VerifiedAndOriginalsStillLive": true,
+    "concreteVerifiedCopyRemovalApprovalPending": false,
+    "localFullAndUnlinkAndSourceMutationsPausedUntilTrustedReply": false,
+    "hostedCorrected5bPython311AllTestsAndConsumersSuccess": true,
+    "hostedDifferentialCompletedGloballyBlocked": true,
+    "full004DeferredAtUserRequestForLighterWorkflow": true,
+    "temporaryCopyRemovalExcludedFromCurrentCloseout": true,
+    "noNewLongRunOrUnlinkStartedForCloseout": true,
+    "currentHostedFailureIdentifiedFromExistingArtifact": true,
+    "userFileUploadRequired": false
+  },
+  "watcherPublicationReadOnlyAudit": {
+    "receipt": {
+      "path": "work/forget-index-fence/watcher-publication-audit-001.json",
+      "bytes": 26110,
+      "sha256": "59c184d24647ff44efe3a9165d1337c45fc0afbd60a6b7ad3df5a81b5c470e80"
+    },
+    "caseId": "forget-index-fence-v3-shared-postcheck-pending-forget",
+    "acceptancePointsAwarded": 0,
+    "enginesRun": false,
+    "testsRun": false,
+    "originalCapturesChanged": false,
+    "timingDifferences": {
+      "watchCommitToBuilderLeaseNs": "4587918427",
+      "watchCommitToBuilderLeaseSeconds": "4.587918427",
+      "watchCommitToBuilderPostcheckNs": "12734881933",
+      "watchCommitToBuilderPostcheckSeconds": "12.734881933"
+    },
+    "sameCanonicalProducerSidecarAndIndex": true,
+    "watchPublicationBeforeBuilderLeaseAdmission": true,
+    "heldLeaseBypassDemonstrated": false,
+    "additionalProducerLockFixJustified": false,
+    "missingEarlierSdkWatchAdmission": true,
+    "limitations": [
+      "This is one retained V3 shared-postcheck witness, plus source review. No new engine or equivalence result is claimed.",
+      "Source file SHA-256 receipts identify the contents inspected; current SDK integration may subsequently advance.",
+      "The archive and original capture files were preserved unchanged. Narrow decoded custody remains reproducible from the listed archive members."
+    ]
+  },
+  "v5NativeOnlyDiagnostics": [
+    {
+      "id": "v5-native-control-001",
+      "report": {
+        "path": "work/forget-index-fence/v5-native-control-001/report.json",
+        "sha256": "ee0d19c9f3e19d3c95d25165f03847d53e067f74fcceebbf5371f5e5b7629bff"
+      },
+      "actualExit": 2,
+      "elapsedSeconds": 52.112602866996895,
+      "source": {
+        "gitCommit": "de664b8ab268745400518b3da6bc1ad3e8c529f3",
+        "trackedWorkingTreeDirty": false,
+        "sourceSha256": "7865c61c075268a2dd09452411b6af70bb910a914cf2f729c66b59450c212fe0",
+        "sourceFiles": 162
+      },
+      "implementationAndAdaptersUnchanged": true,
+      "allTrackedFileBytesUnchanged": true,
+      "exitReceipt": {
+        "path": "work/forget-index-fence/v5-native-control-001-exit.json",
+        "bytes": 1088,
+        "sha256": "6eabe8f9661d1b4edbce1cb95aa93d5b0c395548a4bfc637f15c5a91db4effc2"
+      },
+      "codeSeal": {
+        "path": "work/forget-index-fence/v5-native-control-001-seal.json",
+        "bytes": 164293,
+        "sha256": "a3553fbf43eae2504c669edcf6da04e9faf505f5b2a1b6e88c565d9f4652a9d1"
+      },
+      "pairedComparison": false,
+      "validStrictPairedCustody": false,
+      "acceptancePointsAwarded": 0,
+      "status": "invalid-observer-duplicate-input-echo-receipt",
+      "reason": "Duplicate original source call version receipt, runtime.mjs155"
+    },
+    {
+      "id": "v5-native-control-002",
+      "report": {
+        "path": "work/forget-index-fence/v5-native-control-002/report.json",
+        "sha256": "c150aaa225203ccfbc5c759ab0ec2485e084fdd9425cd0942b91871b8018775e"
+      },
+      "actualExit": 0,
+      "elapsedSeconds": 107.32998088099703,
+      "source": {
+        "gitCommit": "605d150e32855916b1b6a73207d432377e8fb62a",
+        "trackedWorkingTreeDirty": false,
+        "sourceSha256": "7865c61c075268a2dd09452411b6af70bb910a914cf2f729c66b59450c212fe0",
+        "sourceFiles": 162
+      },
+      "implementationAndAdaptersUnchanged": true,
+      "allTrackedFileBytesUnchanged": true,
+      "exitReceipt": {
+        "path": "work/forget-index-fence/v5-native-control-002-exit.json",
+        "bytes": 1088,
+        "sha256": "f5749a899a077f1c64d820718775a111069f7dc022f10970e618c32be796f386"
+      },
+      "codeSeal": {
+        "path": "work/forget-index-fence/v5-native-control-002-seal.json",
+        "bytes": 164293,
+        "sha256": "f4c9ce9b2d06f744824696ce5dfcf24381bb0062f8c2a2c36fc85d36eca551b4"
+      },
+      "pairedComparison": false,
+      "validStrictPairedCustody": false,
+      "acceptancePointsAwarded": 0,
+      "status": "actual-native-completed-no-paired-public-or-acceptance-attribution",
+      "originalCompleted": true,
+      "finalAuthenticationPassed": true,
+      "approvedHistoricalAdapterRoot": "/workspace/memory-core/work/forget-index-fence/approved-source-605d150",
+      "sourceArchive": {
+        "path": "work/forget-index-fence/source-605d150-native002.tar.gz",
+        "sha256": "1b8449c9e64549188d7f46b1289409e6b575a535c9a42b2075645e50567f82b8",
+        "everyMemberMatchesActualExecutionSeal": true
+      },
+      "strictCustodyPendingAtOriginalCollection": true,
+      "laterNativeOnlySourceValidatorAccepted": true
+    }
+  ],
+  "watcherImplementationFocusedRegressions": {
+    "ownerBroaderPassed": 182,
+    "primaryWatcherPassed": 32,
+    "primaryCliPassed": 82,
+    "failed": 0,
+    "overlappingBatchesSummed": false,
+    "completeFinalWholeSuite": false,
+    "acceptancePointsAwarded": 0
+  },
+  "v5HistoricalSamePairPreflights": [
+    {
+      "originalMemberIndex": 0,
+      "receipt": {
+        "path": "work/forget-index-fence/v5-representatives-001-historical-preflight-final.json",
+        "bytes": 3342,
+        "sha256": "10f54fb5b173666c5f503bf662ab71982540d4c700e33620edca4764f2c10e80"
+      },
+      "validated": true,
+      "publicMatch": true,
+      "nativeSnapshots": 4,
+      "sdkSnapshots": 4,
+      "elapsedSeconds": 32.68808310999884,
+      "validationEntry": "replay_case -> validate_pair -> both validate_capture",
+      "originalReportAndRawUnchanged": true,
+      "newEngineExecuted": false,
+      "acceptancePointsAwarded": 0,
+      "approvedSourceRoot": "/workspace/memory-core/work/forget-index-fence/approved-source-0c3a31a"
+    },
+    {
+      "originalMemberIndex": 4,
+      "receipt": {
+        "path": "work/forget-index-fence/v5-representatives-002-historical-case4-preflight.json",
+        "bytes": 2380,
+        "sha256": "469ac1f6201c927f6c6bc926fc2adcc164d4db5483bbf844f1aa34a9b8097ce2"
+      },
+      "validated": true,
+      "publicMatch": true,
+      "nativeSnapshots": 4,
+      "sdkSnapshots": 4,
+      "elapsedSeconds": 42.025849732002825,
+      "validationEntry": "replay_case -> validate_pair -> both validate_capture",
+      "originalReportAndRawUnchanged": true,
+      "newEngineExecuted": false,
+      "acceptancePointsAwarded": 0,
+      "approvedSourceRoot": "/workspace/memory-core/work/forget-index-fence/approved-source-b16bb2c"
+    },
+    {
+      "originalMemberIndex": 6,
+      "receipt": {
+        "path": "work/forget-index-fence/v5-case6-capture-001-historical-preflight.json",
+        "bytes": 2555,
+        "sha256": "6d060289201797ad6c6b4a80481e1a5c00777eee380f6a15ec1ba551ed16cbf2"
+      },
+      "validated": true,
+      "publicMatch": true,
+      "nativeSnapshots": 4,
+      "sdkSnapshots": 4,
+      "elapsedSeconds": 40.652433024006314,
+      "validationEntry": "replay_case -> validate_pair -> both validate_capture",
+      "originalReportAndRawUnchanged": true,
+      "newEngineExecuted": false,
+      "acceptancePointsAwarded": 0,
+      "approvedSourceRoot": "/workspace/memory-core/work/forget-index-fence/approved-source-b16bb2c"
+    }
+  ],
+  "retainedV5OriginalRepresentativePackets": {
+    "v5Representatives001": {
+      "output": "work/forget-index-fence/v5-representatives-001",
+      "startedAt": "2026-11-14T18:09:53.856803+00:00",
+      "actualCodeCommit": "0c3a31a4051d2d48c88330778065d4ea4e8e8e89",
+      "caseIndices": [
+        0,
+        4,
+        6
+      ],
+      "acceptancePointsAwarded": 0,
+      "actualExit": 2,
+      "elapsedSeconds": 392.5074902710039,
+      "summary": {
+        "match": 0,
+        "mismatch": 0,
+        "blocked": 1
+      },
+      "reportSha256": "2eab8f11397ca6fcf8d98bb67eb8d7e68bccca3215b7bd4b7bf8c367e5dc875f",
+      "allTrackedFileBytesUnchanged": true,
+      "implementationAndAdaptersUnchanged": true,
+      "executedCases": 1,
+      "unexecutedRepresentatives": [
+        4,
+        6
+      ],
+      "nativeOriginalComplete": true,
+      "sdkOriginalComplete": true,
+      "sdkRawBytes": 545222386,
+      "custodyFailure": "V5 partition='retained-search-jobs' genuine18fields, validatorrequiredolder17",
+      "publicParityNotYetAuthenticated": true,
+      "approvedHistoricalSourceRoot": "/workspace/memory-core/work/forget-index-fence/approved-source-0c3a31a",
+      "sourceArchiveSha256": "63ed2bab1af40ff7ddc61ce4c20c63896cddcf580fd9e425f37c9591341c678a"
+    },
+    "v5Representatives002": {
+      "output": "work/forget-index-fence/v5-representatives-002",
+      "caseIndices": [
+        4,
+        6
+      ],
+      "startedAt": "2026-11-14T18:42:44.780249+00:00",
+      "actualCodeCommit": "b16bb2c11a6a5979543c48345d71628f5a47e64d",
+      "compactEncoding": true,
+      "sdk512MiBBoundUnchanged": true,
+      "acceptancePointsAwarded": 0,
+      "actualExit": 2,
+      "elapsedSeconds": 449.02463391599304,
+      "summary": {
+        "match": 0,
+        "mismatch": 0,
+        "blocked": 1
+      },
+      "reportSha256": "9a7b25201bd97006e43e79cc123a3893a5dd7ac91b776304a8c8c8d728752175",
+      "allTrackedFileBytesUnchanged": true,
+      "implementationAndAdaptersUnchanged": true,
+      "executedCases": 1,
+      "unexecutedRepresentatives": [
+        6
+      ],
+      "nativeOriginalComplete": true,
+      "sdkOriginalComplete": true,
+      "sdkRawBytes": 363342785,
+      "sdkFits512MiB": true,
+      "custodyFailure": "Native watch callback return lacks v8Hex in genuine private value",
+      "dataOnlyPublicDifferences": 0,
+      "approvedHistoricalSourceRoot": "/workspace/memory-core/work/forget-index-fence/approved-source-b16bb2c",
+      "sourceArchiveSha256": "bb07fe5e37a2ef369b180559cc75d93b5985a85a33f27c668e349f97b427be3e"
+    },
+    "v5Case6Capture001": {
+      "output": "work/forget-index-fence/v5-case6-capture-001",
+      "startedAt": "2026-11-14T18:55:34.477453+00:00",
+      "actualCodeCommit": "b16bb2c11a6a5979543c48345d71628f5a47e64d",
+      "deferCustody": true,
+      "collectorReportMustRemainBlockedAndUnchanged": true,
+      "acceptancePointsAwarded": 0,
+      "strictSamePairHistoricalRevalidationRequired": true,
+      "actualExit": 2,
+      "elapsedSeconds": 393.72643917100504,
+      "summary": {
+        "match": 0,
+        "mismatch": 0,
+        "blocked": 1
+      },
+      "reportSha256": "f83f1244db7f8ffc416b5f3550bd094a74a0df4d16621bc3d155bd203da73292",
+      "errors": [],
+      "nativeOriginalComplete": true,
+      "sdkOriginalComplete": true,
+      "sdkRawBytes": 304661058,
+      "sdkFits512MiB": true,
+      "allTrackedFileBytesUnchanged": true,
+      "implementationAndAdaptersUnchanged": true,
+      "dataOnlyPublicDifferences": 0
+    }
+  },
+  "losslessV5DispatchEncoding": {
+    "receipt": {
+      "path": "work/forget-index-fence/v5-representatives-001-codec-roundtrip.json",
+      "bytes": 498,
+      "sha256": "e3164253dde06820d5801cb8b20648eb13dc629c099475e35c8a220b99b181a7"
+    },
+    "kind": "data-only-lossless-v5-encoding-roundtrip",
+    "acceptancePointsAwarded": 0,
+    "originalCaptureSha256": "04f431555dff13a29ed0cab49b45977cc9e3326819cce4f2a6fd6404d1d20dfe",
+    "originalBytes": 545222386,
+    "compactRepresentationBytes": 293998495,
+    "sdk512MiBBound": 536870912,
+    "compactFitsBound": true,
+    "wholeObservationRoundtrip": true,
+    "originalStdoutBytesUnchanged": true,
+    "originalCaptureUnchanged": true,
+    "noOriginalEngineExecuted": true,
+    "seconds": 15.278161811991595,
+    "freshCase4CaptureBytes": 363342785,
+    "freshCase6CaptureBytes": 304661058,
+    "sdkBoundRaised": false,
+    "wholeObservationOrOriginalStdoutTruncated": false,
+    "dataOnlyRoundtripAwardsCredit": false
+  },
+  "samePairGuardCorrections": {
+    "actualRetainedSearchPartitionFields": 18,
+    "actualWatchPublisherReplanSourceQualified": true,
+    "opaqueNativePromiseReturnQualifiedByActualSourceOwner": true,
+    "expectedOutputSubstituted": false,
+    "originalReportsOrRawRewritten": false
+  },
+  "installedDistributionConsumersCompleted": {
+    "initialAttempt": {
+      "label": "distributions-001",
+      "actualExit": 1,
+      "failure": "uv default cache read-only beforebuild",
+      "sourceUnchanged": true
+    },
+    "cachePreparationSeparate": true,
+    "successfulAttempt": {
+      "label": "distributions-002",
+      "actualExit": 0,
+      "elapsedSeconds": 16.171240907002357,
+      "gitCommit": "41b231b5d8e2411f640f378690a30ce3dc5cbeb3",
+      "worktree": "/workspace/memory-core-fif-validation",
+      "sdkSourceSha256": "7865c61c075268a2dd09452411b6af70bb910a914cf2f729c66b59450c212fe0",
+      "sdkFiles": 162,
+      "UV_OFFLINE": "1",
+      "wheelAndSdistBothPassed": true,
+      "invalidTypedCallsRejectedPerArtifact": 27,
+      "implementationAndAdaptersUnchanged": true,
+      "allTrackedFileBytesUnchanged": true,
+      "logSha256": "dbf181bb09d83ae781684b5c763ff913161f1c12f3e8b3c1c9c3a64052d68462"
+    },
+    "exitReceipt": {
+      "path": "work/forget-index-fence/distributions-002-exit.json",
+      "bytes": 1244,
+      "sha256": "7f3aa42a3e941ddc4f469176f5c34bdae9844c66cddf2321d8e98ee776ba863c"
+    },
+    "codeSeal": {
+      "path": "work/forget-index-fence/distributions-002-seal.json",
+      "bytes": 165216,
+      "sha256": "d1978850526c5293584c8dcfafeda23b238c382b075c7b9e1809e79de0aa7d6c"
+    },
+    "log": {
+      "path": "work/forget-index-fence/distributions-002.log",
+      "bytes": 4617,
+      "sha256": "dbf181bb09d83ae781684b5c763ff913161f1c12f3e8b3c1c9c3a64052d68462"
+    },
+    "installedConsumerGroupsPerArtifact": 11,
+    "acceptancePointsAwarded": 0,
+    "executionIdentityRelabeledAsCurrentFullHead": false
+  },
+  "currentDraftPr": {
+    "number": 18,
+    "url": "https://github.com/DorukhanArslan/memory-core/pull/18",
+    "draft": true,
+    "headShaAtCreation": "0c0c7048015888a84eeef06bec1effbdfecb912a",
+    "fullResultPending": false,
+    "wholeSuiteFinalResultPending": false,
+    "overallCiGreenClaimed": false,
+    "lastKnownPublishedHeadSha": "5b729e9e9b6c344b28dc94675e4dc8dc06fff083",
+    "ordinaryFollowupPush": true,
+    "wholeSuiteEvidenceCodeCommit": "836b6db9db85dc9bafcfec2b6d93495d01299635",
+    "acceptanceReviewAndOrdinaryMergePending": true,
+    "latestActualFullResult": "blocked",
+    "latestActualVerifiedConditions": 71,
+    "latestActualRemainingConditions": 57,
+    "mergeReady": false,
+    "latestReviewedTestMapOnlyCorrectionsHead": "5b729e9e9b6c344b28dc94675e4dc8dc06fff083",
+    "currentCatalogMigratedV6HostV4": true,
+    "original1452PrefixUnchanged": false,
+    "wholeLatestActualFailed": true,
+    "wholeLatestActualSource": "b0b3778a184c5e29e3dc3a7e71030c3ff7e2f576",
+    "freshHostedCompleteAllTestsPending": false,
+    "corrected5bPython312AllTestsAndConsumersSuccess": true,
+    "remaining5bCiPending": false,
+    "corrected5bPython311AllTestsAndConsumersSuccess": true,
+    "hostedDifferentialCompletedGloballyBlocked": true,
+    "currentSourceHostedAllTestEvidenceCodeCommit": "f23a3d18324ea8a6963faafd4aaa7e8a0c38a768",
+    "currentSourceHostedTreeEquals5b": true,
+    "merged": false
+  },
+  "historicalFull001Interrupted": {
+    "startedAt": "2026-11-14T19:23:13.032922+00:00",
+    "source": {
+      "gitCommit": "0c0c7048015888a84eeef06bec1effbdfecb912a",
+      "trackedWorkingTreeDirty": false,
+      "sourceSha256": "7865c61c075268a2dd09452411b6af70bb910a914cf2f729c66b59450c212fe0",
+      "sourceFiles": 162
+    },
+    "codeSeal": {
+      "path": "work/forget-index-fence/full-001-seal.json",
+      "bytes": 166459,
+      "sha256": "66657ebcd5418a3eafbcabbec3b01ed2ce11e0379403d0e39eeb8b192ce8a46e"
+    },
+    "expectedDefinitions": 1465,
+    "original1452Preserved": true,
+    "old80AnnotationsPreserved": true,
+    "scope128Unchanged": true,
+    "duplicateStandalone13FamilyExecuted": false,
+    "actualFinalSummary": null,
+    "actualExitReceipt": {
+      "path": "work/forget-index-fence/full-001-exit.json",
+      "bytes": 1217,
+      "sha256": "2e69e63ad1d25d944e9a2ecffc1d81b6aa376967a18300e45406af01d1afb301"
+    },
+    "independentCompleteReportAudit": null,
+    "finalSourceSealReview": null,
+    "status": "intentionally-interrupted-no-completed-report-unscored",
+    "actualReturnCode": -15,
+    "elapsedSeconds": 1643.2924989989988,
+    "finishedAt": "2026-11-14T19:50:37.166898+00:00",
+    "implementationAndAdaptersUnchanged": true,
+    "allTrackedFileBytesUnchanged": true,
+    "runnerSourceUnchanged": true,
+    "plannedReportPath": "work/forget-index-fence/full-001.json",
+    "completedReportExists": false,
+    "acceptancePointsAwarded": 0,
+    "reason": "proven SDK storage adapter omitted existing Native dreaming.enabled=false; final adapter correction requires fresh complete run",
+    "sourceArchive": {
+      "kind": "interrupted-full-source-retention",
+      "sourceHead": "0c0c7048015888a84eeef06bec1effbdfecb912a",
+      "archive": "work/forget-index-fence/source-0c0c704-full001-interrupted.tar.gz",
+      "bytes": 14870532,
+      "sha256": "981fe31da51c11c3512eabe64c1f6ab98d1d5ee3544c59a5879df53becf3f8ae",
+      "allTrackedMemberHashesVerified": true,
+      "noExecutingOwnedProcesses": true,
+      "completedReportExists": false,
+      "acceptancePointsAwarded": 0
+    },
+    "thirteenExpensiveV5CasesExecutedByInterruptedFull": false
+  },
+  "wholeSuite001Failed": {
+    "codeCommit": "0c0c7048015888a84eeef06bec1effbdfecb912a",
+    "worktree": "/workspace/memory-core-fif-validation",
+    "log": {
+      "path": "work/forget-index-fence/whole-suite-001.log",
+      "bytes": 37832,
+      "sha256": "07f43914e794e46691ad88941a3df8bdc063ba2fdbde7e380a30f0847cb57bd3"
+    },
+    "actualFinalCounts": {
+      "passed": 9400,
+      "failed": 7,
+      "uncreditedSkipped": 6572
+    },
+    "actualFinalExitReceipt": {
+      "path": "work/forget-index-fence/whole-suite-001-exit.json",
+      "bytes": 1272,
+      "sha256": "c926aa50b80cd7a3cddad0cca9f305e5f7fed3d26d8bb032eefdd0be93b344f9"
+    },
+    "finalSuccessClaimed": false,
+    "status": "completed-failed-on-original-exact-source",
+    "actualReturnCode": 1,
+    "elapsedSeconds": 1288.4291392390005,
+    "finishedAt": "2026-11-14T19:47:00.410985+00:00",
+    "source": {
+      "gitCommit": "0c0c7048015888a84eeef06bec1effbdfecb912a",
+      "trackedWorkingTreeDirty": false,
+      "sourceSha256": "7865c61c075268a2dd09452411b6af70bb910a914cf2f729c66b59450c212fe0",
+      "sourceFiles": 162
+    },
+    "codeSeal": {
+      "path": "work/forget-index-fence/whole-suite-001-seal.json",
+      "bytes": 166470,
+      "sha256": "82feda6955f1c63d70155cbd427bca1ceb0bf56431f1c21cc3da58de03070161"
+    },
+    "implementationAndAdaptersUnchanged": true,
+    "allTrackedFileBytesUnchanged": true,
+    "runnerSourceUnchanged": true,
+    "laterFixesRelabelOriginalResult": false
+  },
+  "wholeSuite001FailureDiagnosis": {
+    "staleCatalogAssertions": {
+      "count": 3,
+      "details": [
+        "Expected requirement set omitted newly registered existing forget.index-fence contract.",
+        "Two historical family-tail checks extended past their original1452 bound into the appended13."
+      ],
+      "testOnlyCorrectionsIntegrated": true,
+      "focusedPassed": 129,
+      "focusedSeconds": 4.78
+    },
+    "workspaceRecallStoreAssertions": {
+      "count": 3,
+      "nativeExistingDreamingEnabled": false,
+      "sdkAdapterOriginallyOmittedMatchingDreamingEnabledFalse": true,
+      "correction": "create_memory_search_tool(..., dreaming_enabled=False)",
+      "primaryCommit": "a6475ba55b4298cefe245c177e8a10b9379be44f",
+      "productionBugInferred": false,
+      "productionSdkBytesChanged": false
+    },
+    "genericV5Member1SdkCall": {
+      "count": 1,
+      "actualOuterWatchdogSeconds": 360,
+      "actualChildReturnCode": -9,
+      "stdoutEmpty": true,
+      "preciseBlockedBoundary": "Source-qualified observer copy/source-identity overhead exhausted fixture gate; isolated original commands completed and no production lock/Future cycle observed.",
+      "productErrorInferred": false,
+      "matchInferred": false,
+      "full002HeldForDiagnosis": false,
+      "diagnosticBreakdown": {
+        "observationSeconds": 340.988,
+        "originalCommandSeconds": 3.835,
+        "encodingSeconds": 1.734,
+        "stdoutSeconds": 0.309
+      },
+      "optimizedUnpairedDiagnosticCompleted": true
+    }
+  },
+  "postFull001FreezeCorrections": [
+    {
+      "primaryCommit": "bc61ea9",
+      "scope": "Test expected set recognizes registered existing forget.index-fence requirement.",
+      "productionChanged": false
+    },
+    {
+      "primaryCommit": "b2f7ccd",
+      "scope": "Two historical catalog comparisons retain original bounded1452 tail.",
+      "productionChanged": false
+    },
+    {
+      "primaryCommit": "fd5ef06",
+      "scope": "Offline CI timeout120 minutes; checks preserved.",
+      "productionChanged": false
+    },
+    {
+      "primaryCommit": "a6475ba55b4298cefe245c177e8a10b9379be44f",
+      "scope": "SDKstorage comparison matches existing Native dreaming.enabled=false input.",
+      "productionChanged": false
+    }
+  ],
+  "genericCase1OriginalDiagnostic": {
+    "directory": "/workspace/memory-core-fif-sdk/work/forget-index-fence/case1-diagnostic-001",
+    "adapterCommit": "7d490e35ac5a8e92689836c6b1cc4fe070b2684d",
+    "productionSourceSha256": "7865c61c075268a2dd09452411b6af70bb910a914cf2f729c66b59450c212fe0",
+    "exactFrozenCaseIndex": 1,
+    "actualSeconds": 360.232353,
+    "outerWatchdogUnchanged": 360,
+    "hostActualExit": -9,
+    "allProductionAndAdapterSourceBeforeAfterUnchanged": true,
+    "observationSeconds": 340.988,
+    "originalCommandSeconds": 3.835,
+    "encodingSeconds": 1.734,
+    "stdoutSeconds": 0.309,
+    "lastPublicSearch26Fulfilled": true,
+    "lastPublicSearchResultCount": 2,
+    "lastWholeResponseBytes": 17477078,
+    "originalOldSyncFixtureGateTimedOutFromObservationDelay": true,
+    "noProductionLockOrFutureCycleObserved": true,
+    "noExecutingOwnedProcesses": true,
+    "acceptancePointsAwarded": 0,
+    "nextFix": "exact immutable scalar observation copy fastpath with whole captured response identity proof; no observer pause or work/deadline change",
+    "diagnosticSourceNotYetIntegrated": true
+  },
+  "observerPerformanceCorrection": {
+    "sourceCommit": "f9f1551382bd9a450bdd0f69e47fb4f88fef6a8e",
+    "primaryCommit": "836b6db9db85dc9bafcfec2b6d93495d01299635",
+    "productionUnchanged": true,
+    "sourceIdentityMap": "Strong actual code-object references with is identity checks; no negative cache; live map updates retained.",
+    "observationCopy": "Exact immutable observation copy fast path; complete logical response unchanged.",
+    "noObserverPauseDropGateOrOriginalWorkChanges": true,
+    "originalGateAndWatchdogLimitsUnchanged": true,
+    "validPinnedBenchmark": {
+      "completeResponseBytes": 17477078,
+      "baselineSeconds": 38.223666988,
+      "candidateSeconds": 4.001528759,
+      "sameCompleteOutputSha256": "f766273d60e8284e104ee32d0a1a1fff49bf56a8022a7d685b71deca0830f556",
+      "wholeOutputExactlyIdentical": true,
+      "centralReceiptPending": false,
+      "wholeLogicalJsonAndTypesExact": true,
+      "mutableContainersIndependent": true,
+      "centralReceipt": {
+        "path": "work/forget-index-fence/optimized-sdk-case1-preflight-001.json",
+        "bytes": 8055,
+        "sha256": "d7e675106aaf835e286dfdc6053e2c95b4c10c61fa5748b3af4999d89573d2a9"
+      },
+      "baselineActorSha256": "284cbbc955004d42034ee3f5efe975433ca97c692b5aa737d6d7cced668f85f6",
+      "optimizedActorSha256": "bcd72049883c8fc9c6077724bb5a7c08fb9ef7534fed8d05c49b875940d80f8d",
+      "optimizedClockSha256": "c41b477d90741ca819ebc33d8bc61261ee107d1bed48ad68ac8cfcffb5a4533f"
+    },
+    "invalidEarlierBenchmark": {
+      "baselineSeconds": 37.523,
+      "candidateSeconds": 37.843,
+      "valid": false,
+      "reason": "Benchmark imported wrong primary adapter; corrected before any new seal or engine.",
+      "disprovesImmutableCopyOptimizationAlone": false
+    },
+    "private7dDiagnosticJournalIntegratedIntoPrimary836": false,
+    "primaryFocusedTestsPassed": 102,
+    "sourceInventoryPassed": true,
+    "ruffPassed": true,
+    "projectNameCheckPassed": true,
+    "acceptancePointsAwarded": 0
+  },
+  "genericCase1OptimizedUnpairedDiagnostic": {
+    "owner": "/root/forget_sdk_audit",
+    "directory": "/workspace/memory-core-fif-sdk/work/forget-index-fence/case1-diagnostic-002",
+    "sourceCommit": "f9f1551382bd9a450bdd0f69e47fb4f88fef6a8e",
+    "exactFrozenCaseIndex": 1,
+    "productionUnchanged": true,
+    "completionPending": false,
+    "mustProveOriginalGateHeldUntilDeclaredRelease": true,
+    "acceptancePointsAwarded": 0,
+    "actualExit": 0,
+    "elapsedSeconds": 82.891639356,
+    "inputUnchanged": true,
+    "allProductionAndAdapterSourceUnchanged": true,
+    "all56FrozenStepsReturned": true,
+    "oldGateReachedAndUnreleasedThenDeclaredRelease": true,
+    "oldGateHeldAfterReceiptSeconds": 3.921744587,
+    "oldSyncGenuineTypedCasRejection": true,
+    "oldSyncFixtureGateTimeout": false,
+    "compactRawBytes": 392819067,
+    "allOriginalCalls": 17,
+    "oldGateLimitSecondsUnchanged": 30,
+    "oldBuildActualExpectedRevision": 2,
+    "oldBuildActualLiveRevision": 4,
+    "pairedComparison": false,
+    "validPairedMatchClaimed": false,
+    "sdk512MiBBoundUnchanged": true,
+    "strictFinalFamilyCredit": 0,
+    "centralReceipt": {
+      "path": "work/forget-index-fence/optimized-sdk-case1-preflight-001.json",
+      "bytes": 8055,
+      "sha256": "d7e675106aaf835e286dfdc6053e2c95b4c10c61fa5748b3af4999d89573d2a9"
+    },
+    "sourceQualification": {
+      "actualAdapterCommit": "f9f1551382bd9a450bdd0f69e47fb4f88fef6a8e",
+      "privateDiagnosticAncestor": "7d490e35ac5a8e92689836c6b1cc4fe070b2684d",
+      "privateDiagnosticsEnabled": true,
+      "actualAdapterRoot": "/workspace/memory-core-fif-sdk",
+      "noPrimary836CaptureClaim": true
+    },
+    "originalEntryToActualReleaseUpperBoundSeconds": 4.644055716,
+    "inputSha256": "994320d9b0271c420e49529e2733c8880e64085743a1276fac63bf75063431d0",
+    "adapterSha256BeforeAndAfter": "b7e55a92eaca18c30955bfc8451e387099c7d669308db6708dd7bb1525362ade",
+    "rawPacket": {
+      "path": "/workspace/memory-core-fif-sdk/work/forget-index-fence/case1-diagnostic-002/python-raw.json",
+      "bytes": 392819067,
+      "sha256": "5c305d9697697c5eb34b6e6f4c3eb7cbc83a56d5dbc17952a3a068d5863dca6b"
+    },
+    "wholePublicOutput": {
+      "path": "/workspace/memory-core-fif-sdk/work/forget-index-fence/case1-diagnostic-002/sdk-output.json",
+      "bytes": 23610,
+      "sha256": "dcf1a9ada3dc4697d2fb614028d4a4c80801e3ccfd549112fa17cccd062d5768"
+    },
+    "actualOldSyncError": {
+      "module": "memory_core.consolidation.origins",
+      "name": "MemoryIndexRevisionConflictError",
+      "message": "Memory index changed while full reindex was building (expected revision 2, found 4); retry the full reindex."
+    },
+    "originalJournalsAndWholeResponsesIndexedInCentralReceipt": true,
+    "rpcWatchdogSecondsUnchanged": 90
+  },
+  "hostedOfflinePackageChecksFor836": {
+    "workflow": "Offline package checks",
+    "runId": 43638027439,
+    "url": "https://github.com/DorukhanArslan/memory-core/actions/runs/43638027439",
+    "prHeadSha": "836b6db9db85dc9bafcfec2b6d93495d01299635",
+    "status": "completed",
+    "conclusion": "success",
+    "jobs": [
+      {
+        "python": "3.12",
+        "jobId": 132579058686,
+        "conclusion": "success",
+        "actualRunOfflineTestsStep": "success",
+        "actualCleanWheelAndSdistConsumersStep": "success",
+        "actualOfflineTests": {
+          "passed": 8952,
+          "uncreditedSkipped": 7054,
+          "failed": 0,
+          "seconds": 1523.16
+        }
+      },
+      {
+        "python": "3.11",
+        "jobId": 132579058942,
+        "conclusion": "success",
+        "actualRunOfflineTestsStep": "success",
+        "actualCleanWheelAndSdistConsumersStep": "success",
+        "actualOfflineTests": {
+          "passed": 8952,
+          "uncreditedSkipped": 7054,
+          "failed": 0,
+          "seconds": 1055.91
+        }
+      }
+    ],
+    "actualCheckoutCommit": null,
+    "exactHostedTestCountsInferred": false,
+    "overallCiGreenClaimed": false,
+    "acceptancePointsAwarded": 0,
+    "evidenceSource": "Execution finisher inspected actual completed workflow/job steps.",
+    "actualHostedTestCountsRecordedFromLogs": true
+  },
+  "hostedDifferentialRunFor836": {
+    "runId": 43638027428,
+    "url": "https://github.com/DorukhanArslan/memory-core/actions/runs/43638027428",
+    "prHeadSha": "836b6db9db85dc9bafcfec2b6d93495d01299635",
+    "statusAtLatestObservation": "completed",
+    "stepAtLatestObservation": null,
+    "finalConclusion": "failure",
+    "fullAcceptanceResults": null,
+    "overallCiGreenClaimed": false,
+    "observedAt": "2026-11-14T23:00:51Z",
+    "actualFailedSteps": [
+      {
+        "number": 12,
+        "name": "Compare the full registered catalog with actual OpenClaw"
+      },
+      {
+        "number": 14,
+        "name": "Observe the zero-credit next-turn notice packet"
+      },
+      {
+        "number": 24,
+        "name": "Independently replay the complete forget/index-fence v5 packet"
+      },
+      {
+        "number": 25,
+        "name": "Replay the retained forget/index-fence v5 captures through their guard tests"
+      }
+    ],
+    "actualResultRetentionStep": {
+      "number": 26,
+      "conclusion": "success"
+    },
+    "detailedFailureCausesInferred": false,
+    "failureAttributedOnlyToOlder14Mismatches": false,
+    "logsOrArtifactsDownloadedByThisDocumentationStep": false
+  },
+  "wholeSuite002Completed": {
+    "log": {
+      "path": "work/forget-index-fence/whole-suite-002.log",
+      "bytes": 17888,
+      "sha256": "53c21fe951b8d48a7f8fe4bee09bd662d879a14d6f02958180be41112ad3a1c2"
+    },
+    "source": {
+      "gitCommit": "836b6db9db85dc9bafcfec2b6d93495d01299635",
+      "trackedWorkingTreeDirty": false,
+      "sourceSha256": "7865c61c075268a2dd09452411b6af70bb910a914cf2f729c66b59450c212fe0",
+      "sourceFiles": 162
+    },
+    "codeSeal": {
+      "path": "work/forget-index-fence/whole-suite-002-seal.json",
+      "bytes": 166746,
+      "sha256": "70cfd65e7b8f63fa023f89d6af4e7363482b9087066b72767008ca529fced58a"
+    },
+    "launchReceipt": {
+      "path": "work/forget-index-fence/whole-suite-002-launch.json",
+      "bytes": 693,
+      "sha256": "006f439d92dea7244e3c65a55473e3024f48f523da17a586a1cf8c56d4836d5d"
+    },
+    "finalCounts": {
+      "passed": 9434,
+      "uncreditedSkipped": 6572,
+      "failed": 0
+    },
+    "finalExitReceipt": {
+      "path": "work/forget-index-fence/whole-suite-002-exit.json",
+      "bytes": 1272,
+      "sha256": "ca68fbbf492a1bc52a4938a009226a1e950a1614c446e0d5993a3d43144c69d1"
+    },
+    "finalSourceSealReview": null,
+    "status": "completed-successfully-on-exact-sealed-source",
+    "actualReturnCode": 0,
+    "finishedAt": "2026-11-14T21:03:00.284622+00:00",
+    "pytestSeconds": 1656.52,
+    "elapsedSeconds": 1661.2761105919926,
+    "implementationAndAdaptersUnchanged": true,
+    "allTrackedFileBytesUnchanged": true,
+    "runnerSourceUnchanged": true,
+    "all13OriginalSdkGenericSchedulesExecuted": true,
+    "genericInputPurityAndStandardJsonAssertionsPassed": true,
+    "pairedAcceptanceFromGenericSdkChecks": false,
+    "acceptancePointsAwarded": 0,
+    "temporaryLosslessArchivalStatus": "authorized only after observed exit and reader clearance; completion not yet claimed",
+    "testCountsRelabeledAsLater13bTests": false
+  },
+  "updatedAt": "2026-11-15",
+  "historicalFull002Blocked": {
+    "plannedReportPath": "work/forget-index-fence/full-002.json",
+    "source": {
+      "gitCommit": "836b6db9db85dc9bafcfec2b6d93495d01299635",
+      "trackedWorkingTreeDirty": false,
+      "sourceSha256": "7865c61c075268a2dd09452411b6af70bb910a914cf2f729c66b59450c212fe0",
+      "sourceFiles": 162
+    },
+    "codeSeal": {
+      "path": "work/forget-index-fence/full-002-seal.json",
+      "bytes": 166735,
+      "sha256": "0edaa0685ade681c60602e8bb47e08594af1e7731c7d283a8f08172d7a2aac63"
+    },
+    "launchReceipt": {
+      "path": "work/forget-index-fence/full-002-launch.json",
+      "bytes": 640,
+      "sha256": "a4c2ad9ff17a6261206947c600db7ea4cec75323518e7d6455db6d5de0c50455"
+    },
+    "expectedDefinitions": 1465,
+    "original1452DefinitionsAnd80AnnotationsPreserved": true,
+    "finalSummary": null,
+    "finalExitReceipt": {
+      "path": "work/forget-index-fence/full-002-exit.json",
+      "bytes": 1217,
+      "sha256": "bdcd63056194116931ac1640f939ab07f45d69a755b89675aac338c34a216d85"
+    },
+    "finalIndependentAudit": null,
+    "finalSourceSealReview": null,
+    "standaloneDuplicate13FamilyRun": false,
+    "status": "blocked-original-outcome-retained-zero-awards",
+    "actualReturnCode": 2,
+    "elapsedSeconds": 3607.7311084940156,
+    "finishedAt": "2026-11-14T21:35:12.217048+00:00",
+    "failedReferenceCaseId": "forget-index-fence-v5-stored-promotion-model-plan-before-forget",
+    "failure": "Native synchronous promotionPlan gate prevented promoter watch-effects control from dispatching before its unchanged monotonic deadline",
+    "nativeFailedFrozenMemberOneBased": 11,
+    "sdkComparisonReached": false,
+    "originalReport": {
+      "path": "work/forget-index-fence/full-002.json",
+      "bytes": 1034362777,
+      "sha256": "07db8b54f5fd4957ec2821fdd73e30956401b945604ee30c08005f3228ff3e61",
+      "nowLosslesslyArchived": true
+    },
+    "rootBlockedReview": {
+      "path": "work/forget-index-fence/independent-review/full-002-blocked-root-review-001.json",
+      "bytes": 9591,
+      "sha256": "6badf6cd7c28d96c7ba5c858de101e6e1714f15d776ef212ef2d301bc8c50f25"
+    },
+    "rootBlockedReviewStrictReportToEof": true,
+    "finalIndependentAuditMeaning": "Final acceptance audit is pending; the separate root blocked-report review supplies zero awards.",
+    "allTrackedFileBytesUnchanged": true,
+    "implementationAndAdaptersUnchanged": true,
+    "runnerSourceUnchanged": true,
+    "permanentCompleteReplayStarted": false,
+    "acceptancePointsAwarded": 0,
+    "authoritativeScoreUnchanged": true,
+    "sourceRetention": {
+      "manifest": "work/forget-index-fence/full-002-blocked-source-836b6db-retention.json",
+      "manifestSha256": "de4f9a1e21b7c85ff33ca87438f55060ca7434b747b8e53919e2b5d3d30b36fd",
+      "archive": {
+        "path": "work/forget-index-fence/full-002-blocked-source-836b6db.tar.gz",
+        "bytes": 14912231,
+        "sha256": "9f0061b9849185de9d5b6c5f6efd8639c55f3d9e935699c2045e690d5144fc4a"
+      },
+      "allTrackedArchiveMemberHashesVerified": true
+    },
+    "losslessCompletedRunRetention": {
+      "evidenceIndex": {
+        "path": "work/forget-index-fence/retained-full-002-exact-archives/final-evidence-index.json",
+        "sha256": "56c667dbf4d095905477f653dcfc7734e8cce4982a6b8302d85c2283149435af"
+      },
+      "proof": {
+        "path": "work/forget-index-fence/retained-full-002-exact-archives/full-002-retention-proof.json",
+        "sha256": "19e2c96d94dce02e185f6a538eecc578bb5d695046daacb5dbd25106c68f3a3f"
+      },
+      "restorationReceipt": {
+        "path": "work/forget-index-fence/full-002-exact-retained-lossless-archive.json",
+        "sha256": "3dd00a6ce2583e4ef69e81331f1f1c3840acc56992199d9e7160d2b2ccffcf74"
+      },
+      "archiveBytes": 1664440543,
+      "archiveSha256": "b4aeb7c5bc1e6da1e2b49e3392578bd64ca57e90f9e95ffd67d8c99e35cfc9e4",
+      "memberManifestSha256": "4251e012db840f6c8aeb479fa6c78a347b1c0a8a3089858f067d74b9025dab31",
+      "all1489MembersVerified": true,
+      "readLeasedRegularInodes": 1335,
+      "actualRetentionExit": 0,
+      "flat11AttemptRootsAndOriginalReportRemovedOnlyAfterVerification": true,
+      "originalReportSha256Preserved": "07db8b54f5fd4957ec2821fdd73e30956401b945604ee30c08005f3228ff3e61"
+    }
+  },
+  "nativePlanningBoundaryCorrection": {
+    "baseHead": "836b6db9db85dc9bafcfec2b6d93495d01299635",
+    "integratedHead": "5b59c656c3d7e241e242fba22ddcf832cf710792",
+    "scope": "Native observer awaits the same original model and realpath boundaries asynchronously, preserving actual public results and scoped AsyncLocalStorage custody.",
+    "productionSdkChanges": false,
+    "frozenV1ThroughV5InputsImmutable": true,
+    "gateTimerAndDeadlineIncreases": false,
+    "originalTimeoutsUnchanged": true,
+    "initialNativeCommit": "90dd7b820675176619e13322ad376507ce81ae80",
+    "initialGuardCommit": "e3e94ac1da81f1f32c9f4541320c122e02184bb6",
+    "historicalPureTests": {
+      "passed": 542,
+      "skipped": 1783,
+      "pytestSeconds": 34.26,
+      "actualExit": 0,
+      "allTrackedAndAdaptersUnchanged": true,
+      "receipt": "work/forget-index-fence/async-planning-pure-001-exit.json"
+    },
+    "compactActualReportWriterCommit": "040360e3414fb0e78997cd067ef82c17850ea201",
+    "boundedStreamedSuiteReportCommit": "4c06c6d63e5c520c4c0f49affec6d35006340b66",
+    "streamedSuiteOnlyLimitBytes": 2147483648,
+    "individualOriginalPacketLimitsUnchanged": true,
+    "acceptancePointsAwarded": 0
+  },
+  "storedPlanningPreflight001": {
+    "plannedCaseIndices": [
+      10,
+      11
+    ],
+    "executedCaseIndices": [
+      10
+    ],
+    "unexecutedCaseIndices": [
+      11
+    ],
+    "actualExit": 2,
+    "elapsedSeconds": 213.3450136000174,
+    "allTrackedAndAdaptersUnchanged": true,
+    "summary": {
+      "match": 0,
+      "mismatch": 0,
+      "blocked": 1
+    },
+    "nativeOriginalExit": 0,
+    "sdkOriginalComplete": true,
+    "wholePublicDifferences": 0,
+    "blockedReason": "Strict Native watcher opacity guard hardcoded original helper line231; authenticated helper insertion moved actual callsite to264",
+    "sourceRetention": {
+      "manifest": "work/forget-index-fence/async-planning-paired-001-source-retention.json",
+      "manifestSha256": "f7a1f69be459f8829b38f2073a9042f8d04a7ef67544f1a7ee6d5135ab534ac5",
+      "sourceArchiveSha256": "703dde4669f33c852f1bade54002d4a8bdb0f689ec769e559346bb040584c439",
+      "approvedRoot": "work/forget-index-fence/approved-source-5b59c65"
+    },
+    "newAcceptancePointsAwarded": 0,
+    "actualOriginalHead": "5b59c656c3d7e241e242fba22ddcf832cf710792",
+    "originalBlockedOutcomePreserved": true,
+    "originalReportRepairOrRelabeling": false,
+    "strictGuardCorrectionHead": "e7c19865bb1d64c5013a2d9e1301571950bd3341",
+    "strictGuardCorrectionScope": "Authenticate the actual helper callsite move from source line231 to264; preserve original object identity, v8 serialization-boundary and source-qualified callsite checks.",
+    "lineGuardHistoricalPureTests": {
+      "passed": 440,
+      "skipped": 1783,
+      "pytestSeconds": 30.84,
+      "actualExit": 0,
+      "allTrackedAndAdaptersUnchanged": true
+    }
+  },
+  "storedPlanningRetainedStrictReplay": {
+    "report": "work/forget-index-fence/v5-async-planning-preflight-001-independent-replay.json",
+    "reportSha256": "fa459e1145360c72ebcf824b16b8a2a6e2a89379665ce0889da99095d9426ea8",
+    "currentGuardHead": "e7c19865bb1d64c5013a2d9e1301571950bd3341",
+    "actualOriginalHead": "5b59c656c3d7e241e242fba22ddcf832cf710792",
+    "explicitApprovedAdapterRoot": "work/forget-index-fence/approved-source-5b59c65",
+    "validated": true,
+    "publicMatch": true,
+    "nativeSnapshots": 3,
+    "sdkSnapshots": 3,
+    "finalAuthenticationPassed": true,
+    "actualReplayExit": 0,
+    "originalBlockedExitUnchanged": true,
+    "validCompleteFamily": false,
+    "acceptancePointsAwarded": 0,
+    "reportSeal": {
+      "path": "work/forget-index-fence/v5-async-planning-preflight-001-independent-replay.json",
+      "bytes": 101225,
+      "sha256": "fa459e1145360c72ebcf824b16b8a2a6e2a89379665ce0889da99095d9426ea8"
+    },
+    "independentSdkSourceRoot": "/workspace/memory-core-fif-validation",
+    "errors": [],
+    "literalValidatedTrue": true,
+    "literalPublicMatchTrue": true,
+    "originalEnginesRerunByReplay": false,
+    "covers": [],
+    "fullScopePassed": false
+  },
+  "directPlanningPreflight001Blocked": {
+    "actualExit": 2,
+    "elapsedSeconds": 224.58037190700998,
+    "actualOriginalHead": "e7c19865bb1d64c5013a2d9e1301571950bd3341",
+    "allTrackedAndAdaptersUnchanged": true,
+    "summary": {
+      "match": 0,
+      "mismatch": 0,
+      "blocked": 1
+    },
+    "sdkLifecycleCustodyBlocked": true,
+    "actualWholePublicDifferences": 0,
+    "wholePublicProof": "work/forget-index-fence/direct-planning-paired-001-actual-public-comparison.json",
+    "sdkRawBytes": 304089726,
+    "sdkRawSha256": "143eb162548be1fd915dfb27394b603c0ce8a995cbfd6842f6d59de8444ebf64",
+    "actualForegroundPid": 483009,
+    "badListPositions": [
+      879,
+      880,
+      881,
+      882,
+      883,
+      884
+    ],
+    "recordedSequencesAtBadPositions": [
+      880,
+      881,
+      882,
+      883,
+      884,
+      879
+    ],
+    "all3420SequenceNumbersPresentExactlyOnce": true,
+    "sourceRetention": {
+      "manifest": "work/forget-index-fence/direct-planning-paired-001-source-retention.json",
+      "manifestSha256": "08bfb1e5c251b5555204195413c43868ff4bff8630cb33b46e9c021b9df34dc6",
+      "sourceArchiveSha256": "262c4991bab7fbfb054d740de206c13ee48a243868d330797c44b7cf70b71d68",
+      "approvedHistoricalRoot": "work/forget-index-fence/approved-source-e7c1986"
+    },
+    "acceptancePointsAwarded": 0,
+    "corruptPacketMustRemainBlocked": true,
+    "wholePublicComparisonSeal": {
+      "path": "work/forget-index-fence/direct-planning-paired-001-actual-public-comparison.json",
+      "bytes": 747,
+      "sha256": "12b837164e7d2cbc87f3114c43aad4ea1b9660e306ccbd9983e4f1684e45b48f"
+    },
+    "sortingDeduplicationOrCaptureRepairAllowed": false,
+    "strictSequenceCustodyGuardUnchanged": true,
+    "originalBlockedOutcomePreserved": true
+  },
+  "passiveSdkJournalOrderingCorrection": {
+    "baseHead": "e7c19865bb1d64c5013a2d9e1301571950bd3341",
+    "worktree": "/workspace/memory-core-fif-sdk-journal-order",
+    "scope": [
+      "equivalence/forget_index_fence_sdk.py",
+      "equivalence/forget_index_fence_sdk_clock.py"
+    ],
+    "productionSdkChanges": false,
+    "strictGuardUnchanged": true,
+    "frozenInputsImmutable": true,
+    "freshOriginalEnginesNotStarted": true,
+    "sourceCommit": "99ad01b1649a19d61e30e271be67860903595aa0",
+    "primaryCommit": "13b54e07bffe292599dab0ff5d89ea54e94e207a",
+    "currentPureTests": {
+      "passed": 278,
+      "pytestSeconds": 3.01,
+      "actualExit": 0,
+      "allTrackedAndAdaptersUnchanged": true
+    },
+    "bothOldUnmodifiedRecordersForcedRaceReproduced": true,
+    "newDistinctPrivateLocks": true,
+    "onlyMetadataAndMembershipUnderLocks": true,
+    "complete": true,
+    "futureRecordingOnly": true,
+    "olderCapturedPacketsRepaired": false,
+    "oldSequenceValidationRelaxed": false,
+    "wholeSuiteCountsAttributedToNewTests": false,
+    "pureExitReceipt": {
+      "path": "work/forget-index-fence/sdk-journal-pure-001-exit.json",
+      "bytes": 2014,
+      "sha256": "6aa89bf798d0540c9bac3d99f5873e81804d7d98afba9d4f16802280a0e21947"
+    },
+    "acceptancePointsAwarded": 0
+  },
+  "directPlanningPreflight002": {
+    "actualHead": "13b54e07bffe292599dab0ff5d89ea54e94e207a",
+    "actualExit": 0,
+    "elapsedSeconds": 219.28905205099727,
+    "allTrackedAndAdaptersUnchanged": true,
+    "report": "work/forget-index-fence/v5-direct-planning-preflight-002/report.json",
+    "reportSha256": "440c18a8541da13cc8591d90570e26a3aeb64b15fe23cceb5b50f2992ad44bde",
+    "summary": {
+      "match": 1,
+      "mismatch": 0,
+      "blocked": 0
+    },
+    "errors": [],
+    "finalAuthenticationPassed": true,
+    "actualWholePublicDifferences": 0,
+    "independentReplay": {
+      "report": "work/forget-index-fence/v5-direct-planning-preflight-002-independent-replay.json",
+      "sha256": "ee8b0983ade972a5ae1bd1abc5f2ded9928146f43cb5e23e68ef4dd01991593d",
+      "actualExit": 0,
+      "validated": true,
+      "publicMatch": true,
+      "nativeSnapshots": 3,
+      "sdkSnapshots": 3,
+      "allExplicitPairsValidated": true,
+      "validCompleteFamily": false,
+      "finalAuthenticationPassed": true,
+      "errors": []
+    },
+    "acceptancePointsAwarded": 0,
+    "exitReceipt": {
+      "path": "work/forget-index-fence/direct-planning-paired-002-exit.json",
+      "bytes": 1436,
+      "sha256": "6f86d99caf1da172c552f88f8f808de6a220ffcf2c939cf5f5a964b88def5a67"
+    },
+    "collectorReport": {
+      "path": "work/forget-index-fence/v5-direct-planning-preflight-002/report.json",
+      "bytes": 41265709,
+      "sha256": "440c18a8541da13cc8591d90570e26a3aeb64b15fe23cceb5b50f2992ad44bde"
+    },
+    "independentReplayReport": {
+      "path": "work/forget-index-fence/v5-direct-planning-preflight-002-independent-replay.json",
+      "bytes": 98869,
+      "sha256": "ee8b0983ade972a5ae1bd1abc5f2ded9928146f43cb5e23e68ef4dd01991593d"
+    },
+    "explicitAdapterRoot": "/workspace/memory-core",
+    "independentSdkSourceRoot": "/workspace/memory-core-fif-validation",
+    "literalValidatedTrue": true,
+    "literalPublicMatchTrue": true,
+    "validCompleteFamily": false,
+    "covers": [],
+    "fullScopePassed": false
+  },
+  "latestFull003Blocked": {
+    "sourceCommit": "13b54e07bffe292599dab0ff5d89ea54e94e207a",
+    "status": "completed-blocked",
+    "startedAt": "2026-11-14T23:00:07.793129+00:00",
+    "plannedReportPath": "work/forget-index-fence/full-003.json",
+    "expectedDefinitions": 1465,
+    "launchReceipt": {
+      "path": "work/forget-index-fence/full-003-launch.json",
+      "bytes": 640,
+      "sha256": "a8a67b845fad6130695a80bcc78ebd440df69701afd86199b22c0c050814a975"
+    },
+    "sourceSeal": {
+      "path": "work/forget-index-fence/full-003-seal.json",
+      "bytes": 167429,
+      "sha256": "f82cc590ba36f203228d7101299b4ca52caef5a502c505b6d63f79b1419eb3b9"
+    },
+    "actualExitReceipt": {
+      "path": "work/forget-index-fence/full-003-exit.json",
+      "bytes": 1217,
+      "sha256": "02dccd23d0aed5ad31b266cced7cc66f188ae85633988027e45ba1e109933eca"
+    },
+    "finalSummary": {
+      "matched": 1443,
+      "mismatched": 18,
+      "blocked": 4,
+      "uncoveredAcceptance": 51
+    },
+    "permanentExact13Replay": null,
+    "rootIndependentAcceptanceAudit": null,
+    "newAcceptancePointsAwarded": 0,
+    "noDuplicateRun": true,
+    "finishedAt": "2026-11-15T00:27:32.812555+00:00",
+    "actualReturnCode": 2,
+    "elapsedSeconds": 5245.019967881992,
+    "runnerErrors": [],
+    "actualReport": {
+      "path": "/workspace/memory-core/work/forget-index-fence/full-003.json",
+      "bytes": 1232029587,
+      "sha256": "194a69ffda45a1af9a46bba87af17bc558739500bd4d5de19e9013d7b398795d"
+    },
+    "rootIndependentAssessment": {
+      "path": "work/forget-index-fence/independent-review/full-003-root-assessment-002-audit.json",
+      "bytes": 401964,
+      "sha256": "acbd2dc39279452b863dca04a397d50e7cca4e27c6fb6a969f3293b692718fb7"
+    },
+    "permanentReplaySuccessClaimed": false,
+    "implementationAndAdaptersUnchanged": true,
+    "allTrackedFileBytesUnchanged": true,
+    "runnerSourceUnchanged": true,
+    "fullScopePassed": false,
+    "actualVerifiedConditions": 71,
+    "actualRemainingConditions": 57,
+    "globalReportBlockedPreventsSuccessfulPermanentCliClaim": true
+  },
+  "full003RootAssessment": {
+    "report": {
+      "path": "work/forget-index-fence/independent-review/full-003-root-assessment-002-audit.json",
+      "bytes": 401964,
+      "sha256": "acbd2dc39279452b863dca04a397d50e7cca4e27c6fb6a969f3293b692718fb7"
+    },
+    "auditor": {
+      "path": "/workspace/memory-core/work/forget-index-fence/independent-review/audit_full_1465.py",
+      "bytes": 14986,
+      "sha256": "c8703ed2af4bfa635866cbf3fad347698126f06411a7591c9e0f82753ae564e0"
+    },
+    "strictReader": {
+      "path": "/workspace/memory-core/work/forget-index-fence/independent-review/stream_reader.py",
+      "bytes": 7414,
+      "sha256": "adf493396ff9060c306503f37d35075248d014679e2e0d42284a94dacab7b6d4"
+    },
+    "strictCompleteReportAssessment": true,
+    "original1452DefinitionsUnchanged": true,
+    "original80BuilderAnnotationsPreserved": true,
+    "fixed128PointScopeUnchanged": true,
+    "beforeVerified": 73,
+    "afterVerified": 71,
+    "afterRemaining": 57,
+    "uncovered": 51,
+    "registeredUnresolved": 6,
+    "contractTotals": {
+      "complete": 32,
+      "pending": 25,
+      "partial": 7
+    },
+    "wholeCatalogSummary": {
+      "matched": 1443,
+      "mismatched": 18,
+      "blocked": 4
+    },
+    "verifiedDelta": -2,
+    "previouslyVerifiedPointsLost": [
+      "indexing.query-sync.outcomes",
+      "host.turn-barrier.outcomes"
+    ],
+    "separateBoundaryPointsRemainVerified": true,
+    "allOriginal14MismatchWholePublicPayloadsExactlyUnchanged": true,
+    "normalizationToleranceOrFieldDropApplied": false,
+    "oldHostedArtifactsAccessed": false,
+    "new13LiteralRuntimeEvidenceFlagsTrue": 13,
+    "new13WholePublicMatches": 12,
+    "new13WholePublicMismatches": 1,
+    "newForgetConditionsVerified": 0,
+    "newAcceptancePointsAwarded": 0,
+    "runnerErrors": [],
+    "fullScopePassed": false,
+    "completeReportStatus": "blocked"
+  },
+  "full003OpenFindingGroups": {
+    "querySyncCustody": {
+      "caseIds": [
+        "query-sync-outcomes-warm-edit",
+        "query-sync-outcomes-warm-delete",
+        "query-sync-outcomes-warm-rename",
+        "query-sync-outcomes-warm-touch-same-bytes"
+      ],
+      "status": "blocked",
+      "originalEnginesCompleted": true,
+      "completePublicResultsAgree": true,
+      "observedPrivateGuardShape": "Guard expects older three-field publication job after watcher added watchGeneration=0.",
+      "reviewedGuardRemediationValidated": true,
+      "creditRestored": false,
+      "lostExistingPoint": "indexing.query-sync.outcomes",
+      "originalFull003Status": "blocked",
+      "laterRetainedPairsStrictlyValidated": true,
+      "laterReplaySourceHead": "1620af4b01a5346c57c7893373fed45aa3b094a5",
+      "laterReplaySdkSourceSha256": "7865c61c075268a2dd09452411b6af70bb910a914cf2f729c66b59450c212fe0",
+      "laterReplayOriginalEngines": 0,
+      "laterReplayAcceptancePointsAwarded": 0,
+      "full003OutcomePointRestored": false,
+      "freshCurrentSourceAllSevenStrictlyMatched": true,
+      "readGenerationGuardWeakening": false,
+      "full003OriginalRowsAndScoreUnchanged": true
+    },
+    "hostNoticeOutcomes": {
+      "caseIds": [
+        "host-turn-barrier-cold-ascii",
+        "host-turn-barrier-warm-ascii",
+        "host-turn-barrier-warm-unicode"
+      ],
+      "status": "mismatched",
+      "sdkCompletePublicValuesExactlyAtBaseline": true,
+      "nativeWarningCorporaFieldsAbsent": true,
+      "observedBoundary": "Different Native notice owner/timing path; cause and remediation review remain open.",
+      "sdkResultFixInferred": false,
+      "fieldSuppressionAllowed": false,
+      "lostExistingPoint": "host.turn-barrier.outcomes",
+      "ambientGitAncestryAdmittedNativeProjectBootstrapManager": true,
+      "newHostV2EnvironmentIsExplicitInputNotHelperOverride": true,
+      "physicalEnvironmentExecutionProofPending": true,
+      "finalVersion": "Host v4",
+      "hostV2V3RetainedUnexecuted": true,
+      "host001AllFourRemainStrictlyBlocked": true,
+      "host002ResultPending": false,
+      "freshHost002StrictMatchWithRootReview": true,
+      "full003OutcomePointRestoredBySubset": false
+    },
+    "forgetKeywordOverlap": {
+      "caseId": "forget-index-fence-v5-keyword-worker-before-forget-enrichment-after",
+      "status": "mismatched",
+      "nativeInFlight": [],
+      "sdkInFlightDeletedHitCount": 3,
+      "sdkDeletedHitRecallEffectsObserved": true,
+      "beforeCaptureNativeIndexRows": 5,
+      "beforeCaptureNativeIndexDescription": "Header and retained rows.",
+      "beforeCaptureSdkIndexRows": 2,
+      "beforeCaptureSdkIndexDescription": "Retained rows.",
+      "causalAnalysis": "The one fresh V6 keyword pair strictly matches with current SDK; full V6 family and a fresh global catalog remain pending.",
+      "fieldDropExpectedSubstitutionOrCaptureRepairAllowed": false,
+      "newFamilyWholePublicMatches": 12,
+      "newFamilyWholePublicMismatches": 1,
+      "newConditionsVerified": 0,
+      "productionMetadataCorrectionIntegratedAt": "763b25b66c1a97d82841b3e25fecfaecb11f53a5",
+      "productionSourceSha256": "03e33ba0daf2013064f28386450ea50ed180af141f045d74ce52309a1f4452ed",
+      "physicalPublicationFrontierSolved": false,
+      "freshFullCatalogMatchClaimed": false,
+      "entireKeywordOrPhysicalFrontierFixedClaimed": false,
+      "oneBoundedV6PairStrictlyValidated": true
+    }
+  },
+  "queryFourRetainedStrictReplay": {
+    "guardOriginalCommit": "c63888fd87b6d5f54dae5a37ee7b8c32b8cfeb4c",
+    "primaryCommit": "1620af4b01a5346c57c7893373fed45aa3b094a5",
+    "productionSourceSha256": "7865c61c075268a2dd09452411b6af70bb910a914cf2f729c66b59450c212fe0",
+    "defaultRootOnly": true,
+    "newApprovedSourceApi": false,
+    "pureTestsPassed": 71,
+    "ruffPassed": true,
+    "retainedActual4ReplayPending": false,
+    "newOriginalEngines": 0,
+    "acceptancePointsAwarded": 0,
+    "strictReplay": {
+      "path": "work/forget-index-fence/full-003-query-four-retained-replay-002.json",
+      "bytes": 41978,
+      "sha256": "bf62c45876cb9cbe8fe57176fa1ee5d7999f58e47fa1229e5fc60364fe2ef677",
+      "actualExit": 0,
+      "elapsedSeconds": 3.7500536569859833,
+      "exitReceipt": "work/forget-index-fence/full-003-query-four-retained-replay-002-exit.json",
+      "exitReceiptSha256": "1e5ae711027665a75ae7994142f274e5625c022bac0126e527366a53224a8a61",
+      "allFourValidatePairLiteralTrue": true,
+      "wholePublicExactJSONEqualAllFour": true,
+      "originalPacketAndReportBytesUnchanged": true,
+      "implementationAndAdaptersUnchanged": true,
+      "allTrackedFileBytesUnchanged": true
+    },
+    "originalFull003UnmodifiedExit2Score71of128": true,
+    "comparisonDriver001EarlyFailurePreserved": true,
+    "historicalSourceProofSealedBeforeProductionSdkChange": true,
+    "reportSeal": {
+      "path": "work/forget-index-fence/full-003-query-four-retained-replay-002.json",
+      "bytes": 41978,
+      "sha256": "bf62c45876cb9cbe8fe57176fa1ee5d7999f58e47fa1229e5fc60364fe2ef677"
+    },
+    "exitReceiptSeal": {
+      "path": "work/forget-index-fence/full-003-query-four-retained-replay-002-exit.json",
+      "bytes": 1079,
+      "sha256": "1e5ae711027665a75ae7994142f274e5625c022bac0126e527366a53224a8a61"
+    },
+    "proofCompletedBeforeProductionSdkChange": true,
+    "originalFull003RowsRewritten": false,
+    "originalFull003ScoreStill": {
+      "verified": 71,
+      "remaining": 57,
+      "total": 128
+    },
+    "defaultCatalogOrOriginalEnginesExecuted": false
+  },
+  "postFull003ProductionKeywordMetadataCorrection": {
+    "originalCommit": "692addd581f3beb3ed9950a48b63c9c2bd87cb4f",
+    "primaryCommit": "763b25b66c1a97d82841b3e25fecfaecb11f53a5",
+    "productionSourceSha256": "03e33ba0daf2013064f28386450ea50ed180af141f045d74ce52309a1f4452ed",
+    "productionSourceFiles": 162,
+    "queryHistoricalReplayCompletedBeforeIntegration": true,
+    "normalKeywordMetadataUsesFreshReaderWhileRetrievalGenerationHeld": true,
+    "explicitCallerOwnedDbSemanticsPreserved": true,
+    "primaryFocusedTestsPassed": 63,
+    "primaryFocusedSeconds": 1.67,
+    "ruffPassed": true,
+    "wholeFinalCombinedRegressionPending": false,
+    "full004NotStarted": true,
+    "acceptancePointsAwarded": 0,
+    "ownerEarlierFocusedTestsPassed": 65,
+    "ownerAndPrimaryBatchesSummed": false,
+    "physicalPublicationFrontierSolvedClaimed": false,
+    "genuineVersionedCausalProbePending": false,
+    "currentSourceHostedAllTestRegressionsComplete": true,
+    "genuineV6KeywordProbeCompletedStrictMatchZeroCredit": true
+  },
+  "hostedHistorical13b": {
+    "sourceCommit": "13b54e07bffe292599dab0ff5d89ea54e94e207a",
+    "observedAt": "2026-11-15T01:15:36Z",
+    "offline": {
+      "runId": 43650607551,
+      "url": "https://github.com/DorukhanArslan/memory-core/actions/runs/43650607551",
+      "status": "completed",
+      "conclusion": "success",
+      "jobs": [
+        {
+          "python": "3.12",
+          "jobId": 132617989607,
+          "status": "completed",
+          "currentStep": null,
+          "wheelAndSdistConsumers": "success",
+          "conclusion": "success",
+          "successVerifiedAt": "2026-11-14T23:40:09Z",
+          "offlineTestSummaryAt": "2026-11-14T23:37:02Z",
+          "offlineTests": "success",
+          "actualOfflineTests": {
+            "passed": 9108,
+            "uncreditedSkipped": 7062,
+            "failed": 0,
+            "seconds": 2468.92
+          },
+          "evidenceSource": "Root verified the completed new13b job steps and decoded only this new job's logs; exact counts supplied to documentation owner."
+        },
+        {
+          "python": "3.11",
+          "jobId": 132617989825,
+          "status": "completed",
+          "currentStep": null,
+          "wheelAndSdistConsumers": "success",
+          "conclusion": "success",
+          "completedAt": "2026-11-14T23:13:43Z",
+          "offlineTests": "success",
+          "actualOfflineTests": {
+            "passed": 9108,
+            "uncreditedSkipped": 7062,
+            "failed": 0,
+            "seconds": 1071.14
+          },
+          "evidenceSource": "Root verified the completed new13b job steps and inspected only this new job's logs; exact counts supplied to documentation owner."
+        }
+      ],
+      "bothJobsSuccessVerifiedAt": "2026-11-14T23:40:09Z"
+    },
+    "differential": {
+      "runId": 43650607555,
+      "url": "https://github.com/DorukhanArslan/memory-core/actions/runs/43650607555",
+      "status": "completed",
+      "jobId": 132617989690,
+      "currentStepAtEarlierObservation": "Test the new acceptance harness",
+      "currentStepEarlierObservationAt": "2026-11-14T23:00:51Z",
+      "fullCatalogOutcome": "globally-blocked",
+      "fullReportSummary": {},
+      "fullReportCaseIds": [],
+      "fullReportErrors": [
+        {
+          "code": "forget-index-fence-evidence-invalid",
+          "message": "Whole forget/index-fence execution/authority failed; no retry was made."
+        }
+      ],
+      "underlyingHostedCauseDiagnosed": false,
+      "attributedToLocalFull003Causes": false,
+      "attributedToOlder14Mismatches": false,
+      "source": "Root inspected only the new13b job log; no artifact download or old held investigation.",
+      "actualStepOutcomes": {
+        "12": {
+          "outcome": "failure",
+          "fullReportStatus": "blocked"
+        },
+        "14": {
+          "outcome": "success",
+          "zeroCreditNoticeMatches": 4
+        },
+        "16": {
+          "outcome": "success",
+          "v5SmokeMatches": 1
+        },
+        "17-23": {
+          "outcome": "success",
+          "allRetainedReplayStepsPassed": true
+        },
+        "queryBoundaries": {
+          "matches": 8
+        },
+        "24": {
+          "outcome": "failure",
+          "reason": "Original full report failed its final check; downstream replay outcome, not an independent diagnosed cause."
+        },
+        "25": {
+          "outcome": "failure",
+          "reason": "Original full report failed its final check; downstream guard outcome, not an independent diagnosed cause."
+        },
+        "26": {
+          "outcome": "success",
+          "retentionSucceeded": true
+        }
+      },
+      "acceptancePointsAwarded": 0,
+      "overallCiGreen": false,
+      "completedJobFailedSteps": [
+        12,
+        24,
+        25
+      ]
+    },
+    "overallCiGreenClaimed": false,
+    "acceptancePointsAwarded": 0,
+    "logsOrArtifactsDownloadedByThisDocumentationStep": false,
+    "olderHeldHostedArtifactInvestigationResumed": false,
+    "rootInspectedOnlyNew311And312JobLogs": true,
+    "validatesNew03e33ProductionSdk": false,
+    "resultsRetainActualSourceVersionAttribution": true,
+    "rootInspectedOnlyNewDifferentialJobLog": true
+  },
+  "v6InputFreezeAndOneCaseProof": {
+    "sourceCommit": "30ee94320ddcb066c76bb06809d4a55425973758",
+    "rootInputReview": {
+      "path": "work/forget-index-fence/independent-review/v6-input-root-review-001.json",
+      "bytes": 3569,
+      "sha256": "c7fb5446e8a9ee75c05b16af945a23ae110a1c3891dbcf528d1e6ad8cf47f87c"
+    },
+    "rootInputReviewPassed": true,
+    "other12BusinessCasesExact": true,
+    "all13BusinessFieldsExactAfterDeclaredIdentityChangesAndOneJoinMove": true,
+    "soleCausalChange": [
+      {
+        "member": "forget-index-fence-v5-keyword-worker-before-forget-enrichment-after",
+        "existingJoinMovedFrom": 22,
+        "to": 18,
+        "stepUnchanged": true
+      }
+    ],
+    "original15FrozenFilesUnchanged": true,
+    "newV6Files": 3,
+    "totalFrozenForgetFiles": 18,
+    "routingRootReviewPending": false,
+    "genuineCausalProbePending": false,
+    "originalEnginesStarted": true,
+    "defaultCatalogMigrated": true,
+    "acceptancePointsAwarded": 0,
+    "physicalPublicationFrontierEquivalenceEstablished": false,
+    "routingRootReviewPassed": true,
+    "primaryRoutingCommit": "f549881b6f66079ba1b61a0adb065fdcc6fc2945",
+    "primaryFreezeCommit": "d474a94",
+    "primaryPureTests": {
+      "passed": 181,
+      "seconds": 28.93,
+      "sdkSourceSha256": "03e33ba0daf2013064f28386450ea50ed180af141f045d74ce52309a1f4452ed",
+      "wholeCombinedRegression": false
+    },
+    "capacityClearancePending": false,
+    "originalCasesExecuted": 1,
+    "oneBoundedGenuinePairValidated": true,
+    "complete13CaseFamilyProven": false,
+    "complete13CaseFamilyStillPending": true
+  },
+  "v6KeywordFreshPreflight001": {
+    "actualCodeCommit": "f549881b6f66079ba1b61a0adb065fdcc6fc2945",
+    "sdkSourceSha256": "03e33ba0daf2013064f28386450ea50ed180af141f045d74ce52309a1f4452ed",
+    "sdkSourceFiles": 162,
+    "case": "forget-index-fence-v6-keyword-worker-before-forget-enrichment-after",
+    "output": "work/forget-index-fence/v6-keyword-frontier-preflight-001",
+    "prestartFreeBytes": 1806585856,
+    "native4VerifiedRetentionsComplete": true,
+    "exactlyOnePairedExecution": true,
+    "newAcceptancePointsAwarded": 0,
+    "completionPending": false,
+    "sourceFreezeUntilActualExitStrictReplayAndRootReview": true,
+    "actualExit": 0,
+    "actualElapsedSeconds": 223.87980961299036,
+    "statusCounts": {
+      "match": 1,
+      "mismatch": 0,
+      "blocked": 0
+    },
+    "reportSha256": "7f83572ba0aa938617801a1337883e2707e2042853a209a7bab1f7f8a1bdaea4",
+    "allTrackedAndImplementationAndAdaptersUnchanged": true,
+    "independentReplay": {
+      "path": "work/forget-index-fence/v6-keyword-frontier-preflight-001-independent-replay.json",
+      "bytes": 98998,
+      "sha256": "98964a4ffac7b2f4584433ae8627a907392712d2ecec9ca0e8b422d9be90d138",
+      "actualExit": 0,
+      "actualElapsedSeconds": 37.43480548801017,
+      "validatedAndPublicMatchLiteralTrue": true,
+      "nativeSnapshots": 3,
+      "sdkSnapshots": 3,
+      "finalAuthenticationPassed": true,
+      "validCompleteFamily": false,
+      "errors": []
+    },
+    "rootWholeReview": {
+      "path": "work/forget-index-fence/independent-review/v6-keyword-preflight001-root-review.json",
+      "sha256": "bff38ffdd6decb48a1db52a86d10dc35a199c6ae1559282a6fdd041d06cb7709",
+      "whole17CallsAnd3SnapshotsEachExact": true,
+      "all105ArtifactsAnd1155TrackedRehashed": true,
+      "inFlightResultsBothEmpty": true,
+      "heldIndexRowsBoth5": true
+    },
+    "acceptancePointsAwarded": 0,
+    "actualFull003ScoreStill71of128": true,
+    "independentReplaySeal": {
+      "path": "work/forget-index-fence/v6-keyword-frontier-preflight-001-independent-replay.json",
+      "bytes": 98998,
+      "sha256": "98964a4ffac7b2f4584433ae8627a907392712d2ecec9ca0e8b422d9be90d138"
+    },
+    "rootWholeReviewSeal": {
+      "path": "work/forget-index-fence/independent-review/v6-keyword-preflight001-root-review.json",
+      "bytes": 1242,
+      "sha256": "bff38ffdd6decb48a1db52a86d10dc35a199c6ae1559282a6fdd041d06cb7709"
+    },
+    "whole17OriginalCallsAnd3SnapshotsPerEngineEqual": true,
+    "universalPhysicalFrontierProven": false,
+    "fullFamilyAcceptanceProven": false,
+    "oldV5ResultRelabeled": false
+  },
+  "currentSdkQuerySevenFreshPreflight001": {
+    "actualCodeCommit": "f549881b6f66079ba1b61a0adb065fdcc6fc2945",
+    "sdkSourceSha256": "03e33ba0daf2013064f28386450ea50ed180af141f045d74ce52309a1f4452ed",
+    "sdkSourceFiles": 162,
+    "output": "work/forget-index-fence/current-source-query-seven-preflight-001",
+    "prestartFreeBytes": 1244712960,
+    "budgetBytesConservative": 512000000,
+    "exactlyOneCompleteSevenFamilyExecution": true,
+    "noRetryUntilMatch": true,
+    "guardAssertionsUnmodified": true,
+    "completionPending": false,
+    "acceptancePointsAwarded": 0,
+    "sourceFreezeUntilActualExitStrictReplayAndRootReview": true,
+    "actualExit": 0,
+    "elapsedSeconds": 78.45798823502264,
+    "summary": {
+      "match": 7,
+      "mismatch": 0,
+      "blocked": 0
+    },
+    "errors": [],
+    "reportSha256": "fcc618751b7625c355e086cd9f830b7ffe4a095b9491b773ffd3988a62955084",
+    "allTrackedAndSourceAndAdaptersUnchanged": true,
+    "strictIndependentReplay": {
+      "path": "work/forget-index-fence/current-source-query-seven-preflight-001-independent-replay.json",
+      "sha256": "fc38a371e49397c2bf0b69a008ce1fd1be1be430b74a759daca33f7fca53d6b6",
+      "bytes": 49491,
+      "actualExit": 0,
+      "elapsedSeconds": 3.682796995009994,
+      "allSevenStrictlyValidatedAndWholePublicMatch": true,
+      "all398ArtifactsRehashed": true,
+      "strictSourceCollectorEof": true,
+      "errors": []
+    },
+    "rootWholeReview": {
+      "path": "work/forget-index-fence/independent-review/current-query-seven-preflight001-root-review.json",
+      "sha256": "2dc2c1f76071b42d74c7e377092453f220d3a0d82be7696a1d05d6b0d70588c1",
+      "allSevenWholeSearchAndOtherFieldsExact": true,
+      "all398Artifacts1155TrackedAdaptersRehashed": true
+    },
+    "noReadGenerationGuardChangesWarranted": true,
+    "newAcceptancePointsAwarded": 0,
+    "originalEnginesExecuted": true,
+    "strictReplaySeal": {
+      "path": "work/forget-index-fence/current-source-query-seven-preflight-001-independent-replay.json",
+      "bytes": 49491,
+      "sha256": "fc38a371e49397c2bf0b69a008ce1fd1be1be430b74a759daca33f7fca53d6b6"
+    },
+    "rootWholeReviewSeal": {
+      "path": "work/forget-index-fence/independent-review/current-query-seven-preflight001-root-review.json",
+      "bytes": 2376,
+      "sha256": "2dc2c1f76071b42d74c7e377092453f220d3a0d82be7696a1d05d6b0d70588c1"
+    },
+    "readGenerationGuardsWeakened": false,
+    "full003ScoreUnchanged": true
+  },
+  "hostV2RetainedUnexecutedFreeze": {
+    "sourceCommit": "f40354ebde107a8183efdf207e8e38102d6da455",
+    "rootFreezeReviewed": true,
+    "frozenDocuments": [
+      {
+        "path": "docs/host_turn_barrier_v2_environment.json",
+        "bytes": 3914,
+        "sha256": "db2f4e0352d1dccd6c0091504312cc48520ae0fa817096f6bca0d2caca998367"
+      },
+      {
+        "path": "docs/host_turn_barrier_v2_freeze.json",
+        "bytes": 2848,
+        "sha256": "efe2135662693abbc3014856a133026fc9ddee55568761d390fb339a0634460c"
+      },
+      {
+        "path": "docs/host_turn_barrier_v2_literals.json",
+        "bytes": 18751,
+        "sha256": "41597d9d3cf2999b7b7ac40ce205297ff39f774ae469e8e97d5bb9f3c5f63e9f"
+      }
+    ],
+    "exactFourInnerV1BusinessCases": true,
+    "covers": [],
+    "acceptancePointsAwarded": 0,
+    "actualWorkspaceAndCwdPolicy": "Owned canonical /tmp execution root, with no Git ancestry for the actual workspace or process cwd; matches SDK physical environment.",
+    "originalProjectFeatureRemainsEnabled": true,
+    "helperResultOrManagerOperationReplaced": false,
+    "naturalOriginalWatchAndOnSearchUnmodified": true,
+    "originalEnginesStarted": false,
+    "defaultCatalogMigrated": false,
+    "newResultOrFrontierSolvedClaimed": false,
+    "status": "retained-unexecuted-candidate",
+    "supersededByHostV4": true
+  },
+  "hostV3RetainedUnexecutedFreeze": {
+    "sourceCommit": "af4d09f485bbffb577f54de2fa0bc70397667855",
+    "rootFreezeReview": {
+      "path": "work/forget-index-fence/independent-review/host-v3-freeze-root-review-001.json",
+      "bytes": 1133,
+      "sha256": "0fa6d0df07eaeaa667c7ac784ecaf37b6188226b10a3095aa573973077525c15"
+    },
+    "exactFourInnerV1BusinessCases": true,
+    "declaredActualRuntimeEnvironmentAdded": [
+      "JITI_FS_CACHE",
+      "HOME",
+      "STATE values"
+    ],
+    "actualTmpGitMarkerDiscoveredBeforeOriginals": true,
+    "originalEnginesStarted": false,
+    "status": "retained-unexecuted-candidate",
+    "supersededByHostV4": true,
+    "acceptancePointsAwarded": 0
+  },
+  "hostFinalProfileV4": {
+    "freezeCommit": "110f57c4344b431e79046d93e2bb197850b41983",
+    "inputModuleCommit": "aadc476a779c9f450f9ec1966bc17f885b83f51e",
+    "rootFreezeReview": {
+      "path": "work/forget-index-fence/independent-review/host-v4-freeze-root-review-001.json",
+      "bytes": 1284,
+      "sha256": "eb46878bdba585cd0767cdfb3c27122ee894ada1a4fd828be8d73a8dec6ab9bd"
+    },
+    "exactFourInnerBusinessCasesPreserved": true,
+    "soleEnvironmentRevision": "Actual temporary root /tmp to /var/tmp after an actual /tmp/.git entry was found; prior keys, values, business, gates, timers and scheduling retained.",
+    "qualifiedOfficialNamespaceRequired": "Sandbox UID/Git projections alter the frozen physical directory facts; original probes use the qualified official actual /var/tmp view.",
+    "originalProjectFeatureEnabled": true,
+    "environmentAndBusinessCustodyIntegratedHead": "2465e8019e48e05b61cd3cfd6304d3cedcc19a78",
+    "defaultCatalogMigrated": true,
+    "acceptancePointsAwarded": 0
+  },
+  "hostV4Preflight001Blocked": {
+    "actualCodeCommit": "2465e8019e48e05b61cd3cfd6304d3cedcc19a78",
+    "sdkSourceSha256": "03e33ba0daf2013064f28386450ea50ed180af141f045d74ce52309a1f4452ed",
+    "sdkSourceFiles": 162,
+    "output": "work/forget-index-fence/host-v4-nongit-preflight-001",
+    "prestartFreeBytes": 4837244928,
+    "collector": {
+      "kind": "actual-host4-private-collector-prelaunch-seal",
+      "path": "/workspace/memory-core/work/forget-index-fence/collect_host_v4.py",
+      "bytes": 18113,
+      "sha256": "e7009e376c71e97b8583c63f54efc2242ff23d49a4ba545600f132003e287295",
+      "implementation": {
+        "gitCommit": "2465e8019e48e05b61cd3cfd6304d3cedcc19a78",
+        "trackedWorkingTreeDirty": false,
+        "sourceSha256": "03e33ba0daf2013064f28386450ea50ed180af141f045d74ce52309a1f4452ed",
+        "sourceFiles": 162
+      },
+      "originalHostEnginesStartedYet": false,
+      "exactlyFourOrderedCasesNoRetry": true,
+      "officialRequireEscalatedActualVarTmpView": true
+    },
+    "sourceFreezeUntilActualExitStrictReplayAndRootReview": true,
+    "orderedCasesExactly4": true,
+    "nativeProbeTimeoutSeconds": 180,
+    "sdkTimeoutSeconds": 120,
+    "completionPending": false,
+    "acceptancePointsAwarded": 0,
+    "catalogStillV5Unmigrated": true,
+    "actualExit": 2,
+    "actualElapsedSeconds": 115.12683051999193,
+    "summary": {
+      "match": 0,
+      "mismatch": 0,
+      "blocked": 4
+    },
+    "errors": [],
+    "reportSha256": "7492a7b90044c8ce4a49d4550a2ed5e48740ad1beeccfac44ff5be4a9baca6e5",
+    "allSourceAndAdaptersAndTrackedUnchanged": true,
+    "negativeReplayActualExit": 2,
+    "negativeReplayElapsedSeconds": 14.220614180987468,
+    "negativeReplaySummary": {
+      "match": 0,
+      "mismatch": 0,
+      "blocked": 4
+    },
+    "negativeReplayOriginalArtifactsUnchanged": true,
+    "rootNegativeReview": {
+      "path": "work/forget-index-fence/independent-review/host-v4-preflight001-negative-root-review.json",
+      "sha256": "3344316c5373961e785a56f12024df0b88310244ae059d5ccdd8204583375cb9",
+      "all366Members270ActualFiles1178TrackedPrivateCollectorRehashed": true,
+      "supplementalWholePublicAll4ExactEqualNoAdmissionCredit": true
+    },
+    "exactCause": "ActualNodeBigIntlstat inode decimal uses signed64 whileCPythonst_ino unsigned64; /var,/var/tmp difference EXACT2^64 allotheridentityfactsunchanged",
+    "noRetroactiveAdmissionOrOriginalWireRewrite": true,
+    "status": "blocked-retained-negative-evidence",
+    "rootNegativeReviewSeal": {
+      "path": "work/forget-index-fence/independent-review/host-v4-preflight001-negative-root-review.json",
+      "bytes": 2220,
+      "sha256": "3344316c5373961e785a56f12024df0b88310244ae059d5ccdd8204583375cb9"
+    },
+    "supplementalPublicEqualityAllFourDoesNotAdmitPackets": true,
+    "neverRetroactivelyAdmitted": true,
+    "originalWireNeverRewritten": true,
+    "producerInodeDifferenceExactlyTwoTo64": true,
+    "latestFullAssessmentStill": {
+      "verified": 71,
+      "remaining": 57
+    }
+  },
+  "hostV4CanonicalUnsignedInodeProducerCorrection": {
+    "originalCommit": "44fea6f0249edd6de061bbf584ed559ba6dec98e",
+    "primaryCommit": "621c97b28bed800911968374296319483f7b3eb3",
+    "onlyActualNodeStatInodeProducerUnsigned64": true,
+    "strictConsumerUidModeDeviceAndFrozenInputsUnchanged": true,
+    "primaryOfficialPureTestsPassed": 182,
+    "primaryOfficialPureSeconds": 5.52,
+    "actualPinnedNodeCpython8PathRegressionPassed": true,
+    "old001NeverRetroAdmitted": true,
+    "strictConsumerUnchanged": true,
+    "uidModeDeviceBusinessAndFrozenInputChecksUnchanged": true,
+    "old001WireStillRejected": true,
+    "freshSourceSdkSourceSha256": "03e33ba0daf2013064f28386450ea50ed180af141f045d74ce52309a1f4452ed",
+    "acceptancePointsAwarded": 0
+  },
+  "resourcePreparationBrief": {
+    "verifiedLosslessFull003Native12": {
+      "index": "work/forget-index-fence/full-003-native12-retained-lossless-index.json",
+      "indexSha256": "12851bf558e277a4dd18c25bf02acc451218cef9d2a19105d81b11765d11237d",
+      "netAllocatedBytesReclaimed": 827928576
+    },
+    "verifiedLosslessFull003Sdk12": {
+      "index": "work/forget-index-fence/full-003-sdk12-retained-lossless-index.json",
+      "indexSha256": "fab8464c135e3b3464683b5180f26fe8339705e7d54fad0f127ca4752f7da689",
+      "netAllocatedBytesReclaimed": 3696226304
+    },
+    "originalReportsAndProtectedKeywordCapturesRetained": true,
+    "sourceOnlyFeasibilityCheckout": "/tmp/mc-full004",
+    "feasibilityBaseSource": "2465e8019e48e05b61cd3cfd6304d3cedcc19a78",
+    "futureFullReportDestination": "primary workspace",
+    "captureFormatChanged": false,
+    "cleanupImplemented": false,
+    "proposedCleanupPreservesOriginalHostDirectorySkeletonsSmallVarTmpStatesAndLiveSource": true,
+    "onlyApprovedLargeRegularFilesMayBeArchivedAfterProof": true,
+    "actualPinnedGitAndProjectKeyQualification": {
+      "path": "work/forget-index-fence/tmp-full004-feasibility/receipt-001.json",
+      "bytes": 287898,
+      "sha256": "32f099fa8aeabf8de11bc3a155ac3cc4388bf82db43b1c840091d97d6d5f1e1f"
+    },
+    "initialFeasibilityExecutedNoHostOrFull": true,
+    "sameActualFindGitRootResolveProjectKeyAndSourceHashedGithubProjectUrl": true,
+    "worktreeAdvancedToB0bForWhole003": true,
+    "worktreeAdvanceToFinal5bBeforeFull004Pending": false,
+    "completedWholeOwnedTempRetentionOnlyPlanned": false,
+    "failedSnapshotFixtureExcludedAndKeptLive": true,
+    "completedWholeTempRemovalClaimed": false,
+    "observedWhole003MinTmpFreeBytes": 4201627648,
+    "observedWhole003MaxSampledMemoryBytes": 8293642240,
+    "memoryLimitBytes": 17179869184,
+    "whole003OomEventDeltas": 0,
+    "concreteFull004Profile": {
+      "path": "work/forget-index-fence/full-004-concrete-execution-profile-002.json",
+      "sha256": "ad5ca4f6bc4e094a74cd724d5308f958ada14ce67f38e528155ef588b968e2fd",
+      "bytes": 7676
+    },
+    "plannedTmpPermanentCaptureBytes": 8192000000,
+    "reportOnPrimaryFilesystemBytesComparable": 1232029587,
+    "actualVarTmpHostStateOnPrimaryFilesystem": true,
+    "measuredProfileIsGuaranteedUpperBound": false,
+    "full004Started": false,
+    "postFullReplayRootAuditReaderClearanceRequiredBeforeNewReportFirstArchive": true,
+    "originalHostDirectoryInodesVarStatesAndSourceCheckoutKeptLive": true,
+    "finalSourceAndActualTmpdirQualification": {
+      "path": "work/forget-index-fence/full-004-final-source-tempdir-qualification-001.json",
+      "sha256": "28c9790b96db481521b6c244287912c5a15507e3b804a9afa0e3b846a2d60a4d",
+      "bytes": 180539
+    },
+    "primaryAndTmpAt5bCleanAnd1184TrackedFilesEqual": true,
+    "actualTmpdirQualified": true,
+    "reviewedIgnoredSupervisorV2": {
+      "path": "work/forget-index-fence/run_migrated_once_v2.py",
+      "sha256": "556e68141740cbedb804bdb57d4450a6371894ed8b554f89c2d9f5ac6ed17e2b",
+      "bytes": 10387
+    },
+    "supervisorUtcStartCapturedBeforePopen": true,
+    "historicalWhole003SupervisorPreserved": {
+      "path": "work/forget-index-fence/run_migrated_once.py",
+      "sha256": "821cd6ade328592d76e6ef567e534c0f1afa903a74fe1ba4e5629a5262491a1c",
+      "bytes": 10359
+    },
+    "previousProfile001Superseded": true,
+    "archiveOnlyPreservationComplete": true,
+    "archiveOnlyActualReturnCode": 0,
+    "archiveOnlyScopes": 14,
+    "archiveLogicalBytes": 461734566,
+    "originalMemberRecordsVerified": 4372,
+    "all3458OriginalRegularFileReadLeasesReleased": true,
+    "originalAllocatedBytesStillLive": 4568129536,
+    "originalsRemoved": 0,
+    "allOriginalsRemainLive": true,
+    "automaticApprovalRejectedArchiveAndUnlinkBeforeProcessCreation": true,
+    "rejectedActionModifiedOrDeletedFiles": false,
+    "bypassRetryMade": false,
+    "concreteVerifiedTemporaryCopyRemovalAwaitingTrustedUserApproval": true,
+    "noFullOrUnlinkOrSourceChangeUntilTrustedReply": true
+  },
+  "hostV4FreshPreflight002Completed": {
+    "actualCodeCommit": "621c97b28bed800911968374296319483f7b3eb3",
+    "sdkSourceSha256": "03e33ba0daf2013064f28386450ea50ed180af141f045d74ce52309a1f4452ed",
+    "sdkSourceFiles": 162,
+    "pidAtLaunch": 551084,
+    "output": "work/forget-index-fence/host-v4-nongit-preflight-002",
+    "collector": {
+      "kind": "actual-host4-private-collector-prelaunch-seal",
+      "path": "/workspace/memory-core/work/forget-index-fence/collect_host_v4.py",
+      "bytes": 18113,
+      "sha256": "e7009e376c71e97b8583c63f54efc2242ff23d49a4ba545600f132003e287295",
+      "implementation": {
+        "gitCommit": "621c97b28bed800911968374296319483f7b3eb3",
+        "trackedWorkingTreeDirty": false,
+        "sourceSha256": "03e33ba0daf2013064f28386450ea50ed180af141f045d74ce52309a1f4452ed",
+        "sourceFiles": 162
+      },
+      "originalHostEnginesStartedYet": false,
+      "exactlyFourOrderedCasesNoRetry": true,
+      "officialRequireEscalatedActualVarTmpView": true
+    },
+    "orderedCasesExactly4": true,
+    "nativeDiagnosticTimeoutSeconds": 180,
+    "sdkTimeoutSeconds": 120,
+    "sourceFreezeUntilActualExitStrictReplayAndRootReview": true,
+    "actualExitReceipt": {
+      "path": "work/forget-index-fence/host-v4-nongit-preflight-002-exit.json",
+      "bytes": 1655,
+      "sha256": "9e1da58bb846d4eb183d37db2ab72b769f01ff9c64e38d7ea7d3281e2b1e6357"
+    },
+    "finalSummary": {
+      "match": 4,
+      "mismatch": 0,
+      "blocked": 0
+    },
+    "strictReplay": {
+      "report": {
+        "path": "work/forget-index-fence/host-v4-nongit-preflight-002/independent-process-replay.json",
+        "bytes": 3345108,
+        "sha256": "18a56cfe622cbc7f021119efb8b334feb7bc3d3296abdaa7381b3d388e009893"
+      },
+      "actualExit": 0,
+      "elapsedSeconds": 17.689463807997527,
+      "allFourWholePublicMatch": true,
+      "beforeAfterAndEndInventoriesEqual": true,
+      "originalArtifactsUnchanged": true
+    },
+    "rootReview": {
+      "path": "work/forget-index-fence/independent-review/host-v4-preflight002-positive-root-review.json",
+      "bytes": 1881,
+      "sha256": "195b3251567ee662fb1915782ca96070f2f7ef4df1b0d813fc4cfc1f62fba2ff"
+    },
+    "passClaimed": true,
+    "newAcceptancePointsAwarded": 0,
+    "status": "completed-strict-match-with-zero-credit",
+    "actualReturnCode": 0,
+    "elapsedSeconds": 117.97112386501976,
+    "captureReportSha256": "6121d6b182a914bca51583228157980de5e2f791bb56fd1f85a8ad772cb7a709",
+    "acceptanceCreditAwarded": 0,
+    "latestFullAssessmentStill71": true,
+    "catalogAtExecutionStillV5": true,
+    "all366Members270Files1179TrackedAndPrivateCollectorRehashed": true,
+    "oldHost001NeverRetroAdmitted": true
+  },
+  "defaultCatalogMigrationActualIntegrated": {
+    "primaryCommit": "b0b3778a184c5e29e3dc3a7e71030c3ff7e2f576",
+    "registeredCases": 1465,
+    "fixedRequirements": 64,
+    "fixedAcceptancePoints": 128,
+    "currentDefinitionsCanonicalSha256": "785b7e144526a4cab3e75a33893acf99dc43f1ce3c5d76d7e55ca2f7354f4c8f",
+    "current1452PrefixCanonicalSha256": "f3753dc1a02417a925160f4006c1cb75b31a1bfd2efd9ce3def7c96022b40ac0",
+    "original1452PrefixUnchanged": false,
+    "onlyFourHostIndicesReplaced": [
+      1407,
+      1408,
+      1409,
+      1410
+    ],
+    "original1452RestoredByExactHostReconstructionSha256": "0fa31b6393c65303f4fa2e1663671e4ef60eb15edc563f05aba218c8c408349c",
+    "tail13OnlyV5ToV6": true,
+    "reportWholePublicTargets": 31,
+    "selectedRuntimeDiagnostics": 34,
+    "selectedRuntimeTraces": 17,
+    "finalSharedPureTestsPassed": 468,
+    "finalSharedPureHonestSkips": 13,
+    "finalSharedPureSeconds": 84.75,
+    "ruffAndDiffPassed": true,
+    "noNewAcceptanceCredit": true,
+    "integrated": true,
+    "currentDefaultHostVersion": "v4",
+    "currentDefaultForgetVersion": "v6",
+    "all1448OtherOldDefinitionsExact": true,
+    "all80BuilderAnnotationsExact": true,
+    "unchanged1452PrefixClaimWithdrawn": true,
+    "historicalFull003PrefixPreservationFactRelabeled": false,
+    "wholePublicRetentionTargets": {
+      "total": 31,
+      "runtime": 17,
+      "historicalMismatchRowsEvenIfLaterMatched": 14
+    },
+    "selectedDiagnostics": 34,
+    "selectedOriginalTraces": 17,
+    "pureMigrationReviewHistory": {
+      "corrected": [
+        "boundary sibling selector",
+        "actual V4 kind",
+        "registered 120-second versus diagnostic 180-second interface"
+      ],
+      "labelledChecks": 37,
+      "engineEvidence": false
+    },
+    "preflightProofsAwardPoints": false
+  },
+  "wholeSuite003Failed": {
+    "sourceRoot": "/tmp/mc-full004",
+    "mirroredPrimaryRoot": "/workspace/memory-core",
+    "actualCodeCommit": "b0b3778a184c5e29e3dc3a7e71030c3ff7e2f576",
+    "sdkSourceSha256": "03e33ba0daf2013064f28386450ea50ed180af141f045d74ce52309a1f4452ed",
+    "sdkSourceFiles": 162,
+    "allTrackedFiles": 1184,
+    "actualPid": 555139,
+    "runnerPid": 555122,
+    "startedAt": "2026-11-15T02:49:45.433532+00:00",
+    "session": 73669,
+    "allTestsNoSelectionOrDeselection": true,
+    "tmpdir": "/tmp/mc-regression-001-temp",
+    "pytestBasetemp": "/tmp/mc-regression-001-pytest",
+    "builtinTmpPathRetentionPolicy": "failed",
+    "explicitPythonPath": "/tmp/mc-full004",
+    "pinnedNodeAndRealStatOptIn": true,
+    "sourceAndMirrorFrozen": true,
+    "supervisor": "work/forget-index-fence/run_migrated_once.py",
+    "codeSeal": "work/forget-index-fence/whole-suite-003-seal.json",
+    "log": "work/forget-index-fence/whole-suite-003.log",
+    "resourceObservationEvery2Seconds": true,
+    "immediateActualOsExitWitnessRequired": true,
+    "completionPending": false,
+    "full004NotStarted": true,
+    "actualReturnCode": 1,
+    "actualElapsedSeconds": 1641.068770037993,
+    "pytestPassed": 9979,
+    "pytestFailed": 6,
+    "pytestUncreditedSkipped": 6585,
+    "pytestElapsedSeconds": 1636.97,
+    "sourceAndMirrorAllTrackedAdaptersSdkUnchanged": true,
+    "exitReceipt": "work/forget-index-fence/whole-suite-003-exit.json",
+    "exitSha256": "2254813c99e39ab267ea0c3e929c3230f916c5ddd82154715b22f287ffc9d347",
+    "rootNegativeReview": "work/forget-index-fence/independent-review/whole003-negative-root-review.json",
+    "rootNegativeReviewSha256": "d593d242fc991ab136759a70dab9fb802f4a82b18715fcaa99fb8b6be4a8c169",
+    "all2368SourceAndMirrorFilesRehashed": true,
+    "resourceReceipt": "work/forget-index-fence/whole-suite-003-resources.json",
+    "resourceSha256": "716cce51139fcfde96ab819654870488281d1d68e515931e8e64891fce932e60",
+    "sampleIntervalSeconds": 2,
+    "observedMinTmpFreeBytes": 4201627648,
+    "observedMaxMemoryCurrentBytes": 8293642240,
+    "observedMaxMemoryAnonBytes": 2769555456,
+    "oomAndMaxEventDeltas": 0,
+    "failedFixtureRootsKeptLive": true,
+    "rootApprovesTargetedCorrectionsPlusFreshHostedWholeInsteadOfAutomaticSecondLocal13SdkLoop": true,
+    "rootNegativeReviewSeal": {
+      "path": "work/forget-index-fence/independent-review/whole003-negative-root-review.json",
+      "bytes": 2172,
+      "sha256": "d593d242fc991ab136759a70dab9fb802f4a82b18715fcaa99fb8b6be4a8c169"
+    },
+    "exitReceiptSeal": {
+      "path": "work/forget-index-fence/whole-suite-003-exit.json",
+      "bytes": 2293,
+      "sha256": "2254813c99e39ab267ea0c3e929c3230f916c5ddd82154715b22f287ffc9d347"
+    },
+    "resourceReceiptSeal": {
+      "path": "work/forget-index-fence/whole-suite-003-resources.json",
+      "bytes": 769,
+      "sha256": "716cce51139fcfde96ab819654870488281d1d68e515931e8e64891fce932e60"
+    },
+    "historicalFailureNeverRelabeledGreen": true,
+    "automaticSecondLocal13SdkWholeLoopRun": false,
+    "newAcceptancePointsAwarded": 0
+  },
+  "postWhole003ReviewedTestAndSourceMapCorrections": {
+    "sourceCommit": "5b729e9e9b6c344b28dc94675e4dc8dc06fff083",
+    "runtimeIdentityProof": {
+      "path": "work/forget-index-fence/post-whole003-runtime-identity-proof.json",
+      "bytes": 4340,
+      "sha256": "a6afae15f0a1955a251b693c77b8545c29fcecc0fcae32db8d428a5c9d065513"
+    },
+    "rootCorrectionReview": {
+      "path": "work/forget-index-fence/independent-review/whole003-corrections-targeted-root-review.json",
+      "bytes": 1306,
+      "sha256": "ecb0f153315f72e1ac4aebbb22653eab1f5133ff8552469eb5c3fc5493189176"
+    },
+    "runtimeSdkOrProductionChanged": false,
+    "executionAdaptersExactB0b": true,
+    "sdkSourceFiles": 162,
+    "sdkSourceSha256": "03e33ba0daf2013064f28386450ea50ed180af141f045d74ce52309a1f4452ed",
+    "failedCauseGroups": {
+      "obsoleteHistoricalPrefixAssertions": 3,
+      "movedSourceMapAnchors": 2,
+      "obsoletePinnedFtsFinalHitExpectation": 1
+    },
+    "historicalHashLiteralsUnchanged": true,
+    "exactFourOriginalBusinessDefinitionsReconstructedBeforeOldHashAssertions": true,
+    "adversarialOldPrefixReconstructionChecksIncluded": true,
+    "sourceMapChangedIntegerLineLeavesOnly": 28,
+    "allOtherSourceMapFieldsAndSourceOnlyClassificationsUnchanged": true,
+    "walControls": [
+      "old a and unchanged b",
+      "same pinned FTS database and single admitted query",
+      "distinct live metadata reader",
+      "deleted IDs filtered",
+      "whole retained b result preserved"
+    ],
+    "targetedPreviouslyFailedFilesAndAdjacentPassed": 269,
+    "targetedSeconds": 21.5,
+    "targetedActualExit": 0,
+    "ruffAndDiffCheckPassed": true,
+    "oldWhole003ActualResultStill": {
+      "exit": 1,
+      "passed": 9979,
+      "failed": 6,
+      "uncreditedSkipped": 6585
+    },
+    "automaticSecondLocal13SdkLoopRun": false,
+    "freshHostedAllTestsRequired": false,
+    "acceptanceCredit": 0,
+    "freshHostedAllTestsCompletedSuccess": true
+  },
+  "hostedHistoricalB0bMetadata": {
+    "head": "b0b3778a184c5e29e3dc3a7e71030c3ff7e2f576",
+    "offlineRun": 43669712961,
+    "differentialRun": 43669713196,
+    "initialMetadataStatus": "in_progress",
+    "olderFourArtifactInvestigationStillPaused": true,
+    "noArtifactsDownloaded": true,
+    "finalOutcomeClaimed": false
+  },
+  "hostedFreshCorrected5b": {
+    "sourceCommit": "5b729e9e9b6c344b28dc94675e4dc8dc06fff083",
+    "startedAt": "2026-11-15T03:36:13Z",
+    "offline": {
+      "runId": 43673106858,
+      "url": "https://github.com/DorukhanArslan/memory-core/actions/runs/43673106858",
+      "latestKnownStatus": "completed",
+      "conclusion": "success",
+      "jobs": [
+        {
+          "python": "3.12",
+          "jobId": 132687284320,
+          "status": "completed",
+          "conclusion": "success",
+          "actualAllTests": {
+            "passed": 9365,
+            "uncreditedSkipped": 7213,
+            "failed": 0,
+            "elapsedSeconds": 1390.36,
+            "exactSummaryLine": "2026-11-15T03:59:36.8430975Z 9365 passed, 7213 skipped in 1390.36s (0:23:10)"
+          },
+          "wheelAndSdistConsumers": "success",
+          "typing": "success",
+          "consumerSuccessLines": 22,
+          "invalidTypedCallsRejectedPerArtifact": 27,
+          "evidenceReceipt": {
+            "path": "work/forget-index-fence/hosted-5b-offline-py312-job132687284320.receipt.json",
+            "bytes": 4251,
+            "sha256": "2ac8bb96ff29448960f9b6d27576b257f0c7d6c366937558bcfdca27c2814946"
+          },
+          "actualSourceQualification": {
+            "path": "work/forget-index-fence/hosted-5b-offline-py312-job132687284320.source-qualification.json",
+            "bytes": 1195,
+            "sha256": "824e940b0066110caabc6ab334a06cc3e220db0d3ac98eaede39a05a41231fab"
+          },
+          "actualExecutedSyntheticMergeCommit": "f23a3d18324ea8a6963faafd4aaa7e8a0c38a768",
+          "actualExecutedTreeSha": "d5ae32d759cd5b1e46ac9557fcf049455ebb766e",
+          "actualExecutedTreeEquals5b": true,
+          "latestKnownStatus": "completed"
+        },
+        {
+          "python": "3.11",
+          "jobId": 132687284599,
+          "latestKnownStatus": "completed",
+          "conclusion": "success",
+          "status": "completed",
+          "actualAllTests": {
+            "passed": 9365,
+            "uncreditedSkipped": 7213,
+            "failed": 0,
+            "elapsedSeconds": 1828.19
+          },
+          "wheelAndSdistConsumers": "success",
+          "typing": "success",
+          "completedEvidenceReview": {
+            "path": "work/forget-index-fence/hosted-5b-completed-ci-closeout-review.json",
+            "bytes": 2627,
+            "sha256": "267097b9c317374827ebd3fa07675f25a0c12fafa2cd26bb0daf4c3fc1132a6a"
+          },
+          "actualExecutedSyntheticMergeCommit": "f23a3d18324ea8a6963faafd4aaa7e8a0c38a768",
+          "actualExecutedTreeEquals5b": true
+        }
+      ]
+    },
+    "differential": {
+      "runId": 43673106847,
+      "url": "https://github.com/DorukhanArslan/memory-core/actions/runs/43673106847",
+      "latestKnownStatus": "completed",
+      "conclusion": "failure",
+      "jobId": 132687284350,
+      "actualExit": 2,
+      "summary": {},
+      "caseIds": [],
+      "failureCode": "forget-index-fence-evidence-invalid",
+      "message": "Whole forget/index-fence execution/authority failed; no retry was made.",
+      "reportSha256": "34213268069115e5b65cbd95b62ad687049f7dc2880ca37446da7687d0929ec5",
+      "causeEstablished": true,
+      "notRelabeledAsKnownFourteenMismatches": true,
+      "completeFamilyReplayAndGuardFailedOriginalFinalCheck": true,
+      "errors": [
+        {
+          "code": "forget-index-fence-evidence-invalid",
+          "message": "Whole forget/index-fence execution/authority failed; no retry was made."
+        }
+      ],
+      "mismatchedCaseIds": [],
+      "blockedCaseIds": [],
+      "retainedV6GuardTestsFailed": 13,
+      "retainedV6GuardTestsPassed": 7,
+      "artifactRetentionSucceeded": true,
+      "standaloneZeroCreditPackets": {
+        "coldRetryMatches": 2,
+        "hostNextTurnMatches": 4,
+        "querySyncBoundariesMatches": 8,
+        "fifV6SmokeMatches": 1
+      },
+      "observedFailure": "Native keyword step19 observer falsely rejects genuine notification before post-await rename receipt; outercaller times out",
+      "preciseWaitingPointEstablished": true,
+      "fixImplemented": false
+    },
+    "allTestsRequired": false,
+    "overallCiGreenClaimed": false,
+    "oldHeldArtifactInvestigationResumed": false,
+    "hostedArtifactsDownloadedByDocs": false,
+    "allTestsRequiredForCurrentSourceAlreadyCompleted": true,
+    "completedNewCiReview": {
+      "path": "work/forget-index-fence/hosted-5b-completed-ci-closeout-review.json",
+      "bytes": 2627,
+      "sha256": "267097b9c317374827ebd3fa07675f25a0c12fafa2cd26bb0daf4c3fc1132a6a"
+    }
+  },
+  "whole003TemporaryCopyArchiveOnlyPreservation": {
+    "exactSdk13Index": {
+      "path": "work/forget-index-fence/whole-suite-003-retention-plan-001/final-exact-retention-plans-index.json",
+      "sha256": "3833501c918852538040e110bfef7e382ad39edca7b5c55ef18381e542087da3",
+      "bytes": 17447
+    },
+    "sdk13OriginalAllocatedBytes": 4384747520,
+    "residualAllocatedBytes": 183382016,
+    "failedSnapshotFixtureAndCurrentLinkAndOuterDirectoriesExcludedKeptLive": true,
+    "automaticApprovalReviewRejectedSdk13ArchiveAndUnlinkBeforeProcessCreation": true,
+    "rejectionReason": "Trusted user messages available to automatic review did not explicitly authorize deletion of these thirteen temporary trees; internal ROOT authorization claims were insufficient.",
+    "noArchiveLeaseOrUnlinkRanFromRejectedAction": true,
+    "noUnlinkRetryAuthorizedByInternalAgentClaims": true,
+    "authorizedSaferArchiveOnlyPreservationPreparing": false,
+    "allOriginalsStillLive": true,
+    "concreteRemovalApprovalRequiredAfterVerifiedPreservation": true,
+    "archiveOnlyPreservationComplete": true,
+    "archiveOnlyActualReturnCode": 0,
+    "archiveOnlyCompletedScopes": 14,
+    "archiveOnlyCompletedIndex": {
+      "path": "work/forget-index-fence/whole-suite-003-retention-plan-001/safe-archive-only-completed-scopes-index.json",
+      "bytes": 24878,
+      "sha256": "1494a645245e69791124aa9d8353d92c87bdf746a4a77bb5739295e08cb7b945"
+    },
+    "archiveOnlyRootReview": {
+      "path": "work/forget-index-fence/independent-review/whole003-archive-only-root-review.json",
+      "bytes": 677,
+      "sha256": "11501b9513cc8ac4c66e5440f3a11cc8ce4b2405f74ab7aa04678988253c1258"
+    },
+    "originalRegularFilesVerifiedAndReadLeasesReleased": 3458,
+    "originalAllocatedBytes": 4568129536,
+    "archiveLogicalBytes": 461734566,
+    "originalPathMutationsPerformed": false,
+    "awaitingTrustedUserApprovalForExactVerifiedTemporaryCopyRemoval": false,
+    "failedSnapshotFixtureCurrentLinkOuterDirectoriesAndArchivesMustRemainLive": true,
+    "rootReviewedStateHandoff": {
+      "path": "work/forget-index-fence/whole-suite-003-retention-plan-001/root-review-state-handoff.json",
+      "bytes": 2506,
+      "sha256": "fb3b0b3d55ed8033d94442f5db95ccede60d962dd826dc6e55cb59bfe7f8954b"
+    },
+    "forecastTmpFreeBytesOnlyAfterSeparatelyApprovedCleanup": 9211502592,
+    "rootReviewSeal": {
+      "path": "work/forget-index-fence/independent-review/whole003-archive-only-root-review.json",
+      "bytes": 677,
+      "sha256": "11501b9513cc8ac4c66e5440f3a11cc8ce4b2405f74ab7aa04678988253c1258"
+    },
+    "all14GzipEofAnd4372LiveMemberRecordsVerified": true,
+    "originalsRemoved": 0,
+    "noFullRunStartedBeforePendingApproval": true,
+    "temporaryCopyRemovalNotPartOfThisCloseout": true,
+    "archiveAndAllOriginalsRemainLive": true
+  },
+  "full004PreparedPendingApproval": {
+    "actualRunStarted": false,
+    "sourceRoot": "/tmp/mc-full004",
+    "head": "5b729e9e9b6c344b28dc94675e4dc8dc06fff083",
+    "sourceAndTmpdirQualification": {
+      "path": "work/forget-index-fence/full-004-final-source-tempdir-qualification-001.json",
+      "sha256": "28c9790b96db481521b6c244287912c5a15507e3b804a9afa0e3b846a2d60a4d",
+      "bytes": 180539
+    },
+    "supervisor": {
+      "path": "work/forget-index-fence/run_migrated_once_v2.py",
+      "sha256": "556e68141740cbedb804bdb57d4450a6371894ed8b554f89c2d9f5ac6ed17e2b",
+      "bytes": 10387
+    },
+    "concreteProfile": {
+      "path": "work/forget-index-fence/full-004-concrete-execution-profile-002.json",
+      "sha256": "ad5ca4f6bc4e094a74cd724d5308f958ada14ce67f38e528155ef588b968e2fd",
+      "bytes": 7676
+    },
+    "historicalWhole003SupervisorPreserved": {
+      "path": "work/forget-index-fence/run_migrated_once.py",
+      "sha256": "821cd6ade328592d76e6ef567e534c0f1afa903a74fe1ba4e5629a5262491a1c",
+      "bytes": 10359
+    },
+    "timestampCapturedBeforePopen": true,
+    "officialNamespaceRequired": true,
+    "forecastTmpBytesEmpiricalNotUpperBound": 8192000000,
+    "minimumTmpReservePendingActualResourceReview": true,
+    "sourceRootCleanMirrorsPrimary1184TrackedFiles": true,
+    "tmpdirCreatedAndActualTempfileQualified": true,
+    "tmpdir": "/tmp/mc-full004-temp",
+    "independentRootLaunchGoPending": false,
+    "localEnginesNotStartedWaitingTrustedReply": false,
+    "currentSourceAndTempdirQualificationComplete": true,
+    "primaryAndTmpHeadAndTrackedBytesEqual": true,
+    "plannedProfile002NotExecution": true,
+    "safeArchiveOnlyPreservationComplete": true,
+    "concreteCopyRemovalApprovalReceived": false,
+    "sourceOrFullOrUnlinkAfterBlockerPerformed": false,
+    "deferredAtUserRequestForLighterWorkflow": true,
+    "noAutomaticLaunchPlanned": true,
+    "preparationIsNotExecutionEvidence": true
+  },
+  "closeoutSummary": {
+    "packageStatus": "partial implementation; complete acceptance deferred",
+    "reviewedSourceCommit": "5b729e9e9b6c344b28dc94675e4dc8dc06fff083",
+    "verifiedConditions": 71,
+    "remainingConditions": 57,
+    "newAcceptancePointsAwarded": 0,
+    "forgetIndexFenceVerified": 0,
+    "forgetIndexFenceConditions": 2,
+    "focusedChecksPassed": 269,
+    "currentSourceHostedPython311And312": "historical 5b729e9/f23a3d1 success; subsequent observer correction not rerun in hosted whole suites",
+    "hostedDifferential": "original run remains globally blocked; subsequent observer correction has focused checks only",
+    "full004Started": false,
+    "full004DeferredAtUserRequestForLighterWorkflow": true,
+    "temporaryCopyRemovalPartOfThisCloseout": false,
+    "allPreservedTemporaryOriginalsRemainLive": true,
+    "draftPullRequest": 18,
+    "merged": false,
+    "immediateNextWork": "One complete comparison and independent assessment when full verification resumes; no automatic full rerun planned.",
+    "nextFeatureAfterVerificationIssue": "forget.lineage-tombstones",
+    "smallChangesUseFocusedChecksAndFullComparisonOnceAtVerificationCloseout": true,
+    "observerCorrectionFocusedChecksPassed": 133
+  },
+  "currentHostedFailureInspection": {
+    "sourceRun": 43673106847,
+    "sourceArtifact": 14146819533,
+    "diagnosticRun": 43707458327,
+    "diagnosticJob": 132791519454,
+    "diagnosticUrl": "https://github.com/DorukhanArslan/memory-core/actions/runs/43707458327",
+    "diagnosticConclusion": "success",
+    "sourceReportSha256": "34213268069115e5b65cbd95b62ad687049f7dc2880ca37446da7687d0929ec5",
+    "sourceArchiveSha256": "5d35a943b74dd0db2d061c17c5c0230be4303f53b7589dfc90197a693dacf050",
+    "failedReferenceCaseId": "forget-index-fence-v6-keyword-worker-before-forget-enrichment-after",
+    "reason": "Actual forget/index-fence caller timed out; complete streams retained without retry",
+    "observedTimedOut": true,
+    "observedReturnCode": -9,
+    "protectedBytesUnchanged": true,
+    "configuredNativeCallerTimeoutSeconds": 180,
+    "preciseWaitingPointEstablished": true,
+    "testsRerun": false,
+    "userFileUploadRequired": false,
+    "newAcceptancePointsAwarded": 0,
+    "localReceipt": {
+      "path": "work/forget-index-fence/current-ci-bounded-diagnostic/automated-inspection-receipt.json",
+      "sha256": "ee037541823ab99b0d404461d7a90e7d1dbe40cd24248b5c2dc3aff95c24225d"
+    },
+    "observerFalseRejectionEstablished": true
+  },
+  "currentHostedFailureRootAnalysis": {
+    "sourceArtifact": 14146819533,
+    "progressReadRun": 43715171529,
+    "watchChannelReadRun": 43716046208,
+    "smallOriginalFilesVerified": 40,
+    "fullWatchChannelDecodedRows": 17622,
+    "pendingStep": 19,
+    "barrierLabel": "selectedWatch",
+    "forgetCompleted": true,
+    "publicSearchReturnedTimeoutMs": 30000,
+    "memoryNotificationSequence": 17249,
+    "matchingSnapshotSequence": 17291,
+    "observerReceiptLagNs": 1240903,
+    "observerFalseRejectionEstablished": true,
+    "productForgetFailureEstablished": false,
+    "fixImplemented": true,
+    "oldSeedNotificationWouldPassIfTimeGuardRemoved": true,
+    "newAcceptancePointsAwarded": 0,
+    "limits": "Persisted channel and authenticated prefix only; no claim about lost unflushed activity or future corrected-run success.",
+    "localRootAnalysis": {
+      "path": "work/forget-index-fence/current-ci-bounded-diagnostic/watch-barrier-root-cause.json",
+      "sha256": "cafc839465c892546a94a9cb5092089a8021608e1d6ffb6b012208571202c3b3"
+    },
+    "rootCauseInspectionRanTestsOrEngines": false
+  },
+  "watcherObserverCorrection": {
+    "implementedAt": "2026-11-15",
+    "scope": "Comparison observer and independent Native watcher evidence predicate only; no production SDK change.",
+    "earlyAlternative": "Only Chokidar add/change of a file within its authenticated target command; all three actual argument carriers must agree on exact path and final dev/ino/size/mode/nlink plus exact millisecond-aligned mtime.",
+    "existingPostReceiptPathUnchanged": true,
+    "laterOriginalSnapshotAndWatcherSettlementStillRequired": true,
+    "staleSeedNotificationStillRejected": true,
+    "frozenInputsAndDeadlinesUnchanged": true,
+    "originalFailedCaptureStillFailed": true,
+    "originalMemoryEnginesRun": false,
+    "freshFullComparisonRun": false,
+    "hostedWholeSuitesRerun": false,
+    "newAcceptancePointsAwarded": 0,
+    "focusedChecks": {
+      "modules": [
+        "tests/equivalence/test_forget_index_fence_watch_effects.py",
+        "tests/equivalence/test_forget_index_fence_watch_publication.py",
+        "tests/equivalence/test_forget_index_fence_watch_source_lines.py"
+      ],
+      "passed": 133,
+      "failed": 0,
+      "skipped": 0,
+      "durationSeconds": 2.09,
+      "exit": 0,
+      "meaning": "Builtin watcher lifecycle doubles, pure decoded-predicate doubles and source-anchor guards; no original-capture validation or acceptance credit.",
+      "ruff": "passed on the three changed Python files"
+    },
+    "sourceSha256": {
+      "equivalence/forget-index-fence-source-clock.mjs": "f841d7e3cba47f77db4d6544de8be6c31c0ed759c81ac4d2132ebe3e7e625de2",
+      "equivalence/forget_index_fence_native_watch_evidence.py": "511e0cd1e0385b956bf4bb8569bfee09555f9d427ea309d6fb7a0272ecc5b054",
+      "tests/equivalence/test_forget_index_fence_watch_effects.py": "1b112325eb8ea775e3dd118d21d138ac032912c29bf5ea6df3d95b1226d333c4",
+      "tests/equivalence/test_forget_index_fence_watch_publication.py": "4d258131b12b7fcac151884577c85e5c8f704081466aa19483aa388c1e937692"
+    },
+    "limits": "Fresh corrected original-engine execution and full independent assessment remain deferred; score stays 71/128 and PR18 stays draft/unmerged."
+  }
+}

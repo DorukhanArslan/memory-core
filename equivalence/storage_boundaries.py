@@ -215,7 +215,8 @@ def run_workspace_isolation(arguments: dict[str, Any], *, evidence_directory: Pa
                         query["query"], max_results=200, min_score=0, sources={"memory"},
                     )]
                     tool = create_memory_search_tool(memory.config, memory.store,
-                        context=MemorySearchToolContext(clock=lambda: now), runtime_identity=OPENCLAW_COMPAT_RUNTIME_IDENTITY)
+                        context=MemorySearchToolContext(clock=lambda: now), runtime_identity=OPENCLAW_COMPAT_RUNTIME_IDENTITY,
+                        dreaming_enabled=False)
                     envelope = tool.execute(query["id"], {"query": query["query"], "maxResults": 200, "minScore": 0})
                     raw["pythonSearchEnvelopes"].append({"label": step["label"], "input": deepcopy(query),
                                                         "candidates": deepcopy(candidates), "envelope": deepcopy(envelope)})

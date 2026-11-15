@@ -35,8 +35,8 @@ from __future__ import annotations
 import re
 import sqlite3
 import time
-from collections.abc import Callable, Iterable, Sequence
-from contextlib import closing
+from collections.abc import Callable, Iterable, Iterator, Sequence
+from contextlib import closing, contextmanager
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Literal, Protocol
@@ -486,13 +486,20 @@ class IndexRevisionFence:
 
     When the index lives in the ledger's own database file (``same_database``) the check and the bump
     run on the index's connection, inside its publication transaction (atomic, like upstream); for a
-    separate index file the check runs just before the publication transaction and the bump just after
-    it (a forget landing between them is not fenced: a labelled deviation).
+    separate index file a ledger writer transaction holds the checked revision until the index has
+    committed, then bumps the ledger revision. Both files use the ledger-before-index lock order;
+    this prevents a concurrent forget from passing between the check and publication, without claiming
+    crash atomicity across the two database files.
     """
 
     def __init__(self, ledger: MemoryEntryOriginLedger, agent_id: str) -> None:
         self._ledger = ledger
         self.agent_id = agent_id
+
+    @property
+    def ledger(self) -> MemoryEntryOriginLedger:
+        """The actual origins owner supplied by the host when this fence was created."""
+        return self._ledger
 
     @property
     def database_path(self) -> Path:
@@ -521,6 +528,27 @@ class IndexRevisionFence:
         live = row[0] if row is not None else None
         if live != expected:
             raise MemoryIndexRevisionConflictError(_conflict_message(expected, live))
+
+    @contextmanager
+    def publication_guard(self, expected: int | None) -> Iterator[None]:
+        """Hold the ledger writer while a separate index publishes its checked revision.
+
+        Acquire this guard before the index's own writer transaction. A forget
+        either commits its marker first (and this check rejects the old build),
+        or waits until publication has committed and advanced the ledger. A
+        process failure between the two commits is not a cross-file transaction.
+        """
+        with closing(self._ledger._open_write(self.agent_id)) as db:
+            db.execute("BEGIN IMMEDIATE")
+            try:
+                self.assert_unchanged_in(db, expected)
+                yield
+                self.bump_in(db)
+                db.execute("COMMIT")
+            except BaseException:
+                if db.in_transaction:
+                    db.execute("ROLLBACK")
+                raise
 
     def bump(self) -> None:
         self._ledger.bump_index_revision(self.agent_id)

@@ -10,7 +10,7 @@ from collections.abc import Callable, Mapping, Sequence
 from copy import deepcopy
 from dataclasses import dataclass, replace
 from pathlib import Path
-from typing import Any
+from typing import TYPE_CHECKING, Any
 
 from memory_core.bootstrap._js import js_json_stringify
 from memory_core.cancellation import CancellationSignal
@@ -21,10 +21,14 @@ from memory_core.supplements import MemoryCorpusSupplement
 from memory_core.tools.common import MemoryToolError, as_tool_params_record
 from memory_core.tools.deadline import MemoryToolDeadlineContext
 from memory_core.tools.memory_search import (
+    MemorySearchRecallOwner,
     MemorySearchToolContext,
     execute_memory_search_tool,
     memory_search_tool_definition,
 )
+
+if TYPE_CHECKING:
+    from memory_core.consolidation.origins import MemoryEntryOriginLedger
 
 _DISABLED = "Memory is disabled for this agent. Enable memory search for this agent, then retry."
 
@@ -75,6 +79,8 @@ class MemorySearchTool:
     _supplements: tuple[MemoryCorpusSupplement, ...]
     _runtime_identity: RuntimeIdentity
     _owner: tuple[Path, Path, str]
+    _dreaming_enabled: bool | Callable[[], bool]
+    _recall_owner: MemorySearchRecallOwner
 
     @property
     def definition(self) -> dict[str, Any]:
@@ -100,6 +106,10 @@ class MemorySearchTool:
     def prepare_arguments(params: object) -> object:
         return prepare_memory_search_arguments(params)
 
+    def wait_for_recalls(self, timeout: float | None = None) -> None:
+        """Join already queued recording when the host needs its settled state."""
+        self._recall_owner.wait(timeout)
+
     def execute(
         self, tool_call_id: str, params: object, signal: CancellationSignal | None = None,
     ) -> dict[str, Any]:
@@ -116,7 +126,9 @@ class MemorySearchTool:
             )
         # A factory acquires its already-open manager by resolving its captured
         # store and validating ownership. Direct SDK retrieval has no acquisition.
-        execution_context = replace(self._context, enabled=True)
+        dreaming_enabled = self._dreaming_enabled() if callable(self._dreaming_enabled) else self._dreaming_enabled
+        execution_context = replace(self._context, enabled=True,
+                                    recall=self._recall_owner if dreaming_enabled else None)
         if signal is not None:
             execution_context = replace(
                 execution_context,
@@ -152,12 +164,21 @@ def create_memory_search_tool(
     supplements: Sequence[MemoryCorpusSupplement] | None = None,
     runtime_identity: RuntimeIdentity = MEMORY_CORE_RUNTIME_IDENTITY,
     extra_paths: Sequence[str | Path] = (),
+    dreaming_enabled: bool | Callable[[], bool] = True,
+    dreaming_timezone: str | None = None,
+    recall_origins: MemoryEntryOriginLedger | None = None,
+    on_event: Callable[[dict[str, Any]], None] | None = None,
 ) -> MemorySearchTool | None:
     """Create the native-shaped tool, or omit it when current config is disabled.
 
     ``FeatureFlags.memory`` and ``context.enabled`` resolve host enable policy.
     ``extra_paths`` affects source guidance; the host still owns indexing them.
     A live getter takes precedence over the supplied configuration snapshot.
+    Native model-facing tools record surfaced recall signals by default. Hosts
+    can explicitly disable that policy, including through a live callable.
+    ``recall_origins`` and ``on_event`` bind actual host-owned lineage and event
+    storage; no ledger or durable event log is inferred. Direct retrieval keeps
+    its default context without this recording owner.
     """
     current = get_config() if get_config is not None else config
     execution_context = context if context is not None else MemorySearchToolContext()
@@ -180,4 +201,6 @@ def create_memory_search_tool(
         definition, current, store, get_config, execution_context, agent_session_key,
         tuple(active_project_keys) if active_project_keys is not None else None,
         tuple(supplements or ()), runtime_identity, _owner(current),
+        dreaming_enabled, MemorySearchRecallOwner(current, origins=recall_origins,
+                                                  timezone=dreaming_timezone, on_event=on_event),
     )

@@ -4,19 +4,21 @@ Ordinary ``HostKit.open`` remains eager. Hosts selecting this owner construct a
 ``Memory``/``HostKit`` around it without an initial reindex. Repairs use the
 normal checked SQLite publisher; status and notices describe those real calls.
 An optional explicitly bound session controller starts after a real search read
-generation is acquired. The explicit ``on-search`` memory policy also admits a
-scoped publisher at that boundary, retaining the query's original read snapshot.
-Ordinary construction does not start background work.
+generation is acquired. The explicit ``on-search`` memory policy also watches
+committed memory sources and admits a scoped publisher at that boundary,
+retaining the query's original read snapshot. Ordinary on-write construction
+starts no background work.
 """
 from __future__ import annotations
 
 from collections import deque
 from collections.abc import Callable, Collection, Iterator, Sequence
-from concurrent.futures import ThreadPoolExecutor
+from concurrent.futures import Future, ThreadPoolExecutor
 from contextlib import closing, contextmanager, nullcontext
 from copy import deepcopy
 import threading
 import sqlite3
+import time
 from typing import TYPE_CHECKING, Any, Literal
 
 from memory_core.bootstrap._js import js_trim
@@ -25,8 +27,10 @@ from memory_core.config import MemoryConfig
 from memory_core.consolidation.artifact_provenance import MemoryArtifactProvenanceStore
 from memory_core.consolidation.origins import IndexRevisionFence, MemoryIndexRevisionConflictError
 from memory_core.index.sqlite_store import MemoryIndexRequiresFullReindexError, SQLiteMemoryStore
-from memory_core.index.identity import INDEX_SOURCES_TABLE
+from memory_core.index.identity import INDEX_SOURCES_TABLE, INDEX_SYNC_TABLE
 from memory_core.index.hybrid import HybridResult
+from memory_core.host.reindex_lease import memory_index_producer_guard
+from memory_core.host.memory_watcher import MemoryFileWatcher
 from memory_core.runtime_identity import MEMORY_CORE_RUNTIME_IDENTITY, RuntimeIdentity
 from memory_core.session_catalog import normalize_session_agent_id
 from memory_core.tools.common import format_error_message
@@ -116,7 +120,30 @@ class ManagedSQLiteMemoryStore(SQLiteMemoryStore):
         self._memory_job_error: str | None = None
         self._memory_jobs: deque[dict[str, Any]] = deque(maxlen=256)
         self._memory_job_count = 0
+        self._memory_job_futures: dict[int, Future] = {}
+        self._memory_watcher: MemoryFileWatcher | None = None
+        self._memory_watch_generation = 0
+        self._memory_watch_ready_generation = 0
+        self._memory_watch_published_generation = 0
+        self._memory_watch_error: str | None = None
+        self._memory_watch_facts: deque[dict[str, int]] = deque(maxlen=4096)
+        self._memory_watch_settlements: deque[dict[str, Any]] = deque(maxlen=256)
         super().__init__(config, None, revision_fence=revision_fence, artifact_provenance=artifact_provenance)
+        if memory_publication == "on-search" and workspace.is_session_forgotten is None:
+            # The opted-in managed producer owns this index database. Read its
+            # existing agent tombstones without copying them into the catalog;
+            # an explicit host predicate remains authoritative.
+            workspace.is_session_forgotten = self.is_session_forgotten
+        if (memory_publication == "on-search"
+                and "memory" in (workspace.index_sources or ("memory", "sessions"))):
+            self._memory_watcher = MemoryFileWatcher(workspace.root,
+                on_dirty=self._memory_watch_dirty, on_change=self._memory_watch_changed,
+                on_unavailable=self._memory_watch_unavailable)
+            try:
+                self._memory_watcher.start()
+            except Exception as error:
+                self._memory_watcher.close()
+                self._memory_watch_unavailable(error)
 
     @contextmanager
     def _operation(self, name: str) -> Iterator[dict[str, Any]]:
@@ -159,6 +186,18 @@ class ManagedSQLiteMemoryStore(SQLiteMemoryStore):
                 or workspace.session_catalog is not self._bound_catalog):
             raise ValueError("The managed index may only publish its bound workspace")
 
+    @property
+    def bound_workspace(self) -> MemoryWorkspace:
+        """Return the actual publication owner, including its catalog and scope."""
+        self._assert_workspace(self._workspace)
+        return self._workspace
+
+    @property
+    def memory_watcher(self) -> MemoryFileWatcher | None:
+        """Return this owner's actual detector; reading never creates one."""
+        self._assert_workspace(self._workspace)
+        return self._memory_watcher
+
     @staticmethod
     def _error(error: BaseException) -> dict[str, Any]:
         return {"name": getattr(error, "name", type(error).__name__), "message": format_error_message(error)}
@@ -181,9 +220,11 @@ class ManagedSQLiteMemoryStore(SQLiteMemoryStore):
         chunks = db.execute("SELECT COUNT(*) FROM chunks").fetchone()[0]
         fts_content = fts_available and db.execute("SELECT 1 FROM chunks_fts LIMIT 1").fetchone() is not None
         counts = {source: count for source, count in db.execute("SELECT source,COUNT(*) FROM chunks GROUP BY source")}
+        needs_rebuild = bool(db.execute(
+            f"SELECT needs_rebuild FROM {INDEX_SYNC_TABLE} WHERE id=1").fetchone()[0])
         sources = self._workspace.index_sources or ("memory", "sessions")
         return {"identity": identity, "hasContent": bool(chunks or fts_content), "chunks": chunks,
-                "ftsAvailable": fts_available,
+                "ftsAvailable": fts_available, "needsRebuild": needs_rebuild,
                 "sourceCounts": [{"source": source, "chunks": counts.get(source, 0)} for source in sources]}
 
     def _retained_sync_error(self) -> str | None:
@@ -194,10 +235,12 @@ class ManagedSQLiteMemoryStore(SQLiteMemoryStore):
                 return self._memory_scope_failure[0]
             return self._memory_job_error if self._memory_publication == "on-search" else None
 
-    def _refresh_memory_dirty(self) -> None:
+    def _refresh_memory_dirty(self, *, acknowledge_watch: bool = False) -> None:
         """Compare actual memory sources with SQL; caller holds the workspace guard."""
         if self._memory_publication != "on-search":
             return
+        with self._condition:
+            observed_watch_generation = self._memory_watch_generation
         selection = self._validated_source_selection(self._workspace, ("memory",), None, False)
         sources = self._read_source_snapshots(self._workspace, selection=selection)
         current = {path: (entry.hash, entry.mtime, entry.size)
@@ -206,7 +249,119 @@ class ManagedSQLiteMemoryStore(SQLiteMemoryStore):
             published = {path: (digest, mtime, size) for path, digest, mtime, size in db.execute(
                 f"SELECT path,hash,mtime,size FROM {INDEX_SOURCES_TABLE} WHERE source='memory'")}
         with self._condition:
-            self._memory_dirty = current != published
+            if acknowledge_watch and current == published:
+                # Only a real successful publisher may acknowledge delivered
+                # watch facts. Searches only observe the retained dirty state.
+                self._memory_watch_published_generation = max(
+                    self._memory_watch_published_generation, observed_watch_generation)
+            self._memory_dirty = (current != published
+                or self._memory_watch_generation > self._memory_watch_published_generation)
+
+    def _memory_watch_dirty(self) -> None:
+        """Accept a filesystem fact independently of any search request."""
+        with self._condition:
+            if self._closing or self._closed:
+                return
+            self._memory_watch_generation += 1
+            detector_generation = (self._memory_watcher.delivery_generation
+                                   if self._memory_watcher is not None else None)
+            if detector_generation is not None:
+                self._memory_watch_facts.append({"detectorGeneration": detector_generation,
+                    "watchGeneration": self._memory_watch_generation})
+            self._memory_dirty = True
+            self._condition.notify_all()
+
+    def _memory_watch_unavailable(self, error: Exception) -> None:
+        with self._condition:
+            if not self._closing and not self._closed:
+                self._memory_dirty = True
+                self._memory_watch_error = format_error_message(error)
+
+    def _memory_watch_changed(self) -> None:
+        """Queue only filesystem facts that passed the watcher's settling."""
+        with self._condition:
+            if self._closing or self._closed:
+                return
+            self._memory_watch_ready_generation = self._memory_watch_generation
+            generation = self._memory_watch_ready_generation
+            detector_generation = (self._memory_watcher.settling_generation
+                                   if self._memory_watcher is not None else None)
+            self._memory_dirty = True
+            self._condition.notify_all()
+        job_id = self._queue_memory_watch_publication()
+        with self._condition:
+            self._memory_watch_settlements.append({"detectorGeneration": detector_generation,
+                "watchGeneration": generation, "jobId": job_id})
+            self._condition.notify_all()
+
+    def _queue_memory_watch_publication(self) -> int | None:
+        # This callback never manufactures source snapshots or writes SQL.
+        # The ordinary worker rechecks its source/index selection after actual
+        # producer admission, under the same cross-process lease and fences.
+        with self._operation("watch-memory"):
+            self._assert_workspace(self._workspace)
+            state = self._read_state(provider_key_known=True)
+            revision = self.index_revision()
+            with self._condition:
+                if not self._closing and not self._closed:
+                    self._memory_watch_error = None
+                    previous_job = self._memory_jobs[-1] if self._memory_jobs else None
+                    self._submit_memory_publication(revision,
+                        needs_rebuild=state["needsRebuild"] or self._automatic_repair_allowed(state["identity"]),
+                        reason="watch")
+                    current_job = self._memory_jobs[-1] if self._memory_jobs else None
+                    if current_job is not None and (self._memory_active or current_job is not previous_job):
+                        return current_job["id"]
+        return None
+
+    def wait_for_memory_watches(self, versions: Sequence[dict[str, Any]], *,
+                                timeout: float | None = None) -> dict[str, Any]:
+        """Join delivered versions and their existing publisher, without new work.
+
+        Targets come from ``memory_watcher.capture_versions`` at the caller's
+        original write boundary. This method never recaptures paths, starts a
+        detector, changes a timer, marks a source dirty, or requests a sync.
+        """
+        deadline = None if timeout is None else time.monotonic() + timeout
+
+        def remaining() -> float | None:
+            return None if deadline is None else max(0.0, deadline - time.monotonic())
+
+        with self._operation("wait-memory-watches"):
+            self._assert_workspace(self._workspace)
+            watcher = self._memory_watcher
+            if watcher is None:
+                raise RuntimeError("This managed index has no memory file watcher")
+            if getattr(self._local, "memory_publisher", False) or watcher.owns_current_thread():
+                raise RuntimeError("A memory watch callback or publisher cannot join its own work")
+            delivery = watcher.wait_for_versions(versions, timeout=remaining())
+            with self._condition:
+                generations = {row["generation"] for row in delivery["deliveries"]}
+                facts = [fact for fact in self._memory_watch_facts if fact["detectorGeneration"] in generations]
+                if {fact["detectorGeneration"] for fact in facts} != generations:
+                    raise RuntimeError("The delivered memory watch generation is no longer retained by its owner")
+                target = max(fact["watchGeneration"] for fact in facts)
+                while True:
+                    completed = next((job for job in self._memory_jobs
+                        if job.get("publishedWatchGeneration", -1) >= target and job["state"] == "completed"), None)
+                    failed = next((job for job in reversed(self._memory_jobs)
+                        if job["watchGeneration"] >= target and job["state"] == "failed"), None)
+                    job = completed or (failed if not self._memory_active else None)
+                    if job is not None:
+                        future = self._memory_job_futures.get(job["id"])
+                        if future is None:
+                            raise RuntimeError("The memory watch publication has no retained submitted Future")
+                        break
+                    if self._closed or self._closing and not self._memory_active:
+                        raise RuntimeError("The managed index closed before its delivered memory version published")
+                    wait = remaining()
+                    if wait is not None and wait <= 0:
+                        raise TimeoutError("The delivered memory version has not completed its admitted publication")
+                    self._condition.wait(wait)
+            returned = future.result(timeout=remaining())
+            with self._condition:
+                return {"status": job["state"], "delivery": delivery, "watchGeneration": target,
+                    "job": deepcopy(job), "futureObjectId": str(id(future)), "futureReturned": returned}
 
     def _defer_memory_publication(self, workspace: MemoryWorkspace, *,
                                   sources: Collection[str]) -> bool | None:
@@ -227,10 +382,11 @@ class ManagedSQLiteMemoryStore(SQLiteMemoryStore):
                             and self._last_sync_error is None and self._memory_scope_failure is None
                             and self._memory_job_error is None)
 
-    def _submit_memory_publication(self, revision: int) -> None:
+    def _submit_memory_publication(self, revision: int, *, needs_rebuild: bool = False,
+                                   reason: str = "search") -> None:
         """Admit one actual memory publisher under the pinned reader's gate."""
         needed = (self._memory_dirty or self._memory_scope_failure is not None
-                  or self._memory_job_error is not None or self._full_retry_required)
+                  or self._memory_job_error is not None or self._full_retry_required or needs_rebuild)
         if (self._memory_publication != "on-search" or not needed
                 or self._memory_active or self._closing or self._closed):
             return
@@ -238,17 +394,24 @@ class ManagedSQLiteMemoryStore(SQLiteMemoryStore):
             self._memory_executor = ThreadPoolExecutor(max_workers=1, thread_name_prefix="memory-publication")
         self._memory_job_count += 1
         job: dict[str, Any] = {"id": self._memory_job_count, "readRevision": revision, "state": "queued"}
+        job["watchGeneration"] = self._memory_watch_ready_generation
+        if reason == "watch":
+            job["reason"] = reason
+        if needs_rebuild:
+            job["fullRebuild"] = True
         if self._last_sync_error is not None:
             job.update(wholeFailureRevision=self._whole_failure_revision,
                        fullRetry=self._full_retry_required)
         if self._full_retry_required:
             self._record_rebuild_request()
         self._memory_jobs.append(job)
+        retained = {entry["id"] for entry in self._memory_jobs}
+        self._memory_job_futures = {key: value for key, value in self._memory_job_futures.items() if key in retained}
         token = object()
         self._memory_worker_token = token
         self._memory_active = True
         try:
-            self._memory_executor.submit(self._run_memory_publication, job, token)
+            self._memory_job_futures[job["id"]] = self._memory_executor.submit(self._run_memory_publication, job, token)
         except BaseException as error:
             self._memory_worker_token = None
             self._memory_active = False
@@ -266,33 +429,57 @@ class ManagedSQLiteMemoryStore(SQLiteMemoryStore):
         error = None
         try:
             with self._operation("memory-background-publication"):
-                if job.get("fullRetry"):
-                    # Each retry is a new real sync generation. Only the first
-                    # typed CAS conflict permits one more attempt in this job.
-                    for attempt in range(2):
-                        try:
-                            with self._automatic_reindex(full_retry=True):
-                                returned = self.reindex(self._workspace, force=True)
-                            break
-                        except MemoryIndexRevisionConflictError:
-                            if attempt:
-                                raise
-                else:
-                    # Settle source/error coverage under the publisher guard;
-                    # historical worker completion cannot replay a covered error.
-                    with workspace_index_lock(self._workspace.root):
-                        try:
-                            returned = self.reindex_sources(self._workspace, sources=("memory",))
-                        except BaseException as caught:
-                            with self._condition:
-                                self._memory_job_error = format_error_message(caught)
-                            raise
+                with (self._index_producer_guard(self._workspace)
+                      if job.get("reason") == "watch" else nullcontext()):
+                    if job.get("reason") == "watch":
+                        # A queued watcher must choose its route after the
+                        # real lease admits it, including a marker committed
+                        # while it waited behind an older producer.
+                        state = self._read_state(provider_key_known=True)
                         with self._condition:
-                            if (job.get("wholeFailureRevision") == self._whole_failure_revision
-                                    and not self._full_retry_required
-                                    and self._whole_failure_sources <= {"memory"}):
-                                self._last_sync_error = None
-                                self._whole_failure_sources = frozenset()
+                            job["fullRetry"] = self._full_retry_required
+                            job["wholeFailureRevision"] = self._whole_failure_revision
+                        job["fullRebuild"] = (state["needsRebuild"]
+                            or self._automatic_repair_allowed(state["identity"]))
+                        job["admissionRevision"] = self.index_revision()
+                    if job.get("fullRetry") or job.get("fullRebuild"):
+                        # Each retry is a new real sync generation. Only the first
+                        # typed CAS conflict permits one more attempt in this job.
+                        for attempt in range(2):
+                            try:
+                                retry = bool(job.get("fullRetry"))
+                                with self._automatic_reindex(full_retry=retry):
+                                    returned = self.reindex(self._workspace, force=retry)
+                                break
+                            except MemoryIndexRevisionConflictError:
+                                if attempt:
+                                    raise
+                    else:
+                        # Settle source/error coverage under the publisher guard;
+                        # historical worker completion cannot replay a covered error.
+                        with self._index_producer_guard(self._workspace):
+                            try:
+                                returned = self.reindex_sources(self._workspace, sources=("memory",))
+                            except BaseException as caught:
+                                with self._condition:
+                                    self._memory_job_error = format_error_message(caught)
+                                raise
+                            with self._condition:
+                                if (job.get("wholeFailureRevision") == self._whole_failure_revision
+                                        and not self._full_retry_required
+                                        and self._whole_failure_sources <= {"memory"}):
+                                    self._last_sync_error = None
+                                    self._whole_failure_sources = frozenset()
+                # A source event remains a manager-owned dirty fact until a
+                # real publisher has covered its settled generation. A query's
+                # opportunistic FS/SQL comparison cannot acknowledge it.
+                with workspace_index_lock(self._workspace.root):
+                    with self._condition:
+                        self._memory_watch_published_generation = max(
+                            self._memory_watch_published_generation, job["watchGeneration"])
+                    self._refresh_memory_dirty(acknowledge_watch=True)
+                    with self._condition:
+                        job["publishedWatchGeneration"] = self._memory_watch_published_generation
                 with self._condition:
                     job["returned"] = returned
         except BaseException as caught:
@@ -306,7 +493,14 @@ class ManagedSQLiteMemoryStore(SQLiteMemoryStore):
                 self._memory_worker_token = None
                 self._memory_active = False
                 self._local.memory_publisher = False
+                follow_up = (not self._closing and not self._closed
+                    and self._memory_watch_ready_generation > job["watchGeneration"])
                 self._condition.notify_all()
+            if follow_up:
+                try:
+                    self._queue_memory_watch_publication()
+                except Exception as follow_up_error:
+                    self._memory_watch_unavailable(follow_up_error)
 
     def status(self) -> dict[str, Any]:
         """Read actual published SQL state and the live repair-request notice."""
@@ -358,7 +552,7 @@ class ManagedSQLiteMemoryStore(SQLiteMemoryStore):
         revision = self.index_revision(db=db)
         frames = getattr(self._local, "search_status_frames", ())
         frame = frames[-1] if frames else None
-        state = self._read_state(db=db) if frame is not None else None
+        state = self._read_state(db=db) if frame is not None or self._memory_publication == "on-search" else None
         with self._condition:
             if frame is not None:
                 status = deepcopy(frame["beforeStatus"])
@@ -384,7 +578,7 @@ class ManagedSQLiteMemoryStore(SQLiteMemoryStore):
             if not self._closing and not self._closed:
                 if controller is not None:
                     controller.start()
-                self._submit_memory_publication(revision)
+                self._submit_memory_publication(revision, needs_rebuild=bool(state and state["needsRebuild"]))
 
     @contextmanager
     def _automatic_reindex(self, *, full_retry: bool = False):
@@ -424,6 +618,25 @@ class ManagedSQLiteMemoryStore(SQLiteMemoryStore):
         self._update(operation, returned=generation["result"])
         return generation["result"]
 
+    @contextmanager
+    def _index_producer_guard(self, workspace: MemoryWorkspace, *, generation=None):
+        """Queue a genuine producer without blocking this owner's foreground reads."""
+        try:
+            with memory_index_producer_guard(workspace.root, self.path,
+                    enabled=self._memory_publication == "on-search"):
+                yield
+        except BaseException as error:
+            # Acquisition can fail before the generation begins (for example,
+            # an inaccessible real lease database). Its joiners must still
+            # receive the actual failure and permit a later independent call.
+            if generation is not None and not generation["started"]:
+                with self._condition:
+                    generation.update(result=None, error=error, settled=True)
+                    if self._full_sync is generation:
+                        self._full_sync = None
+                    self._condition.notify_all()
+            raise
+
     def reindex(self, workspace: MemoryWorkspace, *, force: bool = False) -> int:
         """Reserve a generation; its first workspace holder executes it once.
 
@@ -455,7 +668,7 @@ class ManagedSQLiteMemoryStore(SQLiteMemoryStore):
                                      reservationOperationId=generation["reservationOperationId"])
             # Every unfinished request acquires the actual publisher guard.
             # No condition wait can retain an external workspace RLock.
-            with workspace_index_lock(workspace.root):
+            with self._index_producer_guard(workspace, generation=generation):
                 if generation is not None:
                     if generation["settled"]:
                         return self._full_sync_result(generation, operation, intent, notice)
@@ -510,7 +723,7 @@ class ManagedSQLiteMemoryStore(SQLiteMemoryStore):
                         self._whole_failure_sources = frozenset()
                         self._memory_scope_failure = None
                         self._memory_job_error = None
-                        self._refresh_memory_dirty()
+                        self._refresh_memory_dirty(acknowledge_watch=True)
                     self._update(operation, returned=result, after=self._read_state(),
                                  revisionAfter=self.read_published_index()["revision"])
                     if refused is not None:
@@ -560,7 +773,7 @@ class ManagedSQLiteMemoryStore(SQLiteMemoryStore):
                 revisionBefore=self.index_revision())
             selection = self._validated_source_selection(workspace, sources, paths, force_sources)
             # As in ``reindex``, the outcome is recorded under the publisher's guard.
-            with workspace_index_lock(workspace.root):
+            with self._index_producer_guard(workspace):
                 reservation = None
                 try:
                     with self._session_source_reservation(selection.sources) as reservation:
@@ -583,7 +796,7 @@ class ManagedSQLiteMemoryStore(SQLiteMemoryStore):
                     # an empty or path-limited refresh cannot certify that job.
                     if selection.paths is None:
                         self._memory_job_error = None
-                    self._refresh_memory_dirty()
+                    self._refresh_memory_dirty(acknowledge_watch=True)
             self._update(operation, returned=result, revisionAfter=self.index_revision())
             return result
 
@@ -812,7 +1025,15 @@ class ManagedSQLiteMemoryStore(SQLiteMemoryStore):
                 snapshot["memoryPublication"] = deepcopy({"policy": "on-search", "dirty": self._memory_dirty,
                     "active": self._memory_active, "lastError": self._memory_job_error,
                     "jobCount": self._memory_job_count, "jobs": list(self._memory_jobs),
-                    "jobsTruncated": self._memory_job_count > len(self._memory_jobs)})
+                    "jobsTruncated": self._memory_job_count > len(self._memory_jobs),
+                    "watchGeneration": self._memory_watch_generation,
+                    "watchReadyGeneration": self._memory_watch_ready_generation,
+                    "watchPublishedGeneration": self._memory_watch_published_generation,
+                    "watchFacts": list(self._memory_watch_facts),
+                    "watchSettlements": list(self._memory_watch_settlements),
+                    "watchError": self._memory_watch_error})
+            if self._memory_watcher is not None:
+                snapshot["memoryPublication"]["watcher"] = self._memory_watcher.status()
         if controller is not None:
             snapshot["sessionPublication"] = controller.status()
         return snapshot
@@ -830,6 +1051,9 @@ class ManagedSQLiteMemoryStore(SQLiteMemoryStore):
             if getattr(self._local, "memory_publisher", False):
                 raise RuntimeError("A memory publication job cannot close its own managed index")
             controller = self._session_publication
+            watcher = self._memory_watcher
+            if watcher is not None and watcher.owns_current_thread():
+                raise RuntimeError("A memory watcher cannot close its own managed index")
             if controller is not None and controller.owns_current_job():
                 raise RuntimeError("A session publication job cannot close its own managed index")
             while self._closing:
@@ -839,6 +1063,8 @@ class ManagedSQLiteMemoryStore(SQLiteMemoryStore):
             self._closing = True
             self._condition.notify_all()
         try:
+            if watcher is not None:
+                watcher.close()
             if controller is not None:
                 controller.close()
         except BaseException:

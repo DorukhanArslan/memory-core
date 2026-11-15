@@ -1,0 +1,48 @@
+{
+  "kind": "host-turn-barrier-v2-freeze-design",
+  "status": "frozen-before-first-v2-original-engine",
+  "version": 2,
+  "acceptancePointsAwarded": 0,
+  "candidateCoverage": [
+    "host.turn-barrier.outcomes"
+  ],
+  "environmentContract": {
+    "path": "docs/host_turn_barrier_v2_environment.json",
+    "bytes": 3914,
+    "sha256": "db2f4e0352d1dccd6c0091504312cc48520ae0fa817096f6bca0d2caca998367"
+  },
+  "manifest": {
+    "path": "docs/host_turn_barrier_v2_literals.json",
+    "bytes": 18751,
+    "sha256": "41597d9d3cf2999b7b7ac40ce205297ff39f774ae469e8e97d5bb9f3c5f63e9f"
+  },
+  "v2CaseWireSha256": {
+    "host-turn-barrier-v2-cold-ascii": "a4d4afb2f300d9636f380be9369c433857972a69a264d3622a2fc172d48fbc67",
+    "host-turn-barrier-v2-warm-ascii": "497ed220f9984463515e91d1ab84b92be2635603569fdf8992cf67877c62335f",
+    "host-turn-barrier-v2-cold-unicode": "592301e13318877e49e07d706100c3f2d3ff1000d7ae22567bc19a59dedf9db2",
+    "host-turn-barrier-v2-warm-unicode": "cf23c2e956993ac59837bdc19e3b5ac173b286f426b3a13ca94e60a09d2f9124"
+  },
+  "v1BusinessCaseWireSha256": {
+    "host-turn-barrier-cold-ascii": "f15b6b765b7998301945a42e5028a30cbc759fb8251c7e814b35778a88a06e66",
+    "host-turn-barrier-warm-ascii": "a66a8fd95c63ece444cfa50d4c575de504ae1d05b9a9d3dcd5367809b93d0da3",
+    "host-turn-barrier-cold-unicode": "76f267e1c678d0ec7ffac28e309bea3360bd31f75230ebf59c6f8a6bdec06a65",
+    "host-turn-barrier-warm-unicode": "cf7ce1144290e45d8bffa4fc230bbb5fcd26569787bccf149282a66455468750"
+  },
+  "canonicalBusinessDiff": [],
+  "registeredByDefault": false,
+  "sourceBase": "13b54e07bffe292599dab0ff5d89ea54e94e207a",
+  "guardDesign": [
+    "Reject any modified v2 case/env contract, legacy-v1 capture or undeclared field.",
+    "Verify actual canonical owned temporary execution root; both actual process cwd and state/workspace must be outside Git ancestry.",
+    "Bind child self-observed cwd/environment/PID/source/context to exact launch vectors and separate capture/execution path mapping; SDK startup execs the original CLI in the same PID and stdin.",
+    "Require unchanged v1 business custody and complete original public/raw outputs; no projections, tolerance or warning suppression.",
+    "Check ancestry/path/source authority again after observed actual exit. Retain all state/capture bytes until independent review and verified lossless retention."
+  ],
+  "preserved": [
+    "Host v1 module/inputs/contracts/captures and observed13b variance",
+    "Original1452 case definitions and80 annotations",
+    "All15 frozen forget/index-fence inputs",
+    "64 requirements and128 acceptance conditions"
+  ],
+  "futureMigrationQualification": "No catalog/CI/harness registration occurs here. Exact4Host+13FIF version migration must be explicit after proof; replacing Host rows changes the old1452 prefix and must be described honestly."
+}

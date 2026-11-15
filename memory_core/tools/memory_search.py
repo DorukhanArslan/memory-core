@@ -38,9 +38,10 @@ import re
 import threading
 import time
 from collections.abc import Callable, Mapping, Sequence
+from concurrent.futures import ThreadPoolExecutor
 from dataclasses import asdict, dataclass, replace
 from pathlib import Path
-from typing import Any
+from typing import TYPE_CHECKING, Any
 
 from memory_core.bootstrap._js import js_trim
 from memory_core.cancellation import CancellationSignal, resolve_memory_search_abort_error
@@ -78,6 +79,7 @@ from memory_core.tools.deadline import (
     is_memory_search_deadline_error,
     run_memory_corpus_deadline,
 )
+
 from memory_core.tools.memory_get import (
     MEMORY_TOOL_CORPUS_OUTCOME_GUIDANCE,
     MEMORY_TOOL_FILES_DESCRIPTION,
@@ -91,6 +93,9 @@ from memory_core.tools.common import (
     read_positive_integer_param,
     read_string_param,
 )
+
+if TYPE_CHECKING:
+    from memory_core.consolidation.origins import MemoryEntryOriginLedger
 
 MEMORY_SEARCH_TOOL_NAME = "memory_search"
 MEMORY_SEARCH_CORPORA = ("memory", "wiki", "all", "sessions")
@@ -471,6 +476,67 @@ def _wall_clock_ms() -> float:
     return time.time() * 1000
 
 
+class MemorySearchRecallOwner:
+    """A host-owned recall queue bound to one workspace, index and agent.
+
+    The model-facing factory supplies this owner. Direct retrieval has none by
+    default. The ledger and event sink are the host's actual objects; neither
+    is inferred from the requester, index path, catalog or runtime identity.
+    """
+
+    def __init__(self, config: MemoryConfig, *, origins: MemoryEntryOriginLedger | None = None,
+                 timezone: str | None = None, on_event: Callable[[dict[str, Any]], None] | None = None) -> None:
+        self._owner = self._config_owner(config)
+        self.origins, self.timezone, self.on_event = origins, timezone, on_event
+        self._lock = threading.Lock()
+        self._executor: ThreadPoolExecutor | None = None
+        self._pending = []
+
+    @staticmethod
+    def _config_owner(config: MemoryConfig) -> tuple[Path, Path, str]:
+        return config.workspace_dir.resolve(), config.resolved_store_path().resolve(), config.agent_id
+
+    def submit(self, *, context: MemorySearchToolContext, store: SQLiteMemoryStore, config: MemoryConfig,
+               query: str, results: list[dict[str, Any]], now_ms: int) -> None:
+        if self._config_owner(config) != self._owner or self._config_owner(store.config) != self._owner:
+            raise ValueError("Search recall recording belongs to a different workspace or index")
+        # Capture the surfaced evidence before presentation mutates its shape.
+        # Persistence runs independently of the reply and never changes it.
+        captured = copy.deepcopy(results)
+        with self._lock:
+            if self._executor is None:
+                self._executor = ThreadPoolExecutor(max_workers=1, thread_name_prefix="memory-search-recall")
+            self._pending = [future for future in self._pending if not future.done()]
+            self._pending.append(self._executor.submit(_record_search_recalls,
+                context=context, store=store, config=config, query=query, results=captured, now_ms=now_ms))
+
+    def wait(self, timeout: float | None = None) -> None:
+        """Join this owner's already submitted work at an explicit host boundary."""
+        end = None if timeout is None else time.monotonic() + timeout
+        with self._lock:
+            pending = tuple(self._pending)
+        for future in pending:
+            future.result(timeout=None if end is None else max(0, end - time.monotonic()))
+
+
+def _record_search_recalls(*, context: MemorySearchToolContext, store: SQLiteMemoryStore,
+                           config: MemoryConfig, query: str, results: list[dict[str, Any]], now_ms: int) -> None:
+    owner = context.recall
+    if owner is None:
+        return
+    try:
+        from memory_core.consolidation.recall import record_short_term_recalls
+
+        if owner._config_owner(config) != owner._owner or owner._config_owner(store.config) != owner._owner:
+            return
+        record_short_term_recalls(config=config, query=query, results=results, now_ms=now_ms,
+                                 timezone=owner.timezone, origins=owner.origins, on_event=owner.on_event)
+    except Exception:
+        # Native tools.ts queues recall persistence off the reply latency path
+        # and ignores failures, including a host event sink failure after commit.
+        pass
+
+
 @dataclass(frozen=True)
 class MemorySearchToolContext:
     """Trusted manager/host context, never model-authored tool arguments.
@@ -494,6 +560,7 @@ class MemorySearchToolContext:
     session_visibility: SessionVisibilityContext | None = None
     conversation_recall: Mapping[str, Any] | None = None
     source_policy: Mapping[str, Any] | None = None
+    recall: MemorySearchRecallOwner | None = None
 
 
 def read_memory_search_params(params: object) -> MemorySearchParams:
@@ -1184,6 +1251,13 @@ def _run_memory_search_tool(
     # receives the manager's corpus/citation/annotation presentation.
     surfaced = {id(result) for result in results}
     recalled = [result for result in memory_results if id(result) in surfaced]
+    if context.recall is not None and memory is not None and memory.outcome in {"ok", "partial"}:
+        try:
+            context.recall.submit(context=context, store=store, config=config, query=params.query,
+                                  results=recalled, now_ms=int(context.clock()))
+        except Exception:
+            # Queue admission is also off the search failure/cooldown path.
+            pass
     presented = build_memory_search_presentation(
         recalled, should_include_citations(citations_mode, agent_session_key),
     )

@@ -1,0 +1,375 @@
+"""Read-only replay of explicitly selected SDK runs and frozen inputs."""
+
+from copy import deepcopy
+from functools import lru_cache
+import json
+import os
+from pathlib import Path
+
+import pytest
+
+from equivalence.forget_index_fence_sdk_effects_evidence import _closed_effects_case, validate_sdk_effects_v3
+from equivalence.forget_index_fence_v3 import build_cases
+from equivalence.forget_index_fence_v4 import build_cases as build_v4_cases
+from equivalence.forget_index_fence_v5 import build_cases as build_v5_cases
+
+
+ROOT = Path(__file__).resolve().parents[2]
+
+
+@pytest.mark.parametrize("case", build_v4_cases(), ids=lambda case: case["id"])
+def test_exact_frozen_v4_inputs_reuse_only_the_existing_effects_protocol(case):
+    assert _closed_effects_case(case) == 4
+    assert case["input"]["observationPolicy"]["searchEffects"]["protocol"] == "original-search-effects-v3"
+
+
+@pytest.mark.parametrize("attack", ["unknown-kind", "renamed-operation", "changed-input", "changed-coverage"])
+def test_v4_effects_admission_rejects_unfrozen_or_relabelled_inputs(attack):
+    case = build_v4_cases()[0]
+    if attack == "unknown-kind":
+        case["input"]["kind"] = "forget-index-fence-v4-unregistered"
+    elif attack == "renamed-operation":
+        case["operation"] = "forget-index-fence-v3-runtime"
+    elif attack == "changed-input":
+        case["input"]["config"]["memory"]["search"]["sync"]["onSearch"] = False
+    else:
+        case["covers"] = []
+    with pytest.raises(ValueError):
+        _closed_effects_case(case)
+
+
+def test_exact_frozen_v3_effects_admission_remains_available():
+    assert all(_closed_effects_case(case) == 3 for case in build_cases())
+
+
+@lru_cache(maxsize=1)
+def _actual():
+    selected_v3 = os.environ.get("MEMORY_FORGET_INDEX_FENCE_V3_SDK_CAPTURE")
+    selected_v4 = os.environ.get("MEMORY_FORGET_INDEX_FENCE_V4_SDK_CAPTURE")
+    selected_v5 = os.environ.get("MEMORY_FORGET_INDEX_FENCE_V5_SDK_CAPTURE")
+    assert sum(bool(value) for value in (selected_v3, selected_v4, selected_v5)) <= 1, "Select exactly one independently approved SDK packet"
+    selected = selected_v5 or selected_v4 or selected_v3
+    if selected is None:
+        pytest.skip("No independently selected actual V3/V4/V5 SDK capture; no acceptance credit")
+    filename = Path(selected).resolve(strict=True)
+    assert filename.is_file() and not filename.is_symlink() and filename.stat().st_nlink == 1
+    values = json.loads(filename.read_bytes())
+    assert isinstance(values, list) and len(values) == 1
+    dispatch = values[0]
+    family = build_v5_cases() if selected_v5 else build_v4_cases() if selected_v4 else build_cases()
+    case = next(case for case in family if case["input"] == dispatch["input"])
+    from equivalence.forget_index_fence_evidence import materialize_sdk_dispatch
+    processes = materialize_sdk_dispatch(dispatch)["observation"]["processes"]
+    return case, processes
+
+
+def _context(*, require_tasks=False):
+    case, processes = _actual()
+    process = next(
+        process
+        for process in processes
+        if not require_tasks or process["observation"]["queuedSearchTasks"]
+    )
+    observation = process["observation"]
+    events = {row["sequence"]: row for row in observation["originalCalls"]}
+    returns = {
+        row["callSequence"]: row
+        for row in observation["originalCalls"]
+        if row["event"] == "original-return"
+    }
+    return case, process, observation, events, returns
+
+
+def _validate(context, observation=None, *, events=None, returns=None):
+    case, process, actual, actual_events, actual_returns = context
+    return validate_sdk_effects_v3(
+        case,
+        observation or actual,
+        process,
+        actual_events if events is None else events,
+        actual_returns if returns is None else returns,
+        recorded_root=Path(actual["sourceProvenanceBefore"]["root"]),
+        approved_sdk_root=Path(os.environ["MEMORY_FORGET_INDEX_FENCE_SDK_SOURCE_ROOT"]).resolve(
+            strict=True
+        ),
+        recorded_adapter_root=Path(process["request"]["adapterRoot"]),
+        approved_adapter_root=Path(os.environ["MEMORY_FORGET_INDEX_FENCE_ADAPTER_ROOT"]).resolve(
+            strict=True
+        ),
+    )
+
+
+def test_actual_v3_sdk_process_effects_are_independently_authenticated():
+    case, processes = _actual()
+    for process in processes:
+        observation = process["observation"]
+        events = {row["sequence"]: row for row in observation["originalCalls"]}
+        returns = {
+            row["callSequence"]: row
+            for row in observation["originalCalls"]
+            if row["event"] == "original-return"
+        }
+        result = _validate((case, process, observation, events, returns))
+        assert list(result["waits"]) == [row["label"] for row in observation["searchEffectWaits"]]
+
+
+@pytest.mark.parametrize("attack", ["missing", "wrong-value", "extra-field"])
+def test_actual_v5_search_partition_is_exact_and_retains_all_custody_fields(attack):
+    case, processes = _actual()
+    if case["input"]["kind"] != "forget-index-fence-v5":
+        pytest.skip("This mutation requires an independently selected genuine V5 packet")
+    process = next(row for row in processes if row["observation"]["searchEffectWaits"])
+    actual = process["observation"]
+    events = {row["sequence"]: row for row in actual["originalCalls"]}
+    returns = {row["callSequence"]: row for row in actual["originalCalls"]
+               if row["event"] == "original-return"}
+    context = (case, process, actual, events, returns)
+    assert _validate(context)["waits"]
+    observation = dict(actual)
+    observation["searchEffectWaits"] = deepcopy(actual["searchEffectWaits"])
+    wait = observation["searchEffectWaits"][0]
+    assert wait["partition"] == "retained-search-jobs"
+    if attack == "missing":
+        del wait["partition"]
+    elif attack == "wrong-value":
+        wait["partition"] = "all-publisher-jobs"
+    else:
+        wait["discardedCustodyField"] = True
+    with pytest.raises(ValueError, match="partition|custody fields"):
+        _validate(context, observation)
+
+
+@pytest.mark.parametrize("attack", ["stable-epoch", "final-job", "actual-route", "route-return", "admission-flag", "coherent-flags"])
+def test_actual_v5_settled_watch_replan_retains_original_epoch_worker_and_return(attack):
+    case, processes = _actual()
+    if case["input"]["kind"] != "forget-index-fence-v5":
+        pytest.skip("This mutation requires an independently selected genuine V5 packet")
+    process = next(row for row in processes if row["observation"]["queuedWatchTasks"]
+                   and row["observation"]["searchEffectWaits"])
+    actual = process["observation"]
+    events = {row["sequence"]: row for row in actual["originalCalls"]}
+    returns = {row["callSequence"]: row for row in actual["originalCalls"]
+               if row["event"] == "original-return"}
+    context = (case, process, actual, events, returns)
+    assert _validate(context)["waits"]
+    observation = dict(actual)
+    observation["searchEffectWaits"] = deepcopy(actual["searchEffectWaits"])
+    task = actual["queuedWatchTasks"][0]
+    job = next(job for job in observation["searchEffectWaits"][0]["publisherBefore"]["jobs"]
+               if job["id"] == task["job"]["id"])
+    assert events[task["submitSequence"]]["arguments"]["args"][0]["fullRebuild"] is True
+    assert job["fullRebuild"] is False
+    if attack == "stable-epoch":
+        job["readRevision"] += 1
+    elif attack == "final-job":
+        job["returned"] = {"invented": True}
+    elif attack == "admission-flag":
+        job["fullRebuild"] = True
+    elif attack == "coherent-flags":
+        observation = deepcopy(actual)
+        for key in ("queuedOriginalTasks", "queuedWatchTasks"):
+            for row in observation[key]:
+                if row.get("job") and row["futureObjectId"] == task["futureObjectId"]:
+                    row["job"]["fullRebuild"] = True
+        for wait in observation["searchEffectWaits"]:
+            states = [wait["publisherBefore"], wait["publisherAfter"]]
+            for condition in wait["conditionWaits"]:
+                states.extend((condition["stateBefore"], condition["stateAfter"]))
+            for state in states:
+                for row in state["jobs"]:
+                    if row["id"] == task["job"]["id"]:
+                        row["fullRebuild"] = True
+        for wait in observation["watchEffectWaits"]:
+            if wait.get("returned", {}).get("job", {}).get("id") == task["job"]["id"]:
+                wait["returned"]["job"]["fullRebuild"] = True
+    else:
+        events, returns = dict(events), dict(returns)
+        route = next(row for row in events.values() if row["event"] == "original-call"
+                     and row["name"] == "ManagedSQLiteMemoryStore.reindex_sources"
+                     and row.get("scope") == task["scope"])
+        if attack == "actual-route":
+            del events[route["sequence"]]
+        else:
+            changed = deepcopy(returns[route["sequence"]])
+            changed["returned"] = {"invented": True}
+            returns[route["sequence"]] = changed
+    with pytest.raises((ValueError, KeyError)):
+        _validate(context, observation, events=events, returns=returns)
+
+
+@pytest.mark.parametrize(
+    "attack",
+    [
+        "task-future",
+        "task-owner",
+        "task-executor",
+        "task-job",
+        "task-source",
+        "task-admission-order",
+        "task-parent",
+        "wait-public",
+        "wait-tool",
+        "wait-owner",
+        "wait-future",
+        "wait-empty",
+        "wait-value",
+        "wait-before-public",
+        "wait-capability",
+        "wait-duplicate",
+        "state-epoch",
+        "forged-condition",
+        "omit-task",
+    ],
+)
+def test_v3_effect_receipts_cannot_relabel_genuine_source_work(attack):
+    context = _context(require_tasks=True)
+    observation = dict(context[2])
+    assert _validate(context)["waits"]
+    observation["queuedSearchTasks"] = deepcopy(observation["queuedSearchTasks"])
+    observation["searchEffectWaits"] = deepcopy(observation["searchEffectWaits"])
+    task = observation["queuedSearchTasks"][0]
+    wait = next(row for row in observation["searchEffectWaits"] if row["publisherFutures"])
+    if attack == "task-future":
+        task["futureObjectId"] = "999999999999"
+    elif attack == "task-owner":
+        task["storeObjectId"] = "999999999999"
+    elif attack == "task-executor":
+        task["executorObjectId"] = "999999999999"
+    elif attack == "task-job":
+        task["job"]["id"] += 123
+    elif attack == "task-source":
+        task["functionCode"]["sourceSha256"] = "0" * 64
+    elif attack == "task-admission-order":
+        task["submitReturnedAtNs"] = "0"
+    elif attack == "task-parent":
+        task["parentCallSequences"] = [task["submitSequence"]]
+    elif attack == "wait-public":
+        wait["publicReturnSequence"] += 1
+    elif attack == "wait-tool":
+        wait["toolObjectId"] = "999999999999"
+    elif attack == "wait-owner":
+        wait["storeObjectId"] = "999999999999"
+    elif attack == "wait-future":
+        wait["publisherFutures"][0]["futureObjectId"] = "999999999999"
+    elif attack == "wait-empty":
+        wait["tasksAtEntry"] = []
+        wait["tasksAtReturn"] = []
+        wait["publisherFutures"] = []
+    elif attack == "wait-value":
+        wait["publisherFutures"][0]["returned"] = {"fabricated": True}
+    elif attack == "wait-before-public":
+        wait["enteredAtNs"] = "0"
+    elif attack == "wait-capability":
+        wait["factoryCapabilities"]["recallOrigins"] = not wait["factoryCapabilities"][
+            "recallOrigins"
+        ]
+    elif attack == "wait-duplicate":
+        observation["searchEffectWaits"].append(deepcopy(wait))
+    elif attack == "state-epoch":
+        wait["publisherAfter"]["jobs"][0]["readRevision"] += 1
+    elif attack == "forged-condition":
+        wait["conditionWaits"].append(
+            {
+                "enteredAtNs": wait["enteredAtNs"],
+                "returnedAtNs": wait["returnedAtNs"],
+                "returned": True,
+                "stateBefore": wait["publisherBefore"],
+                "stateAfter": wait["publisherAfter"],
+            }
+        )
+    elif attack == "omit-task":
+        observation["queuedSearchTasks"].clear()
+    with pytest.raises((ValueError, KeyError)):
+        _validate(context, observation)
+
+
+@pytest.mark.parametrize(
+    "attack", ["missing", "entry", "receiver", "code", "self-repaired", "frame"]
+)
+def test_v3_future_return_requires_actual_retained_entry_and_cleared_self(attack):
+    context = _context(require_tasks=True)
+    assert _validate(context)["waits"]
+    events, returns = dict(context[3]), dict(context[4])
+    call = next(
+        row
+        for row in events.values()
+        if row["event"] == "original-call" and row["name"] == "Future.result"
+    )
+    returned = deepcopy(returns[call["sequence"]])
+    returns[call["sequence"]] = returned
+    if attack == "missing":
+        del returns[call["sequence"]]
+    elif attack == "entry":
+        returned["returnLookup"]["entryCallSequence"] += 1
+    elif attack == "receiver":
+        returned["returnLookup"]["entryReceiverObjectId"] = "999999999999"
+    elif attack == "code":
+        returned["returnLookup"]["entryCode"]["sourceSha256"] = "0" * 64
+    elif attack == "self-repaired":
+        returned["returnLookup"]["receiverLocal"] = {"objectId": call["receiverObjectId"]}
+    elif attack == "frame":
+        returned["returnLookup"]["frameObjectId"] = "999999999999"
+    with pytest.raises((ValueError, KeyError)):
+        _validate(context, events=events, returns=returns)
+
+
+@pytest.mark.parametrize("attack", ["scope", "body", "sink"])
+def test_v3_host_effect_requires_its_actual_original_producer_and_sink(attack):
+    context = _context(require_tasks=True)
+    assert _validate(context)["waits"]
+    observation = dict(context[2])
+    observation["hostEvents"] = deepcopy(observation["hostEvents"])
+    observation["hostEventReceipts"] = deepcopy(observation["hostEventReceipts"])
+    assert observation["hostEventReceipts"], "Selected original packet has no host event boundary"
+    events = dict(context[3])
+    receipt = observation["hostEventReceipts"][0]
+    if attack == "scope":
+        receipt["callScope"]["label"] = "foreign-unobserved-search"
+    elif attack == "body":
+        observation["hostEvents"][0]["fabricatedField"] = True
+    else:
+        producer = next(
+            row
+            for row in events.values()
+            if row["event"] == "original-call"
+            and row["name"] == "record_short_term_recalls"
+            and row["callLabel"] == receipt["callScope"]["label"]
+        )
+        producer = deepcopy(producer)
+        events[producer["sequence"]] = producer
+        producer["arguments"]["on_event"]["qualname"] = "foreign_callback"
+    with pytest.raises((ValueError, KeyError)):
+        _validate(context, observation, events=events)
+
+
+@pytest.mark.parametrize("attack", ["parent-subset", "job-epoch", "job-final-state"])
+def test_v3_coherently_rewritten_copies_cannot_erase_original_lineage(attack):
+    context = _context(require_tasks=True)
+    assert _validate(context)["waits"]
+    observation = dict(context[2])
+    observation["queuedSearchTasks"] = deepcopy(observation["queuedSearchTasks"])
+    observation["searchEffectWaits"] = deepcopy(observation["searchEffectWaits"])
+    observation["publicCalls"] = deepcopy(observation["publicCalls"])
+    selected = observation["queuedSearchTasks"][0]
+    fid = selected["futureObjectId"]
+    copies = [selected]
+    for wait in observation["searchEffectWaits"]:
+        copies.extend(
+            row
+            for row in (*wait["tasksAtEntry"], *wait["tasksAtReturn"])
+            if row["futureObjectId"] == fid
+        )
+    for public in observation["publicCalls"].values():
+        copies.extend(
+            row for row in public.get("effectsAtPublicSettle", []) if row["futureObjectId"] == fid
+        )
+    for row in copies:
+        if attack == "parent-subset":
+            row["parentCallSequences"] = row["parentCallSequences"][-1:]
+        elif "job" in row:
+            if attack == "job-epoch":
+                row["job"]["readRevision"] += 1
+            else:
+                row["job"]["fabricatedFinalState"] = True
+    with pytest.raises((ValueError, KeyError)):
+        _validate(context, observation)

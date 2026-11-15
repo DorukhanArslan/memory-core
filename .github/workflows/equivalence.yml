@@ -11,10 +11,11 @@ permissions:
 
 jobs:
   differential:
-    name: Differential subset (full contract on manual runs)
+    name: Differential full contract
     runs-on: ubuntu-latest
-    # The registered catalog took 38 minutes locally; manual runs execute it twice.
-    timeout-minutes: 120
+    # Earlier V5 cases took 6.5–7.5 minutes each. Allow the hosted six-hour limit
+    # for the registered catalog, retained standalone captures and strict replays.
+    timeout-minutes: 360
     env:
       PYTHONDONTWRITEBYTECODE: "1"
       OPENAI_API_KEY: ""
@@ -57,12 +58,12 @@ jobs:
         run: >-
           uv run --frozen python -m equivalence.release_runtime
           --reference .reference/openclaw --destination .reference/release-runtime --install
-      - name: Compare the registered cases with actual OpenClaw
+      - name: Compare the full registered catalog with actual OpenClaw
         run: >-
           uv run --frozen python scripts/check_equivalence.py
           --reference .reference/openclaw --node "$(command -v node)"
           --release-runtime .reference/release-runtime
-          --smoke --report .equivalence-results/subset.json
+          --report .equivalence-results/full.json
       - name: Compare the zero-credit cold retry development packet
         if: always()
         run: >-
@@ -84,13 +85,14 @@ jobs:
           --reference .reference/openclaw --node "$(command -v node)"
           --release-runtime .reference/release-runtime
           --output .equivalence-results/query-sync-boundaries-acceptance
-      - name: Require the complete contract on manual acceptance runs
-        if: always() && github.event_name == 'workflow_dispatch'
+      - name: Smoke the standalone forget/index-fence v6 collector
+        if: always()
         run: >-
-          uv run --frozen python scripts/check_equivalence.py
+          uv run --frozen python scripts/check_forget_index_fence.py --version v6
           --reference .reference/openclaw --node "$(command -v node)"
           --release-runtime .reference/release-runtime
-          --report .equivalence-results/full.json
+          --case forget-index-fence-v6-shared-clean-dryrun-unresolved-promotion-controls
+          --output .equivalence-results/forget-index-fence-v6-acceptance
       - name: Replay the retained original update captures through their guard tests
         # The earlier test step runs before any original capture exists, so it skips these.
         if: always()
@@ -124,6 +126,27 @@ jobs:
           MEMORY_EQ_NODE="$(command -v node)"
           MEMORY_QUERY_SYNC_BOUNDARIES_CAPTURE_ROOT=.equivalence-results/query-sync-boundaries-acceptance
           uv run --frozen pytest -q tests/equivalence/test_query_sync_boundaries_evidence.py
+      - name: Independently replay the complete forget/index-fence v6 packet
+        if: always()
+        run: >-
+          uv run --frozen python scripts/replay_forget_index_fence.py --version v6
+          --suite-report .equivalence-results/full.json
+          --native-capture-root .equivalence-results/forget-index-fence-v6
+          --sdk-capture-root .equivalence-results/forget-index-fence-v6
+          --reference .reference/openclaw --node "$(command -v node)"
+          --sdk-source-root . --adapter-root .
+          --output .equivalence-results/forget-index-fence-v6-independent-replay.json
+      - name: Replay the retained forget/index-fence v6 captures through their guard tests
+        if: always()
+        run: >-
+          MEMORY_EQ_NODE="$(command -v node)"
+          MEMORY_FORGET_INDEX_FENCE_V6_SUITE_REPORT=.equivalence-results/full.json
+          MEMORY_FORGET_INDEX_FENCE_V6_NATIVE_CAPTURE_ROOT=.equivalence-results/forget-index-fence-v6
+          MEMORY_FORGET_INDEX_FENCE_V6_SDK_CAPTURE_ROOT=.equivalence-results/forget-index-fence-v6
+          MEMORY_FORGET_INDEX_FENCE_REFERENCE_ROOT=.reference/openclaw
+          MEMORY_FORGET_INDEX_FENCE_SDK_SOURCE_ROOT=.
+          MEMORY_FORGET_INDEX_FENCE_ADAPTER_ROOT=.
+          uv run --frozen pytest -q tests/equivalence/test_forget_index_fence_v6_evidence.py
       - name: Retain results, including failed acceptance runs
         if: always()
         uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
@@ -163,6 +186,16 @@ jobs:
             .equivalence-results/next-turn-notice/**
             .equivalence-results/query-sync-boundaries-acceptance/**
             .equivalence-results/query-sync-boundaries/**
+            .equivalence-results/forget-index-fence-v6-acceptance/**
+            .equivalence-results/forget-index-fence-v6/**
+            .equivalence-results/host-turn-barrier-v4/**
+            /var/tmp/memory-host-v4-*/**
+          # Host V4 keeps its original SQLite/WAL/SHM and workspace in these owned
+          # /var/tmp roots after all actors exit. Retain those bytes with the capture.
+          # Mixed absolute/repository paths make the artifact root their common
+          # filesystem ancestor; archive entries can include both var/tmp and the
+          # runner workspace prefix. Restore using the sealed context's original
+          # paths rather than assuming the archive root is the repository root.
           # The reports live in a dot-directory, which this action skips unless told otherwise.
           include-hidden-files: true
           if-no-files-found: ignore

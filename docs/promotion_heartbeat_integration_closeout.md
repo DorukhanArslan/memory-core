@@ -1,15 +1,38 @@
 # Promotion and heartbeat maintenance integration
 
-The latest [query-sync boundary closeout](query_sync_boundaries_closeout.md)
-records **73/128 verified conditions, 55 remaining**, in the complete current
-local catalog on clean code head `d6bb805`: **1,452 cases, 1,438 matches, 14
-mismatches and zero blocked/errors**. Independent audit verifies the original
-query-sync boundary and restores the original natural-turn outcome point after
-all four complete host cases match. The fixed scope remains 128 conditions.
-There are 34 complete, five partial and 25 pending contracts; the full gate still
-fails with 53 uncovered and two registered unresolved conditions.
+Current work is summarized in the
+[forget/index-fence partial closeout](forget_index_fence_closeout.md).
+The latest independently assessed local catalog is **71/128 verified
+conditions, 57 remaining**: full003 on `13b54e0` has **1,443 matches, 18
+mismatches and four blocked cases**, exit 2. The scope remains 64 contracts and
+128 conditions; the forget/index-fence contract stays 0/2.
 
-The changed provider-none on-search SDK passes **11,166 whole-suite tests** with
+Later SDK corrections have bounded paired preflight evidence and **269 focused
+passing checks**. Hosted code head `5b729e9` passes **9,365 tests per version**
+on Python 3.11/3.12,
+with 7,213 uncredited skips, zero failures and successful wheel/sdist consumers.
+The separate hosted differential run fails globally after its Native keyword
+case times out. Reading the existing artifact established an observer time-order
+false rejection at step 19 without rerunning a comparison. The observer correction
+is now implemented; 133 focused checks passed in 2.09 seconds and Ruff passed,
+without running an original memory engine. Overall CI is not green, PR #18
+remains draft and unmerged,
+and no new local full004 was run. Further long comparisons are deferred at the
+user's request; verification of the corrected complete comparison is still
+deferred. These
+updates award zero conditions and do not relabel the historical maintenance
+results below. Source classification remains `partial`.
+
+The historical [query-sync boundary closeout](query_sync_boundaries_closeout.md)
+recorded **73/128 verified conditions, 55 remaining**, in its complete local
+catalog on clean code head `d6bb805`: **1,452 cases, 1,438 matches, 14
+mismatches and zero blocked/errors**. Its independent audit verified the original
+query-sync boundary and restored the original natural-turn outcome point after
+all four complete host cases matched. The fixed scope remains 128 conditions.
+That assessment had 34 complete, five partial and 25 pending contracts; its gate
+failed with 53 uncovered and two registered unresolved conditions.
+
+On that historical head, the provider-none on-search SDK passed **11,166 whole-suite tests** with
 zero failures and 1,974 uncredited skips. Both local wheel/sdist consumers pass;
 code-head Python 3.11/3.12 package checks and consumers pass. The hosted Native
 smoke catalog still has 1,434 matches and 18 mismatches, zero blocked/errors;
@@ -20,8 +43,8 @@ Implementation review is tracked in [PR #17](https://github.com/DorukhanArslan/m
 Source classification remains `partial`, and the bounded schedules do not cover
 every provider or interleaving.
 
-All fifteen previous SDK mismatch payloads stay unchanged. The cold Unicode
-Native warning/corpora fields return in this full run; their earlier missing
+In that historical assessment, all fifteen previous SDK mismatch payloads stayed
+unchanged. The cold Unicode Native warning/corpora fields returned in that run; their earlier missing
 notice timing remains unproved and no notice-policy fix is inferred. The warm
 flush case retains changed Native first-recall arrays, remains mismatched and
 receives no credit. The prior cold-retry and passive-notice packets keep their

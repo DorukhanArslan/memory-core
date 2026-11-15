@@ -32,7 +32,7 @@ ROOT = Path(__file__).resolve().parents[2]
 def test_catalog_registers_all_four_exact_hosts_for_both_existing_conditions():
     complete = build_catalog()
     validate_query_sync_boundary_registration(complete)
-    assert complete[1444:] == query_sync_boundary_cases()
+    assert complete[1444:1452] == query_sync_boundary_cases()
     registered = complete[:1444]
     validate_query_sync_registration(registered)
     assert registered[-len(query_sync_cases()):] == query_sync_cases()

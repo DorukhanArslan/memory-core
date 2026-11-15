@@ -1,0 +1,132 @@
+{
+  "kind": "host-turn-barrier-v4-freeze-design",
+  "version": 4,
+  "status": "frozen-before-first-v4-original-engine",
+  "acceptancePointsAwarded": 0,
+  "candidateCoverage": [
+    "host.turn-barrier.outcomes"
+  ],
+  "sourceBase": "13b54e07bffe292599dab0ff5d89ea54e94e207a",
+  "previousUnexecutedFreezes": [
+    {
+      "version": 2,
+      "commit": "f40354ebde107a8183efdf207e8e38102d6da455",
+      "allThreeFilesUnchanged": true
+    },
+    {
+      "version": 3,
+      "commit": "af4d09f485bbffb577f54de2fa0bc70397667855",
+      "allThreeFilesUnchanged": true
+    }
+  ],
+  "environmentContract": {
+    "path": "docs/host_turn_barrier_v4_environment.json",
+    "bytes": 6389,
+    "sha256": "124be0e13fbf71f99092e8a3ebadf5dec0aef8d2d01d6df49366a8c359abf49e"
+  },
+  "manifest": {
+    "path": "docs/host_turn_barrier_v4_literals.json",
+    "bytes": 18751,
+    "sha256": "4fd480fe36780423b49bcf064687db37101648fe03c2ff14661923487ac031c8"
+  },
+  "v4CaseWireSha256": {
+    "host-turn-barrier-v4-cold-ascii": "4942a650229e64d74332f9bd970c757e36a99e34990d944431097dfdd361b0ba",
+    "host-turn-barrier-v4-warm-ascii": "6c3c660a22b18751ce55ff788827bc3b32f3ebff0164dee30c6d78f7432b2bf8",
+    "host-turn-barrier-v4-cold-unicode": "68cdbab5a3d82d4bf7757406024623e20a2024806832bd433153c4aced30cdb6",
+    "host-turn-barrier-v4-warm-unicode": "314c621f07bd12ab992ac9b146f31f294ed4db97180508b85121771b3a754913"
+  },
+  "v1BusinessCaseWireSha256": {
+    "host-turn-barrier-cold-ascii": "f15b6b765b7998301945a42e5028a30cbc759fb8251c7e814b35778a88a06e66",
+    "host-turn-barrier-warm-ascii": "a66a8fd95c63ece444cfa50d4c575de504ae1d05b9a9d3dcd5367809b93d0da3",
+    "host-turn-barrier-cold-unicode": "76f267e1c678d0ec7ffac28e309bea3360bd31f75230ebf59c6f8a6bdec06a65",
+    "host-turn-barrier-warm-unicode": "cf7ce1144290e45d8bffa4fc230bbb5fcd26569787bccf149282a66455468750"
+  },
+  "canonicalBusinessDiff": [],
+  "canonicalV3ToV4EnvironmentDiff": [
+    {
+      "path": "$.kind",
+      "before": "host-turn-barrier-v3-environment-contract",
+      "after": "host-turn-barrier-v4-environment-contract"
+    },
+    {
+      "path": "$.version",
+      "before": 3,
+      "after": 4
+    },
+    {
+      "path": "$.environment.temporaryRoot",
+      "before": "/tmp",
+      "after": "/var/tmp"
+    },
+    {
+      "path": "$.environment.originalEnvironmentValueMappings.nativeInitial.NODE_OPTIONS",
+      "before": "--import=$SOURCE/equivalence/host-turn-barrier-v3-preload.mjs",
+      "after": "--import=$SOURCE/equivalence/host-turn-barrier-v4-preload.mjs"
+    }
+  ],
+  "canonicalV3ToV4OuterDiff": [
+    {
+      "oldId": "host-turn-barrier-v3-cold-ascii",
+      "newId": "host-turn-barrier-v4-cold-ascii",
+      "changedPaths": [
+        "$.id",
+        "$.operation",
+        "$.input.version",
+        "$.input.environment.contractSha256"
+      ],
+      "businessDiff": []
+    },
+    {
+      "oldId": "host-turn-barrier-v3-warm-ascii",
+      "newId": "host-turn-barrier-v4-warm-ascii",
+      "changedPaths": [
+        "$.id",
+        "$.operation",
+        "$.input.version",
+        "$.input.environment.contractSha256"
+      ],
+      "businessDiff": []
+    },
+    {
+      "oldId": "host-turn-barrier-v3-cold-unicode",
+      "newId": "host-turn-barrier-v4-cold-unicode",
+      "changedPaths": [
+        "$.id",
+        "$.operation",
+        "$.input.version",
+        "$.input.environment.contractSha256"
+      ],
+      "businessDiff": []
+    },
+    {
+      "oldId": "host-turn-barrier-v3-warm-unicode",
+      "newId": "host-turn-barrier-v4-warm-unicode",
+      "changedPaths": [
+        "$.id",
+        "$.operation",
+        "$.input.version",
+        "$.input.environment.contractSha256"
+      ],
+      "businessDiff": []
+    }
+  ],
+  "guardDesign": [
+    "Reject altered v3 input/contract, undeclared control fields or legacy v1/v2 capture substitution.",
+    "Record actual OS cwd and workspace/capture path identities; invoke actual pinned original findGitRoot with authenticated transitive imports and retain actual returns before/after execution.",
+    "Require native initial5+original runtime4 values exactly; SDK6 original relative values exactly, including state/state. No injected-key allowance.",
+    "Bind actual same-PID SDK startup sys.orig_argv/os.getcwd/env/executable to exact exec vector and unchanged original stdin; retain both launch and executed argv honestly.",
+    "Validate unchanged v1 business custody plus complete original public/raw results, without result edits, waits, tolerances or feature disabling."
+  ],
+  "registeredByDefault": false,
+  "registeredWrapperTransform": "After explicit root promotion only, exact immutable V4 outer probe except covers restored to that exact original V1 case covers. No other field may differ.",
+  "futureWholeReportPolicy": "Retain all4 HostV4 Native+SDK whole public payloads alongside13 FIF payloads for17 exact comparisons.",
+  "executionViewQualification": "Use official require_escalated execution only after stable source review and capacity GO. Additional-permission sandbox adds synthetic Git markers and is not the qualified view. Root verified physical /var/tmp and ancestors have no Git marker and a tiny reversible owned directory creation/check/cleanup passed. This does not bypass any data/feature guard.",
+  "originalsStarted": false,
+  "preserved": [
+    "Original Host v1 modules/inputs/contracts/captures/13b variance",
+    "Unexecuted f403 Host v2 trio",
+    "Original1452 definitions/80 annotations until explicit reviewed migration",
+    "All15 frozen FIF files",
+    "64 requirements/128 conditions"
+  ]
+}

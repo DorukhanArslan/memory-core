@@ -35,6 +35,7 @@ def test_case_catalog_is_deterministic_unique_and_standard_json():
         "flush.execute-finalize", "compaction.memory-budget",
         "prompt.bootstrap-discovery", "promotion.ranking-gates", "promotion.apply-reconcile",
         "host.restart-recall", "host.update-isolation", "host.turn-barrier",
+        "forget.index-fence",
     }
 
 
@@ -52,6 +53,13 @@ def test_default_catalog_registers_each_reviewed_atomic_case_once_with_unchanged
 def test_python_adapters_preserve_inputs_and_return_standard_json():
     for case in build_cases():
         before = deepcopy(case)
+        if case["operation"] == "host-turn-barrier-v4-runtime":
+            # The real coordinator supplies authenticated Node/runtime/source
+            # authorities. A plain offline call cannot invent those owners.
+            with pytest.raises(ValueError, match="explicit authenticated Native authorities"):
+                run_python(case)
+            assert case == before
+            continue
         result = run_python(case)
         json.dumps(result, allow_nan=False)
         assert case == before

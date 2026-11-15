@@ -283,9 +283,9 @@ def build_cases(*, include_prospective: bool = False) -> list[dict[str, Any]]:
     from equivalence.host_restart_session import build_cases as build_host_restart_session_cases
 
     cases.extend(build_host_restart_session_cases())
-    from equivalence.host_turn_barrier import build_cases as build_host_turn_barrier_cases
+    from equivalence.host_turn_barrier_v4 import build_cases as build_host_turn_barrier_cases, registered_case
 
-    cases.extend(build_host_turn_barrier_cases())
+    cases.extend(registered_case(case) for case in build_host_turn_barrier_cases())
     from equivalence.host_update_isolation import build_cases as build_host_update_isolation_cases
 
     cases.extend(build_host_update_isolation_cases())
@@ -301,6 +301,9 @@ def build_cases(*, include_prospective: bool = False) -> list[dict[str, Any]]:
     from equivalence.query_sync_boundaries import build_cases as build_query_sync_boundary_cases
 
     cases.extend(build_query_sync_boundary_cases())
+    from equivalence.forget_index_fence_v6 import build_cases as build_forget_index_fence_cases
+
+    cases.extend(build_forget_index_fence_cases())
     if include_prospective:
         from equivalence.flush_contract import build_prospective_flush_contract_cases
         from equivalence.session_projection import build_prospective_session_projection_cases
@@ -310,6 +313,10 @@ def build_cases(*, include_prospective: bool = False) -> list[dict[str, Any]]:
             *build_prospective_flush_contract_cases(),
             *build_prospective_session_projection_cases(),
         ) if case["id"] not in registered)
+    if not include_prospective:
+        from equivalence.catalog_migration import definition_authority
+
+        definition_authority(cases, fif_version="v6")
     return cases
 
 
@@ -344,6 +351,18 @@ def run_python(case: dict[str, Any]) -> Any:
 
         validate_update_case({key: case[key] for key in ("id", "operation", "requirement", "covers", "input")})
         return run_host_update_isolation(arguments, evidence_directory=case.get("_diagnosticDirectory"))
+    if operation == "host-turn-barrier-v4-runtime":
+        from equivalence.host_turn_barrier_v4 import validate_case
+
+        frozen = {key: case[key] for key in ("id", "operation", "requirement", "covers", "input")}
+        validate_case(frozen, registered=True)
+        authority = case.get("_hostTurnBarrierV4Authorities")
+        if not isinstance(authority, dict) or set(authority) != {"node", "runtime", "reference_root"}:
+            raise ValueError("Host V4 SDK execution requires explicit authenticated Native authorities")
+        from equivalence.host_turn_barrier_v4_sdk import run_host_turn_barrier_v4_case
+
+        return run_host_turn_barrier_v4_case(frozen, **authority,
+            evidence_directory=case.get("_diagnosticDirectory"), registered=True)
     if operation == "host-turn-barrier-runtime":
         from equivalence.host_turn_barrier import validate_case as validate_turn_barrier_case
         from equivalence.host_turn_barrier_sdk import run_host_turn_barrier_case
@@ -381,6 +400,14 @@ def run_python(case: dict[str, Any]) -> Any:
         from equivalence.query_sync_boundaries_sdk import run_query_sync_boundaries_case
 
         return run_query_sync_boundaries_case(arguments, evidence_directory=case.get("_diagnosticDirectory"))
+    if operation == "forget-index-fence-v6-runtime":
+        from equivalence.forget_index_fence_v6 import validate_case as validate_forget_index_fence_case
+
+        validate_forget_index_fence_case(
+            {key: case[key] for key in ("id", "operation", "requirement", "covers", "input")})
+        from equivalence.forget_index_fence_sdk import run_forget_index_fence_sdk_case
+
+        return run_forget_index_fence_sdk_case(arguments, evidence_directory=case.get("_diagnosticDirectory"))
     if operation == "promotion-ranking-runtime":
         from equivalence.promotion_ranking_runtime import run_promotion_ranking
 

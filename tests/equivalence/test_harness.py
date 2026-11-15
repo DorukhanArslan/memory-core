@@ -326,3 +326,32 @@ def test_invalid_scope_cannot_create_an_empty_green_full_gate(suite, corruption)
     assert code == 2
     assert report["errors"][0]["code"] == "scope-invalid"
     assert not (suite["oracle_path"].parent / "dispatches").exists()
+
+
+@pytest.mark.parametrize("mismatch", [False, True])
+def test_historical_whole_public_retention_is_exact_even_when_the_case_now_matches(suite, mismatch):
+    from equivalence.catalog_migration import HISTORICAL_MISMATCH_REPORT_IDS
+
+    identifiers = list(HISTORICAL_MISMATCH_REPORT_IDS)
+    nearby = [identifier + "-nearby-unselected" for identifier in identifiers]
+    suite["cases"] = [
+        {"id": identifier, "requirement": "storage", "operation": "echo", "covers": ["storage.write"],
+         "input": {"label": "UNIT_WHOLE_PUBLIC_ONLY", "id": identifier,
+                   "whole": [False, 0, None, {"warning": "unchanged warning", "action": "all\nlines", "unicode": "雪"}]}}
+        for identifier in identifiers + nearby
+    ]
+    original_cases = deepcopy(suite["cases"])
+    suite["oracle_path"].write_text("mismatch" if mismatch else "match")
+    report, code = run_suite(**suite, smoke=True)
+    assert code == (1 if mismatch else 0) and report["errors"] == []
+    assert suite["cases"] == original_cases
+    for index, row in enumerate(report["cases"]):
+        case = suite["cases"][index]
+        if row["id"] in identifiers:
+            assert row["python"] == case["input"]
+            assert row["openclaw"] == ("Different actual result" if mismatch and index == 0 else case["input"])
+        else:
+            assert row["status"] == "matched" and "python" not in row and "openclaw" not in row
+    assert {row["id"] for row in report["cases"] if "python" in row} == set(identifiers)
+    assert report.get("runtimeDiagnostics", []) == [] and report.get("releaseTraces", []) == []
+    assert report["fullScopePassed"] is False

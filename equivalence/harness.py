@@ -730,6 +730,11 @@ def _oracle(node: Path, script: Path, checkout: Path, cases: list[dict], timeout
                     context_options["turn_taint_source"] = prepare_turn_taint_source_authority(checkout)
                 from equivalence.runtime_oracle import MODEL_RUNTIME_OPERATIONS
 
+                if len(cases) == 1 and cases[0]["operation"] == "forget-lineage-runtime":
+                    from equivalence.forget_lineage_profile import prepare_forget_lineage_profile
+
+                    context_options["forget_lineage_profile"] = prepare_forget_lineage_profile(cases[0], node)
+
                 if len(cases) == 1 and cases[0]["operation"] in MODEL_RUNTIME_OPERATIONS:
                     from equivalence.model_runtime_authority import prepare_model_node_authority
 
@@ -821,6 +826,11 @@ def _oracle(node: Path, script: Path, checkout: Path, cases: list[dict], timeout
         if execution is not None:
             try:
                 result = execution.collect(result, cases)
+                if len(cases) == 1 and cases[0]["operation"] == "forget-lineage-runtime":
+                    result["releaseTrace"]["forgetLineageTransport"]["originalProcessStreams"] = {
+                        name: {"text": value, "bytes": len(value.encode("utf8")),
+                               "sha256": hashlib.sha256(value.encode("utf8")).hexdigest()}
+                        for name, value in (("stdout", stdout), ("stderr", stderr))}
             except (OSError, ValueError) as error:
                 detail = str(error) if isinstance(error, RuntimeOracleError) else "Invalid execution evidence."
                 failure = HarnessError("runtime-evidence-invalid",

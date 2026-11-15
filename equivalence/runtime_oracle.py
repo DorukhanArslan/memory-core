@@ -25,6 +25,7 @@ from equivalence.memory_budget_profile import MEMORY_BUDGET_PROFILES, validate_m
 from equivalence.promotion_ranking_bindings import PROMOTION_RANKING_OPERATION, validate_promotion_ranking_profile
 from equivalence.promotion_apply_profile import (PROMOTION_APPLY_OPERATION, PROMOTION_APPLY_CASE_ID,
     validate_promotion_apply_profile, validate_promotion_apply_input)
+from equivalence.forget_lineage_profile import validate_forget_lineage_profile, case_sha256
 
 
 ROOT = Path(__file__).resolve().parents[1]
@@ -48,6 +49,7 @@ _OPERATIONS = {
         "exact-path-runtime.mjs", "dist/extensions/memory-core/manager-runtime.js", False,
     ),
     "index-lifecycle-runtime": ("index-lifecycle.mjs", None, True),
+    "forget-lineage-runtime": ("forget-lineage-runtime.mjs", "dist/cli.runtime-CVRN4xUp.mjs", False),
     "flush-trigger-runtime": (
         "flush-runtime.mjs", "dist/agent-runner-memory-Cc4lCZcs.mjs", False,
     ),
@@ -663,7 +665,8 @@ class ReleaseOracleExecution:
                  entry_profile: dict | None = None, atomic_profile: dict | None = None,
                  atomic_case: dict | None = None, bootstrap_profile: dict | None = None,
                  memory_budget_profile: dict | None = None, get_read_race_profile: dict | None = None,
-                 promotion_profile: dict | None = None, promotion_apply_profile: dict | None = None):
+                 promotion_profile: dict | None = None, promotion_apply_profile: dict | None = None,
+                 forget_lineage_profile: dict | None = None):
         self.config = deepcopy(config)
         self.adapter_hashes = dict(adapter_hashes)
         self.fixture_captures = fixture_captures
@@ -677,6 +680,7 @@ class ReleaseOracleExecution:
         self.get_read_race_profile = deepcopy(get_read_race_profile)
         self.promotion_profile = deepcopy(promotion_profile)
         self.promotion_apply_profile = deepcopy(promotion_apply_profile)
+        self.forget_lineage_profile = deepcopy(forget_lineage_profile)
         self.env: dict[str, str] = {}
         self._temporary = None
         self._entered = False
@@ -685,7 +689,8 @@ class ReleaseOracleExecution:
         try:
             capabilities = (self.model_node_runtime, self.entry_profile, self.atomic_profile,
                 self.bootstrap_profile, self.memory_budget_profile, self.promotion_profile,
-                self.promotion_apply_profile, self.get_read_race_profile, self.turn_taint_source)
+                self.promotion_apply_profile, self.get_read_race_profile, self.turn_taint_source,
+                self.forget_lineage_profile)
             if sum(value is not None for value in capabilities) + bool(self.fixture_captures) > 1:
                 raise RuntimeOracleError("Independent native profiles cannot borrow one another's executable, source, backend or hook capabilities.")
             if self.get_read_race_profile is not None:
@@ -712,6 +717,8 @@ class ReleaseOracleExecution:
                     raise RuntimeOracleError("Promotion ranking cannot borrow another compiled/model/source capability.")
             if self.promotion_apply_profile is not None:
                 self.promotion_apply_profile = validate_promotion_apply_profile(self.promotion_apply_profile)
+            if self.forget_lineage_profile is not None:
+                self.forget_lineage_profile = validate_forget_lineage_profile(self.forget_lineage_profile)
             if self.entry_profile is not None:
                 self.entry_profile = validate_entry_provenance_profile(self.entry_profile)
                 if self.model_node_runtime is not None or self.turn_taint_source is not None or self.fixture_captures or self.atomic_profile is not None or self.bootstrap_profile is not None or self.memory_budget_profile is not None or self.get_read_race_profile is not None or self.promotion_profile is not None:
@@ -823,6 +830,9 @@ class ReleaseOracleExecution:
             if self.promotion_apply_profile is not None:
                 self._context["approvedNodeRuntime"] = self.promotion_apply_profile["nodeRuntime"]
                 self._context["promotionApplyProfile"] = self.promotion_apply_profile
+            if self.forget_lineage_profile is not None:
+                self._context["approvedNodeRuntime"] = self.forget_lineage_profile["nodeRuntime"]
+                self._context["forgetLineageProfile"] = self.forget_lineage_profile
             if self.fixture_captures:
                 fixture = str((ROOT / "equivalence/flush-execution.mjs").resolve())
                 if fixture not in self._locals:
@@ -979,6 +989,12 @@ class ReleaseOracleExecution:
         case = cases[0]
         row = result["results"][0]
         operation = case.get("operation")
+        if (self.forget_lineage_profile is not None) is not (operation == "forget-lineage-runtime"):
+            raise RuntimeOracleError("Forget/lineage authority cannot execute another operation")
+        if self.forget_lineage_profile is not None:
+            profile = validate_forget_lineage_profile(self.forget_lineage_profile)
+            if profile["caseId"] != case.get("id") or profile["caseBindings"][profile["caseId"]] != case_sha256(case):
+                raise RuntimeOracleError("A forget/lineage case changed its frozen business inputs")
         if (self.atomic_profile is not None) is not (operation in ATOMIC_PUBLICATION_PROFILES):
             raise RuntimeOracleError("The atomic capability is restricted to its three declared original owners.")
         if self.atomic_profile is not None:
@@ -1091,7 +1107,7 @@ class ReleaseOracleExecution:
             if filename is None:
                 raise RuntimeOracleError("A release thread trace has an invalid identity.")
             raw = _regular(trace, MAX_SINGLE_TRACE_BYTES)
-            if self.entry_profile is not None or self.memory_budget_profile is not None or self.promotion_profile is not None or self.promotion_apply_profile is not None:
+            if self.entry_profile is not None or self.memory_budget_profile is not None or self.promotion_profile is not None or self.promotion_apply_profile is not None or self.forget_lineage_profile is not None:
                 entry_trace_files.append({"name": trace.name, "bytes": len(raw), "sha256": _digest(raw),
                                           "text": raw.decode("utf-8")})
             if self.bootstrap_profile is not None:
@@ -1116,7 +1132,8 @@ class ReleaseOracleExecution:
                               or (self.atomic_profile["nodeRuntime"] if self.atomic_profile is not None else None)
                               or (self.memory_budget_profile["nodeRuntime"] if self.memory_budget_profile is not None else None)
                               or (self.promotion_profile["nodeRuntime"] if self.promotion_profile is not None else None)
-                              or (self.promotion_apply_profile["nodeRuntime"] if self.promotion_apply_profile is not None else None))
+                              or (self.promotion_apply_profile["nodeRuntime"] if self.promotion_apply_profile is not None else None)
+                              or (self.forget_lineage_profile["nodeRuntime"] if self.forget_lineage_profile is not None else None))
             if node_authority is not None and first.get("runtime") != node_authority:
                 raise RuntimeOracleError("The actual native process or worker omitted its approved model binary authority.")
             if self.entry_profile is not None and first.get("entryProfile") != self.entry_profile:
@@ -1150,6 +1167,10 @@ class ReleaseOracleExecution:
                 if first.get("promotionApplyProfile") != self.promotion_apply_profile:
                     raise RuntimeOracleError("The actual apply process or worker omitted its distinct profile authority.")
                 bootstrap[-1]["promotionApplyProfile"] = deepcopy(first["promotionApplyProfile"])
+            if self.forget_lineage_profile is not None:
+                if first.get("forgetLineageProfile") != self.forget_lineage_profile:
+                    raise RuntimeOracleError("The actual forget process omitted its exact frozen input authority")
+                bootstrap[-1]["forgetLineageProfile"] = deepcopy(first["forgetLineageProfile"])
             if thread == 0:
                 process_parents[pid] = first.get("ppid")
             for event in events[1:]:
@@ -1326,6 +1347,13 @@ class ReleaseOracleExecution:
         diagnostic = _json(raw)
         if not isinstance(diagnostic, list):
             raise RuntimeOracleError("Native lifecycle diagnostics must retain raw snapshot rows.")
+        if operation == "forget-lineage-runtime":
+            from equivalence.forget_lineage_bindings import REQUIRED_RUNTIME_ARTIFACTS
+            from equivalence.forget_lineage_evidence import validate_native
+
+            if any(("node_modules/openclaw", owner) not in loaded for owner in REQUIRED_RUNTIME_ARTIFACTS):
+                raise RuntimeOracleError("The original forget/lineage owners did not all execute")
+            validate_native(case, row["result"], diagnostic, evidence.parent)
         entry_transport = None
         budget_transport = None
         if operation in MEMORY_BUDGET_PROFILES:
@@ -1630,6 +1658,9 @@ class ReleaseOracleExecution:
             answer["releaseTrace"]["promotionRankingTransport"] = promotion_transport
         if promotion_apply_transport is not None:
             answer["releaseTrace"]["promotionApplyTransport"] = promotion_apply_transport
+        if self.forget_lineage_profile is not None:
+            answer["releaseTrace"]["forgetLineageTransport"] = {
+                "profile": deepcopy(self.forget_lineage_profile), "traceFiles": entry_trace_files}
         if self.turn_taint_source is not None:
             if len(reference_source_imports) != 1:
                 raise RuntimeOracleError("The mixed profile must actually load its sole original source owner exactly once.")

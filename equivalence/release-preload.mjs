@@ -126,6 +126,23 @@ if (context.promotionApplyProfile !== undefined) {
     throw Error("Unapproved separate compiled promotion apply capability");
   }
 }
+if (context.forgetLineageProfile !== undefined) {
+  const profile = context.forgetLineageProfile;
+  const bindings = profile?.caseBindings;
+  if (!profile || Object.keys(profile).sort().join() !== "caseBindings,caseId,inputKind,kind,nodeRuntime,operation" ||
+      profile.kind !== "approved-forget-lineage-profile" || profile.operation !== "forget-lineage-runtime" ||
+      profile.inputKind !== "forget-lineage-tombstones" || !bindings || Object.keys(bindings).length !== 6 ||
+      hash(JSON.stringify(Object.fromEntries(Object.keys(bindings).sort().map(key => [key, bindings[key]])))) !==
+        "f969f52453664edcc52c4a8f4ac25f47817cc5b02f786e602348c66939c8209d" ||
+      !Object.hasOwn(bindings, profile.caseId) ||
+      JSON.stringify(profile.nodeRuntime) !== JSON.stringify(context.approvedNodeRuntime) ||
+      ["entryProvenanceProfile", "atomicPublicationProfile", "atomicCaseBinding", "bootstrapDiscoveryProfile",
+       "memoryBudgetProfile", "getReadRaceProfile", "promotionRankingProfile", "promotionApplyProfile"]
+        .some(key => context[key] !== undefined) ||
+      (context.approvedReferenceSources ?? []).length || (context.fixtureSourceCaptures ?? []).length) {
+    throw Error("Unapproved independent six-case forget/lineage capability");
+  }
+}
 const permitted = new Map();
 for (const entry of context.allowedLocal) {
   permitted.set(fs.realpathSync(entry.path), { kind: "oracle", path: fs.realpathSync(entry.path), sha256: entry.sha256 });
@@ -184,7 +201,8 @@ trace({ event: "bootstrap", isMainThread, ppid: process.ppid, contextSha256: has
         ...(context.memoryBudgetProfile ? { budgetProfile: context.memoryBudgetProfile } : {}),
         ...(context.getReadRaceProfile ? { getReadRaceProfile: context.getReadRaceProfile } : {}),
         ...(context.promotionRankingProfile ? { promotionProfile: context.promotionRankingProfile } : {}),
-        ...(context.promotionApplyProfile ? { promotionApplyProfile: context.promotionApplyProfile } : {}) });
+        ...(context.promotionApplyProfile ? { promotionApplyProfile: context.promotionApplyProfile } : {}),
+        ...(context.forgetLineageProfile ? { forgetLineageProfile: context.forgetLineageProfile } : {}) });
 // Native workers can log directly while retiring after the result is ready.
 // Reserve stdout for the runner's single process.stdout.write JSON envelope.
 // This executes in every worker as well as the parent, before native imports.

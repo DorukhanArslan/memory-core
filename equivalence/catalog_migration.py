@@ -7,6 +7,29 @@ ORIGINAL_PREFIX_SHA256 = "0fa31b6393c65303f4fa2e1663671e4ef60eb15edc563f05aba218
 ORIGINAL_PREFIX_CASES = 1452
 REGISTERED_CASES = 1465
 
+# PR22 changes these three policy texts, not the thirteen cases' business inputs,
+# order, coverage or other fields. Reversing only the exact reviewed fragments
+# must recover the original complete prefix hash after the existing Host mapping.
+_HOME_POLICIES = (
+    (("get-contract-tool-filesystem-policy", "get-contract-symlink-loop-cause-diagnostic"),
+     "The same exact owned prefix in HOME-abbreviated spelling is mapped using "
+     "the recorded fixtureHome, including error-escaped owned prefixes; unrelated home paths are unchanged. ", ""),
+    (("storage-path-contract-root-relative-and-absolute", "storage-path-contract-traversal-and-missing",
+      "storage-path-contract-encoded-literals-and-raw-boundaries", "storage-path-contract-symlink-admission",
+      "storage-path-contract-symlink-loop-os-errors", "storage-path-contract-nonregular-and-hardlinks",
+      "storage-path-contract-missing-workspace", "storage-path-contract-workspace-is-file",
+      "storage-path-contract-plain-extra-root-authority", "storage-path-contract-patterned-extra-root-admission"),
+     "prefix maps to $FIXTURE in JSON string values. Its HOME-abbreviated spelling "
+     "uses only the recorded fixtureHome, including error-escaped owned prefixes; "
+     "unrelated home paths are unchanged. Error wording, codes, causes, ",
+     "prefix maps to $FIXTURE in JSON string values. Error wording, codes, causes, "),
+    (("storage-path-read-race-owned-leaf-to-symlink",),
+     "private fixture-base prefix maps to $FIXTURE, including its HOME-abbreviated "
+     "spelling using recorded fixtureHome and error-escaped owned prefixes; "
+     "unrelated home paths, errors, causes, codes and all fields ",
+     "private fixture-base prefix maps to $FIXTURE; errors, causes, codes and all fields "),
+)
+
 # Reporting targets only. These IDs were selected from the independently retained
 # 1,452-case baseline's /data/mismatchPayloads keys; no expected output is stored.
 HISTORICAL_MISMATCH_REPORT_BASELINE_SHA256 = "7f858e165405d16bdf1d8973abb9fa60b8f2015531e4fc59e1735e8b8d43aaad"
@@ -33,8 +56,34 @@ def _sha(value):
                                     separators=(",", ":"), allow_nan=False).encode()).hexdigest()
 
 
+def _restore_reviewed_policies(prefix):
+    approved = {identifier: (current, prior) for identifiers, current, prior in _HOME_POLICIES
+                for identifier in identifiers}
+    changes, seen = [], set()
+    for index, actual in enumerate(prefix):
+        if actual["id"] not in approved:
+            continue
+        current, prior = approved[actual["id"]]
+        policy = actual.get("normalizationPolicy")
+        if not isinstance(policy, str):
+            raise ValueError("A reviewed HOME policy disappeared")
+        if current not in policy:
+            continue  # Historical unchanged catalogs retain their original authority.
+        if policy.count(current) != 1 or actual["id"] in seen:
+            raise ValueError("A reviewed HOME policy was duplicated or widened")
+        original = deepcopy(actual)
+        original["normalizationPolicy"] = policy.replace(current, prior, 1)
+        prefix[index] = original
+        seen.add(actual["id"])
+        changes.append({"index": index, "id": actual["id"], "field": "normalizationPolicy",
+                        "originalDefinitionSha256": _sha(original), "currentDefinitionSha256": _sha(actual)})
+    if seen and seen != set(approved):
+        raise ValueError("The thirteen reviewed HOME policy changes must migrate together")
+    return changes
+
+
 def definition_authority(cases, *, fif_version):
-    """Authenticate all values, permitting only four named Host replacements.
+    """Authenticate all values, permitting only the reviewed exact migrations.
 
     V5 is a historical suite identity with the unchanged original prefix. V6
     explicitly replaces the four old Host definitions with frozen V4 wrappers
@@ -50,6 +99,7 @@ def definition_authority(cases, *, fif_version):
         raise ValueError("Catalog migration changed or mixed the selected frozen FIF tail")
     frozen.validate_registration(cases)
     prefix = deepcopy(cases[:ORIGINAL_PREFIX_CASES])
+    policy_replacements = _restore_reviewed_policies(prefix)
     replacements = []
     if fif_version == "v6":
         from equivalence.host_turn_barrier import build_cases as original_hosts
@@ -80,7 +130,7 @@ def definition_authority(cases, *, fif_version):
     if (_sha(prefix) != ORIGINAL_PREFIX_SHA256
             or sum("fixtureSource" in case for case in cases) != 79
             or sum("diagnosticOnly" in case for case in cases) != 1):
-        raise ValueError("Catalog migration changed a definition outside its four Host whitelist")
+        raise ValueError("Catalog migration changed a definition outside its exact Host/HOME policy whitelist")
     tail = []
     if fif_version == "v6":
         for index, (prior, current) in enumerate(zip(forget_index_fence_v5.build_cases(), frozen.build_cases(), strict=True), ORIGINAL_PREFIX_CASES):
@@ -91,4 +141,4 @@ def definition_authority(cases, *, fif_version):
             "originalPrefixSha256": ORIGINAL_PREFIX_SHA256,
             "currentPrefixSha256": _sha(cases[:ORIGINAL_PREFIX_CASES]),
             "originalPrefixUnchanged": not replacements, "hostReplacements": replacements,
-            "fifReplacements": tail}
+            "fifReplacements": tail, "policyReplacements": policy_replacements}

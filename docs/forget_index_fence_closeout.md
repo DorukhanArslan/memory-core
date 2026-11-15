@@ -35,6 +35,7 @@ semantics remain available and unchanged.
 | Fresh Host v4 packet, `621c97b` | Four matches; strict replay passed | Same declared environment and complete public results |
 | Corrected test/map files and adjacent coverage, `5b729e9` | 269 passed in 21.50 seconds | Focused software regression evidence |
 | Hosted Python 3.11 and 3.12 | 9,365 passed, 7,213 skipped, zero failed per version | Both wheel/sdist consumers and typing checks also passed |
+| Subsequent watcher-observer correction, 2026-11-15 | 133 focused checks passed in 2.09 seconds; Ruff passed | Builtin lifecycle and pure validator regressions; no original memory engine or acceptance credit |
 
 Skipped tests and standalone packets add no acceptance credit. The hosted
 software tests executed synthetic merge `f23a3d1`; its complete Git tree is
@@ -72,8 +73,17 @@ remains unresolved. Removing the time check outright would also admit an old see
 notification, so a correction must prove the actual publication/delivery link.
 The original search separately returned its genuine 30-second timeout result.
 The diagnostic jobs verified the original ZIP/report hashes and retained event
-records without rerunning a comparison. No fix or new acceptance credit is
-claimed, and unflushed later activity remains unknown. Overall CI is not green.
+records without rerunning a comparison. Unflushed later activity remains unknown.
+Overall CI is not green.
+
+The subsequent observer correction accepts an early Chokidar add/change only
+when the original delivery and call arguments agree on the exact target path
+and final file identity within that target's original command. It still requires
+the later original snapshot and watcher settlement. Old seed notifications,
+different identities and mismatched arguments remain rejected. The ordinary
+post-receipt path is unchanged. The focused checks above run no original memory
+engine; they do not establish a successful corrected full comparison. Production
+SDK bytes, frozen inputs, deadlines and prior failed captures are unchanged.
 
 Local full003 remains its own historical measurement. It lost the earlier
 query-sync and host-turn outcome points, while their separate boundary points
@@ -113,9 +123,9 @@ interleaving. The older four-extra-hosted-mismatch investigation stays paused.
 
 ## Next work
 
-Correct the observer's publication/delivery association for step 19 while
-keeping stale notifications rejected. The existing failed capture stays failed.
-When full verification resumes, perform one complete comparison and independent
+The observer correction and its short checks are complete. The existing failed
+capture stays failed. When full verification resumes, perform one complete
+comparison and independent
 assessment for the finished package, rather than repeating it after small
 changes. The score stays 71/128 until that evidence supports an update.
 

@@ -78,13 +78,17 @@ The fresh hosted differential run fails globally with
 `forget-index-fence-evidence-invalid`, exit 2, summary `{}` and no case IDs.
 Inspection of the existing artifact identifies a timed-out Native keyword
 case at step 19: the observer rejects a genuine file notification arriving
-1.240903 ms before the writer's post-await receipt. This observer bug is not
-yet fixed. No comparison was rerun, and this is not labeled as the fourteen
+1.240903 ms before the writer's post-await receipt. The observer is now corrected:
+early notifications need matching original delivery/call arguments and the final
+file identity within the target command; stale notifications remain rejected.
+Its 133 focused checks passed in 2.09 seconds, with Ruff passing. These builtin
+and pure-validator checks run no original memory engine. No comparison was rerun,
+and the original failed result is preserved rather than labeled as the fourteen
 known mismatches.
 Overall CI is not green, and [PR #18](https://github.com/DorukhanArslan/memory-core/pull/18)
 remains draft and unmerged. Local full004 was prepared but never started.
-At the user's request, further long comparisons are deferred. The immediate
-follow-up is diagnosis from existing evidence, not another complete test run.
+The observer correction is complete. At the user's request, a fresh complete
+comparison and further long checks remain deferred.
 
 The scope stays **64 contracts/128 conditions**. The integrated catalog still
 has 1,465 cases: exactly four Host definitions move to V4 and thirteen forget
@@ -166,9 +170,9 @@ and [passive notice packet](next_turn_notice_observation_closeout.md) retain the
 original zero-credit identities. The older 71/128 and 72/128 full reports remain
 historical evidence and are not rewritten by full003.
 
-Next, correct that observer's publication/delivery association while keeping
-stale notifications rejected; preserve the original failed capture.
-A complete comparison and independent score assessment remain deferred to the
+The observer's publication/delivery correction and focused checks are complete;
+the original failed capture remains failed. A complete comparison and independent
+score assessment remain deferred to the
 package's verification closeout. The next proposed separate contract is
 `forget.lineage-tombstones`: preview and then delete a conversation's linked
 notes, with tombstones preventing relearning. Both implementations delete a

@@ -7,11 +7,13 @@ remaining acceptance work are tracked in [Full Equivalence Checklist](full-equiv
 The current v2026.9.9 [checklist](full-equivalence-checklist.md) records
 **71/128 verified conditions, 57 remaining**. The
 [forget/index-fence partial closeout](forget_index_fence_closeout.md) describes
-the SDK fixes, passing bounded preflights and current-source software checks.
-Hosted Python 3.11/3.12 each pass 9,365 tests, but the separate differential
+the SDK fixes, passing bounded preflights and software checks.
+Hosted code head `5b729e9` passes 9,365 tests per version on Python 3.11/3.12,
+but the separate differential
 run fails globally after a Native keyword case times out. Existing evidence
-identifies an observer time-order false rejection at step 19; its correction
-is pending. No full004 or new
+identifies an observer time-order false rejection at step 19. The observer is now
+corrected, retaining stale-notification rejection; 133 focused checks passed in
+2.09 seconds and Ruff passed, without an original memory engine. No full004 or new
 acceptance credit is claimed; PR #18 remains draft and unmerged. Source
 classification stays `partial`, source-build reproduction stays false and
 full equivalence is not established. These results do not promote any

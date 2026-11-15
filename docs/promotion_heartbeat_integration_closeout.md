@@ -8,14 +8,18 @@ mismatches and four blocked cases**, exit 2. The scope remains 64 contracts and
 128 conditions; the forget/index-fence contract stays 0/2.
 
 Later SDK corrections have bounded paired preflight evidence and **269 focused
-passing checks**. Current-source hosted Python 3.11/3.12 each pass **9,365 tests**,
+passing checks**. Hosted code head `5b729e9` passes **9,365 tests per version**
+on Python 3.11/3.12,
 with 7,213 uncredited skips, zero failures and successful wheel/sdist consumers.
 The separate hosted differential run fails globally after its Native keyword
 case times out. Reading the existing artifact established an observer time-order
-false rejection at step 19 without rerunning a test; its correction is pending. Overall CI is not
-green, PR #18 remains draft and unmerged,
+false rejection at step 19 without rerunning a comparison. The observer correction
+is now implemented; 133 focused checks passed in 2.09 seconds and Ruff passed,
+without running an original memory engine. Overall CI is not green, PR #18
+remains draft and unmerged,
 and no new local full004 was run. Further long comparisons are deferred at the
-user's request; the next step is diagnosis from existing evidence. These
+user's request; verification of the corrected complete comparison is still
+deferred. These
 updates award zero conditions and do not relabel the historical maintenance
 results below. Source classification remains `partial`.
 

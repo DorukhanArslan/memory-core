@@ -11,6 +11,68 @@ import re
 
 
 
+def _watch_fact_after_publication(fact, target, decode):
+    """Match a previously authenticated target without guessing its rename time.
+
+    A watcher can see the new inode before the writer resumes its awaited
+    rename. That early path requires the original Chokidar delivery and dirty
+    call to carry the same final Stats, not merely a later snapshot of the file.
+    """
+    from equivalence.harness import _same_json
+
+    def ns(value):
+        if not isinstance(value, str) or re.fullmatch(r"[0-9]+", value) is None:
+            raise ValueError("Missing original monotonic timestamp")
+        return int(value)
+
+    def safe_number(value):
+        return (type(value) in (int, float) and -(2**53 - 1) <= value <= 2**53 - 1
+                and int(value) == value)
+
+    def decoded(carrier):
+        if not isinstance(carrier, dict) or set(carrier) != {"v8Hex"}:
+            raise ValueError("Missing cloneable original argument")
+        if not isinstance(carrier["v8Hex"], str):
+            raise ValueError("Malformed original argument carrier")
+        return decode(carrier)
+
+    try:
+        returned, committed = ns(fact["returnedAtNs"]), ns(target["committedAtNs"])
+        if returned >= committed:
+            return True
+        delivery = fact["delivery"]
+        if (target["kind"] != "file" or delivery["kind"] != "chokidar"
+                or delivery["eventName"] not in {"add", "change"}
+                or not ns(target["causalFrame"]["enteredAtNs"]) <= ns(fact["enteredAtNs"]) < returned):
+            return False
+        values = fact["argumentValues"]
+        if not isinstance(values, list) or len(values) != 2:
+            return False
+        arguments = [decoded(fact["arguments"]), decoded(delivery["arguments"]),
+                     [decoded(value) for value in values]]
+        if not all(isinstance(value, list) and len(value) == 2
+                   and value[0] == target["path"] for value in arguments):
+            return False
+        if not all(_same_json(arguments[0], value) for value in arguments[1:]):
+            return False
+        actual, expected = arguments[0][1], target["stat"]
+        if not isinstance(actual, dict) or not isinstance(expected, dict):
+            return False
+        for name in ("dev", "ino", "size", "mode", "nlink"):
+            value = expected[name]
+            if (not isinstance(value, str) or re.fullmatch(r"-?[0-9]+", value) is None
+                    or not safe_number(actual[name]) or str(int(actual[name])) != value):
+                return False
+        value = expected["mtimeNs"]
+        if not isinstance(value, str) or re.fullmatch(r"-?[0-9]+", value) is None:
+            return False
+        mtime_ns = int(value)
+        return (mtime_ns % 1_000_000 == 0 and safe_number(actual["mtimeMs"])
+                and actual["mtimeMs"] == mtime_ns // 1_000_000)
+    except (KeyError, TypeError, ValueError, OverflowError):
+        return False
+
+
 def _opaque_native_reconciliation_return(returned, delivery, context, pid, *, approved_adapter_root=None):
     """Authenticate an actual uncloneable callback Promise without replacing it.
 
@@ -399,7 +461,7 @@ def validate_native_watch_v5(case, raw, actors, commands, passive, context, impo
                     fact = facts[proof['factId']]
                     require(proof['versionId'] == target['versionId'] and fact['path'] == target['path']
                             and fact['delivery']['deliveryId'] == proof['deliveryId']
-                            and _ns(fact['returnedAtNs']) >= _ns(target['committedAtNs']),
+                            and _watch_fact_after_publication(fact, target, wire),
                             'Native watcher fact preceded or borrowed another committed version')
                     probes = [r for r in rows if r['event'] in {'original-watch-version-stat-return', 'original-watch-version-stat-throw'}
                               and r['path'] == target['path'] and _ns(r['finishedAtNs']) >= _ns(fact['enteredAtNs'])]

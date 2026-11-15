@@ -9,6 +9,7 @@ import {AsyncLocalStorage,createHook,executionAsyncId} from 'node:async_hooks';
 import {EventEmitter} from 'node:events';
 import {threadId,getEnvironmentData,setEnvironmentData} from 'node:worker_threads';
 import {deflateRawSync} from 'node:zlib';
+import {isDeepStrictEqual} from 'node:util';
 
 const digest=bytes=>createHash('sha256').update(bytes).digest('hex');
 const now=()=>process.hrtime.bigint().toString();
@@ -321,8 +322,30 @@ export function observeOriginalWatchEffects({ref,event=()=>{},onFailure=()=>{},q
    if(!ready&&!native.length)fail('No actual original ready watcher coverage');receipt.owners.push(row);record.ready=row;
   }receipt.finishedAtNs=now();emit('original-watch-ready-return',receipt);return receipt;
  }
+ function earlyFileDelivery(fact,version){
+  // An OS notification can precede the writer's post-await rename receipt.
+  // Admit it only when the original delivered arguments already identify this
+  // final file version within its actual command; a later stat alone is not enough.
+  try{
+   if(version.kind!=='file'||fact.delivery?.kind!=='chokidar'||
+      !['add','change'].includes(fact.delivery.eventName))return false;
+   const times=[version.causalFrame?.enteredAtNs,fact.enteredAtNs,fact.returnedAtNs,version.committedAtNs];
+   if(times.some(value=>typeof value!=='string'||!/^[0-9]+$/.test(value)))return false;
+   const[start,entered,returned,committed]=times.map(BigInt);
+   if(!(start<=entered&&entered<returned&&returned<committed))return false;
+   const stat=version.stat,mtime=BigInt(stat.mtimeNs);
+   if(mtime%1_000_000n!==0n||!Array.isArray(fact.argumentValues)||fact.argumentValues.length!==2)return false;
+   const decode=value=>deserialize(Buffer.from(value.v8Hex,'hex'));
+   const argumentsSets=[decode(fact.delivery.arguments),decode(fact.arguments),fact.argumentValues.map(decode)];
+   if(!isDeepStrictEqual(argumentsSets[0],argumentsSets[1])||!isDeepStrictEqual(argumentsSets[1],argumentsSets[2]))return false;
+   return argumentsSets.every(args=>Array.isArray(args)&&args.length===2&&args[0]===version.path&&
+    args[1]!==null&&typeof args[1]==='object'&&!Array.isArray(args[1])&&
+    ['dev','ino','size','mode','nlink'].every(key=>Number.isSafeInteger(args[1][key])&&String(args[1][key])===stat[key])&&
+    Number.isSafeInteger(args[1].mtimeMs)&&args[1].mtimeMs===Number(mtime/1_000_000n));
+  }catch{return false;}
+ }
  function factMatches(record,version){return record.facts.find(fact=>fact.path===version.path&&fact.delivery&&
-  BigInt(fact.returnedAtNs)>=BigInt(version.committedAtNs)&&(
+  (BigInt(fact.returnedAtNs)>=BigInt(version.committedAtNs)||earlyFileDelivery(fact,version))&&(
    version.kind==='deleted'?sourceReads.some(read=>read.path===version.path&&read.error?.code==='ENOENT'&&
     BigInt(read.finishedAtNs)>=BigInt(fact.enteredAtNs)):
    sourceReads.some(read=>read.path===version.path&&BigInt(read.finishedAtNs)>=BigInt(fact.enteredAtNs)&&

@@ -1,8 +1,8 @@
 {
   "kind": "forget-index-fence-acceptance-diagnostics",
-  "preparedAt": "2026-11-14",
-  "status": "partial-implementation-closeout-71-of128-offline-success-hosted-differential-globally-blocked-full004-deferred",
-  "method": "Documentation closes the existing implementation package from sealed local receipts, strict replay/root assessments and completed current-source hosted job logs supplied by independent review. No new long test, engine, artifact download or temporary-copy removal is performed for this closeout. Latest independently assessed coverage remains71/128; historical executions and their original failed statuses are preserved. Complete equivalence and merge readiness are not claimed.",
+  "preparedAt": "2026-11-15",
+  "status": "partial-implementation-closeout-71-of128-observer-corrected-focused-checks-passed-full-comparison-deferred",
+  "method": "Existing sealed receipts and source-bound artifact inspection retain their original execution results. The subsequent watcher-observer correction is checked only with builtin lifecycle, pure validator and source-anchor regressions. No new original memory engine, long comparison or temporary-copy removal is performed. Latest independently assessed coverage remains 71/128; complete equivalence and merge readiness are not claimed.",
   "fixedContract": {
     "reference": {
       "tag": "v2026.9.9",
@@ -1371,7 +1371,7 @@
     "sameConfigRetryNotAValidResolution": true
   },
   "nextWork": {
-    "status": "partial-closeout-complete-bounded-current-hosted-authority-diagnosis-next",
+    "status": "watcher-observer-corrected-focused-checks-passed-full-verification-deferred",
     "latestActualAssessment": {
       "verified": 71,
       "remaining": 57,
@@ -1403,7 +1403,7 @@
     "rootFinalAcceptanceAudit": null,
     "mergeReady": false,
     "olderHeldArtifactInvestigationResumed": false,
-    "ownedDocsOnlyNoIntegrationOrCommit": true,
+    "ownedDocsOnlyNoIntegrationOrCommit": false,
     "hostedCorrected5bPython312AllTestsAndConsumersSuccess": true,
     "remaining5bPython311AndDifferentialPending": false,
     "primaryAndTmp5b1184FilesEqual": true,
@@ -3707,17 +3707,18 @@
     "forgetIndexFenceVerified": 0,
     "forgetIndexFenceConditions": 2,
     "focusedChecksPassed": 269,
-    "currentSourceHostedPython311And312": "success",
-    "hostedDifferential": "globally blocked; step19 observer false rejection established from existing artifacts, correction pending",
+    "currentSourceHostedPython311And312": "historical 5b729e9/f23a3d1 success; subsequent observer correction not rerun in hosted whole suites",
+    "hostedDifferential": "original run remains globally blocked; subsequent observer correction has focused checks only",
     "full004Started": false,
     "full004DeferredAtUserRequestForLighterWorkflow": true,
     "temporaryCopyRemovalPartOfThisCloseout": false,
     "allPreservedTemporaryOriginalsRemainLive": true,
     "draftPullRequest": 18,
     "merged": false,
-    "immediateNextWork": "Correct publication/delivery association in the watcher observer while retaining stale-notification rejection; no full rerun planned.",
+    "immediateNextWork": "One complete comparison and independent assessment when full verification resumes; no automatic full rerun planned.",
     "nextFeatureAfterVerificationIssue": "forget.lineage-tombstones",
-    "smallChangesUseFocusedChecksAndFullComparisonOnceAtVerificationCloseout": true
+    "smallChangesUseFocusedChecksAndFullComparisonOnceAtVerificationCloseout": true,
+    "observerCorrectionFocusedChecksPassed": 133
   },
   "currentHostedFailureInspection": {
     "sourceRun": 43673106847,
@@ -3759,14 +3760,49 @@
     "observerReceiptLagNs": 1240903,
     "observerFalseRejectionEstablished": true,
     "productForgetFailureEstablished": false,
-    "fixImplemented": false,
+    "fixImplemented": true,
     "oldSeedNotificationWouldPassIfTimeGuardRemoved": true,
-    "newTestsOrEnginesExecuted": false,
     "newAcceptancePointsAwarded": 0,
     "limits": "Persisted channel and authenticated prefix only; no claim about lost unflushed activity or future corrected-run success.",
     "localRootAnalysis": {
       "path": "work/forget-index-fence/current-ci-bounded-diagnostic/watch-barrier-root-cause.json",
       "sha256": "cafc839465c892546a94a9cb5092089a8021608e1d6ffb6b012208571202c3b3"
-    }
+    },
+    "rootCauseInspectionRanTestsOrEngines": false
+  },
+  "watcherObserverCorrection": {
+    "implementedAt": "2026-11-15",
+    "scope": "Comparison observer and independent Native watcher evidence predicate only; no production SDK change.",
+    "earlyAlternative": "Only Chokidar add/change of a file within its authenticated target command; all three actual argument carriers must agree on exact path and final dev/ino/size/mode/nlink plus exact millisecond-aligned mtime.",
+    "existingPostReceiptPathUnchanged": true,
+    "laterOriginalSnapshotAndWatcherSettlementStillRequired": true,
+    "staleSeedNotificationStillRejected": true,
+    "frozenInputsAndDeadlinesUnchanged": true,
+    "originalFailedCaptureStillFailed": true,
+    "originalMemoryEnginesRun": false,
+    "freshFullComparisonRun": false,
+    "hostedWholeSuitesRerun": false,
+    "newAcceptancePointsAwarded": 0,
+    "focusedChecks": {
+      "modules": [
+        "tests/equivalence/test_forget_index_fence_watch_effects.py",
+        "tests/equivalence/test_forget_index_fence_watch_publication.py",
+        "tests/equivalence/test_forget_index_fence_watch_source_lines.py"
+      ],
+      "passed": 133,
+      "failed": 0,
+      "skipped": 0,
+      "durationSeconds": 2.09,
+      "exit": 0,
+      "meaning": "Builtin watcher lifecycle doubles, pure decoded-predicate doubles and source-anchor guards; no original-capture validation or acceptance credit.",
+      "ruff": "passed on the three changed Python files"
+    },
+    "sourceSha256": {
+      "equivalence/forget-index-fence-source-clock.mjs": "f841d7e3cba47f77db4d6544de8be6c31c0ed759c81ac4d2132ebe3e7e625de2",
+      "equivalence/forget_index_fence_native_watch_evidence.py": "511e0cd1e0385b956bf4bb8569bfee09555f9d427ea309d6fb7a0272ecc5b054",
+      "tests/equivalence/test_forget_index_fence_watch_effects.py": "1b112325eb8ea775e3dd118d21d138ac032912c29bf5ea6df3d95b1226d333c4",
+      "tests/equivalence/test_forget_index_fence_watch_publication.py": "4d258131b12b7fcac151884577c85e5c8f704081466aa19483aa388c1e937692"
+    },
+    "limits": "Fresh corrected original-engine execution and full independent assessment remain deferred; score stays 71/128 and PR18 stays draft/unmerged."
   }
 }

@@ -115,6 +115,67 @@ assert.equal(syncCalls,1);
 ''')
 
 
+def test_final_file_delivery_can_precede_the_writer_await_receipt(node, tmp_path):
+    run(node, tmp_path, r'''
+const enteredAtNs=process.hrtime.bigint().toString();
+const version=await committedVersion('early.md','actual final bytes');
+version.causalFrame={enteredAtNs};
+emitOriginalSource('change',version.path,await fsp.stat(version.path));
+const delivered=registered.facts.at(-1);
+// A labelled protocol fixture: the writer records its awaited return after delivery.
+version.committedAtNs=process.hrtime.bigint().toString();
+assert.ok(BigInt(delivered.returnedAtNs)<BigInt(version.committedAtNs));
+let completed=false;
+const waiting=control.waitForVersions([owner],'early-publication',[version]).then(value=>{completed=true;return value;});
+while(syncCalls===0)await turn();
+assert.equal(completed,false);held.resolve('actual sync settlement');
+const result=await waiting;
+assert.equal(result.owners[0].facts[0].factId,delivered.factId);
+assert.ok(result.owners[0].promises.some(row=>row.kind==='watch-sync'&&row.settlement.status==='fulfilled'));
+assert.equal(syncCalls,1);
+''')
+
+
+@pytest.mark.parametrize("attack", [
+    "before-command", "missing-frame", "missing-stats", "wrong-delivered-stats",
+    "dev", "ino", "size", "mode", "nlink", "mtimeMs",
+])
+def test_early_delivery_needs_its_own_final_identity_even_after_a_later_matching_read(node, tmp_path, attack):
+    run(node, tmp_path, "const attack=" + json.dumps(attack) + ";\n" + r'''
+const enteredAtNs=process.hrtime.bigint().toString();
+const version=await committedVersion('guarded.md','actual final bytes');
+version.causalFrame={enteredAtNs};
+const originalStats=await fsp.stat(version.path),deliveredStats={...originalStats};
+if(['dev','ino','size','mode','nlink','mtimeMs'].includes(attack))deliveredStats[attack]+=1;
+function changeAfterDelivery(_filename,stats){stats.ino=originalStats.ino;}
+if(attack==='wrong-delivered-stats'){
+ deliveredStats.ino-=1;emitter.prependListener('change',changeAfterDelivery);
+}
+if(attack==='missing-stats')emitOriginalSource('change',version.path);
+else emitOriginalSource('change',version.path,deliveredStats);
+emitter.removeListener('change',changeAfterDelivery);
+const staleFact=registered.facts.at(-1);
+if(attack==='before-command')version.causalFrame.enteredAtNs=process.hrtime.bigint().toString();
+if(attack==='missing-frame')delete version.causalFrame;
+version.committedAtNs=process.hrtime.bigint().toString();
+let completed=false;
+const waiting=control.waitForVersions([owner],'reject-stale-publication',[version]).then(value=>{completed=true;return value;});
+while(syncCalls===0)await turn();
+held.resolve('settled before the negative assertion');
+while(watcher.watchTimer||watcher.settling||watcher.reconciling)await turn();
+await turn();
+assert.equal(watcher.pendingChange,false);
+assert.ok(rows.some(row=>row.event==='original-watch-version-stat-return'&&row.path===version.path&&
+ row.size===version.stat.size&&row.ino===version.stat.ino&&row.mtimeMs===Number(BigInt(version.stat.mtimeNs)/1_000_000n)));
+// The original work has drained; the later matching read cannot rescue a stale notification.
+assert.equal(completed,false);
+emitOriginalSource('change',version.path,await fsp.stat(version.path));
+const result=await waiting;
+assert.notEqual(result.owners[0].facts[0].factId,staleFact.factId);
+assert.equal(syncCalls,2);
+''')
+
+
 def test_absent_owner_and_no_mutations_are_explicit_absence(node, tmp_path):
     run(node, tmp_path, r'''
 const transient={purpose:'cli'},result=await control.waitForVersions([transient,owner],'no-source-mutation',[]);

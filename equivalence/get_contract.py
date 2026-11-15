@@ -4,6 +4,8 @@ from __future__ import annotations
 from copy import deepcopy
 from dataclasses import replace
 import json
+import os
+import re
 from pathlib import Path
 import tempfile
 from typing import Any
@@ -36,6 +38,8 @@ _FILESYSTEM_POLICY = _POLICY.replace(
     "no output path normalization occurs.",
     "only the filesystem cases map the exact owned private fixture-base prefix to "
     "$FIXTURE in JSON string values after the complete wire envelope validates. "
+    "The same exact owned prefix in HOME-abbreviated spelling is mapped using "
+    "the recorded fixtureHome, including error-escaped owned prefixes; unrelated home paths are unchanged. "
     "Error words/codes, every field, list order and raw envelopes remain intact.",
 )
 
@@ -290,6 +294,10 @@ def _run_boundary(value: dict[str, Any], *, evidence_directory: Path | None) -> 
 
     with tempfile.TemporaryDirectory(prefix="memory-get-contract-") as temporary:
         directory = Path(temporary)
+        fixture_home = os.environ.get("USERPROFILE" if os.name == "nt" else "HOME")
+        if fixture_home is None:
+            fixture_home = str(Path.home())
+        path_identity = {"fixtureHome": fixture_home} if value.get("normalizeFixturePaths") else {}
         workspace, outside = directory / "workspace", directory / "outside"
         workspace_kind = value.get("workspaceKind", "directory")
         if workspace_kind == "directory":
@@ -376,31 +384,52 @@ def _run_boundary(value: dict[str, Any], *, evidence_directory: Path | None) -> 
             steps.append(result)
             raw.append({"index": index, "params": params, **deepcopy(wire),
                         "requests": deepcopy(requests), "fixtureBase": str(directory),
-                        "factoryExecuted": True, "provider": "none"})
+                        "factoryExecuted": True, "provider": "none", **path_identity})
         observed = {"provider": "none", "steps": steps, "requests": requests}
         if filesystem is not None:
             filesystem["after"] = snapshot_get_fixture(directory)
             observed["filesystem"] = derive_get_filesystem_observation(filesystem)
-            snapshot_record = {"kind": "filesystem", "fixtureBase": str(directory), "filesystem": filesystem}
+            snapshot_record = {"kind": "filesystem", "fixtureBase": str(directory),
+                               "filesystem": filesystem, **path_identity}
             if race_observation is not None:
                 snapshot_record["readRace"] = race_observation
                 observed["readRace"] = derive_get_read_race_observation(race_observation, str(directory), native=False)
             raw.append(snapshot_record)
         _write_evidence(evidence_directory, raw)
-        return map_get_fixture_paths(observed, directory) if value.get("normalizeFixturePaths") else observed
+        return (map_get_fixture_paths(observed, directory, fixture_home=fixture_home)
+                if value.get("normalizeFixturePaths") else observed)
 
 
-def map_get_fixture_paths(value: Any, fixture_base: str | Path) -> Any:
-    """Map only the exact owned fixture base in complete JSON string values."""
+def map_get_fixture_paths(value: Any, fixture_base: str | Path, *, fixture_home: str | None = None) -> Any:
+    """Map the owned base; its HOME spelling requires an explicit recorded home."""
     base = str(fixture_base).rstrip("/")
     if not base or not Path(base).is_absolute():
         raise ValueError("A private absolute fixture base is required")
+    if fixture_home is not None and (not isinstance(fixture_home, str)
+                                    or (fixture_home and not Path(fixture_home).is_absolute())):
+        raise ValueError("A recorded absolute fixture home is required")
     if isinstance(value, str):
-        return "$FIXTURE" if value == base else value.replace(base + "/", "$FIXTURE/")
+        aliases = [(base, True)]
+        if fixture_home is not None:
+            prefix = fixture_home if fixture_home.endswith("/") else fixture_home + "/"
+            if base == fixture_home or base + "/" == prefix:
+                aliases.append(("~", base == fixture_home))
+            elif base.startswith(prefix):
+                aliases.append(("~/" + base[len(prefix):], True))
+            for alias, exact in list(aliases):
+                escaped = re.sub(r"[\x00-\x1f\x7f-\x9f\u2028\u2029]",
+                                 lambda match: f"\\u{ord(match[0]):04x}", alias)
+                if escaped != alias:
+                    aliases.append((escaped, exact))
+        for alias, exact in sorted(aliases, key=lambda item: len(item[0]), reverse=True):
+            if exact and value == alias:
+                return "$FIXTURE"
+            value = value.replace(alias + "/", "$FIXTURE/")
+        return value
     if isinstance(value, list):
-        return [map_get_fixture_paths(item, base) for item in value]
+        return [map_get_fixture_paths(item, base, fixture_home=fixture_home) for item in value]
     if isinstance(value, dict):
-        return {key: map_get_fixture_paths(item, base) for key, item in value.items()}
+        return {key: map_get_fixture_paths(item, base, fixture_home=fixture_home) for key, item in value.items()}
     return deepcopy(value)
 
 

@@ -357,7 +357,7 @@ def _validate_scope(scope: Any, cases: Any) -> tuple[list[dict], dict[str, set[s
         validate_query_sync_boundary_registration(cases)
     except ValueError as error:
         raise HarnessError("cases-invalid", str(error)) from None
-    from equivalence.forget_index_fence_v5 import validate_registration as validate_forget_index_fence_registration
+    from equivalence.forget_index_fence_v6 import validate_registration as validate_forget_index_fence_registration
 
     try:
         validate_forget_index_fence_registration(cases)
@@ -381,10 +381,10 @@ def _oracle(node: Path, script: Path, checkout: Path, cases: list[dict], timeout
     query_sync_boundary_case = len(cases) == 1 and cases[0]["operation"] == "query-sync-boundaries-runtime"
     if any(case.get("operation") == "query-sync-boundaries-runtime" for case in cases) and not query_sync_boundary_case:
         raise HarnessError("query-sync-boundary-capability-invalid", "Query-sync boundaries require one exact isolated dispatch.")
-    if any(case.get("operation") in {"forget-index-fence-runtime", "forget-index-fence-v2-runtime", "forget-index-fence-v3-runtime", "forget-index-fence-v4-runtime"} for case in cases):
-        raise HarnessError("forget-index-fence-version-invalid", "Original v1/v2/v3/v4 forget/index-fence inputs remain unregistered diagnostics.")
-    forget_index_fence_case = len(cases) == 1 and cases[0]["operation"] == "forget-index-fence-v5-runtime"
-    if any(case.get("operation") == "forget-index-fence-v5-runtime" for case in cases) and not forget_index_fence_case:
+    if any(case.get("operation") in {"forget-index-fence-runtime", "forget-index-fence-v2-runtime", "forget-index-fence-v3-runtime", "forget-index-fence-v4-runtime", "forget-index-fence-v5-runtime"} for case in cases):
+        raise HarnessError("forget-index-fence-version-invalid", "Original v1/v2/v3/v4/v5 forget/index-fence inputs remain unregistered diagnostics.")
+    forget_index_fence_case = len(cases) == 1 and cases[0]["operation"] == "forget-index-fence-v6-runtime"
+    if any(case.get("operation") == "forget-index-fence-v6-runtime" for case in cases) and not forget_index_fence_case:
         raise HarnessError("forget-index-fence-capability-invalid", "Forget/index-fence requires one exact isolated dispatch.")
     timeout_limit = 180 if boundary_case or query_sync_boundary_case or forget_index_fence_case else 120
     if not isinstance(timeout, (int, float)) or isinstance(timeout, bool) or not 0 < timeout <= timeout_limit:
@@ -613,7 +613,7 @@ def _oracle(node: Path, script: Path, checkout: Path, cases: list[dict], timeout
                                          "retainedDirectory": str(attempt), "reason": str(error)}
             raise failure from error
     if forget_index_fence_case:
-        from equivalence.forget_index_fence_v5 import validate_case as validate_forget_index_fence_case
+        from equivalence.forget_index_fence_v6 import validate_case as validate_forget_index_fence_case
 
         try:
             validate_forget_index_fence_case(cases[0])
@@ -623,7 +623,7 @@ def _oracle(node: Path, script: Path, checkout: Path, cases: list[dict], timeout
 
         if release_runtime is None:
             raise HarnessError("release-runtime-unavailable", "Whole forget/index-fence requires its authenticated release runtime.")
-        retained = ROOT / ".equivalence-results" / "forget-index-fence-v5"
+        retained = ROOT / ".equivalence-results" / "forget-index-fence-v6"
         retained.mkdir(parents=True, exist_ok=True)
         attempt = Path(tempfile.mkdtemp(prefix="attempt-", dir=retained)) / "case"
         try:
@@ -1002,7 +1002,7 @@ def _query_sync_boundaries_family_complete(rows: list[dict]) -> bool:
 
 def _forget_index_fence_family_complete(rows: list[dict]) -> bool:
     """Both original points require every exact member and affirmative paired custody."""
-    from equivalence.forget_index_fence_v5 import CASE_HASHES, family_members, validate_registration
+    from equivalence.forget_index_fence_v6 import CASE_HASHES, family_members, validate_registration
 
     family = family_members(rows)
     if (len(family) != len(CASE_HASHES)
@@ -1018,12 +1018,12 @@ def _forget_index_fence_family_complete(rows: list[dict]) -> bool:
 
 
 def _forget_index_fence_raw_file(directory: Path, side: str) -> tuple[Path, Any]:
-    """Select only the actual owned V5 transport file, without following aliases."""
+    """Select only the actual owned V6 transport file, without following aliases."""
     names = {"native": "evidence/native-raw.json", "python": "python-raw.json"}
     if side not in names:
         raise ValueError("Unknown forget/index-fence capture side")
     directory = Path(directory)
-    root = ROOT / ".equivalence-results" / "forget-index-fence-v5"
+    root = ROOT / ".equivalence-results" / "forget-index-fence-v6"
     if (not directory.is_absolute() or ".." in directory.parts
             or directory.resolve(strict=True) != directory
             or root.resolve(strict=True) != root
@@ -1037,7 +1037,7 @@ def _forget_index_fence_raw_file(directory: Path, side: str) -> tuple[Path, Any]
         if not stat.S_ISREG(info.st_mode) or info.st_nlink != 1 or info.st_size > 128 * 1024 * 1024:
             raise ValueError("Invalid original forget/index-fence diagnostic file")
     else:
-        _validate_python_runtime_diagnostic_file(info, "forget-index-fence-v5-runtime")
+        _validate_python_runtime_diagnostic_file(info, "forget-index-fence-v6-runtime")
     return path, info
 
 
@@ -1115,9 +1115,9 @@ def _load_forget_index_fence_reference(reference: dict, side: str, directory: Pa
 
 
 def _seal_forget_index_fence_references(report: dict, expected_references: dict) -> None:
-    """Rehash every V5 capture before credit; earlier families retain their inline format."""
+    """Rehash every V6 capture before credit; earlier families retain their inline format."""
     rows = {row["id"]: row for row in report["cases"]
-            if row.get("operation") == "forget-index-fence-v5-runtime"}
+            if row.get("operation") == "forget-index-fence-v6-runtime"}
     for identifier, row in rows.items():
         try:
             diagnostics = [item for item in report["runtimeDiagnostics"] if item.get("id") == identifier]
@@ -1177,14 +1177,14 @@ def _seal_forget_index_fence_authorities(report: dict, *, checkout: Path,
             raise ValueError("The independently selected original authority changed")
     except (KeyError, TypeError, OSError, ValueError, RuntimeError) as error:
         for row in report["cases"]:
-            if row.get("operation") == "forget-index-fence-v5-runtime":
+            if row.get("operation") == "forget-index-fence-v6-runtime":
                 row.update(status="blocked", code="forget-index-fence-authority-changed", runtimeEvidenceValidated=False)
         raise HarnessError("runtime-evidence-changed", "Original forget/index-fence source/artifact/executable owners changed before the final seal.") from error
 
 
 def _validate_python_runtime_diagnostic_file(info: Any, operation: str) -> None:
     """Bound complete SDK custody without truncating or deduplicating its bytes."""
-    limit_mib = (512 if operation in {"forget-index-fence-runtime", "forget-index-fence-v2-runtime", "forget-index-fence-v3-runtime", "forget-index-fence-v4-runtime", "forget-index-fence-v5-runtime"} else
+    limit_mib = (512 if operation in {"forget-index-fence-runtime", "forget-index-fence-v2-runtime", "forget-index-fence-v3-runtime", "forget-index-fence-v4-runtime", "forget-index-fence-v5-runtime", "forget-index-fence-v6-runtime"} else
                  32 if operation == "host-turn-barrier-boundaries-runtime" else 16)
     if (not stat.S_ISREG(info.st_mode) or info.st_nlink != 1
             or info.st_size > limit_mib * 1024 * 1024):
@@ -1292,7 +1292,7 @@ def run_suite(*, checkout: Path, node: Path, smoke: bool = False,
             "index-identity-boundaries-runtime",
             "query-sync-outcomes-runtime",
             "query-sync-boundaries-runtime",
-            "forget-index-fence-v5-runtime",
+            "forget-index-fence-v6-runtime",
         }
         runtime_cases = [case for case in cases if case["operation"] in runtime_operations]
         source_cases = [case for case in cases if case["operation"] not in runtime_operations]
@@ -1665,7 +1665,7 @@ def run_suite(*, checkout: Path, node: Path, smoke: bool = False,
                 report["querySyncBoundariesBindings"] = prepare_query_sync_boundaries_bindings(
                     checkout, Path(runtime_config["runtimeRoot"]))
                 report["querySyncBoundariesNode"] = prepare_model_node_authority(node)
-            if any(case["operation"] == "forget-index-fence-v5-runtime" for case in runtime_cases):
+            if any(case["operation"] == "forget-index-fence-v6-runtime" for case in runtime_cases):
                 from equivalence.forget_index_fence_bindings import prepare_forget_index_fence_bindings
                 from equivalence.model_runtime_authority import prepare_model_node_authority
 
@@ -1678,7 +1678,7 @@ def run_suite(*, checkout: Path, node: Path, smoke: bool = False,
                 # case gets one fresh process; failed cases are never retried.
                 try:
                     native = _oracle(node, ROOT / "equivalence/release-oracle.mjs", checkout, [case],
-                                     max(timeout_seconds, 180 if case["operation"] in {"host-turn-barrier-boundaries-runtime", "query-sync-boundaries-runtime", "forget-index-fence-v5-runtime"} else
+                                     max(timeout_seconds, 180 if case["operation"] in {"host-turn-barrier-boundaries-runtime", "query-sync-boundaries-runtime", "forget-index-fence-v6-runtime"} else
                                          120 if case["operation"] in {"host-turn-barrier-runtime", "index-identity-boundaries-runtime", "query-sync-outcomes-runtime"} else 60),
                                      release_runtime=runtime_config)
                 except HarnessError:
@@ -1694,7 +1694,7 @@ def run_suite(*, checkout: Path, node: Path, smoke: bool = False,
                     )
                 report["runtimeDiagnostics"].extend(
                     {"side": "native", **diagnostic} for diagnostic in native["runtimeDiagnostics"])
-                if case["operation"] == "forget-index-fence-v5-runtime":
+                if case["operation"] == "forget-index-fence-v6-runtime":
                     for diagnostic in native["runtimeDiagnostics"]:
                         forget_reference_seals[case["id"], "native"] = dict(diagnostic["rawSnapshotReference"])
             try:
@@ -1908,10 +1908,10 @@ def run_suite(*, checkout: Path, node: Path, smoke: bool = False,
                 try:
                     python_case = deepcopy(case)
                     if case in python_diagnostic_cases:
-                        if case["operation"] in {"index-identity-boundaries-runtime", "query-sync-outcomes-runtime", "query-sync-boundaries-runtime", "forget-index-fence-v5-runtime"}:
+                        if case["operation"] in {"index-identity-boundaries-runtime", "query-sync-outcomes-runtime", "query-sync-boundaries-runtime", "forget-index-fence-v6-runtime"}:
                             # Keep the original child paths and bytes for the post-run
                             # semantic replay, including failed SDK captures.
-                            family = ("forget-index-fence-v5" if case["operation"] == "forget-index-fence-v5-runtime" else
+                            family = ("forget-index-fence-v6" if case["operation"] == "forget-index-fence-v6-runtime" else
                                       "query-sync-boundaries" if case["operation"] == "query-sync-boundaries-runtime" else
                                       "query-sync-outcomes" if case["operation"] == "query-sync-outcomes-runtime"
                                       else "index-identity-boundaries")
@@ -1930,7 +1930,7 @@ def run_suite(*, checkout: Path, node: Path, smoke: bool = False,
                     python = python_runner(python_case)
                     if case in python_diagnostic_cases:
                         evidence = directory / "python-raw.json"
-                        if case["operation"] == "forget-index-fence-v5-runtime":
+                        if case["operation"] == "forget-index-fence-v6-runtime":
                             snapshot_reference, snapshots = _read_forget_index_fence_raw(directory, "python")
                             forget_reference_seals[case["id"], "python"] = dict(snapshot_reference)
                         else:
@@ -2061,7 +2061,7 @@ def run_suite(*, checkout: Path, node: Path, smoke: bool = False,
                                 raise ValueError("Query-sync boundary custody did not affirmatively validate")
                             query_sync_boundary_diagnostic["validationStatus"] = "verified"
                             row["runtimeEvidenceValidated"] = True
-                        if case["operation"] == "forget-index-fence-v5-runtime":
+                        if case["operation"] == "forget-index-fence-v6-runtime":
                             forget_diagnostic = {"id": case["id"], "side": "python", "sha256": snapshot_reference["sha256"],
                                                  "rawSnapshotReference": snapshot_reference, "validationStatus": "unverified",
                                                  "evidenceDirectory": str(directory)}
@@ -2076,7 +2076,7 @@ def run_suite(*, checkout: Path, node: Path, smoke: bool = False,
                         diagnostic_key = "sourceDiagnostics" if case in source_diagnostic_cases else "runtimeDiagnostics"
                         if case["operation"] not in {"promotion-apply-family-runtime", "host-restart-session-runtime",
                                                      "host-update-isolation-runtime", "host-turn-barrier-runtime",
-                                                     "host-turn-barrier-boundaries-runtime", "index-identity-boundaries-runtime", "query-sync-outcomes-runtime", "query-sync-boundaries-runtime", "forget-index-fence-v5-runtime"}:
+                                                     "host-turn-barrier-boundaries-runtime", "index-identity-boundaries-runtime", "query-sync-outcomes-runtime", "query-sync-boundaries-runtime", "forget-index-fence-v6-runtime"}:
                             report[diagnostic_key].append({
                                 "id": case["id"], "side": "python", "sha256": hashlib.sha256(raw).hexdigest(),
                                 "rawSnapshots": snapshots,
@@ -2084,7 +2084,7 @@ def run_suite(*, checkout: Path, node: Path, smoke: bool = False,
                     # Reject non-JSON outputs and non-finite values explicitly.
                     python = _json(json.dumps(python, ensure_ascii=False, allow_nan=False))
                     row["status"] = "matched" if _same_json(python, native["result"]) else "mismatched"
-                    if case["operation"] == "forget-index-fence-v5-runtime":
+                    if case["operation"] == "forget-index-fence-v6-runtime":
                         row.update(python=python, openclaw=native["result"])
                     if row["status"] == "mismatched":
                         row.update(operation=case["operation"], input=case["input"],
@@ -2093,7 +2093,7 @@ def run_suite(*, checkout: Path, node: Path, smoke: bool = False,
                     row.update(status="blocked", code="python-case-failed")
                     if case["operation"] in {"promotion-apply-family-runtime", "host-restart-session-runtime",
                                              "host-update-isolation-runtime", "host-turn-barrier-runtime",
-                                             "host-turn-barrier-boundaries-runtime", "index-identity-boundaries-runtime", "query-sync-outcomes-runtime", "query-sync-boundaries-runtime", "forget-index-fence-v5-runtime"}:
+                                             "host-turn-barrier-boundaries-runtime", "index-identity-boundaries-runtime", "query-sync-outcomes-runtime", "query-sync-boundaries-runtime", "forget-index-fence-v6-runtime"}:
                         row["evidenceError"] = {"name": type(error).__name__, "message": str(error)}
                     if case["operation"] == "host-update-isolation-runtime" and python_diagnostics is not None:
                         _retain_failed_host_update_capture(
@@ -2102,7 +2102,7 @@ def run_suite(*, checkout: Path, node: Path, smoke: bool = False,
                         _retain_failed_host_turn_barrier_capture(
                             report, case, python_diagnostics / hashlib.sha256(case["id"].encode()).hexdigest())
                 finally:
-                    if case["operation"] == "forget-index-fence-v5-runtime":
+                    if case["operation"] == "forget-index-fence-v6-runtime":
                         # The complete immutable files remain retained. Release the
                         # parsed SDK capture before starting another original child.
                         snapshots = raw = None
@@ -2127,7 +2127,7 @@ def run_suite(*, checkout: Path, node: Path, smoke: bool = False,
         query_sync_complete = _query_sync_outcomes_family_complete(report["cases"])
         query_sync_boundaries_complete = _query_sync_boundaries_family_complete(report["cases"])
         forget_index_fence_complete = _forget_index_fence_family_complete(report["cases"])
-        from equivalence.forget_index_fence_v5 import POINTS as forget_index_fence_points
+        from equivalence.forget_index_fence_v6 import POINTS as forget_index_fence_points
         from equivalence.query_sync_boundaries import POINTS as query_sync_boundary_points
         from equivalence.query_sync_outcomes import POINTS as query_sync_points
         from equivalence.index_identity_boundaries import POINTS as identity_boundary_points

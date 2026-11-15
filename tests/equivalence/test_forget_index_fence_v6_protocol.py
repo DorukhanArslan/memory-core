@@ -97,12 +97,12 @@ def test_v6_registration_is_atomic_and_preload_exact_hash_allowlist_keeps_old_me
     assert hashlib.sha256(new.MANIFEST.read_bytes()).hexdigest() == new.MANIFEST_SHA256
 
 
-def test_default_catalog_remains_original_v5_pending_explicit_promotion():
+def test_default_catalog_promotes_only_frozen_v6_tail():
     from equivalence.cases import build_cases
     cases = build_cases()
     assert len(cases) == 1465
-    assert cases[-13:] == old.build_cases()
-    assert not any(case["operation"] == new.OPERATION for case in cases)
+    assert cases[-13:] == new.build_cases()
+    assert not any(case["operation"] == old.OPERATION for case in cases)
 
 
 def test_v6_stdout_codec_binds_whole_actual_input_and_rejects_cross_version_host():
@@ -147,3 +147,17 @@ console.log('builtin-only-admission');
                                capture_output=True, text=True, timeout=10, check=False)
     assert completed.returncode == 0, completed.stderr
     assert completed.stdout.strip() == "builtin-only-admission"
+
+
+def test_ci_runs_one_full_catalog_one_selected_smoke_and_replays_its_actual_suite():
+    workflow = (ROOT / ".github/workflows/equivalence.yml").read_text()
+    assert workflow.count("python scripts/check_equivalence.py") == 1
+    assert workflow.count("python scripts/check_forget_index_fence.py --version v6") == 1
+    smoke = next(step for step in workflow.split("      - name: ") if "Smoke the standalone forget/index-fence v6 collector" in step)
+    assert "--case " + next(iter(new.CASE_HASHES)) in smoke
+    assert workflow.count("python scripts/replay_forget_index_fence.py --version v6") == 1
+    replay = next(step for step in workflow.split("      - name: ") if "Independently replay the complete forget/index-fence v6 packet" in step)
+    assert "--suite-report .equivalence-results/full.json" in replay
+    assert "--capture-root" not in replay
+    assert "MEMORY_FORGET_INDEX_FENCE_V6_SUITE_REPORT=.equivalence-results/full.json" in workflow
+    assert "tests/equivalence/test_forget_index_fence_v6_evidence.py" in workflow

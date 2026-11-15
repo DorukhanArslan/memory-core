@@ -2,7 +2,7 @@
 
 This diagnostic starts no original engine, repairs no capture and awards no
 acceptance credit. All source roots and the decoder executable are explicit.
-V5 may instead stream an actual complete registered-suite report and its
+V5/V6 may instead stream an actual complete registered-suite report and its
 independently selected Native/SDK capture roots, without collector substitutes.
 """
 from __future__ import annotations
@@ -293,7 +293,7 @@ def _suite_authority(frozen):
             or hashlib.sha256(prior).hexdigest() != OLD_DEFINITIONS_SHA256
             or sum("fixtureSource" in case for case in cases) != 79
             or sum("diagnosticOnly" in case for case in cases) != 1):
-        raise ValueError("Suite replay requires the unchanged 1452 definitions plus exact frozen V5 thirteen")
+        raise ValueError("Suite replay requires the unchanged 1452 definitions plus exact selected frozen thirteen")
     frozen.validate_registration(cases)
     scope, scope_seal = _read_json(ROOT / "equivalence/scope.json", limit=1024 * 1024)
     reference = _seal(ROOT / "equivalence/reference.json", limit=1024 * 1024)
@@ -549,8 +549,8 @@ def main(argv=None):
                         help="Independent actor source tree; V3/V4/V5 default to this replay program tree, V2 preserves legacy custody when omitted")
     parser.add_argument("--output", type=Path, required=True)
     args = parser.parse_args(argv)
-    if args.suite_report and (args.version != "v5" or not args.native_capture_root or not args.sdk_capture_root):
-        parser.error("Registered-suite replay requires explicit --version v5 and both independently selected capture roots")
+    if args.suite_report and (args.version not in {"v5", "v6"} or not args.native_capture_root or not args.sdk_capture_root):
+        parser.error("Registered-suite replay requires explicit --version v5/v6 and both independently selected capture roots")
     if not args.suite_report and (args.native_capture_root or args.sdk_capture_root):
         parser.error("Physical engine root options apply only to --suite-report")
     frozen = import_module(f"equivalence.forget_index_fence_{args.version}")

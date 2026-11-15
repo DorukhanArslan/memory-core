@@ -458,7 +458,7 @@ def suite_packet(packet, monkeypatch):
     import shutil
     from equivalence.cases import build_cases as registered
 
-    assert packet["version"] == "v5"
+    assert packet["version"] == "v6"
     cli, program = packet["cli"], packet["program"]
     production_program = SCRIPT.parents[1]
     for name in ("scope.json", "reference.json"):
@@ -531,14 +531,14 @@ def suite_packet(packet, monkeypatch):
         path.write_text(json.dumps(report, ensure_ascii=True, allow_nan=False) + "\n")
     save()
     def args(output):
-        return ["--version", "v5", "--suite-report", str(path), "--native-capture-root", str(native_root),
+        return ["--version", "v6", "--suite-report", str(path), "--native-capture-root", str(native_root),
                 "--sdk-capture-root", str(sdk_root), "--reference", str(packet["reference"]), "--node", str(packet["node"]),
                 "--sdk-source-root", str(packet["sdk"]), "--adapter-root", str(program), "--output", str(output)]
     return {**packet, "suite": report, "suite_path": path, "save_suite": save, "suite_args": args,
             "captures": captures, "native_root": native_root, "sdk_root": sdk_root}
 
 
-@pytest.mark.parametrize("packet", ["v5"], indirect=True)
+@pytest.mark.parametrize("packet", ["v6"], indirect=True)
 def test_suite_mode_streams_exact_full_registered_scope_without_collector_or_small_sdk_files(suite_packet, monkeypatch):
     packet, cli = suite_packet, suite_packet["cli"]
     before = packet["suite_path"].read_bytes()
@@ -560,14 +560,14 @@ def test_suite_mode_streams_exact_full_registered_scope_without_collector_or_sma
     assert packet["suite_path"].read_bytes() == before
 
 
-@pytest.mark.parametrize("packet", ["v5"], indirect=True)
+@pytest.mark.parametrize("packet", ["v6"], indirect=True)
 @pytest.mark.parametrize("attack", [
-    "missing-payload", "missing-input", "wrong-old-definition", "omitted-old-row", "duplicated-v5-row",
+    "missing-payload", "missing-input", "wrong-old-definition", "omitted-old-row", "duplicated-v6-row",
     "scope-hash", "source-hash", "dirty-source", "node", "case-source", "missing-side", "duplicate-side",
     "unverified-side", "wrong-file", "reference-hash", "boolean-custody", "scope-denominator", "errors",
     "foreign-runtime-record",
 ])
-def test_suite_admission_rejects_incomplete_or_foreign_global_and_v5_claims_before_guard(suite_packet, attack):
+def test_suite_admission_rejects_incomplete_or_foreign_global_and_v6_claims_before_guard(suite_packet, attack):
     packet = suite_packet
     report = packet["suite"]
     row = report["cases"][1452]
@@ -579,7 +579,7 @@ def test_suite_admission_rejects_incomplete_or_foreign_global_and_v5_claims_befo
         report["cases"][0]["input"] = {"changed": True}
     elif attack == "omitted-old-row":
         report["cases"].pop(0)
-    elif attack == "duplicated-v5-row":
+    elif attack == "duplicated-v6-row":
         report["cases"].append(deepcopy(row))
     elif attack == "scope-hash":
         report["manifestSha256"]["scope"] = "0" * 64
@@ -617,7 +617,7 @@ def test_suite_admission_rejects_incomplete_or_foreign_global_and_v5_claims_befo
     assert result["acceptancePointsAwarded"] == 0 and result["fullScopePassed"] is False
 
 
-@pytest.mark.parametrize("packet", ["v5"], indirect=True)
+@pytest.mark.parametrize("packet", ["v6"], indirect=True)
 @pytest.mark.parametrize("attack", ["native-root", "sdk-root", "bytes", "symlink", "report-payload", "post-replay-change"])
 def test_suite_roots_original_bytes_whole_payloads_and_final_seals_are_independent(suite_packet, attack):
     packet = suite_packet
@@ -653,12 +653,12 @@ def test_suite_roots_original_bytes_whole_payloads_and_final_seals_are_independe
     assert result["acceptancePointsAwarded"] == 0 and result["fullScopePassed"] is False
 
 
-@pytest.mark.parametrize("packet", ["v5"], indirect=True)
-def test_suite_selector_is_v5_only_explicit_and_mutually_exclusive(suite_packet):
+@pytest.mark.parametrize("packet", ["v6"], indirect=True)
+def test_suite_selector_is_v6_only_explicit_and_mutually_exclusive(suite_packet):
     packet = suite_packet
     args = packet["suite_args"](packet["tmp"] / "never-created.json")
     invalid = [args + ["--capture-root", str(packet["roots"][0])],
-               ["v4" if part == "v5" else part for part in args],
+               ["v4" if part == "v6" else part for part in args],
                [part for index, part in enumerate(args) if index not in (args.index("--native-capture-root"), args.index("--native-capture-root") + 1)]]
     for value in invalid:
         with pytest.raises(SystemExit) as error:
@@ -667,7 +667,7 @@ def test_suite_selector_is_v5_only_explicit_and_mutually_exclusive(suite_packet)
     assert packet["calls"] == []
 
 
-@pytest.mark.parametrize("packet", ["v5"], indirect=True)
+@pytest.mark.parametrize("packet", ["v6"], indirect=True)
 def test_suite_mode_authenticates_matched_whole_payloads_without_awarding_acceptance(suite_packet):
     packet = suite_packet
     for row in packet["suite"]["cases"][1452:]:
@@ -698,7 +698,7 @@ def test_suite_mode_authenticates_matched_whole_payloads_without_awarding_accept
     assert report["acceptancePointsAwarded"] == 0 and report["covers"] == [] and report["fullScopePassed"] is False
 
 
-@pytest.mark.parametrize("packet", ["v5"], indirect=True)
+@pytest.mark.parametrize("packet", ["v6"], indirect=True)
 @pytest.mark.parametrize("suffix", [',"ignored":{"duplicate":1,"duplicate":2}}', ',"ignored":1e4000}', '} {}'])
 def test_suite_stream_validates_even_discarded_fields_and_trailing_data(suite_packet, suffix):
     packet = suite_packet
@@ -711,7 +711,7 @@ def test_suite_stream_validates_even_discarded_fields_and_trailing_data(suite_pa
     assert result["errors"] and result["acceptancePointsAwarded"] == 0
 
 
-@pytest.mark.parametrize("packet", ["v5"], indirect=True)
+@pytest.mark.parametrize("packet", ["v6"], indirect=True)
 def test_suite_reader_and_discarded_wire_are_released_before_any_raw_capture_access(suite_packet, monkeypatch):
     import weakref
     from equivalence import strict_report_reader
@@ -739,7 +739,7 @@ def test_suite_reader_and_discarded_wire_are_released_before_any_raw_capture_acc
     assert "UNIT_LEGACY_DISCARDED" not in output.read_text()
 
 
-@pytest.mark.parametrize("packet", ["v5"], indirect=True)
+@pytest.mark.parametrize("packet", ["v6"], indirect=True)
 @pytest.mark.parametrize("size_offset", [-1, 0, 1])
 def test_suite_stream_admission_enforces_its_exact_byte_boundary(suite_packet, monkeypatch, size_offset):
     packet, cli = suite_packet, suite_packet["cli"]

@@ -16,7 +16,8 @@ from equivalence.forget_index_fence import build_cases as v1_cases
 from equivalence.forget_index_fence_v2 import build_cases as v2_cases
 from equivalence.forget_index_fence_v3 import build_cases as v3_cases
 from equivalence.forget_index_fence_v4 import build_cases as v4_cases
-from equivalence.forget_index_fence_v5 import (
+from equivalence.forget_index_fence_v5 import build_cases as v5_cases
+from equivalence.forget_index_fence_v6 import (
     CASE_HASHES, POINTS, build_cases, validate_registration,
 )
 from equivalence.harness import (
@@ -51,9 +52,9 @@ def test_append_preserves_every_prior_definition_annotation_and_original_scope()
     assert sum("fixtureSource" in case or "diagnosticOnly" in case for case in registered) == 80
     assert [case["id"] for case in family] == list(CASE_HASHES)
     assert len(family) == len(CASE_HASHES) == 13
-    assert all(case["operation"] == "forget-index-fence-v5-runtime"
-               and case["id"].startswith("forget-index-fence-v5-")
-               and case["input"]["kind"] == "forget-index-fence-v5" for case in family)
+    assert all(case["operation"] == "forget-index-fence-v6-runtime"
+               and case["id"].startswith("forget-index-fence-v6-")
+               and case["input"]["kind"] == "forget-index-fence-v6" for case in family)
     assert POINTS == ("forget.index-fence.outcomes", "forget.index-fence.boundaries")
     validate_registration(registered)
     scope_path = ROOT / "equivalence/scope.json"
@@ -249,10 +250,11 @@ def test_native_timeout_is_bounded_before_dispatch(native_transport, tmp_path, t
 @pytest.mark.parametrize("size", [191658328, 512 * 1024 * 1024])
 def test_complete_forget_sdk_custody_is_admitted_up_to_512_mib(size):
     info = SimpleNamespace(st_mode=stat.S_IFREG | 0o600, st_nlink=1, st_size=size)
-    _validate_python_runtime_diagnostic_file(info, "forget-index-fence-v5-runtime")
+    _validate_python_runtime_diagnostic_file(info, "forget-index-fence-v6-runtime")
 
 
 @pytest.mark.parametrize("operation,limit_mib", [
+    ("forget-index-fence-v6-runtime", 512),
     ("forget-index-fence-v5-runtime", 512),
     ("forget-index-fence-v2-runtime", 512),
     ("forget-index-fence-v3-runtime", 512),
@@ -350,7 +352,7 @@ def test_pair_gate_requires_true_and_explicit_independently_selected_paths(monke
     module.validate_pair = validate
     monkeypatch.setitem(sys.modules, GUARD_MODULE, module)
     monkeypatch.setattr(harness, "ROOT", tmp_path / "trusted-sdk")
-    native_directory = harness.ROOT / ".equivalence-results/forget-index-fence-v5/actual-native"
+    native_directory = harness.ROOT / ".equivalence-results/forget-index-fence-v6/actual-native"
     (native_directory / "evidence").mkdir(parents=True)
     (native_directory / "evidence/native-raw.json").write_text('[{"native":"whole"}]\n')
     reference, _ = _read_forget_index_fence_raw(native_directory, "native")
@@ -397,7 +399,7 @@ def test_pair_without_complete_original_physical_custody_cannot_reach_guard(monk
 @pytest.fixture
 def owned_raw(monkeypatch, tmp_path):
     monkeypatch.setattr(harness, "ROOT", tmp_path)
-    directory = tmp_path / ".equivalence-results/forget-index-fence-v5/unit-native"
+    directory = tmp_path / ".equivalence-results/forget-index-fence-v6/unit-native"
     (directory / "evidence").mkdir(parents=True)
     wire = (json.dumps([{"label": "UNIT_BEFORE", "whole": [False, 0, None],
                          "nested": {"extra": "retained"}}], indent=3) + "\n").encode()
@@ -486,7 +488,7 @@ def _referenced_report(tmp_path):
     rows, diagnostics = _rows(), []
     for index, row in enumerate(rows):
         for side in ("native", "python"):
-            directory = tmp_path / ".equivalence-results/forget-index-fence-v5" / f"unit-{index}-{side}"
+            directory = tmp_path / ".equivalence-results/forget-index-fence-v6" / f"unit-{index}-{side}"
             filename = directory / ("evidence/native-raw.json" if side == "native" else "python-raw.json")
             filename.parent.mkdir(parents=True)
             filename.write_text(json.dumps([{"label": "unexecuted unit custody", "caseId": row["id"],

@@ -51,9 +51,26 @@ def test_final_symlink_refusal_keeps_policy_code(tmp_path, target):
     }
 
 
+@pytest.mark.parametrize("home_location", [
+    "ancestor", "workspace", "prefix-neighbor", "trailing-slash", "filesystem-root", "empty",
+])
 @pytest.mark.parametrize("leaf", ["secret.md", "missing.md"])
-def test_outside_parent_is_refused_before_the_leaf_is_observed(tmp_path, leaf):
+def test_outside_parent_is_refused_before_the_leaf_is_observed(tmp_path, monkeypatch, leaf, home_location):
     root = tmp_path / "workspace"
+    homes = {
+        "ancestor": str(tmp_path), "workspace": str(root),
+        "prefix-neighbor": str(tmp_path / "work"), "trailing-slash": str(root) + "/",
+        "filesystem-root": "/", "empty": "",
+    }
+    monkeypatch.setenv("HOME", homes[home_location])
+    displayed_root, displayed_parent = {
+        "ancestor": ("~/workspace", "~/workspace/memory/outside"),
+        "workspace": ("~", "~/memory/outside"),
+        "prefix-neighbor": (str(root), str(root / "memory/outside")),
+        "trailing-slash": (str(root), "~/memory/outside"),
+        "filesystem-root": ("~" + str(root), "~" + str(root / "memory/outside")),
+        "empty": ("~" + str(root), "~" + str(root / "memory/outside")),
+    }[home_location]
     (root / "memory").mkdir(parents=True)
     outside = tmp_path / "outside"
     outside.mkdir()
@@ -63,8 +80,25 @@ def test_outside_parent_is_refused_before_the_leaf_is_observed(tmp_path, leaf):
     assert result["status"] == "error"
     assert result["code"] == "outside-workspace"
     assert result["error"] == (
-        f"file is outside workspace root | Symlink escapes root ({root.resolve()}): "
-        f"{root.resolve() / 'memory' / 'outside'}"
+        f"file is outside workspace root | Symlink escapes root ({displayed_root}): {displayed_parent}"
+    )
+    assert (outside / "secret.md").read_text() == "secret"
+
+
+def test_symlink_refusal_escapes_control_characters_in_displayed_paths(tmp_path, monkeypatch):
+    monkeypatch.setenv("HOME", str(tmp_path))
+    root = tmp_path / "workspace\n\x7f\x9f\u2028\u2029"
+    (root / "memory").mkdir(parents=True)
+    outside = tmp_path / "outside"
+    outside.mkdir()
+    (outside / "secret.md").write_text("secret", encoding="utf-8")
+    (root / "memory/outside").symlink_to(outside, target_is_directory=True)
+    result = memory_get(MemoryConfig(workspace_dir=root), path="memory/outside/secret.md")
+    assert result["status"] == "error"
+    assert result["code"] == "outside-workspace"
+    shown = r"~/workspace\u000a\u007f\u009f\u2028\u2029"
+    assert result["error"] == (
+        f"file is outside workspace root | Symlink escapes root ({shown}): {shown}/memory/outside"
     )
     assert (outside / "secret.md").read_text() == "secret"
 

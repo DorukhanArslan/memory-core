@@ -150,7 +150,9 @@ def build_storage_path_read_race_cases() -> list[dict[str, Any]]:
         "normalizationPolicy": (
             "Complete ordered public envelopes and original raw JSON carriers are retained. "
             "Every text carrier must parse exactly to details before comparison. Only the exact "
-            "private fixture-base prefix maps to $FIXTURE; errors, causes, codes and all fields "
+            "private fixture-base prefix maps to $FIXTURE, including its HOME-abbreviated "
+            "spelling using recorded fixtureHome and error-escaped owned prefixes; "
+            "unrelated home paths, errors, causes, codes and all fields "
             "remain unchanged. Complete nofollow before/after snapshots retain all actual stat "
             "properties and file bytes. The observed intentional fixture rename/symlink changes "
             "make contentUnchanged and writeStatsUnchanged false; this is declared external OS "

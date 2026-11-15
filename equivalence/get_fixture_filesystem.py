@@ -278,12 +278,13 @@ def derive_get_filesystem_observation(raw: dict[str, Any]) -> dict[str, Any]:
             "writeStatsUnchanged": stable}
 
 
-def validate_get_filesystem_observation(raw: Any, public: Any, fixture_base: str) -> None:
+def validate_get_filesystem_observation(raw: Any, public: Any, fixture_base: str, *,
+                                      fixture_home: str | None = None) -> None:
     from equivalence.get_contract import map_get_fixture_paths
     from equivalence.search_contract import _same_json
 
     if not isinstance(raw, dict) or not _same_json(
-        map_get_fixture_paths(derive_get_filesystem_observation(raw), fixture_base), public,
+        map_get_fixture_paths(derive_get_filesystem_observation(raw), fixture_base, fixture_home=fixture_home), public,
     ):
         raise ValueError("Public filesystem observations differ from complete actual raw snapshots")
 
@@ -299,12 +300,15 @@ def validate_python_get_filesystem_evidence(snapshots: list[Any], arguments: dic
     record = snapshots[-1]
     if (not isinstance(record, dict) or set(record) != {"kind", "fixtureBase", "filesystem", *(
         ["readRace"] if arguments.get("readRace") is not None else []
-    )} or record["kind"] != "filesystem"):
+    ), *(["fixtureHome"] if "fixtureHome" in record else [])} or record["kind"] != "filesystem"):
         raise ValueError("SDK snapshot evidence requires its complete owned record")
     base = record["fixtureBase"]
     if not isinstance(base, str) or not Path(base).is_absolute():
         raise ValueError("SDK fixture observations require their actual absolute owned root")
-    validate_get_filesystem_observation(record["filesystem"], public.get("filesystem"), base)
+    home = record.get("fixtureHome")
+    if "fixtureHome" in record and not isinstance(home, str):
+        raise ValueError("SDK fixture home must retain its actual string value")
+    validate_get_filesystem_observation(record["filesystem"], public.get("filesystem"), base, fixture_home=home)
     if arguments.get("readRace") is not None:
         if not _same_json(derive_get_read_race_observation(
             record.get("readRace"), base, native=False, filesystem=record["filesystem"],
@@ -317,11 +321,13 @@ def validate_python_get_filesystem_evidence(snapshots: list[Any], arguments: dic
         if isinstance(expected, dict) and isinstance(expected.get("path"), str):
             expected["path"] = owned_get_input_path(expected["path"], Path(base), require_owned=True)
         if (not isinstance(original, dict) or original.get("index") != index
-                or original.get("fixtureBase") != base or not _same_json(original.get("params"), expected)):
+                or original.get("fixtureBase") != base or not _same_json(original.get("params"), expected)
+                or ("fixtureHome" in original) != ("fixtureHome" in record)
+                or original.get("fixtureHome") != home):
             raise ValueError("Actual SDK arguments differ from suffix-preserving owned-token expansion")
         actual = ({"result": decode_search_tool_envelope(original["result"])}
                   if "result" in original else {"error": original["error"]})
-        if not _same_json(map_get_fixture_paths(actual, base), observed):
+        if not _same_json(map_get_fixture_paths(actual, base, fixture_home=home), observed):
             raise ValueError("SDK public results differ from their complete original tool envelopes")
 
 

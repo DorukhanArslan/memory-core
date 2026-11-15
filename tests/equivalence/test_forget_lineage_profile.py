@@ -1,5 +1,9 @@
 """Pure input/capability guards; these checks execute no forget owner."""
 from copy import deepcopy
+import base64
+import gzip
+import hashlib
+import json
 
 import pytest
 
@@ -7,6 +11,7 @@ from equivalence.forget_lineage_cases import build_cases, validate_case
 from equivalence.forget_lineage_profile import case_bindings, validate_forget_lineage_profile
 from equivalence.model_runtime_authority import APPROVED_NODE_RUNTIME
 from equivalence.runtime_oracle import ReleaseOracleExecution, RuntimeOracleError
+from equivalence.forget_lineage_evidence import physical_snapshot
 
 
 def profile():
@@ -50,3 +55,14 @@ def test_forget_capability_cannot_borrow_another_profile():
     with pytest.raises(RuntimeOracleError, match="cannot borrow"):
         with ReleaseOracleExecution({}, {}, forget_lineage_profile=profile(), entry_profile={}):
             raise AssertionError("An invalid mixed capability reached an execution context")
+
+
+def test_physical_transport_is_lossless_and_rejects_changed_bytes():
+    original = {"files": {"literal": {"hex": "00" * 20000}}, "rows": [{"field": "all data retained"}]}
+    raw = json.dumps(original).encode()
+    captured = {"encoding": "gzip-json-base64", "uncompressedBytes": len(raw),
+                "sha256": hashlib.sha256(raw).hexdigest(), "data": base64.b64encode(gzip.compress(raw)).decode()}
+    assert physical_snapshot(captured) == original
+    captured["sha256"] = "0" * 64
+    with pytest.raises(ValueError, match="snapshot changed"):
+        physical_snapshot(captured)

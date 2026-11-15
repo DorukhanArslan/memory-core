@@ -6,6 +6,7 @@ import { pathToFileURL } from "node:url";
 import { createHash } from "node:crypto";
 import { DatabaseSync } from "node:sqlite";
 import { mock } from "node:test";
+import { gzipSync } from "node:zlib";
 
 const STATE_PATHS = new Set([
   "memory/.dreams/short-term-recall.json", "memory/.dreams/phase-signals.json",
@@ -121,7 +122,8 @@ export async function runForgetLineageRuntime(input, runtimeConfig) {
     await fs.writeFile(filename, payload);
     // The oracle removes its owned tree on close; the raw transport must carry
     // the complete bytes and SQL rows itself, not only a temporary file receipt.
-    raw.physical.push({ path: filename, sha256: hash(payload), snapshot: record });
+    raw.physical.push({ path: filename, sha256: hash(payload), uncompressedBytes: Buffer.byteLength(payload),
+      encoding: "gzip-json-base64", data: gzipSync(Buffer.from(payload)).toString("base64") });
   }
   async function call(name, fn, args) {
     const record = { operation: name, arguments: clone(args) }; raw.calls.push(record);

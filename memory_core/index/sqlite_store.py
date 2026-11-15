@@ -297,8 +297,9 @@ class SQLiteMemoryStore:
         remove_listener = signal.add_listener(db.interrupt) if signal is not None else None
         try:
             # All lexical/path/vector probes and their identity gate use one
-            # reader generation. An early partial keyword lease is released
-            # before provider work; the final pass uses one complete generation.
+            # reader generation. Later keyword annotations use a fresh reader
+            # while this retrieval transaction remains open. An early partial
+            # keyword lease is released before provider work.
             db.execute("BEGIN")
             yield db
         finally:
@@ -1216,7 +1217,7 @@ class SQLiteMemoryStore:
         self, candidates: Sequence[_RecallCandidate], *, db: sqlite3.Connection | None = None,
         include_memory_mtimes: bool = True, signal: CancellationSignal | None = None,
     ) -> list[_RecallCandidate]:
-        """Enrich retained keyword/vector candidates in the same leased read generation."""
+        """Enrich candidates in a supplied snapshot, or through a fresh reader."""
         if not candidates:
             return []
         if db is None:
@@ -1478,7 +1479,10 @@ class SQLiteMemoryStore:
                     keyword = self._search_keyword_with_fallback(
                         db, query, candidates, source_filter, signal
                     )
-                    keyword = self.attach_recall_metadata(keyword, db=db, signal=signal)
+                    # Native enriches retained worker hits through a later live
+                    # read: a completed forget can remove their chunks meanwhile.
+                    # Keep the retrieval transaction open until this read ends.
+                    keyword = self.attach_recall_metadata(keyword, signal=signal)
             vector: list[HybridVectorResult] = []
             if vector_ready and any(value != 0 for value in query_embedding):
                 match_exact_path = prepare_exact_path_matcher(query)

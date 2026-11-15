@@ -1,8 +1,8 @@
-name: Verify merged forget package once
+name: Verify forget lineage outcomes once
 
 on:
   push:
-    branches: [verify/merged-forget-once]
+    branches: [verify/forget-lineage-outcomes-full]
     paths: [.github/workflows/verify-merged-forget-once.yml]
 
 permissions:
@@ -30,7 +30,7 @@ jobs:
           persist-credentials: false
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
         with:
-          ref: cdfb6e9c9b35f3c50dd12fc322371c1b217fcac5
+          ref: f31a2880369443de583fded55a20a390442198dc
           path: .reference/merged-product
           persist-credentials: false
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
@@ -88,7 +88,7 @@ jobs:
         if: always()
         uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
         with:
-          name: merged-forget-summary
+          name: forget-lineage-outcomes-summary
           path: .equivalence-results/summary/
           include-hidden-files: true
           if-no-files-found: warn
@@ -96,7 +96,7 @@ jobs:
         if: always()
         uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
         with:
-          name: merged-forget-raw-evidence
+          name: forget-lineage-outcomes-raw-evidence
           path: |
             .equivalence-results/
             /var/tmp/memory-host-v4-*/

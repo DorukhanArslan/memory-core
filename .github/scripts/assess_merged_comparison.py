@@ -17,13 +17,13 @@ from equivalence.catalog_migration import definition_authority  # noqa: E402
 from equivalence.harness import _adapter_identity, _implementation_identity, _same_json  # noqa: E402
 from equivalence.strict_report_reader import Reader, _constant, _finite, _object  # noqa: E402
 
-MAIN = "cdfb6e9c9b35f3c50dd12fc322371c1b217fcac5"
+MAIN = "f31a2880369443de583fded55a20a390442198dc"
 SCOPE = "a8e066e63970dd0be734485d62a5932640894b8c0a42f47ac3eb67f784cbc7b9"
-SDK = {"sourceSha256": "5e93f1debb3178bee1be54e02a60694feedbe2af7189cf13cfc906a0736a8ba4", "sourceFiles": 162}
+SDK = {"sourceSha256": "a90d994bcf005a26a4e15bf40b2e9b95f47a7a8c31cd864ed2131021d9046990", "sourceFiles": 162}
 OPERATIONS = ("host-restart-session-runtime", "host-update-isolation-runtime",
               "host-turn-barrier-boundaries-runtime", "index-identity-boundaries-runtime",
               "query-sync-outcomes-runtime", "query-sync-boundaries-runtime",
-              "host-turn-barrier-v4-runtime", "forget-index-fence-v6-runtime")
+              "host-turn-barrier-v4-runtime", "forget-index-fence-v6-runtime", "forget-lineage-runtime")
 
 
 def require(value, message):
@@ -46,12 +46,14 @@ def load(path):
     return value
 
 
-def project(path, host_ids):
+def project(path, host_ids, lineage_ids):
     kept = {"schemaVersion", "kind", "mode", "status", "fullScopePassed", "implementation",
             "reference", "manifestSha256", "adapterSha256", "casesSha256", "definitionMigration",
             "summary", "requirements", "errors", "startedAt", "finishedAt", "durationSeconds",
-            "referenceExecution", "paidProviderCalls", "providerCredentialsForwarded"}
-    result = {"cases": [], "hostPairs": {}, "hostDiagnostics": {}, "mismatchPairs": {}}
+            "referenceExecution", "paidProviderCalls", "providerCredentialsForwarded",
+            "forgetLineageOutcomesFamilyComplete", "forgetLineageBindings", "forgetLineageNode"}
+    result = {"cases": [], "hostPairs": {}, "hostDiagnostics": {}, "mismatchPairs": {},
+              "lineagePairs": {}, "lineageDiagnostics": {}, "lineageTraces": {}}
     before = digest(path)
 
     def accept(key, value, array):
@@ -71,10 +73,21 @@ def project(path, host_ids):
                                            for side, item in pair.items()}
                 if value["id"] in host_ids:
                     result["hostPairs"][value["id"]] = pair
+                if value["id"] in lineage_ids:
+                    result["lineagePairs"][value["id"]] = pair
                 if value["status"] == "mismatched":
                     result["mismatchPairs"][value["id"]] = pair
             require(value["status"] != "mismatched" or "python" in value, "Mismatch omitted whole public values")
             result["cases"].append(row)
+        elif key == "runtimeDiagnostics" and value.get("id") in lineage_ids:
+            identity = value["id"] + "--" + value["side"]
+            require(identity not in result["lineageDiagnostics"], "Duplicate lineage diagnostic")
+            require(isinstance(value.get("rawSnapshots"), list) and len(value["rawSnapshots"]) == 1,
+                    "Lineage diagnostic is not a complete singleton packet")
+            result["lineageDiagnostics"][identity] = value
+        elif key == "releaseTraces" and value.get("id") in lineage_ids:
+            require(value["id"] not in result["lineageTraces"], "Duplicate lineage process trace")
+            result["lineageTraces"][value["id"]] = value
         elif key == "runtimeDiagnostics" and value.get("id") in host_ids:
             identity = value["id"] + "--" + value["side"]
             require(identity not in result["hostDiagnostics"], "Duplicate Host diagnostic")
@@ -141,9 +154,65 @@ def replay_hosts(data, cases, args):
     return results
 
 
+def replay_lineage(data, cases, args):
+    from equivalence.forget_lineage_bindings import prepare_forget_lineage_bindings
+    from equivalence.forget_lineage_outcomes_evidence import validate_pair
+    from equivalence.forget_lineage_profile import prepare_forget_lineage_profile
+    from equivalence.model_runtime_authority import prepare_model_node_authority
+    from equivalence.release_runtime import prepare_release_runtime
+
+    runtime = prepare_release_runtime(args.reference, args.release_runtime, download=False)
+    require(_same_json(data["forgetLineageBindings"], prepare_forget_lineage_bindings(
+        args.reference, Path(runtime["runtimeRoot"])))
+        and _same_json(data["forgetLineageNode"], prepare_model_node_authority(args.node)),
+        "Lineage source/artifact/executable authority changed")
+    family = (ROOT / ".equivalence-results/forget-lineage-outcomes").resolve(strict=True)
+    results = []
+    for case in cases:
+        cid = case["id"]
+        native = data["lineageDiagnostics"][cid + "--native"]
+        sdk = data["lineageDiagnostics"][cid + "--python"]
+        require(native["validationStatus"] == sdk["validationStatus"] == "verified",
+                "Lineage capture was not affirmatively validated")
+        directory = Path(sdk["evidenceDirectory"])
+        require(directory.is_absolute() and directory.resolve(strict=True) == directory
+                and directory.is_relative_to(family), "Lineage SDK capture escaped its actual family root")
+        raw_path = directory / "python-raw.json"
+        raw_sha, sdk_raw = digest(raw_path), load(raw_path)
+        require(raw_sha == sdk["sha256"] and _same_json([sdk_raw], sdk["rawSnapshots"]),
+                "Complete retained SDK raw bytes differ from the full report")
+        trace = data["lineageTraces"][cid]
+        transport = trace["forgetLineageTransport"]
+        require(trace["provider"] == "none" and trace["networkFetchDenied"] is True
+                and _same_json(transport["profile"], prepare_forget_lineage_profile(case, args.node)),
+                "Lineage original process capability changed")
+        for carrier in (*transport["traceFiles"], *transport["originalProcessStreams"].values()):
+            payload = carrier["text"].encode("utf8")
+            require(len(payload) == carrier["bytes"] and hashlib.sha256(payload).hexdigest() == carrier["sha256"],
+                    "A complete original lineage process carrier changed")
+        stream = transport["originalProcessStreams"]["stdout"]
+        original = json.loads(stream["text"], object_pairs_hook=_object, parse_constant=_constant)
+        _finite(original)
+        require(len(original["results"]) == 1 and original["results"][0]["id"] == cid
+                and original["results"][0]["ok"] is True, "Original lineage stdout omitted its complete return")
+        native_public = original["results"][0]["result"]
+        sdk_public = {"kind": sdk_raw["input"]["kind"], "provider": "none", "acceptancePointsAwarded": 0,
+                      "observations": [row["observed"] for row in sdk_raw["operations"]]}
+        actual_native, actual_sdk = validate_pair(case, native["rawSnapshots"][0], sdk_raw,
+                                                 native_public, sdk_public, directory)
+        pair = data["lineagePairs"][cid]
+        require(_same_json(actual_native, pair["openclaw"]) and _same_json(actual_sdk, pair["python"])
+                and digest(raw_path) == raw_sha, "Lineage projection or actual raw bytes changed during replay")
+        results.append({"id": cid, "validated": True, "publicMatch": _same_json(actual_native, actual_sdk),
+                        "sdkRawSha256": raw_sha, "nativeRawSnapshotsSha256": hashlib.sha256(
+                            canonical(native["rawSnapshots"])).hexdigest(), "originalStdoutSha256": stream["sha256"],
+                        "actualForgetReports": len(actual_native["observations"])})
+    return results
+
+
 def recompute(data, definitions, scope):
     rows = data["cases"]
-    require(len(rows) == len(definitions) == 1465 and len({row["id"] for row in rows}) == 1465,
+    require(len(rows) == len(definitions) == 1468 and len({row["id"] for row in rows}) == 1468,
             "Incomplete or duplicate actual catalog; no candidate score")
     for row, definition in zip(rows, definitions, strict=True):
         for key, value in definition.items():
@@ -200,11 +269,13 @@ def assess(args, result):
     source_unchanged(seal)
     definitions = build_cases()
     migration = definition_authority(definitions, fif_version="v6")
-    require(len(definitions) == seal["registeredCases"] == 1465
+    require(len(definitions) == seal["registeredCases"] == 1468
             and hashlib.sha256(canonical(definitions)).hexdigest() == seal["catalogSha256"], "Sealed catalog changed")
     host_cases = [case for case in definitions if case["operation"] == "host-turn-barrier-v4-runtime"]
-    data = project(args.report, {case["id"] for case in host_cases})
-    result.update(completeReportParsed=True, report=data["report"], projection=data)
+    lineage_cases = [case for case in definitions if case["operation"] == "forget-lineage-runtime"]
+    data = project(args.report, {case["id"] for case in host_cases}, {case["id"] for case in lineage_cases})
+    result.update(completeReportParsed=True, report=data["report"], projection={
+        key: value for key, value in data.items() if key not in {"lineagePairs", "lineageDiagnostics", "lineageTraces"}})
     require(data["errors"] == [] and data["mode"] == "full" and data["kind"] == "pinned-differential-acceptance",
             "Global collector error or non-full report; no candidate score")
     require(_same_json(data["implementation"], seal["implementation"])
@@ -227,6 +298,11 @@ def assess(args, result):
     require(replay.get("candidateFamilyMatched") is metrics["families"]["forget-index-fence-v6-runtime"],
             "Independent FIF replay contradicts candidate family gate")
     result["hostReplays"] = replay_hosts(data, host_cases, args)
+    result["lineageReplays"] = replay_lineage(data, lineage_cases, args)
+    from equivalence.forget_lineage_outcomes import family_complete
+
+    require(data["forgetLineageOutcomesFamilyComplete"] is family_complete(data["cases"])
+            is metrics["families"]["forget-lineage-runtime"], "Lineage complete-family gate differs")
     expected_status = ("blocked" if metrics["cases"].get("blocked") else "mismatched"
                        if metrics["cases"].get("mismatched") else "incomplete" if metrics["uncovered"] else "passed")
     require(data["status"] == expected_status and data["fullScopePassed"] is (expected_status == "passed"),

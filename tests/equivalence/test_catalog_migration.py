@@ -1,4 +1,4 @@
-"""Exact four-Host/thirteen-FIF migration attacks; no original engines."""
+"""Exact reviewed Host/FIF, HOME-policy and outcome migration; no engines."""
 from copy import deepcopy
 import hashlib
 import json
@@ -6,7 +6,7 @@ import json
 import pytest
 
 from equivalence.cases import build_cases
-from equivalence.catalog_migration import ORIGINAL_PREFIX_SHA256, definition_authority
+from equivalence.catalog_migration import ORIGINAL_PREFIX_SHA256, _restore_reviewed_policies, definition_authority
 from equivalence import forget_index_fence_v5, forget_index_fence_v6
 from equivalence import host_turn_barrier as old_host
 from equivalence import host_turn_barrier_v4 as host
@@ -15,7 +15,8 @@ from equivalence import host_turn_barrier_v4 as host
 def test_default_catalog_explicitly_migrates_only_four_host_and_thirteen_fif_definitions():
     cases = build_cases()
     proof = definition_authority(cases, fif_version="v6")
-    assert len(cases) == proof["registeredCases"] == 1465
+    assert len(cases) == proof["registeredCases"] == 1468
+    assert len(proof["policyReplacements"]) == 13 and len(proof["lineageAppend"]) == 3
     assert proof["originalPrefixUnchanged"] is False
     assert proof["currentPrefixSha256"] != proof["originalPrefixSha256"] == ORIGINAL_PREFIX_SHA256
     assert len(proof["hostReplacements"]) == 4 and len(proof["fifReplacements"]) == 13
@@ -33,6 +34,7 @@ def test_default_catalog_explicitly_migrates_only_four_host_and_thirteen_fif_def
         unchanged["covers"] = []
         assert unchanged == probe
         restored[replacement["index"]] = host.business_case(current)
+    _restore_reviewed_policies(restored)
     wire = json.dumps(restored, sort_keys=True, ensure_ascii=True, separators=(",", ":"), allow_nan=False).encode()
     assert hashlib.sha256(wire).hexdigest() == ORIGINAL_PREFIX_SHA256
 
@@ -99,6 +101,7 @@ def test_catalog_migration_rejects_any_unreviewed_definition_or_membership(attac
 def test_historical_v5_authority_remains_an_explicit_unchanged_prefix_identity():
     current = build_cases()
     original = [host.business_case(case) if case["operation"] == host.OPERATION else case for case in current[:1452]]
+    _restore_reviewed_policies(original)
     proof = definition_authority(original + forget_index_fence_v5.build_cases(), fif_version="v5")
     assert proof["originalPrefixUnchanged"] is True
     assert proof["currentPrefixSha256"] == ORIGINAL_PREFIX_SHA256

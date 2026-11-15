@@ -100,5 +100,7 @@ def build_cases():
 
 def validate_case(case):
     if case not in build_cases():
-        raise ValueError("Forget lineage diagnostics require one exact common input with empty covers")
+        from equivalence.forget_lineage_outcomes import validate_case as validate_outcome
+
+        return validate_outcome(case)
     return deepcopy(case)

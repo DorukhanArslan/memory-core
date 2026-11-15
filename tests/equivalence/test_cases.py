@@ -36,6 +36,7 @@ def test_case_catalog_is_deterministic_unique_and_standard_json():
         "prompt.bootstrap-discovery", "promotion.ranking-gates", "promotion.apply-reconcile",
         "host.restart-recall", "host.update-isolation", "host.turn-barrier",
         "forget.index-fence",
+        "forget.lineage-tombstones",
     }
 
 

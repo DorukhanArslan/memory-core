@@ -5,7 +5,8 @@ import json
 
 ORIGINAL_PREFIX_SHA256 = "0fa31b6393c65303f4fa2e1663671e4ef60eb15edc563f05aba218c8c408349c"
 ORIGINAL_PREFIX_CASES = 1452
-REGISTERED_CASES = 1465
+HISTORICAL_REGISTERED_CASES = 1465
+REGISTERED_CASES = 1468
 
 # PR22 changes these three policy texts, not the thirteen cases' business inputs,
 # order, coverage or other fields. Reversing only the exact reviewed fragments
@@ -92,11 +93,20 @@ def definition_authority(cases, *, fif_version):
     from equivalence import forget_index_fence_v5, forget_index_fence_v6
 
     families = {"v5": forget_index_fence_v5, "v6": forget_index_fence_v6}
-    if fif_version not in families or not isinstance(cases, list) or len(cases) != REGISTERED_CASES:
+    if (fif_version not in families or not isinstance(cases, list)
+            or len(cases) not in {HISTORICAL_REGISTERED_CASES, REGISTERED_CASES}
+            or fif_version == "v5" and len(cases) != HISTORICAL_REGISTERED_CASES):
         raise ValueError("Catalog migration requires one complete exact registered definition set")
     frozen = families[fif_version]
-    if cases[ORIGINAL_PREFIX_CASES:] != frozen.build_cases():
+    if cases[ORIGINAL_PREFIX_CASES:HISTORICAL_REGISTERED_CASES] != frozen.build_cases():
         raise ValueError("Catalog migration changed or mixed the selected frozen FIF tail")
+    lineage = cases[HISTORICAL_REGISTERED_CASES:]
+    if lineage:
+        from equivalence.forget_lineage_outcomes import build_cases, validate_registration
+
+        if lineage != build_cases():
+            raise ValueError("Catalog migration changed the exact appended forget outcome family")
+        validate_registration(cases)
     frozen.validate_registration(cases)
     prefix = deepcopy(cases[:ORIGINAL_PREFIX_CASES])
     policy_replacements = _restore_reviewed_policies(prefix)
@@ -136,9 +146,11 @@ def definition_authority(cases, *, fif_version):
         for index, (prior, current) in enumerate(zip(forget_index_fence_v5.build_cases(), frozen.build_cases(), strict=True), ORIGINAL_PREFIX_CASES):
             tail.append({"index": index, "originalId": prior["id"], "currentId": current["id"],
                          "originalDefinitionSha256": _sha(prior), "currentDefinitionSha256": _sha(current)})
-    return {"kind": "explicit-default-definition-migration", "registeredCases": REGISTERED_CASES,
+    return {"kind": "explicit-default-definition-migration", "registeredCases": len(cases),
             "fifVersion": fif_version, "originalPrefixCases": ORIGINAL_PREFIX_CASES,
             "originalPrefixSha256": ORIGINAL_PREFIX_SHA256,
             "currentPrefixSha256": _sha(cases[:ORIGINAL_PREFIX_CASES]),
-            "originalPrefixUnchanged": not replacements, "hostReplacements": replacements,
-            "fifReplacements": tail, "policyReplacements": policy_replacements}
+            "originalPrefixUnchanged": not replacements and not policy_replacements, "hostReplacements": replacements,
+            "fifReplacements": tail, "policyReplacements": policy_replacements,
+            "lineageAppend": [{"index": index, "id": case["id"], "definitionSha256": _sha(case)}
+                              for index, case in enumerate(lineage, HISTORICAL_REGISTERED_CASES)]}

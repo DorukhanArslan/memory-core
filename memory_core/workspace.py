@@ -722,7 +722,9 @@ class MemoryWorkspace:
                     if not self.is_path_inside_root(resolved_parent):
                         raise MemoryReadPathError(
                             "outside-workspace", "file is outside workspace root"
-                        ) from ValueError(f"Symlink escapes root ({self.root}): {parent}")
+                        ) from ValueError(
+                            f"Symlink escapes root ({_short_error_path(self.root)}): {_short_error_path(parent)}"
+                        )
                     try:
                         resolved_stat = os.stat(resolved_parent)
                     except OSError as error:
@@ -842,3 +844,18 @@ class MemoryWorkspace:
             selected = lines[start - 1 : start - 1 + max(0, line_count)]
         end = start + len(selected) - 1 if selected else start - 1
         return MemoryReadResult(self.normalize_memory_path(rel_path), "".join(selected), start, end)
+
+
+def _short_error_path(path: Path) -> str:
+    """Match fs-safe's shortPath display for a refused filesystem path."""
+    home = os.environ.get("USERPROFILE" if os.name == "nt" else "HOME")
+    if home is None:
+        home = str(Path.home())
+    value = str(path)
+    prefix = home if home.endswith(os.sep) else home + os.sep
+    if value == home:
+        value = "~"
+    elif value.startswith(prefix):
+        value = "~" + os.sep + value[len(prefix):]
+    return re.sub(r"[\x00-\x1f\x7f-\x9f\u2028\u2029]",
+                  lambda match: f"\\u{ord(match[0]):04x}", value)

@@ -399,13 +399,19 @@ def test_recovery_before_actual_sql_pin_does_not_attach_the_previous_failure(tmp
         journal.unlink()
         before = owner.store.index_revision()
         original = owner.store._search_connection
+        recovered = False
 
         @contextmanager
         def recover_before_pin(signal):
-            assert owner.store.status()["lastSyncError"] == "unable to open database file"
-            owner.store.reindex_sources(owner.kit.memory.workspace, sources={"memory"})
-            assert owner.store.index_revision() > before
-            assert "lastSyncError" not in owner.store.status()
+            nonlocal recovered
+            if not recovered:
+                # Inject one recovery before the retrieval snapshot. A later
+                # live metadata connection observes that completed recovery.
+                assert owner.store.status()["lastSyncError"] == "unable to open database file"
+                owner.store.reindex_sources(owner.kit.memory.workspace, sources={"memory"})
+                assert owner.store.index_revision() > before
+                assert "lastSyncError" not in owner.store.status()
+                recovered = True
             with original(signal) as db:
                 yield db
 

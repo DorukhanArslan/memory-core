@@ -357,6 +357,12 @@ def _validate_scope(scope: Any, cases: Any) -> tuple[list[dict], dict[str, set[s
         validate_query_sync_boundary_registration(cases)
     except ValueError as error:
         raise HarnessError("cases-invalid", str(error)) from None
+    from equivalence.forget_lineage_outcomes import validate_registration as validate_forget_outcomes
+
+    try:
+        validate_forget_outcomes(cases)
+    except ValueError as error:
+        raise HarnessError("cases-invalid", str(error)) from None
     return requirements, points
 
 
@@ -1065,6 +1071,7 @@ def run_suite(*, checkout: Path, node: Path, smoke: bool = False,
             "index-identity-boundaries-runtime",
             "query-sync-outcomes-runtime",
             "query-sync-boundaries-runtime",
+            "forget-lineage-runtime",
         }
         runtime_cases = [case for case in cases if case["operation"] in runtime_operations]
         source_cases = [case for case in cases if case["operation"] not in runtime_operations]
@@ -1437,6 +1444,13 @@ def run_suite(*, checkout: Path, node: Path, smoke: bool = False,
                 report["querySyncBoundariesBindings"] = prepare_query_sync_boundaries_bindings(
                     checkout, Path(runtime_config["runtimeRoot"]))
                 report["querySyncBoundariesNode"] = prepare_model_node_authority(node)
+            if any(case["operation"] == "forget-lineage-runtime" for case in runtime_cases):
+                from equivalence.forget_lineage_bindings import prepare_forget_lineage_bindings
+                from equivalence.model_runtime_authority import prepare_model_node_authority
+
+                report["forgetLineageBindings"] = prepare_forget_lineage_bindings(
+                    checkout, Path(runtime_config["runtimeRoot"]))
+                report["forgetLineageNode"] = prepare_model_node_authority(node)
             observed_release = {}
             for case in runtime_cases:
                 # The real manager retains global state owners. Each distinct
@@ -1462,6 +1476,11 @@ def run_suite(*, checkout: Path, node: Path, smoke: bool = False,
             try:
                 if prepare_release_runtime(checkout, release_runtime_root) != runtime_config:
                     raise ValueError("Runtime artifacts changed.")
+                if "forgetLineageBindings" in report and (
+                        prepare_forget_lineage_bindings(checkout, Path(runtime_config["runtimeRoot"]))
+                        != report["forgetLineageBindings"]
+                        or prepare_model_node_authority(node) != report["forgetLineageNode"]):
+                    raise ValueError("Original forget source/artifact/executable owners changed.")
                 if "promotionApplyFamilyBindings" in report and (
                         prepare_family_bindings(checkout, Path(runtime_config["runtimeRoot"])) != report["promotionApplyFamilyBindings"]
                         or prepare_model_node_authority(node) != report["promotionApplyFamilyNode"]):
@@ -1663,12 +1682,14 @@ def run_suite(*, checkout: Path, node: Path, smoke: bool = False,
                         row["unavailablePackage"] = missing_package[1]
             else:
                 try:
+                    native_comparison = native["result"]
                     python_case = deepcopy(case)
                     if case in python_diagnostic_cases:
-                        if case["operation"] in {"index-identity-boundaries-runtime", "query-sync-outcomes-runtime", "query-sync-boundaries-runtime"}:
+                        if case["operation"] in {"index-identity-boundaries-runtime", "query-sync-outcomes-runtime", "query-sync-boundaries-runtime", "forget-lineage-runtime"}:
                             # Keep the original child paths and bytes for the post-run
                             # semantic replay, including failed SDK captures.
-                            family = ("query-sync-boundaries" if case["operation"] == "query-sync-boundaries-runtime" else
+                            family = ("forget-lineage-outcomes" if case["operation"] == "forget-lineage-runtime" else
+                                      "query-sync-boundaries" if case["operation"] == "query-sync-boundaries-runtime" else
                                       "query-sync-outcomes" if case["operation"] == "query-sync-outcomes-runtime"
                                       else "index-identity-boundaries")
                             retained = ROOT / ".equivalence-results" / family
@@ -1693,6 +1714,8 @@ def run_suite(*, checkout: Path, node: Path, smoke: bool = False,
                             raise ValueError("Invalid runtime diagnostic file.")
                         raw = evidence.read_bytes()
                         snapshots = _json(raw.decode("utf-8"))
+                        if case["operation"] == "forget-lineage-runtime" and isinstance(snapshots, dict):
+                            snapshots = [snapshots]
                         if not isinstance(snapshots, list):
                             raise ValueError("Runtime diagnostics must retain raw snapshot rows.")
                         if case in source_diagnostic_cases:
@@ -1816,25 +1839,42 @@ def run_suite(*, checkout: Path, node: Path, smoke: bool = False,
                                 raise ValueError("Query-sync boundary custody did not affirmatively validate")
                             query_sync_boundary_diagnostic["validationStatus"] = "verified"
                             row["runtimeEvidenceValidated"] = True
+                        if case["operation"] == "forget-lineage-runtime":
+                            from equivalence.forget_lineage_outcomes_evidence import validate_pair
+
+                            lineage_diagnostic = {"id": case["id"], "side": "python", "sha256": hashlib.sha256(raw).hexdigest(),
+                                                  "rawSnapshots": snapshots, "evidenceDirectory": str(directory),
+                                                  "validationStatus": "unverified"}
+                            report["runtimeDiagnostics"].append(lineage_diagnostic)
+                            original = next(d for d in report["runtimeDiagnostics"]
+                                            if d["side"] == "native" and d["id"] == case["id"])
+                            if (original.get("validationStatus") != "verified"
+                                    or len(original["rawSnapshots"]) != 1 or len(snapshots) != 1):
+                                raise ValueError("Forget outcomes require one authenticated original and SDK capture")
+                            native_comparison, python = validate_pair(
+                                case, original["rawSnapshots"][0], snapshots[0], native["result"], python, directory)
+                            lineage_diagnostic["validationStatus"] = "verified"
+                            row["runtimeEvidenceValidated"] = True
+                            row.update(openclaw=native_comparison, python=python)
                         diagnostic_key = "sourceDiagnostics" if case in source_diagnostic_cases else "runtimeDiagnostics"
                         if case["operation"] not in {"promotion-apply-family-runtime", "host-restart-session-runtime",
                                                      "host-update-isolation-runtime", "host-turn-barrier-runtime",
-                                                     "host-turn-barrier-boundaries-runtime", "index-identity-boundaries-runtime", "query-sync-outcomes-runtime", "query-sync-boundaries-runtime"}:
+                                                     "host-turn-barrier-boundaries-runtime", "index-identity-boundaries-runtime", "query-sync-outcomes-runtime", "query-sync-boundaries-runtime", "forget-lineage-runtime"}:
                             report[diagnostic_key].append({
                                 "id": case["id"], "side": "python", "sha256": hashlib.sha256(raw).hexdigest(),
                                 "rawSnapshots": snapshots,
                             })
                     # Reject non-JSON outputs and non-finite values explicitly.
                     python = _json(json.dumps(python, ensure_ascii=False, allow_nan=False))
-                    row["status"] = "matched" if _same_json(python, native["result"]) else "mismatched"
+                    row["status"] = "matched" if _same_json(python, native_comparison) else "mismatched"
                     if row["status"] == "mismatched":
                         row.update(operation=case["operation"], input=case["input"],
-                                   python=python, openclaw=native["result"])
+                                   python=python, openclaw=native_comparison)
                 except Exception as error:
                     row.update(status="blocked", code="python-case-failed")
                     if case["operation"] in {"promotion-apply-family-runtime", "host-restart-session-runtime",
                                              "host-update-isolation-runtime", "host-turn-barrier-runtime",
-                                             "host-turn-barrier-boundaries-runtime", "index-identity-boundaries-runtime", "query-sync-outcomes-runtime", "query-sync-boundaries-runtime"}:
+                                             "host-turn-barrier-boundaries-runtime", "index-identity-boundaries-runtime", "query-sync-outcomes-runtime", "query-sync-boundaries-runtime", "forget-lineage-runtime"}:
                         row["evidenceError"] = {"name": type(error).__name__, "message": str(error)}
                     if case["operation"] == "host-update-isolation-runtime" and python_diagnostics is not None:
                         _retain_failed_host_update_capture(
@@ -1858,6 +1898,10 @@ def run_suite(*, checkout: Path, node: Path, smoke: bool = False,
         identity_boundaries_complete = _index_identity_boundaries_family_complete(report["cases"])
         query_sync_complete = _query_sync_outcomes_family_complete(report["cases"])
         query_sync_boundaries_complete = _query_sync_boundaries_family_complete(report["cases"])
+        from equivalence.forget_lineage_outcomes import family_complete as forget_outcomes_complete, POINTS as forget_outcome_points
+
+        lineage_outcomes_complete = forget_outcomes_complete(report["cases"])
+        report["forgetLineageOutcomesFamilyComplete"] = lineage_outcomes_complete
         from equivalence.query_sync_boundaries import POINTS as query_sync_boundary_points
         from equivalence.query_sync_outcomes import POINTS as query_sync_points
         from equivalence.index_identity_boundaries import POINTS as identity_boundary_points
@@ -1883,7 +1927,9 @@ def run_suite(*, checkout: Path, node: Path, smoke: bool = False,
                                                       and (point["id"] not in query_sync_points
                                                            or query_sync_complete)
                                                       and (point["id"] not in query_sync_boundary_points
-                                                           or query_sync_boundaries_complete)]})
+                                                           or query_sync_boundaries_complete)
+                                                      and (point["id"] not in forget_outcome_points
+                                                           or lineage_outcomes_complete)]})
             report["requirements"].append({"id": requirement["id"], "required": requirement["required"],
                                             "acceptance": acceptance, "registeredCases": len(rows)})
         uncovered = [point["id"] for requirement in report["requirements"] if requirement["required"]

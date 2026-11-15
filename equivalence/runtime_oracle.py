@@ -1659,6 +1659,7 @@ class ReleaseOracleExecution:
         if promotion_apply_transport is not None:
             answer["releaseTrace"]["promotionApplyTransport"] = promotion_apply_transport
         if self.forget_lineage_profile is not None:
+            answer["runtimeDiagnostics"][0]["validationStatus"] = "verified"
             answer["releaseTrace"]["forgetLineageTransport"] = {
                 "profile": deepcopy(self.forget_lineage_profile), "traceFiles": entry_trace_files}
         if self.turn_taint_source is not None:

@@ -7,6 +7,26 @@ ORIGINAL_PREFIX_SHA256 = "0fa31b6393c65303f4fa2e1663671e4ef60eb15edc563f05aba218
 ORIGINAL_PREFIX_CASES = 1452
 REGISTERED_CASES = 1465
 
+# Reporting targets only. These IDs were selected from the independently retained
+# 1,452-case baseline's /data/mismatchPayloads keys; no expected output is stored.
+HISTORICAL_MISMATCH_REPORT_BASELINE_SHA256 = "7f858e165405d16bdf1d8973abb9fa60b8f2015531e4fc59e1735e8b8d43aaad"
+HISTORICAL_MISMATCH_REPORT_IDS = (
+    'hybrid-unicode-path-collation-diagnostic',
+    'transcript-boundary-compressed-same-size-mtime-cache-diagnostic',
+    'flush-execution-warm-index-first-recall',
+    'redaction-policy-letter-mixed-i-engine-diagnostic',
+    'redaction-policy-letter-repeated-capture-engine-diagnostic',
+    'redaction-policy-unsupported-valid-general-property',
+    'redaction-policy-unsupported-valid-v-direct-compiler',
+    'model-tool-complete-tool-result',
+    'model-tool-utf16-redaction-truncation-order',
+    'model-session-configured-letter-mixed-i-engine-diagnostic',
+    'model-session-configured-letter-capture-reset-engine-diagnostic',
+    'bootstrap-discovery-memory-core-layout-extension',
+    'bootstrap-discovery-legacy-state-gate',
+    'promotion-ranking-primitive-provenance-safety-diagnostic',
+)
+
 
 def _sha(value):
     return hashlib.sha256(json.dumps(value, sort_keys=True, ensure_ascii=True,

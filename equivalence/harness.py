@@ -2234,7 +2234,9 @@ def run_suite(*, checkout: Path, node: Path, smoke: bool = False,
                     # Reject non-JSON outputs and non-finite values explicitly.
                     python = _json(json.dumps(python, ensure_ascii=False, allow_nan=False))
                     row["status"] = "matched" if _same_json(python, native["result"]) else "mismatched"
-                    if case["operation"] in {"forget-index-fence-v6-runtime", "host-turn-barrier-v4-runtime"}:
+                    from equivalence.catalog_migration import HISTORICAL_MISMATCH_REPORT_IDS
+                    if (case["operation"] in {"forget-index-fence-v6-runtime", "host-turn-barrier-v4-runtime"}
+                            or case["id"] in HISTORICAL_MISMATCH_REPORT_IDS):
                         row.update(python=python, openclaw=native["result"])
                     if row["status"] == "mismatched":
                         row.update(operation=case["operation"], input=case["input"],

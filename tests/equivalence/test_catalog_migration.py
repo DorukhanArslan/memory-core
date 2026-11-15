@@ -105,3 +105,35 @@ def test_historical_v5_authority_remains_an_explicit_unchanged_prefix_identity()
     assert proof["hostReplacements"] == proof["fifReplacements"] == []
     with pytest.raises(ValueError):
         definition_authority(current, fif_version="v5")
+
+
+def test_historical_retention_targets_add_only_fourteen_existing_ids_to_the_seventeen_runtime_pairs():
+    from equivalence.catalog_migration import HISTORICAL_MISMATCH_REPORT_IDS
+
+    assert type(HISTORICAL_MISMATCH_REPORT_IDS) is tuple
+    historical = set(HISTORICAL_MISMATCH_REPORT_IDS)
+    assert len(historical) == len(HISTORICAL_MISMATCH_REPORT_IDS) == 14
+    cases = build_cases()
+    known = {case["id"] for case in cases}
+    runtime_pairs = set(host.CASE_HASHES) | set(forget_index_fence_v6.CASE_HASHES)
+    assert historical <= known
+    assert not historical & runtime_pairs
+    assert len(historical | runtime_pairs) == 31
+
+
+def test_historical_retention_tuple_matches_the_explicitly_selected_pinned_independent_baseline():
+    import os
+    from pathlib import Path
+    from equivalence.catalog_migration import (
+        HISTORICAL_MISMATCH_REPORT_BASELINE_SHA256, HISTORICAL_MISMATCH_REPORT_IDS,
+    )
+
+    selector = os.environ.get("MEMORY_EQ_HISTORICAL_REPORT_BASELINE")
+    if selector is None:
+        pytest.skip("No explicitly selected independent baseline; no original parity credit")
+    path = Path(selector)
+    before = path.read_bytes()
+    assert hashlib.sha256(before).hexdigest() == HISTORICAL_MISMATCH_REPORT_BASELINE_SHA256
+    actual = json.loads(before)["data"]["mismatchPayloads"]
+    assert tuple(actual) == HISTORICAL_MISMATCH_REPORT_IDS
+    assert path.read_bytes() == before

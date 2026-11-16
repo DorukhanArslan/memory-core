@@ -369,6 +369,12 @@ def _validate_scope(scope: Any, cases: Any) -> tuple[list[dict], dict[str, set[s
         validate_forget_boundaries(cases)
     except ValueError as error:
         raise HarnessError("cases-invalid", str(error)) from None
+    from equivalence.recall_signals import validate_registration as validate_recall_signals
+
+    try:
+        validate_recall_signals(cases)
+    except ValueError as error:
+        raise HarnessError("cases-invalid", str(error)) from None
     return requirements, points
 
 
@@ -661,6 +667,10 @@ def _oracle(node: Path, script: Path, checkout: Path, cases: list[dict], timeout
                     from equivalence.forget_boundaries_profile import prepare_forget_boundaries_profile
 
                     context_options["forget_boundaries_profile"] = prepare_forget_boundaries_profile(cases[0], node)
+                if len(cases) == 1 and cases[0]["operation"] == "recall-signals-runtime":
+                    from equivalence.recall_signals_profile import prepare_recall_signals_profile
+
+                    context_options["recall_signals_profile"] = prepare_recall_signals_profile(cases[0], node)
 
                 if len(cases) == 1 and cases[0]["operation"] in MODEL_RUNTIME_OPERATIONS:
                     from equivalence.model_runtime_authority import prepare_model_node_authority
@@ -753,6 +763,11 @@ def _oracle(node: Path, script: Path, checkout: Path, cases: list[dict], timeout
         if execution is not None:
             try:
                 result = execution.collect(result, cases)
+                if len(cases) == 1 and cases[0]["operation"] == "recall-signals-runtime":
+                    result["releaseTrace"]["recallSignalsTransport"]["originalProcessStreams"] = {
+                        name: {"text": value, "bytes": len(value.encode("utf8")),
+                               "sha256": hashlib.sha256(value.encode("utf8")).hexdigest()}
+                        for name, value in (("stdout", stdout), ("stderr", stderr))}
                 if len(cases) == 1 and cases[0]["operation"] in {"forget-lineage-runtime", "forget-boundaries-runtime"}:
                     transport = ("forgetBoundariesTransport" if cases[0]["operation"] == "forget-boundaries-runtime"
                                  else "forgetLineageTransport")
@@ -1085,6 +1100,7 @@ def run_suite(*, checkout: Path, node: Path, smoke: bool = False,
             "query-sync-boundaries-runtime",
             "forget-lineage-runtime",
             "forget-boundaries-runtime",
+            "recall-signals-runtime",
         }
         runtime_cases = [case for case in cases if case["operation"] in runtime_operations]
         source_cases = [case for case in cases if case["operation"] not in runtime_operations]
@@ -1464,6 +1480,13 @@ def run_suite(*, checkout: Path, node: Path, smoke: bool = False,
                 report["forgetLineageBindings"] = prepare_forget_lineage_bindings(
                     checkout, Path(runtime_config["runtimeRoot"]))
                 report["forgetLineageNode"] = prepare_model_node_authority(node)
+            if any(case["operation"] == "recall-signals-runtime" for case in runtime_cases):
+                from equivalence.recall_signals_bindings import prepare_recall_signals_bindings
+                from equivalence.model_runtime_authority import prepare_model_node_authority
+
+                report["recallSignalsBindings"] = prepare_recall_signals_bindings(
+                    checkout, Path(runtime_config["runtimeRoot"]))
+                report["recallSignalsNode"] = prepare_model_node_authority(node)
             observed_release = {}
             for case in runtime_cases:
                 # The real manager retains global state owners. Each distinct
@@ -1489,6 +1512,11 @@ def run_suite(*, checkout: Path, node: Path, smoke: bool = False,
             try:
                 if prepare_release_runtime(checkout, release_runtime_root) != runtime_config:
                     raise ValueError("Runtime artifacts changed.")
+                if "recallSignalsBindings" in report and (
+                        prepare_recall_signals_bindings(checkout, Path(runtime_config["runtimeRoot"]))
+                        != report["recallSignalsBindings"]
+                        or prepare_model_node_authority(node) != report["recallSignalsNode"]):
+                    raise ValueError("Original recall source/artifact/executable owners changed.")
                 if "forgetLineageBindings" in report and (
                         prepare_forget_lineage_bindings(checkout, Path(runtime_config["runtimeRoot"]))
                         != report["forgetLineageBindings"]
@@ -1698,10 +1726,11 @@ def run_suite(*, checkout: Path, node: Path, smoke: bool = False,
                     native_comparison = native["result"]
                     python_case = deepcopy(case)
                     if case in python_diagnostic_cases:
-                        if case["operation"] in {"index-identity-boundaries-runtime", "query-sync-outcomes-runtime", "query-sync-boundaries-runtime", "forget-lineage-runtime", "forget-boundaries-runtime"}:
+                        if case["operation"] in {"index-identity-boundaries-runtime", "query-sync-outcomes-runtime", "query-sync-boundaries-runtime", "forget-lineage-runtime", "forget-boundaries-runtime", "recall-signals-runtime"}:
                             # Keep the original child paths and bytes for the post-run
                             # semantic replay, including failed SDK captures.
-                            family = ("forget-boundaries" if case["operation"] == "forget-boundaries-runtime" else
+                            family = ("recall-signals" if case["operation"] == "recall-signals-runtime" else
+                                      "forget-boundaries" if case["operation"] == "forget-boundaries-runtime" else
                                       "forget-lineage-outcomes" if case["operation"] == "forget-lineage-runtime" else
                                       "query-sync-boundaries" if case["operation"] == "query-sync-boundaries-runtime" else
                                       "query-sync-outcomes" if case["operation"] == "query-sync-outcomes-runtime"
@@ -1873,10 +1902,27 @@ def run_suite(*, checkout: Path, node: Path, smoke: bool = False,
                             lineage_diagnostic["validationStatus"] = "verified"
                             row["runtimeEvidenceValidated"] = True
                             row.update(openclaw=native_comparison, python=python)
+                        if case["operation"] == "recall-signals-runtime":
+                            from equivalence.recall_signals_evidence import validate_pair
+
+                            recall_diagnostic = {"id": case["id"], "side": "python", "sha256": hashlib.sha256(raw).hexdigest(),
+                                                 "rawSnapshots": snapshots, "evidenceDirectory": str(directory),
+                                                 "validationStatus": "unverified"}
+                            report["runtimeDiagnostics"].append(recall_diagnostic)
+                            original = next(d for d in report["runtimeDiagnostics"]
+                                            if d["side"] == "native" and d["id"] == case["id"])
+                            if (original.get("validationStatus") != "verified"
+                                    or len(original["rawSnapshots"]) != 1 or len(snapshots) != 1):
+                                raise ValueError("Recall signals require one authenticated original and SDK capture")
+                            native_comparison, python = validate_pair(
+                                case, original["rawSnapshots"][0], snapshots[0], native["result"], python, directory)
+                            recall_diagnostic["validationStatus"] = "verified"
+                            row["runtimeEvidenceValidated"] = True
+                            row.update(openclaw=native_comparison, python=python)
                         diagnostic_key = "sourceDiagnostics" if case in source_diagnostic_cases else "runtimeDiagnostics"
                         if case["operation"] not in {"promotion-apply-family-runtime", "host-restart-session-runtime",
                                                      "host-update-isolation-runtime", "host-turn-barrier-runtime",
-                                                     "host-turn-barrier-boundaries-runtime", "index-identity-boundaries-runtime", "query-sync-outcomes-runtime", "query-sync-boundaries-runtime", "forget-lineage-runtime", "forget-boundaries-runtime"}:
+                                                     "host-turn-barrier-boundaries-runtime", "index-identity-boundaries-runtime", "query-sync-outcomes-runtime", "query-sync-boundaries-runtime", "forget-lineage-runtime", "forget-boundaries-runtime", "recall-signals-runtime"}:
                             report[diagnostic_key].append({
                                 "id": case["id"], "side": "python", "sha256": hashlib.sha256(raw).hexdigest(),
                                 "rawSnapshots": snapshots,
@@ -1891,7 +1937,7 @@ def run_suite(*, checkout: Path, node: Path, smoke: bool = False,
                     row.update(status="blocked", code="python-case-failed")
                     if case["operation"] in {"promotion-apply-family-runtime", "host-restart-session-runtime",
                                              "host-update-isolation-runtime", "host-turn-barrier-runtime",
-                                             "host-turn-barrier-boundaries-runtime", "index-identity-boundaries-runtime", "query-sync-outcomes-runtime", "query-sync-boundaries-runtime", "forget-lineage-runtime", "forget-boundaries-runtime"}:
+                                             "host-turn-barrier-boundaries-runtime", "index-identity-boundaries-runtime", "query-sync-outcomes-runtime", "query-sync-boundaries-runtime", "forget-lineage-runtime", "forget-boundaries-runtime", "recall-signals-runtime"}:
                         row["evidenceError"] = {"name": type(error).__name__, "message": str(error)}
                     if case["operation"] == "host-update-isolation-runtime" and python_diagnostics is not None:
                         _retain_failed_host_update_capture(
@@ -1923,6 +1969,10 @@ def run_suite(*, checkout: Path, node: Path, smoke: bool = False,
 
         boundary_complete = forget_boundaries_complete(report["cases"])
         report["forgetBoundariesFamilyComplete"] = boundary_complete
+        from equivalence.recall_signals import family_complete as recall_family_complete, POINTS as recall_points
+
+        recall_complete = recall_family_complete(report["cases"])
+        report["recallSignalsFamilyComplete"] = recall_complete
         from equivalence.query_sync_boundaries import POINTS as query_sync_boundary_points
         from equivalence.query_sync_outcomes import POINTS as query_sync_points
         from equivalence.index_identity_boundaries import POINTS as identity_boundary_points
@@ -1952,7 +2002,9 @@ def run_suite(*, checkout: Path, node: Path, smoke: bool = False,
                                                       and (point["id"] not in forget_outcome_points
                                                            or lineage_outcomes_complete)
                                                       and (point["id"] not in forget_boundary_points
-                                                           or boundary_complete)]})
+                                                           or boundary_complete)
+                                                      and (point["id"] not in recall_points
+                                                           or recall_complete)]})
             report["requirements"].append({"id": requirement["id"], "required": requirement["required"],
                                             "acceptance": acceptance, "registeredCases": len(rows)})
         uncovered = [point["id"] for requirement in report["requirements"] if requirement["required"]

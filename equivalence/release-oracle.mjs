@@ -43,6 +43,7 @@ const operations = {
   "memory-budget-runtime": ["memory-budget-runtime.mjs", "runMemoryBudgetRuntime"],
   "memory-budget-apply-runtime": ["memory-budget-runtime.mjs", "runMemoryBudgetRuntime"],
   "promotion-ranking-runtime": ["promotion-ranking-runtime.mjs", "runPromotionRankingRuntime"],
+  "recall-signals-runtime": ["recall-signals-runtime.mjs", "runRecallSignalsRuntime"],
   "promotion-apply-reconcile-runtime": ["promotion-apply-runtime.mjs", "runPromotionApplyRuntime"],
 };
 function sameGetReadRaceLiteral(actual, expected) {
@@ -97,7 +98,8 @@ for (const testCase of request.cases) {
     const modelAuthority = context.approvedNodeRuntime !== undefined && context.entryProvenanceProfile === undefined &&
       context.atomicPublicationProfile === undefined && context.memoryBudgetProfile === undefined &&
       context.promotionRankingProfile === undefined && context.promotionApplyProfile === undefined &&
-      context.forgetLineageProfile === undefined && context.forgetBoundariesProfile === undefined;
+      context.forgetLineageProfile === undefined && context.forgetBoundariesProfile === undefined &&
+      context.recallSignalsProfile === undefined;
     if (modelAuthority !== Object.hasOwn(modelKinds, testCase.operation) ||
         modelAuthority && modelKinds[testCase.operation] !== null && testCase.input?.kind !== modelKinds[testCase.operation]) {
       throw Error("The model binary capability cannot execute another operation or input contract before import");
@@ -173,6 +175,20 @@ for (const testCase of request.cases) {
           boundaryProfile.inputKind !== testCase.input?.kind ||
           crypto.createHash("sha256").update(wire).digest("hex") !== boundaryProfile.caseBindings[testCase.id]) {
         throw Error("The boundary caller received changed or substituted literal inputs");
+      }
+    }
+    const recallProfile = context.recallSignalsProfile;
+    if ((recallProfile !== undefined) !== (testCase.operation === "recall-signals-runtime")) {
+      throw Error("The recall signals capability cannot borrow another operation");
+    }
+    if (recallProfile !== undefined) {
+      const stable = value => Array.isArray(value) ? value.map(stable) : value !== null && typeof value === "object"
+        ? Object.fromEntries(Object.keys(value).sort().map(key => [key, stable(value[key])])) : value;
+      const wire = JSON.stringify(stable({id:testCase.id,operation:testCase.operation,input:testCase.input}));
+      if (recallProfile.caseId !== testCase.id || recallProfile.operation !== testCase.operation ||
+          recallProfile.inputKind !== testCase.input?.kind ||
+          crypto.createHash("sha256").update(wire).digest("hex") !== recallProfile.caseBindings[testCase.id]) {
+        throw Error("The recall caller received changed or substituted literal inputs");
       }
     }
     const binding = operations[testCase.operation];

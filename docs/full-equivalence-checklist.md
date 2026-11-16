@@ -52,7 +52,39 @@ Comparisons must not normalize away behavior. A platform-specific path, generate
 Entries remain pending until their complete acceptance conditions are verified against `v2026.9.9`. Their detailed acceptance points and stable identifiers are in [scope.json](../equivalence/scope.json). A helper that already exists in Python still needs the new differential evidence. A known difference must stay visible until its implementation and tests agree. Bounded passing subsets are recorded below without closing the containing contract.
 
 <!-- CURRENT-VERIFICATION-START -->
-The latest complete assessment has **81/128 verified conditions (63.3%)**,
+The latest complete assessment has **82/128 verified conditions (64.1%)**,
+with **46 conditions remaining**: **38 complete, six partial and 20 pending
+contracts**. This measures verified conditions, not effort or elapsed work.
+
+The [reset-hook boundary closeout](session_reset_boundaries_closeout.md) records
+[one fresh full comparison](https://github.com/DorukhanArslan/memory-core/actions/runs/43961408161)
+on clean comparison head `a1bdec4`, measuring approved product source `3d70e59`.
+Its 162 SDK files respect the latest reset's retained conversation prefix and
+post-reset messages without truncating memory history at compaction alone.
+The run retains **1,490 cases: 1,476 matches, 14 mismatches, zero blocked and no
+runner errors**. The full gate still fails (actual exit 1): **44 uncovered and
+two registered unresolved conditions**. The fixed 64-contract, 128-condition
+scope is unchanged. Full report SHA-256:
+`f972a33cafa280c0a58098f3b3e5616185a33bd23df769ecb4d221a6b5f9544f`.
+
+All seven new cases verify only the original `sessions.reset-hook.boundaries`
+condition: **81 → 82/128, net +1**, taking this contract to **1/2**. Complete
+artifacts, trust records and ordered search/get payloads match through actual
+manual hooks, sequential collisions, real write failures and recovery. All
+1,483 previous definitions and all 81 previously verified conditions are
+preserved. All 14 old SDK public mismatch hashes are unchanged; the Native
+warm-flush hash changed again and remains an uncredited mismatch.
+
+The frozen CI assessor and local root review independently recompute all 128
+conditions and verify all 13 complete-family gates and retained replay receipts.
+Only the 647,615-byte summary was retrieved; the original report and raw archive
+remain retained in GitHub. The separate reset outcomes condition, concurrent
+exclusive publication, auto-reset/incognito admission, model slugs and complete
+host startup remain open. Another implementation batch requires the user's
+scope approval and must target at least one additional verified condition.
+
+**Historical complete assessment (`d53c91e`, 81/128):** This assessment has
+**81/128 verified conditions (63.3%)**,
 with **47 conditions remaining**: **38 complete, five partial and 21 pending
 contracts**. This measures verified conditions, not effort or elapsed work.
 
@@ -300,7 +332,7 @@ Current status of all 64 contracts:
 | 26 | `sessions.corpus-admission` | Complete | 2/2 |
 | 27 | `sessions.transcript-filtering` | Partial | 1/2 |
 | 28 | `sessions.visibility-lineage` | Complete | 2/2 |
-| 29 | `sessions.reset-hook` | Pending verification | 0/2 |
+| 29 | `sessions.reset-hook` | Partial | 1/2 |
 | 30 | `sessions.durable-context` | Complete | 2/2 |
 | 31 | `prompt.bootstrap-discovery` | Partial | 1/2 |
 | 32 | `prompt.bootstrap-budget` | Complete | 2/2 |
@@ -394,7 +426,7 @@ pre-open race authority, full raw filesystem evidence and broader SDK-only limit
 - [x] **`sessions.corpus-admission` — Match session corpus admission.** Compare accepted session kinds, ownership, participants, archives and generated maintenance sessions. Provide the same host metadata and compare included and excluded entries.
 - [ ] **`sessions.transcript-filtering` — Match transcript extraction and filtering.** Compare JSONL trees, tool rows, heartbeat markers, recalled content and failed or mirrored messages. Exercise reset fences, malformed rows and supported archives without inventing stored text.
 - [x] **`sessions.visibility-lineage` — Match source-session visibility and lineage.** Vary visible sessions, source identities, trust and forgotten origins. Compare hits, provenance and source reads before and after reset or deletion.
-- [ ] **`sessions.reset-hook` — Match new/reset memory capture.** Compare transcript projection, naming, timezone, slug behavior and exclusive publication. Verify source lines, trust records, collision handling and recall after the hook.
+- [ ] **`sessions.reset-hook` — Match new/reset memory capture.** Compare transcript projection, naming, timezone, slug behavior and exclusive publication. Verify source lines, trust records, collision handling and recall after the hook. The boundary condition is verified through seven complete real-owner cases, including whole source/trust/search/get results and failure recovery. The outcomes condition and broader concurrent/automatic/host lifecycle behavior remain open.
 - [x] **`sessions.durable-context` — Preserve durable conversation context.** Persist actual transcript and session metadata and reconstruct the host in a fresh process. Compare continuation, ordering and retained context without relying on process-local lists.
 
 ### Prompt and bootstrap

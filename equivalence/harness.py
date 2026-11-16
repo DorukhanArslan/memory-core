@@ -391,6 +391,12 @@ def _validate_scope(scope: Any, cases: Any) -> tuple[list[dict], dict[str, set[s
         validate_embedding_cache_lifecycle(cases)
     except ValueError as error:
         raise HarnessError("cases-invalid", str(error)) from None
+    from equivalence.session_reset_boundaries import validate_registration as validate_session_reset_boundaries
+
+    try:
+        validate_session_reset_boundaries(cases)
+    except ValueError as error:
+        raise HarnessError("cases-invalid", str(error)) from None
     return requirements, points
 
 
@@ -767,6 +773,10 @@ def _oracle(node: Path, script: Path, checkout: Path, cases: list[dict], timeout
                     from equivalence.recall_signals_profile import prepare_recall_signals_profile
 
                     context_options["recall_signals_profile"] = prepare_recall_signals_profile(cases[0], node)
+                if len(cases) == 1 and cases[0]["operation"] == "session-reset-boundaries-runtime":
+                    from equivalence.session_reset_boundaries_profile import prepare_session_reset_boundaries_profile
+
+                    context_options["session_reset_boundaries_profile"] = prepare_session_reset_boundaries_profile(cases[0], node)
                 if len(cases) == 1 and cases[0]["operation"] == "embed-cache-lifecycle-runtime":
                     from equivalence.embedding_cache_lifecycle_profile import prepare_embedding_cache_lifecycle_profile
 
@@ -876,6 +886,11 @@ def _oracle(node: Path, script: Path, checkout: Path, cases: list[dict], timeout
                         name: {"text": value, "bytes": len(value.encode("utf8")),
                                "sha256": hashlib.sha256(value.encode("utf8")).hexdigest()}
                         for name, value in (("stdout", stdout), ("stderr", stderr))}
+                if len(cases) == 1 and cases[0]["operation"] == "session-reset-boundaries-runtime":
+                    result["releaseTrace"]["sessionResetBoundariesTransport"]["originalProcessStreams"] = {
+                        name: {"text": value, "bytes": len(value.encode("utf8")),
+                               "sha256": hashlib.sha256(value.encode("utf8")).hexdigest()}
+                        for name, value in (("stdout", stdout), ("stderr", stderr))}
                 if len(cases) == 1 and cases[0]["operation"] in {"forget-lineage-runtime", "forget-boundaries-runtime"}:
                     transport = ("forgetBoundariesTransport" if cases[0]["operation"] == "forget-boundaries-runtime"
                                  else "forgetLineageTransport")
@@ -902,7 +917,8 @@ def _oracle(node: Path, script: Path, checkout: Path, cases: list[dict], timeout
                     }
                 raise failure from None
     except HarnessError as error:
-        if len(cases) == 1 and cases[0]["operation"] == "embed-cache-lifecycle-runtime":
+        if len(cases) == 1 and cases[0]["operation"] in {
+                "embed-cache-lifecycle-runtime", "session-reset-boundaries-runtime"}:
             if error.rejected_evidence is None:
                 try:
                     rejected_result = _json(stdout) if len(stdout.encode("utf8")) <= _MAX_OUTPUT_BYTES else None
@@ -910,7 +926,9 @@ def _oracle(node: Path, script: Path, checkout: Path, cases: list[dict], timeout
                     rejected_result = None
                 try:
                     if execution is None:
-                        raise ValueError("The cache execution context was not created")
+                        raise ValueError("The reset execution context was not created"
+                                         if cases[0]["operation"] == "session-reset-boundaries-runtime"
+                                         else "The cache execution context was not created")
                     error.rejected_evidence = execution.capture_rejected(
                         rejected_result, cases, stdout=stdout, stderr=stderr,
                     )
@@ -952,13 +970,42 @@ def _oracle(node: Path, script: Path, checkout: Path, cases: list[dict], timeout
                 os.killpg(process.pid, signal.SIGKILL)
             else:
                 process.kill()
-            process.communicate()
+            interrupted_stdout, interrupted_stderr = process.communicate()
+            if len(cases) == 1 and cases[0]["operation"] == "session-reset-boundaries-runtime":
+                stdout, stderr = interrupted_stdout, interrupted_stderr
         raise HarnessError("oracle-timeout", "The TypeScript oracle timed out; no retry was made.") from None
     except OSError:
         raise HarnessError("oracle-unavailable", "The TypeScript oracle could not start.") from None
     except (ValueError, UnicodeError):
         raise HarnessError("oracle-protocol", "The TypeScript oracle did not return valid bounded JSON.") from None
     finally:
+        pending = sys.exc_info()[1]
+        if (len(cases) == 1 and cases[0]["operation"] == "session-reset-boundaries-runtime"
+                and isinstance(pending, HarnessError) and pending.rejected_evidence is None):
+            # Abort handlers above still retain their actual failure, exit and
+            # bounded raw evidence before the owned execution tree closes.
+            try:
+                if execution is None:
+                    raise ValueError("The reset execution context was not created")
+                pending.rejected_evidence = execution.capture_rejected(
+                    None, cases, stdout=stdout, stderr=stderr,
+                )
+            except Exception:
+                pending.rejected_evidence = {
+                    "validationStatus": "rejected", "authenticationStatus": "unverified",
+                    "kind": "rejected-release-runtime-diagnostics", "caseIds": [cases[0]["id"]],
+                    "captureStatus": "unavailable-or-unsafe", "processWorkerTraces": [],
+                }
+            for name, value in (("stdout", stdout), ("stderr", stderr)):
+                payload = value.encode("utf8")
+                text = payload[:_MAX_OUTPUT_BYTES].decode("utf8", errors="ignore")
+                retained = text.encode("utf8")
+                pending.rejected_evidence.setdefault(name, {
+                    "sha256": hashlib.sha256(payload).hexdigest(), "bytes": len(payload),
+                    "capturedBytes": len(retained), "truncated": len(retained) != len(payload), "text": text,
+                })
+            pending.rejected_evidence["processReturnCode"] = process.returncode if process is not None else None
+            pending.rejected_evidence["coverageCredit"] = False
         resources.close()
     if not isinstance(result, dict) or not isinstance(result.get("results"), list):
         raise HarnessError("oracle-protocol", "The TypeScript oracle returned an invalid result envelope.")
@@ -1509,6 +1556,7 @@ def run_suite(*, checkout: Path, node: Path, smoke: bool = False,
             "forget-lineage-runtime",
             "forget-boundaries-runtime",
             "recall-signals-runtime",
+            "session-reset-boundaries-runtime",
             "embed-cache-lifecycle-runtime",
         }
         runtime_cases = [case for case in cases if case["operation"] in runtime_operations]
@@ -1903,6 +1951,13 @@ def run_suite(*, checkout: Path, node: Path, smoke: bool = False,
                 report["recallSignalsBindings"] = prepare_recall_signals_bindings(
                     checkout, Path(runtime_config["runtimeRoot"]))
                 report["recallSignalsNode"] = prepare_model_node_authority(node)
+            if any(case["operation"] == "session-reset-boundaries-runtime" for case in runtime_cases):
+                from equivalence.session_reset_boundaries_bindings import prepare_session_reset_boundaries_bindings
+                from equivalence.model_runtime_authority import prepare_model_node_authority
+
+                report["sessionResetBoundariesBindings"] = prepare_session_reset_boundaries_bindings(
+                    checkout, Path(runtime_config["runtimeRoot"]))
+                report["sessionResetBoundariesNode"] = prepare_model_node_authority(node)
             if any(case["operation"] == "embed-cache-lifecycle-runtime" for case in runtime_cases):
                 from equivalence.embedding_cache_lifecycle_bindings import prepare_embedding_cache_lifecycle_bindings
                 from equivalence.model_runtime_authority import prepare_model_node_authority
@@ -1952,6 +2007,11 @@ def run_suite(*, checkout: Path, node: Path, smoke: bool = False,
                         != report["recallSignalsBindings"]
                         or prepare_model_node_authority(node) != report["recallSignalsNode"]):
                     raise ValueError("Original recall source/artifact/executable owners changed.")
+                if "sessionResetBoundariesBindings" in report and (
+                        prepare_session_reset_boundaries_bindings(checkout, Path(runtime_config["runtimeRoot"]))
+                        != report["sessionResetBoundariesBindings"]
+                        or prepare_model_node_authority(node) != report["sessionResetBoundariesNode"]):
+                    raise ValueError("Original session reset source/artifact/executable owners changed.")
                 if "forgetLineageBindings" in report and (
                         prepare_forget_lineage_bindings(checkout, Path(runtime_config["runtimeRoot"]))
                         != report["forgetLineageBindings"]
@@ -2166,10 +2226,11 @@ def run_suite(*, checkout: Path, node: Path, smoke: bool = False,
                     native_comparison = native["result"]
                     python_case = deepcopy(case)
                     if case in python_diagnostic_cases:
-                        if case["operation"] in {"index-identity-boundaries-runtime", "query-sync-outcomes-runtime", "query-sync-boundaries-runtime", "forget-index-fence-v6-runtime", "host-turn-barrier-v4-runtime", "forget-lineage-runtime", "forget-boundaries-runtime", "recall-signals-runtime", "embed-cache-lifecycle-runtime"}:
+                        if case["operation"] in {"index-identity-boundaries-runtime", "query-sync-outcomes-runtime", "query-sync-boundaries-runtime", "forget-index-fence-v6-runtime", "host-turn-barrier-v4-runtime", "forget-lineage-runtime", "forget-boundaries-runtime", "recall-signals-runtime", "embed-cache-lifecycle-runtime", "session-reset-boundaries-runtime"}:
                             # Keep the original child paths and bytes for the post-run
                             # semantic replay, including failed SDK captures.
-                            family = ("embedding-cache-lifecycle" if case["operation"] == "embed-cache-lifecycle-runtime" else
+                            family = ("session-reset-boundaries" if case["operation"] == "session-reset-boundaries-runtime" else
+                                      "embedding-cache-lifecycle" if case["operation"] == "embed-cache-lifecycle-runtime" else
                                       "recall-signals" if case["operation"] == "recall-signals-runtime" else
                                       "forget-boundaries" if case["operation"] == "forget-boundaries-runtime" else
                                       "forget-lineage-outcomes" if case["operation"] == "forget-lineage-runtime" else
@@ -2399,6 +2460,23 @@ def run_suite(*, checkout: Path, node: Path, smoke: bool = False,
                             recall_diagnostic["validationStatus"] = "verified"
                             row["runtimeEvidenceValidated"] = True
                             row.update(openclaw=native_comparison, python=python)
+                        if case["operation"] == "session-reset-boundaries-runtime":
+                            from equivalence.session_reset_boundaries_evidence import validate_pair
+
+                            reset_diagnostic = {"id": case["id"], "side": "python", "sha256": hashlib.sha256(raw).hexdigest(),
+                                                 "rawSnapshots": snapshots, "evidenceDirectory": str(directory),
+                                                 "validationStatus": "unverified"}
+                            report["runtimeDiagnostics"].append(reset_diagnostic)
+                            original = next(d for d in report["runtimeDiagnostics"]
+                                            if d["side"] == "native" and d["id"] == case["id"])
+                            if (original.get("validationStatus") != "verified"
+                                    or len(original["rawSnapshots"]) != 1 or len(snapshots) != 1):
+                                raise ValueError("Session reset boundaries require one authenticated original and SDK capture")
+                            native_comparison, python = validate_pair(
+                                case, original["rawSnapshots"][0], snapshots[0], native["result"], python, directory)
+                            reset_diagnostic["validationStatus"] = "verified"
+                            row["runtimeEvidenceValidated"] = True
+                            row.update(openclaw=native_comparison, python=python)
                         if case["operation"] == "embed-cache-lifecycle-runtime":
                             from equivalence.embedding_cache_lifecycle_evidence import validate_pair
 
@@ -2419,7 +2497,7 @@ def run_suite(*, checkout: Path, node: Path, smoke: bool = False,
                         diagnostic_key = "sourceDiagnostics" if case in source_diagnostic_cases else "runtimeDiagnostics"
                         if case["operation"] not in {"promotion-apply-family-runtime", "host-restart-session-runtime",
                                                      "host-update-isolation-runtime", "host-turn-barrier-runtime", "host-turn-barrier-v4-runtime",
-                                                     "host-turn-barrier-boundaries-runtime", "index-identity-boundaries-runtime", "query-sync-outcomes-runtime", "query-sync-boundaries-runtime", "forget-index-fence-v6-runtime", "forget-lineage-runtime", "forget-boundaries-runtime", "recall-signals-runtime", "embed-cache-lifecycle-runtime"}:
+                                                     "host-turn-barrier-boundaries-runtime", "index-identity-boundaries-runtime", "query-sync-outcomes-runtime", "query-sync-boundaries-runtime", "forget-index-fence-v6-runtime", "forget-lineage-runtime", "forget-boundaries-runtime", "recall-signals-runtime", "embed-cache-lifecycle-runtime", "session-reset-boundaries-runtime"}:
                             report[diagnostic_key].append({
                                 "id": case["id"], "side": "python", "sha256": hashlib.sha256(raw).hexdigest(),
                                 "rawSnapshots": snapshots,
@@ -2438,7 +2516,7 @@ def run_suite(*, checkout: Path, node: Path, smoke: bool = False,
                     row.update(status="blocked", code="python-case-failed")
                     if case["operation"] in {"promotion-apply-family-runtime", "host-restart-session-runtime",
                                              "host-update-isolation-runtime", "host-turn-barrier-runtime", "host-turn-barrier-v4-runtime",
-                                             "host-turn-barrier-boundaries-runtime", "index-identity-boundaries-runtime", "query-sync-outcomes-runtime", "query-sync-boundaries-runtime", "forget-index-fence-v6-runtime", "forget-lineage-runtime", "forget-boundaries-runtime", "recall-signals-runtime", "embed-cache-lifecycle-runtime"}:
+                                             "host-turn-barrier-boundaries-runtime", "index-identity-boundaries-runtime", "query-sync-outcomes-runtime", "query-sync-boundaries-runtime", "forget-index-fence-v6-runtime", "forget-lineage-runtime", "forget-boundaries-runtime", "recall-signals-runtime", "embed-cache-lifecycle-runtime", "session-reset-boundaries-runtime"}:
                         row["evidenceError"] = {"name": type(error).__name__, "message": str(error)}
                     if case["operation"] == "host-update-isolation-runtime" and python_diagnostics is not None:
                         _retain_failed_host_update_capture(
@@ -2490,6 +2568,10 @@ def run_suite(*, checkout: Path, node: Path, smoke: bool = False,
 
         embedding_complete = embedding_family_complete(report["cases"])
         report["embeddingCacheFamilyComplete"] = embedding_complete
+        from equivalence.session_reset_boundaries import family_complete as reset_family_complete, POINTS as reset_points
+
+        reset_complete = reset_family_complete(report["cases"])
+        report["sessionResetBoundariesFamilyComplete"] = reset_complete
         from equivalence.query_sync_boundaries import POINTS as query_sync_boundary_points
         from equivalence.query_sync_outcomes import POINTS as query_sync_points
         from equivalence.index_identity_boundaries import POINTS as identity_boundary_points
@@ -2525,7 +2607,9 @@ def run_suite(*, checkout: Path, node: Path, smoke: bool = False,
                                                       and (point["id"] not in recall_points
                                                            or recall_complete)
                                                       and (point["id"] not in embedding_points
-                                                           or embedding_complete)]})
+                                                           or embedding_complete)
+                                                      and (point["id"] not in reset_points
+                                                           or reset_complete)]})
             report["requirements"].append({"id": requirement["id"], "required": requirement["required"],
                                             "acceptance": acceptance, "registeredCases": len(rows)})
         uncovered = [point["id"] for requirement in report["requirements"] if requirement["required"]

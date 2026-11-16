@@ -316,6 +316,9 @@ def build_cases(*, include_prospective: bool = False) -> list[dict[str, Any]]:
     from equivalence.embedding_cache_lifecycle import build_cases as build_embedding_cache_lifecycle
 
     cases.extend(build_embedding_cache_lifecycle())
+    from equivalence.session_reset_boundaries import build_cases as build_session_reset_boundaries
+
+    cases.extend(build_session_reset_boundaries())
     if include_prospective:
         from equivalence.flush_contract import build_prospective_flush_contract_cases
         from equivalence.session_projection import build_prospective_session_projection_cases
@@ -402,6 +405,12 @@ def run_python(case: dict[str, Any]) -> Any:
 
         validate_embedding_cache_case({key: value for key, value in case.items() if key != "_diagnosticDirectory"})
         return run_embedding_cache_lifecycle(arguments, evidence_directory=case.get("_diagnosticDirectory"))
+    if operation == "session-reset-boundaries-runtime":
+        from equivalence.session_reset_boundaries import validate_case as validate_reset_boundary_case
+        from equivalence.session_reset_boundaries_sdk import run_session_reset_boundaries
+
+        validate_reset_boundary_case({key: value for key, value in case.items() if key != "_diagnosticDirectory"})
+        return run_session_reset_boundaries(arguments, evidence_directory=case.get("_diagnosticDirectory"))
     if operation == "recall-signals-runtime":
         from equivalence.recall_signals import validate_case as validate_recall_signals_case
         from equivalence.recall_signals_sdk import run_recall_signals

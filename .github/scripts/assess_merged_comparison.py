@@ -17,7 +17,7 @@ from equivalence.catalog_migration import definition_authority  # noqa: E402
 from equivalence.harness import _adapter_identity, _implementation_identity, _same_json  # noqa: E402
 from equivalence.strict_report_reader import Reader, _constant, _finite, _object  # noqa: E402
 
-MAIN = "8cdfa48a28a1780f4c86ea92a29448f1428d3b39"
+MAIN = "b08e28399fa00da4b735734170c4749b5b481bd8"
 SCOPE = "a8e066e63970dd0be734485d62a5932640894b8c0a42f47ac3eb67f784cbc7b9"
 SDK = {"sourceSha256": "a90d994bcf005a26a4e15bf40b2e9b95f47a7a8c31cd864ed2131021d9046990", "sourceFiles": 162}
 OPERATIONS = ("host-restart-session-runtime", "host-update-isolation-runtime",

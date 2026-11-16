@@ -9,7 +9,6 @@ from __future__ import annotations
 import hashlib
 import json
 import math
-import os
 from pathlib import Path, PurePosixPath
 import re
 import stat
@@ -20,6 +19,7 @@ from equivalence.embedding_cache_lifecycle_bindings import COMPILED_HASHES
 from equivalence.embedding_cache_lifecycle_profile import PROVIDER_SOURCE_HASHES
 from equivalence.forget_lineage_evidence import _bytes, physical_snapshot
 from equivalence.forget_lineage_outcomes_evidence import _files, _sdk_physical, _tables
+from equivalence.recall_signals_sdk import _database
 from equivalence.search_contract import _same_json
 
 ROOT = Path(__file__).resolve().parents[1]
@@ -90,20 +90,12 @@ def _sources(rows, workspace, files=None):
     return result
 
 
-def _links(snapshot, raw, *, fixture, require_live_disk=False):
+def _links(snapshot, raw, *, fixture):
     """Retain only the original loader's host link, without reading its target."""
     links = snapshot.get("links")
     _require(isinstance(links, dict), "the complete physical symbolic-link map is missing")
     _require(not fixture or not links, "the input fixture unexpectedly contains a symbolic link")
     root = Path(snapshot["root"])
-    if require_live_disk:
-        actual_links = set()
-        for directory, directories, filenames in os.walk(root, followlinks=False):
-            for name in directories + filenames:
-                path = Path(directory) / name
-                if path.is_symlink():
-                    actual_links.add(path.relative_to(root).as_posix())
-        _same(sorted(actual_links), sorted(links), "the complete surviving symbolic-link set differs from capture")
     for name, row in links.items():
         _relative(name)
         _require(not fixture and HOST_LINK.fullmatch(name) and set(row) == {"path", "target", "resolvedTarget", "lstatIdentity"},
@@ -120,17 +112,31 @@ def _links(snapshot, raw, *, fixture, require_live_disk=False):
                  and stat.S_ISLNK(int(identity["mode"])) and int(identity["nlink"]) > 0
                  and int(identity["size"]) == len(row["target"].encode()),
                  "a loader link lost its complete actual lstat identity")
-        if require_live_disk:
-            observed = path.lstat()
-            fields = {"device": observed.st_dev, "inode": observed.st_ino, "mode": observed.st_mode,
-                      "nlink": observed.st_nlink, "uid": observed.st_uid, "gid": observed.st_gid,
-                      "size": observed.st_size, "atimeNs": observed.st_atime_ns,
-                      "mtimeNs": observed.st_mtime_ns, "ctimeNs": observed.st_ctime_ns}
-            if hasattr(observed, "st_birthtime_ns"):
-                fields["birthtimeNs"] = observed.st_birthtime_ns
-            _same({key: identity[key] for key in fields}, {key: str(value) for key, value in fields.items()},
-                  "the surviving loader link differs from its captured lstat identity")
-            _same(os.readlink(path), row["target"], "the surviving loader link changed its literal target")
+
+
+def _durable_after_exit(raw, capture):
+    """Check surviving business state without freezing pre-exit lease artifacts.
+
+    Collection follows process exit. Original loader exit handlers may remove
+    capture roots and SQLite may checkpoint WAL files; historical snapshots
+    remain complete evidence of their actual earlier phases.
+    """
+    workspace = Path(raw["workspace"])
+    actual_sources = {}
+    for path in workspace.rglob("*"):
+        _require(not path.is_symlink(), "the surviving workspace contains a symbolic link")
+        if path.is_file():
+            actual_sources[path.relative_to(workspace).as_posix()] = path.read_bytes()
+    expected_sources = {name.removeprefix("workspace/"): data for name, data in _files(capture["fixture"]).items()
+                        if name.startswith("workspace/")}
+    _require(actual_sources == expected_sources, "the surviving workspace differs from its final physical snapshot")
+    database_path = Path(raw["states"][-1]["settings"]["store"]["databasePath"])
+    matches = [database for tree in (capture["fixture"], capture["state"])
+               for name, database in tree["databases"].items() if Path(tree["root"]) / name == database_path]
+    _require(len(matches) == 1 and database_path.is_file() and not database_path.is_symlink(),
+             "the final durable manager database is missing or displaced")
+    _same(_database(database_path), {key: matches[0][key] for key in ("schema", "tables")},
+          "the surviving durable manager SQL differs from its final captured state")
 
 
 def _sql(database, native):
@@ -555,13 +561,11 @@ def _native(case, public, snapshots, evidence_directory, *, require_live_disk):
     _same(raw["output"], public, "the complete original public packet changed")
     _operations(case, raw, public, captures, True)
     for fixture, tree in ((True, captures[-1]["fixture"]), (False, captures[-1]["state"])):
-        _links(tree, raw, fixture=fixture, require_live_disk=require_live_disk)
+        _links(tree, raw, fixture=fixture)
         files = _files(tree)
         _tables(tree, files)
-        for name, data in files.items():
-            path = Path(tree["root"]) / name
-            if require_live_disk:
-                _require(not path.is_symlink() and path.read_bytes() == data, "the surviving physical file differs from close capture")
+    if require_live_disk:
+        _durable_after_exit(raw, captures[-1])
 
 
 def validate_native(case, public, snapshots, evidence_directory):

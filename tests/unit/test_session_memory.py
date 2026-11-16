@@ -16,6 +16,7 @@ from memory_core.session_memory import (
     is_error_slug_payload,
     normalize_session_memory_slug,
     parse_api_error_payload,
+    save_session_memory,
     sanitize_model_special_tokens,
     sanitize_session_memory_transcript_text,
 )
@@ -39,6 +40,50 @@ def _mirror(text: str) -> dict:
     return _row(
         "assistant", [{"type": "text", "text": text}], provider="openclaw", model="delivery-mirror"
     )
+
+
+def test_save_keeps_latest_reset_prefix_on_the_active_branch(tmp_path):
+    def message(identifier, parent, role, text):
+        return {"type": "message", "id": identifier, "parentId": parent,
+                "message": {"role": role, "content": text}}
+
+    events = [
+        message("discard", None, "user", "Do not retain the old window."),
+        {"type": "reset", "id": "older-reset", "parentId": "discard"},
+        message("kept", "older-reset", "user", "Keep this request."),
+        message("tool", "kept", "toolResult", "Do not replay a pre-reset tool result."),
+        message("answer", "tool", "assistant", "Keep this response."),
+        {"type": "reset", "id": "latest-reset", "parentId": "answer", "firstKeptEntryId": "kept"},
+        message("post", "latest-reset", "user", "Keep the new window."),
+        {**message("side", "latest-reset", "assistant", "Do not retain the side branch."),
+         "appendMode": "side"},
+        {"type": "leaf", "id": "selected", "parentId": "post", "targetId": "post"},
+    ]
+    saved = save_session_memory(tmp_path, session_key="agent:main:main", session_id="ended",
+                                events=events, now_ms=1767241815000)
+
+    assert saved.session_content == (
+        'user: "Keep this request."\nassistant: "Keep this response."\nuser: "Keep the new window."'
+    )
+    assert "Do not" not in saved.path.read_text(encoding="utf8")
+
+
+@pytest.mark.parametrize("boundary,expected_prefix", [
+    ({"type": "reset"}, ""),
+    ({"type": "reset", "firstKeptEntryId": "missing"}, ""),
+    ({"type": "reset", "firstKeptEntryId": 7}, ""),
+    ({"type": "compaction"}, 'user: "Earlier conversation."\n'),
+])
+def test_save_reset_without_kept_prefix_and_compaction_history(tmp_path, boundary, expected_prefix):
+    events = [
+        {**_row("user", "Earlier conversation."), "id": "before", "parentId": None},
+        {**boundary, "id": "boundary", "parentId": "before"},
+        {**_row("user", "Current conversation."), "id": "after", "parentId": "boundary"},
+    ]
+    saved = save_session_memory(tmp_path, session_key="agent:main:main", session_id="ended",
+                                events=events, now_ms=1767241815000)
+
+    assert saved.session_content == expected_prefix + 'user: "Current conversation."'
 
 
 def test_sanitize_drops_markers_and_artifacts():

@@ -409,18 +409,31 @@ SESSION_MEMORY_CAPTURE_MAX_BYTES = 8 * 1024 * 1024
 def capture_session_memory_events(events: Iterable[object]) -> list[object]:
     """What ``captureSessionMemoryTranscript`` keeps of a host transcript.
 
-    Port of the visible-branch selection and the authoritative-read budgets of
-    ``captureAuthoritativeMemoryEvents`` (capture.ts:78-110, without the reset
-    window, which only applies to its repair read): events on the active
-    branch (``selectVisibleTranscriptEvents``), ``type: "message"`` rows only,
-    the last 4096 of them, newest first until 8 MiB of JSON is reached.
+    Port of the visible-branch selection, latest-reset window and the
+    authoritative-read budgets of ``captureAuthoritativeMemoryEvents``:
+    keep only the reset's retained user/assistant prefix and subsequent rows,
+    then the last 4096 messages, newest first until 8 MiB of JSON is reached.
+    Memory excerpts span compactions; only a reset closes their history window.
     Deviation: upstream first reads bounded pages of the host's SQLite store;
     the host supplies the events here, so only the budgets of the fallback read
     apply.
     """
+    active = select_visible_transcript_events(list(events))
+    boundary_index = next((index for index in range(len(active) - 1, -1, -1)
+                           if isinstance(active[index], Mapping) and active[index].get("type") == "reset"), -1)
+    if boundary_index >= 0:
+        first_kept = active[boundary_index].get("firstKeptEntryId")
+        first_kept_index = next((index for index, event in enumerate(active)
+                                 if isinstance(first_kept, str) and isinstance(event, Mapping)
+                                 and event.get("id") == first_kept), -1)
+        kept = active[first_kept_index:boundary_index] if 0 <= first_kept_index < boundary_index else []
+        active = [event for event in kept
+                  if isinstance(event, Mapping) and event.get("type") == "message"
+                  and isinstance(event.get("message"), Mapping)
+                  and event["message"].get("role") in ("user", "assistant")] + active[boundary_index + 1:]
     messages = [
         event
-        for event in select_visible_transcript_events(list(events))
+        for event in active
         if isinstance(event, Mapping) and event.get("type") == "message"
     ][-SESSION_MEMORY_CAPTURE_MAX_SCANNED_MESSAGES:]
     captured: list[object] = []

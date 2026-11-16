@@ -3831,7 +3831,7 @@
           "path": "memory_core/session_memory.py",
           "symbol": "save_session_memory",
           "anchor": "def save_session_memory(",
-          "line": 1089
+          "line": 1102
         },
         {
           "path": "memory_core/session_memory.py",

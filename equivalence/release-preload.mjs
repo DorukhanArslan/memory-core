@@ -21,7 +21,7 @@ if (context.schemaVersion !== 1 || context.providerMode !== expectedProviderMode
 if (embeddingMode &&
     ["entryProvenanceProfile", "atomicPublicationProfile", "atomicCaseBinding", "bootstrapDiscoveryProfile",
      "memoryBudgetProfile", "getReadRaceProfile", "promotionRankingProfile", "promotionApplyProfile",
-     "forgetLineageProfile", "forgetBoundariesProfile", "recallSignalsProfile"].some(key => context[key] !== undefined)) {
+     "forgetLineageProfile", "forgetBoundariesProfile", "recallSignalsProfile", "sessionResetBoundariesProfile"].some(key => context[key] !== undefined)) {
   throw Error("Embedding cache cannot borrow another compiled, model, source or hook capability");
 }
 if (!embeddingMode && context.embeddingFixtureSourceCaptures !== undefined) {
@@ -191,6 +191,24 @@ if (context.recallSignalsProfile !== undefined) {
     throw Error("Unapproved independent complete recall-signals capability");
   }
 }
+if (context.sessionResetBoundariesProfile !== undefined) {
+  const profile = context.sessionResetBoundariesProfile, bindings = profile?.caseBindings;
+  const approvedBindingsSha256 = "a266db484ae8d353074c212cb5d4a8d60eeb05d52dbd1a8337bda56857a0fecb";
+  if (!profile || Object.keys(profile).sort().join() !== "caseBindings,caseId,inputKind,kind,nodeRuntime,operation" ||
+      profile.kind !== "approved-session-reset-boundaries-profile" || profile.operation !== "session-reset-boundaries-runtime" ||
+      profile.inputKind !== "session-reset-boundaries" || !bindings || Object.keys(bindings).length !== 7 ||
+      !/^[0-9a-f]{64}$/.test(approvedBindingsSha256) ||
+      hash(JSON.stringify(Object.fromEntries(Object.keys(bindings).sort().map(key => [key, bindings[key]])))) !== approvedBindingsSha256 ||
+      !Object.hasOwn(bindings, profile.caseId) ||
+      JSON.stringify(profile.nodeRuntime) !== JSON.stringify(context.approvedNodeRuntime) ||
+      ["entryProvenanceProfile", "atomicPublicationProfile", "atomicCaseBinding", "bootstrapDiscoveryProfile",
+       "memoryBudgetProfile", "getReadRaceProfile", "promotionRankingProfile", "promotionApplyProfile",
+       "forgetLineageProfile", "forgetBoundariesProfile", "recallSignalsProfile", "embeddingCacheProfile"]
+        .some(key => context[key] !== undefined) ||
+      (context.approvedReferenceSources ?? []).length || (context.fixtureSourceCaptures ?? []).length) {
+    throw Error("Unapproved independent complete session reset boundary capability");
+  }
+}
 if (embeddingMode) {
   const profile = context.embeddingCacheProfile, bindings = profile?.caseBindings;
   const approvedBindingsSha256 = "3856a25129df0b84e9b49906b8f08b462290bd9ddd1720ddfb2ca6f5429d1790";
@@ -267,6 +285,7 @@ trace({ event: "bootstrap", isMainThread, ppid: process.ppid, contextSha256: has
         ...(context.forgetLineageProfile ? { forgetLineageProfile: context.forgetLineageProfile } : {}),
         ...(context.forgetBoundariesProfile ? { forgetBoundariesProfile: context.forgetBoundariesProfile } : {}),
         ...(context.recallSignalsProfile ? { recallSignalsProfile: context.recallSignalsProfile } : {}),
+        ...(context.sessionResetBoundariesProfile ? { sessionResetBoundariesProfile: context.sessionResetBoundariesProfile } : {}),
         ...(embeddingMode ? { embeddingCacheProfile: context.embeddingCacheProfile } : {}) });
 // Native workers can log directly while retiring after the result is ready.
 // Reserve stdout for the runner's single process.stdout.write JSON envelope.

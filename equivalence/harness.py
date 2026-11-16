@@ -813,6 +813,36 @@ def _oracle(node: Path, script: Path, checkout: Path, cases: list[dict], timeout
                     }
                 raise failure from None
     except HarnessError as error:
+        if len(cases) == 1 and cases[0]["operation"] == "embed-cache-lifecycle-runtime":
+            if error.rejected_evidence is None:
+                try:
+                    rejected_result = _json(stdout) if len(stdout.encode("utf8")) <= _MAX_OUTPUT_BYTES else None
+                except (ValueError, UnicodeError):
+                    rejected_result = None
+                try:
+                    if execution is None:
+                        raise ValueError("The cache execution context was not created")
+                    error.rejected_evidence = execution.capture_rejected(
+                        rejected_result, cases, stdout=stdout, stderr=stderr,
+                    )
+                except Exception:
+                    error.rejected_evidence = {
+                        "validationStatus": "rejected", "authenticationStatus": "unverified",
+                        "kind": "rejected-release-runtime-diagnostics", "caseIds": [cases[0]["id"]],
+                        "captureStatus": "unavailable-or-unsafe", "processWorkerTraces": [],
+                    }
+
+            def cache_stream(value):
+                payload = value.encode("utf8")
+                text = payload[:_MAX_OUTPUT_BYTES].decode("utf8", errors="ignore")
+                retained = text.encode("utf8")
+                return {"sha256": hashlib.sha256(payload).hexdigest(), "bytes": len(payload),
+                        "capturedBytes": len(retained), "truncated": len(retained) != len(payload), "text": text}
+
+            error.rejected_evidence.setdefault("stdout", cache_stream(stdout))
+            error.rejected_evidence.setdefault("stderr", cache_stream(stderr))
+            error.rejected_evidence["processReturnCode"] = process.returncode if process is not None else None
+            error.rejected_evidence["coverageCredit"] = False
         if source_policy and stdout:
             def source_stream(value):
                 original = value.encode("utf-8")

@@ -1,4 +1,4 @@
-// One official provider-none runtime case per fresh process. Fixture transport only.
+// One official runtime case per fresh process. Fixture transport only.
 import fs from "node:fs";
 import path from "node:path";
 import crypto from "node:crypto";
@@ -8,7 +8,10 @@ if (!contextPath) throw Error("Trusted release execution context required");
 const context = JSON.parse(fs.readFileSync(contextPath, "utf8"));
 const request = JSON.parse(fs.readFileSync(0, "utf8"));
 if (!Array.isArray(request.cases) || request.cases.length !== 1) throw Error("Use one fresh release process per case");
-if (context.providerMode !== "none") throw Error("Only provider-none release comparisons are supported");
+const expectedProviderMode = context.embeddingCacheProfile !== undefined ? "deterministic-embedding-fixture" : "none";
+if (context.providerMode !== expectedProviderMode) throw Error(context.embeddingCacheProfile !== undefined
+  ? "Embedding cache comparisons require their declared deterministic fixture provider"
+  : "Only provider-none release comparisons are supported");
 const operations = {
   "bootstrap-discovery-runtime": ["bootstrap-discovery-runtime.mjs", "runBootstrapDiscoveryRuntime"],
   "importance-project-runtime": ["importance-project-runtime.mjs", "runImportanceProjectRuntime"],

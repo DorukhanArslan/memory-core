@@ -7,6 +7,10 @@ source ranges, query/day deduplication, claim identity, dreaming-timezone days
 and bounded recall events. An injected origins ledger reserves session lineage
 before publication and rejects forgotten sources. The host supplies authoritative
 source-backed search results; arbitrary result dictionaries do not prove them.
+
+Daily identity and grounded day-bucket options use nullish precedence: an
+explicit empty value is retained rather than replaced by an outer default.
+Store retention resolves equal priorities using the host's locale ordering.
 """
 
 from __future__ import annotations

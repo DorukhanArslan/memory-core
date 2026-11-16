@@ -210,10 +210,20 @@ class _Owners:
                     "admission": arguments, "backfill": {"input": deepcopy(backfill), "returnValue": result}}
 
 
-def run_forget_lineage(value, evidence_directory):
-    """Run exactly one common input. Calling this function executes real owners."""
-    if not any(value == case["input"] for case in build_cases()):
-        raise ValueError("The diagnostic requires one exact common six-case input")
+    def admission(self, operation):
+        decisions, arguments = [], []
+        for agent in operation["agentIds"]:
+            for entry in self.corpus_entries(agent):
+                source = session_ingestion_source_from_corpus(entry)
+                if source is None:
+                    raise RuntimeError("A persisted interactive session has no actual ingestion source")
+                reason = session_exclusion_reason(source, origins=self.ledger)
+                decisions.append({"agentId": agent, "sessionId": entry.session_id, "reason": reason})
+                arguments.append({"source": asdict(source), "returnValue": reason})
+        return {"admission": decisions}, arguments
+
+
+def _run_forget_lineage(value, evidence_directory):
     directory = Path(evidence_directory).resolve()
     directory.mkdir(parents=True, exist_ok=True)
     root = directory / "sdk-fixture"
@@ -245,6 +255,8 @@ def run_forget_lineage(value, evidence_directory):
                     owners = _Owners(root, value)
                 elif operation["op"] == "replay":
                     observed["replay"], private["replay"] = owners.replay(operation)
+                elif operation["op"] == "admission":
+                    observed["replay"], private["admission"] = owners.admission(operation)
                 else:
                     raise ValueError("Unknown frozen diagnostic operation")
             except Exception as error:
@@ -260,3 +272,18 @@ def run_forget_lineage(value, evidence_directory):
     _write(directory / "python-raw.json", raw)
     return {"kind": "forget-lineage-tombstones", "provider": "none",
             "acceptancePointsAwarded": 0, "observations": observations}
+
+
+def run_forget_lineage(value, evidence_directory):
+    """Preserve the original exact-six entry point and diagnostic behavior."""
+    if not any(value == case["input"] for case in build_cases()):
+        raise ValueError("The diagnostic requires one exact common six-case input")
+    return _run_forget_lineage(value, evidence_directory)
+
+
+def run_forget_boundaries(value, evidence_directory):
+    """Execute only the independently frozen admission boundary input."""
+    from equivalence.forget_boundaries import validate_input
+
+    validate_input(value)
+    return _run_forget_lineage(value, evidence_directory)

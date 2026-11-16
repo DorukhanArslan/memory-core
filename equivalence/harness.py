@@ -372,6 +372,12 @@ def _validate_scope(scope: Any, cases: Any) -> tuple[list[dict], dict[str, set[s
         validate_forget_outcomes(cases)
     except ValueError as error:
         raise HarnessError("cases-invalid", str(error)) from None
+    from equivalence.forget_boundaries import validate_registration as validate_forget_boundaries
+
+    try:
+        validate_forget_boundaries(cases)
+    except ValueError as error:
+        raise HarnessError("cases-invalid", str(error)) from None
     return requirements, points
 
 
@@ -740,6 +746,10 @@ def _oracle(node: Path, script: Path, checkout: Path, cases: list[dict], timeout
                     from equivalence.forget_lineage_profile import prepare_forget_lineage_profile
 
                     context_options["forget_lineage_profile"] = prepare_forget_lineage_profile(cases[0], node)
+                if len(cases) == 1 and cases[0]["operation"] == "forget-boundaries-runtime":
+                    from equivalence.forget_boundaries_profile import prepare_forget_boundaries_profile
+
+                    context_options["forget_boundaries_profile"] = prepare_forget_boundaries_profile(cases[0], node)
 
                 if len(cases) == 1 and cases[0]["operation"] in MODEL_RUNTIME_OPERATIONS:
                     from equivalence.model_runtime_authority import prepare_model_node_authority
@@ -832,8 +842,10 @@ def _oracle(node: Path, script: Path, checkout: Path, cases: list[dict], timeout
         if execution is not None:
             try:
                 result = execution.collect(result, cases)
-                if len(cases) == 1 and cases[0]["operation"] == "forget-lineage-runtime":
-                    result["releaseTrace"]["forgetLineageTransport"]["originalProcessStreams"] = {
+                if len(cases) == 1 and cases[0]["operation"] in {"forget-lineage-runtime", "forget-boundaries-runtime"}:
+                    transport = ("forgetBoundariesTransport" if cases[0]["operation"] == "forget-boundaries-runtime"
+                                 else "forgetLineageTransport")
+                    result["releaseTrace"][transport]["originalProcessStreams"] = {
                         name: {"text": value, "bytes": len(value.encode("utf8")),
                                "sha256": hashlib.sha256(value.encode("utf8")).hexdigest()}
                         for name, value in (("stdout", stdout), ("stderr", stderr))}
@@ -1431,6 +1443,7 @@ def run_suite(*, checkout: Path, node: Path, smoke: bool = False,
             "query-sync-boundaries-runtime",
             "forget-index-fence-v6-runtime",
             "forget-lineage-runtime",
+            "forget-boundaries-runtime",
         }
         runtime_cases = [case for case in cases if case["operation"] in runtime_operations]
         source_cases = [case for case in cases if case["operation"] not in runtime_operations]
@@ -1810,7 +1823,7 @@ def run_suite(*, checkout: Path, node: Path, smoke: bool = False,
                 report["forgetIndexFenceBindings"] = prepare_forget_index_fence_bindings(
                     checkout, Path(runtime_config["runtimeRoot"]))
                 report["forgetIndexFenceNode"] = prepare_model_node_authority(node)
-            if any(case["operation"] == "forget-lineage-runtime" for case in runtime_cases):
+            if any(case["operation"] in {"forget-lineage-runtime", "forget-boundaries-runtime"} for case in runtime_cases):
                 from equivalence.forget_lineage_bindings import prepare_forget_lineage_bindings
                 from equivalence.model_runtime_authority import prepare_model_node_authority
 
@@ -2063,10 +2076,11 @@ def run_suite(*, checkout: Path, node: Path, smoke: bool = False,
                     native_comparison = native["result"]
                     python_case = deepcopy(case)
                     if case in python_diagnostic_cases:
-                        if case["operation"] in {"index-identity-boundaries-runtime", "query-sync-outcomes-runtime", "query-sync-boundaries-runtime", "forget-index-fence-v6-runtime", "host-turn-barrier-v4-runtime", "forget-lineage-runtime"}:
+                        if case["operation"] in {"index-identity-boundaries-runtime", "query-sync-outcomes-runtime", "query-sync-boundaries-runtime", "forget-index-fence-v6-runtime", "host-turn-barrier-v4-runtime", "forget-lineage-runtime", "forget-boundaries-runtime"}:
                             # Keep the original child paths and bytes for the post-run
                             # semantic replay, including failed SDK captures.
-                            family = ("forget-lineage-outcomes" if case["operation"] == "forget-lineage-runtime" else
+                            family = ("forget-boundaries" if case["operation"] == "forget-boundaries-runtime" else
+                                      "forget-lineage-outcomes" if case["operation"] == "forget-lineage-runtime" else
                                       "host-turn-barrier-v4" if case["operation"] == "host-turn-barrier-v4-runtime" else
                                       "forget-index-fence-v6" if case["operation"] == "forget-index-fence-v6-runtime" else
                                       "query-sync-boundaries" if case["operation"] == "query-sync-boundaries-runtime" else
@@ -2098,7 +2112,7 @@ def run_suite(*, checkout: Path, node: Path, smoke: bool = False,
                             _validate_python_runtime_diagnostic_file(info, case["operation"])
                             raw = evidence.read_bytes()
                             snapshots = _json(raw.decode("utf-8"))
-                        if case["operation"] == "forget-lineage-runtime" and isinstance(snapshots, dict):
+                        if case["operation"] in {"forget-lineage-runtime", "forget-boundaries-runtime"} and isinstance(snapshots, dict):
                             snapshots = [snapshots]
                         if not isinstance(snapshots, list):
                             raise ValueError("Runtime diagnostics must retain raw snapshot rows.")
@@ -2256,8 +2270,11 @@ def run_suite(*, checkout: Path, node: Path, smoke: bool = False,
                                 node=node, checkout=checkout, sdk_directory=directory)
                             forget_diagnostic["validationStatus"] = "verified"
                             row["runtimeEvidenceValidated"] = True
-                        if case["operation"] == "forget-lineage-runtime":
-                            from equivalence.forget_lineage_outcomes_evidence import validate_pair
+                        if case["operation"] in {"forget-lineage-runtime", "forget-boundaries-runtime"}:
+                            if case["operation"] == "forget-boundaries-runtime":
+                                from equivalence.forget_boundaries_evidence import validate_pair
+                            else:
+                                from equivalence.forget_lineage_outcomes_evidence import validate_pair
 
                             lineage_diagnostic = {"id": case["id"], "side": "python", "sha256": hashlib.sha256(raw).hexdigest(),
                                                   "rawSnapshots": snapshots, "evidenceDirectory": str(directory),
@@ -2276,7 +2293,7 @@ def run_suite(*, checkout: Path, node: Path, smoke: bool = False,
                         diagnostic_key = "sourceDiagnostics" if case in source_diagnostic_cases else "runtimeDiagnostics"
                         if case["operation"] not in {"promotion-apply-family-runtime", "host-restart-session-runtime",
                                                      "host-update-isolation-runtime", "host-turn-barrier-runtime", "host-turn-barrier-v4-runtime",
-                                                     "host-turn-barrier-boundaries-runtime", "index-identity-boundaries-runtime", "query-sync-outcomes-runtime", "query-sync-boundaries-runtime", "forget-index-fence-v6-runtime", "forget-lineage-runtime"}:
+                                                     "host-turn-barrier-boundaries-runtime", "index-identity-boundaries-runtime", "query-sync-outcomes-runtime", "query-sync-boundaries-runtime", "forget-index-fence-v6-runtime", "forget-lineage-runtime", "forget-boundaries-runtime"}:
                             report[diagnostic_key].append({
                                 "id": case["id"], "side": "python", "sha256": hashlib.sha256(raw).hexdigest(),
                                 "rawSnapshots": snapshots,
@@ -2295,7 +2312,7 @@ def run_suite(*, checkout: Path, node: Path, smoke: bool = False,
                     row.update(status="blocked", code="python-case-failed")
                     if case["operation"] in {"promotion-apply-family-runtime", "host-restart-session-runtime",
                                              "host-update-isolation-runtime", "host-turn-barrier-runtime", "host-turn-barrier-v4-runtime",
-                                             "host-turn-barrier-boundaries-runtime", "index-identity-boundaries-runtime", "query-sync-outcomes-runtime", "query-sync-boundaries-runtime", "forget-index-fence-v6-runtime", "forget-lineage-runtime"}:
+                                             "host-turn-barrier-boundaries-runtime", "index-identity-boundaries-runtime", "query-sync-outcomes-runtime", "query-sync-boundaries-runtime", "forget-index-fence-v6-runtime", "forget-lineage-runtime", "forget-boundaries-runtime"}:
                         row["evidenceError"] = {"name": type(error).__name__, "message": str(error)}
                     if case["operation"] == "host-update-isolation-runtime" and python_diagnostics is not None:
                         _retain_failed_host_update_capture(
@@ -2335,6 +2352,10 @@ def run_suite(*, checkout: Path, node: Path, smoke: bool = False,
 
         lineage_outcomes_complete = forget_outcomes_complete(report["cases"])
         report["forgetLineageOutcomesFamilyComplete"] = lineage_outcomes_complete
+        from equivalence.forget_boundaries import family_complete as forget_boundaries_complete, POINTS as forget_boundary_points
+
+        boundary_complete = forget_boundaries_complete(report["cases"])
+        report["forgetBoundariesFamilyComplete"] = boundary_complete
         from equivalence.query_sync_boundaries import POINTS as query_sync_boundary_points
         from equivalence.query_sync_outcomes import POINTS as query_sync_points
         from equivalence.index_identity_boundaries import POINTS as identity_boundary_points
@@ -2364,7 +2385,9 @@ def run_suite(*, checkout: Path, node: Path, smoke: bool = False,
                                                       and (point["id"] not in forget_index_fence_points
                                                            or forget_index_fence_complete)
                                                       and (point["id"] not in forget_outcome_points
-                                                           or lineage_outcomes_complete)]})
+                                                           or lineage_outcomes_complete)
+                                                      and (point["id"] not in forget_boundary_points
+                                                           or boundary_complete)]})
             report["requirements"].append({"id": requirement["id"], "required": requirement["required"],
                                             "acceptance": acceptance, "registeredCases": len(rows)})
         uncovered = [point["id"] for requirement in report["requirements"] if requirement["required"]

@@ -833,7 +833,13 @@ class SQLiteMemoryStore:
                     "Memory index owner changed while refresh was being prepared; retry the index refresh."
                 )
 
-        def assert_sources_current() -> None:
+        prepared_snapshots: dict[tuple[str, str], IndexSourceSnapshot] = {}
+
+        def read_current_sources():
+            return (self._read_source_snapshots(workspace) if selection is None else
+                    self._read_source_snapshots(workspace, selection=selection))
+
+        def assert_sources_current(candidate: IndexSourceSnapshot | None = None) -> None:
             # Prefer the established ledger diagnostic when forget changed the
             # revision, before another host projection could hide the cause.
             if fence is not None:
@@ -841,10 +847,20 @@ class SQLiteMemoryStore:
             if implicit_forget_fence:
                 with closing(self.connect()) as db:
                     assert_existing_forget_revision(db)
-            current = (self._read_source_snapshots(workspace) if selection is None else
-                       self._read_source_snapshots(workspace, selection=selection))
-            if ({key: entry.hash for key, entry in current.items()}
-                    != {key: entry.hash for key, entry in snapshots.items()}):
+            current = read_current_sources()
+            expected = snapshots if candidate is None else {(candidate.source, candidate.path): candidate}
+            observed = current if candidate is None else {
+                key: current[key] for key in expected if key in current
+            }
+            if ({key: entry.hash for key, entry in observed.items()}
+                    != {key: entry.hash for key, entry in expected.items()}):
+                raise MemoryIndexSourceChangedError(
+                    "Memory source changed while refresh was being prepared; retry the index refresh."
+                )
+            if candidate is None and any(
+                key not in current or current[key].hash != entry.hash
+                for key, entry in prepared_snapshots.items()
+            ):
                 raise MemoryIndexSourceChangedError(
                     "Memory source changed while refresh was being prepared; retry the index refresh."
                 )
@@ -882,18 +898,12 @@ class SQLiteMemoryStore:
                     db.execute(f"UPDATE {INDEX_SYNC_TABLE} SET revision=revision+1 WHERE id=1")
             return len(snapshots)
 
-        prepared: dict[tuple[str, str], list[MemoryChunk]] = {
-            key: self._prepare_source_chunks(entry, chunk_tokens, chunk_overlap)
-            for key, entry in snapshots.items() if key in changed
-        }
+        prepared: dict[tuple[str, str], list[MemoryChunk]] = {}
+        chunks: list[MemoryChunk] = []
+        embeddings: list[list[float]] = []
+        chunk_refs: list[dict[str, str]] = []
         if provider is not None:
-            prepared = {key: enforce_embedding_max_input_tokens(embedding_provider, source_chunks)
-                        for key, source_chunks in prepared.items()}
-        chunks = [chunk for source_chunks in prepared.values() for chunk in source_chunks]
-        embeddings: list[list[float]] = [[] for _ in chunks]
-        if provider is not None and chunks:
-            chunk_refs = [{"hash": _text_hash(chunk.text)} for chunk in chunks]
-            def accept_generated(batch, generated):
+            def accept_generated(batch, generated, candidate):
                 nonlocal active_dimensions
                 try:
                     dimensions = validate_memory_embedding_batch(
@@ -915,7 +925,9 @@ class SQLiteMemoryStore:
                             )
                     raise
                 active_dimensions = dimensions
-                assert_sources_current()
+                # Only this response's source authorizes its cache entries.
+                # An independent source can change before its own turn.
+                assert_sources_current(candidate)
                 with self.connect() as db:
                     db.execute("BEGIN IMMEDIATE")
                     assert_owner(db)
@@ -928,12 +940,31 @@ class SQLiteMemoryStore:
                 for item, value in zip(batch, generated, strict=True):
                     embeddings[item["index"]] = value
 
-            source_offset = 0
-            # The original sequential inline path reads cache at each source
-            # boundary, so vectors admitted by an earlier source are reusable.
-            # It collects once per source, preserving request/sub-batch behavior.
-            for source_chunks in prepared.values():
-                source_refs = chunk_refs[source_offset:source_offset + len(source_chunks)]
+        for key, entry in snapshots.items():
+            if key not in changed:
+                continue
+            if provider is not None:
+                # Prepare one immutable read when this source's turn starts.
+                # Keep the original snapshots for the global publication fence.
+                candidate = read_current_sources().get(key)
+                if candidate is None:
+                    raise MemoryIndexSourceChangedError(
+                        "Memory source changed while refresh was being prepared; retry the index refresh."
+                    )
+                entry = candidate
+                prepared_snapshots[key] = candidate
+            source_chunks = self._prepare_source_chunks(entry, chunk_tokens, chunk_overlap)
+            if provider is not None:
+                source_chunks = enforce_embedding_max_input_tokens(embedding_provider, source_chunks)
+            prepared[key] = source_chunks
+            source_offset = len(chunks)
+            chunks.extend(source_chunks)
+            embeddings.extend([] for _ in source_chunks)
+            source_refs = [{"hash": _text_hash(chunk.text)} for chunk in source_chunks]
+            chunk_refs.extend(source_refs)
+            if provider is not None and source_chunks:
+                # Fresh cache lookup at each source boundary permits reuse of
+                # vectors admitted by an earlier source in this refresh.
                 with self.connect() as db:
                     cached = load_memory_embedding_cache(
                         db, enabled=self.embedding_cache_enabled, provider_identities=identities,
@@ -952,7 +983,6 @@ class SQLiteMemoryStore:
                 embeddings[source_offset:source_offset + len(source_chunks)] = collected["embeddings"]
                 source_missing = [{**item, "index": source_offset + item["index"]}
                                   for item in collected["missing"]]
-                source_offset += len(source_chunks)
                 batches = build_memory_embedding_batches(
                     source_missing, lambda item: chunks[item["index"]].text,
                 )
@@ -962,7 +992,7 @@ class SQLiteMemoryStore:
                         lambda items: embedding_provider.embed_documents(
                             [chunks[item["index"]].text for item in items]
                         ),
-                        on_success=accept_generated,
+                        on_success=lambda items, values: accept_generated(items, values, entry),
                     )
 
         assert_sources_current()

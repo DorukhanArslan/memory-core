@@ -118,6 +118,28 @@ def _reader(raw, index, state, native):
     _same(mapped, state["provenance"], "the actual ordered public trust reader differs from its complete map")
 
 
+def _temporary_schema(raw, rows, fault):
+    """Bind the complete actual connection-local catalog, never a disk reopen."""
+    definition = raw["auditDefinition"]
+    statements = definition["statements"][1:]
+    expected = {}
+    for statement in statements:
+        _require(statement.startswith("CREATE TEMP TRIGGER "), "an observer changed canonical main schema")
+        expected[statement.split()[3]] = statement.replace("CREATE TEMP TRIGGER ", "CREATE TRIGGER ", 1)
+    _require(len(expected) == 3, "a complete Native INSERT/UPDATE/DELETE observer is missing")
+    if fault is not None:
+        expected[fault["name"]] = fault["nativeSql"].replace("CREATE TEMP TRIGGER ", "CREATE TRIGGER ", 1)
+    _require(isinstance(rows, list) and len(rows) == len(expected)
+             and {row["name"] for row in rows} == set(expected), "the complete actual temporary catalog changed")
+    for row in rows:
+        _require(set(row) == {"type", "name", "tbl_name", "rootpage", "sql"}
+                 and row["type"] == "trigger" and row["tbl_name"] == "plugin_state_entries" and row["rootpage"] == 0,
+                 "an actual connection-local trigger lost catalog fields")
+        # SQLite stores CREATE TEMP TRIGGER as CREATE TRIGGER in temp_schema.
+        # The exact executed TEMP statement remains unchanged in its receipt.
+        _same(row["sql"], expected[row["name"]], "a temporary trigger differs from its actual declared SQL")
+
+
 def _sources(rows, workspace, physical_files):
     native = isinstance(rows, dict)
     _require(native or isinstance(rows, list), "whole physical source identities are missing")
@@ -346,6 +368,9 @@ def _operations(case, raw, public, captures, native):
     _require(len(raw["states"] if native else raw["orderedProvenanceReads"]) == len(requests) + 1,
              "an actual complete ordered trust read was dropped")
     _reader(raw, 0, before, native)
+    fault = None
+    if native:
+        _temporary_schema(raw, raw["states"][0]["temporarySchema"], fault)
     _same(before, {"files": case["input"]["files"], "provenance": {}, "toolCalls": []},
           "the real initial state differs from the frozen input facts")
     for index, (request, actual, observed) in enumerate(zip(requests, operations, observations, strict=True)):
@@ -355,6 +380,14 @@ def _operations(case, raw, public, captures, native):
         after = observed["state"]
         files, database = _state(raw, captures[index + 1], after, native)
         _reader(raw, index + 1, after, native)
+        if native:
+            _same(actual["temporarySchemaBefore"], raw["states"][index]["temporarySchema"],
+                  "the actual pre-operation temporary schema changed between observations")
+            if request["op"] == "trust-failure":
+                fault = request["fault"] if request["enabled"] else None
+            _same(actual["temporarySchemaAfter"], raw["states"][index + 1]["temporarySchema"],
+                  "the live post-operation temporary schema differs from its whole state read")
+            _temporary_schema(raw, actual["temporarySchemaAfter"], fault)
         _sources(actual["sourcesBefore"], raw["workspace"], previous_files)
         _sources(actual["sourcesAfter"], raw["workspace"], files)
         _outcome(actual["apiOutcome"])
@@ -397,12 +430,16 @@ def _operations(case, raw, public, captures, native):
         for name, record in before["provenance"].items():
             _same(after["provenance"].get(name), record, "a prior sequential trust record was overwritten")
         if request["op"] == "trust-failure":
-            trigger = [row for row in database["schema"]
+            schema = actual["temporarySchemaAfter"] if native else database["schema"]
+            trigger = [row for row in schema
                        if row["type"] == "trigger" and row["name"] == request["fault"]["name"]]
             _require(len(trigger) == int(request["enabled"]), "the declared actual SQL fault was not installed or removed")
             if trigger:
-                _same(trigger[0]["sql"], request["fault"]["nativeSql" if native else "sdkSql"],
+                statement = request["fault"]["nativeSql" if native else "sdkSql"]
+                _same(trigger[0]["sql"], statement.replace("CREATE TEMP TRIGGER ", "CREATE TRIGGER ", 1),
                       "the actual SQL fault differs from its frozen literal")
+                if native:
+                    _same(actual["trigger"]["statement"], statement, "the actual TEMP fault statement was changed")
         if request["op"] == "sync":
             writes = actual["utimes"] if native else actual["mtimeWrites"]
             _require(len(writes) == len(after["files"]), "a declared physical mtime input was omitted")
@@ -464,6 +501,19 @@ def validate_native(case, public, snapshots, evidence):
         _same(row["functionSourceSha256"], hashlib.sha256(row["functionSource"].encode()).hexdigest(),
               "the full original function source receipt changed")
     _same(raw["output"], public, "the complete original output was rewritten")
+    owner = raw["temporarySchemaOwner"]
+    _require(owner["source"] == "stateHandle.db" and owner["databaseConstructor"] == "DatabaseSync"
+             and owner["isOpen"] is True, "the live temporary schema lost its original connection owner")
+    definition = raw["auditDefinition"]
+    _same(owner["databasePath"], definition["databasePath"], "the live observer connection changed physical owner")
+    _same(definition["temporarySchemaBefore"], [], "the fresh original connection had pre-existing temporary objects")
+    _same(definition["temporarySchema"], raw["states"][0]["temporarySchema"],
+          "the actual installed observer catalog differs from its initial state")
+    _require(len(definition["receipts"]) == len(definition["statements"]) == 4,
+             "an actual audit-table or TEMP-trigger creation receipt is missing")
+    for statement, receipt in zip(definition["statements"], definition["receipts"], strict=True):
+        _same(receipt, {"statement": statement, "returnValue": {"type": "undefined"}},
+              "the original main connection did not execute the exact observer SQL")
     _same(raw["clock"], {"owner": "node:test", "apis": ["Date"], "nowMs": case["input"]["nowMs"],
           "dateConstructorReplaced": True, "setTimeoutUnchanged": True, "performanceNowUnchanged": True},
           "the original clock changed scheduler ownership")

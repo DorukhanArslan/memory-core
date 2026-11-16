@@ -1,15 +1,23 @@
 # Promotion and heartbeat maintenance integration
 
 The [active checklist](full-equivalence-checklist.md) records the latest complete
-measurement: **79/128 verified conditions, 49 remaining**, with **37 complete,
-five partial and 22 pending contracts**. The single full run measures approved
-product source `c047294` through comparison head `970d5d6`: **1,475 cases,
-1,461 matches, 14 mismatches and zero blocked/errors**. The
-[recall recording closeout](recall_signals_closeout.md) records three SDK fixes
-and verifies both recall conditions through six complete real-owner cases:
-**77 → 79/128, net +2**. Actual source ranges and origin-write failure/recovery
-are included. The recall contract is now complete at 2/2; the original 14
-public mismatch pairs are unchanged.
+measurement: **81/128 verified conditions, 47 remaining**, with **38 complete,
+five partial and 21 pending contracts**. The single full run measures approved
+product source `f8a8ffd` through comparison head `d53c91e`: **1,483 cases,
+1,469 matches, 14 mismatches and zero blocked/errors**. The
+[embedding-cache closeout](embedding_cache_lifecycle_closeout.md) records three
+SDK changes and verifies both original cache conditions through eight complete
+real-owner cases: **79 → 81/128, net +2**. Complete cache/BLOB state, identities
+and actual embedding calls match; the outer publication difference is retained
+and broader lifecycle remains partial. All previously verified conditions are
+preserved. The old 14 SDK mismatch payloads are unchanged; one Native warm-flush
+payload hash changed and still earns no credit.
+
+The preceding [recall recording closeout](recall_signals_closeout.md) retains
+its **79/128** assessment (49 remaining), measuring `c047294` through `970d5d6`:
+**1,475 cases, 1,461 matches, 14 mismatches and zero blocked/errors**, with
+37 complete, five partial and 22 pending contracts. Its six-case recall family
+verified both conditions: **77 → 79/128, net +2**.
 
 The historical [query-sync boundary closeout](query_sync_boundaries_closeout.md)
 records **73/128 verified conditions, 55 remaining**, in its complete

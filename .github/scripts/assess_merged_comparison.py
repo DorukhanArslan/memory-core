@@ -17,14 +17,14 @@ from equivalence.catalog_migration import definition_authority  # noqa: E402
 from equivalence.harness import _adapter_identity, _implementation_identity, _same_json  # noqa: E402
 from equivalence.strict_report_reader import Reader, _constant, _finite, _object  # noqa: E402
 
-MAIN = "b08e28399fa00da4b735734170c4749b5b481bd8"
+MAIN = "0dfe8a84a70f2e8753d4d813accd4394abd4a829"
 SCOPE = "a8e066e63970dd0be734485d62a5932640894b8c0a42f47ac3eb67f784cbc7b9"
-SDK = {"sourceSha256": "a90d994bcf005a26a4e15bf40b2e9b95f47a7a8c31cd864ed2131021d9046990", "sourceFiles": 162}
+SDK = {"sourceSha256": "f756c2e1d9bf3dce55a7acd1e88162ec07d7fbd9eaa5990209e82f21b19fd41e", "sourceFiles": 162}
 OPERATIONS = ("host-restart-session-runtime", "host-update-isolation-runtime",
               "host-turn-barrier-boundaries-runtime", "index-identity-boundaries-runtime",
               "query-sync-outcomes-runtime", "query-sync-boundaries-runtime",
               "host-turn-barrier-v4-runtime", "forget-index-fence-v6-runtime", "forget-lineage-runtime",
-              "forget-boundaries-runtime")
+              "forget-boundaries-runtime", "recall-signals-runtime")
 
 
 def require(value, message):
@@ -47,16 +47,18 @@ def load(path):
     return value
 
 
-def project(path, host_ids, lineage_ids, boundary_ids):
+def project(path, host_ids, lineage_ids, boundary_ids, recall_ids):
     kept = {"schemaVersion", "kind", "mode", "status", "fullScopePassed", "implementation",
             "reference", "manifestSha256", "adapterSha256", "casesSha256", "definitionMigration",
             "summary", "requirements", "errors", "startedAt", "finishedAt", "durationSeconds",
             "referenceExecution", "paidProviderCalls", "providerCredentialsForwarded",
             "forgetLineageOutcomesFamilyComplete", "forgetBoundariesFamilyComplete",
-            "forgetLineageBindings", "forgetLineageNode"}
+            "forgetLineageBindings", "forgetLineageNode", "recallSignalsFamilyComplete",
+            "recallSignalsBindings", "recallSignalsNode"}
     result = {"cases": [], "hostPairs": {}, "hostDiagnostics": {}, "mismatchPairs": {},
               "lineagePairs": {}, "lineageDiagnostics": {}, "lineageTraces": {},
-              "boundaryPairs": {}, "boundaryDiagnostics": {}, "boundaryTraces": {}}
+              "boundaryPairs": {}, "boundaryDiagnostics": {}, "boundaryTraces": {},
+              "recallPairs": {}, "recallDiagnostics": {}, "recallTraces": {}}
     before = digest(path)
 
     def accept(key, value, array):
@@ -80,10 +82,22 @@ def project(path, host_ids, lineage_ids, boundary_ids):
                     result["lineagePairs"][value["id"]] = pair
                 if value["id"] in boundary_ids:
                     result["boundaryPairs"][value["id"]] = pair
+                if value["id"] in recall_ids:
+                    result["recallPairs"][value["id"]] = pair
                 if value["status"] == "mismatched":
                     result["mismatchPairs"][value["id"]] = pair
             require(value["status"] != "mismatched" or "python" in value, "Mismatch omitted whole public values")
             result["cases"].append(row)
+        elif key == "runtimeDiagnostics" and value.get("id") in recall_ids:
+            require(value.get("side") in {"native", "python"}, "Unknown recall diagnostic side")
+            identity = value["id"] + "--" + value["side"]
+            require(identity not in result["recallDiagnostics"], "Duplicate recall diagnostic")
+            require(isinstance(value.get("rawSnapshots"), list) and len(value["rawSnapshots"]) == 1,
+                    "Recall diagnostic is not a complete singleton packet")
+            result["recallDiagnostics"][identity] = value
+        elif key == "releaseTraces" and value.get("id") in recall_ids:
+            require(value["id"] not in result["recallTraces"], "Duplicate recall process trace")
+            result["recallTraces"][value["id"]] = value
         elif key == "runtimeDiagnostics" and value.get("id") in lineage_ids:
             identity = value["id"] + "--" + value["side"]
             require(identity not in result["lineageDiagnostics"], "Duplicate lineage diagnostic")
@@ -283,6 +297,79 @@ def replay_boundaries(data, cases, args):
     return results
 
 
+def replay_recall(data, cases, args):
+    from equivalence.model_runtime_authority import prepare_model_node_authority
+    from equivalence.recall_signals import validate_registration
+    from equivalence.recall_signals_bindings import prepare_recall_signals_bindings
+    from equivalence.recall_signals_evidence import validate_pair
+    from equivalence.recall_signals_profile import prepare_recall_signals_profile
+    from equivalence.release_runtime import prepare_release_runtime
+
+    validate_registration(cases)
+    require(len(cases) == 6, "Recall replay requires the complete frozen six-case family")
+    runtime = prepare_release_runtime(args.reference, args.release_runtime, download=False)
+    require(_same_json(data["recallSignalsBindings"], prepare_recall_signals_bindings(
+        args.reference, Path(runtime["runtimeRoot"])))
+        and _same_json(data["recallSignalsNode"], prepare_model_node_authority(args.node)),
+        "Recall source/artifact/executable authority changed")
+    family = (ROOT / ".equivalence-results/recall-signals").resolve(strict=True)
+    results = []
+    for case in cases:
+        cid = case["id"]
+        native = data["recallDiagnostics"][cid + "--native"]
+        sdk = data["recallDiagnostics"][cid + "--python"]
+        require(native["validationStatus"] == sdk["validationStatus"] == "verified",
+                "Recall capture was not affirmatively validated")
+        directory = Path(sdk["evidenceDirectory"])
+        require(directory.is_absolute() and directory.resolve(strict=True) == directory
+                and directory.parent == family and directory.name.startswith("sdk-attempt-"),
+                "Recall SDK capture escaped its actual family root")
+        raw_path = directory / "python-raw.json"
+        require(not raw_path.is_symlink() and raw_path.resolve(strict=True) == raw_path,
+                "Recall SDK raw file is not its original owned regular path")
+        raw_sha, records = digest(raw_path), load(raw_path)
+        require(isinstance(records, list) and len(records) == 1 and isinstance(records[0], dict)
+                and raw_sha == sdk["sha256"] and _same_json(records, sdk["rawSnapshots"]),
+                "Complete retained recall SDK raw bytes differ from the full report")
+        sdk_raw = records[0]
+        trace = data["recallTraces"][cid]
+        transport = trace["recallSignalsTransport"]
+        require(trace["kind"] == "authenticated-process-thread-trace"
+                and trace["provider"] == "none" and trace["networkFetchDenied"] is True
+                and _same_json(transport["profile"], prepare_recall_signals_profile(case, args.node)),
+                "Recall original process capability changed")
+        require(isinstance(transport["traceFiles"], list) and transport["traceFiles"]
+                and set(transport["originalProcessStreams"]) == {"stdout", "stderr"},
+                "The complete protected recall traces or original process streams are missing")
+        for carrier in (*transport["traceFiles"], *transport["originalProcessStreams"].values()):
+            payload = carrier["text"].encode("utf8")
+            require(len(payload) == carrier["bytes"] and hashlib.sha256(payload).hexdigest() == carrier["sha256"],
+                    "A complete original recall process carrier changed")
+        stream = transport["originalProcessStreams"]["stdout"]
+        original = json.loads(stream["text"], object_pairs_hook=_object, parse_constant=_constant)
+        _finite(original)
+        require(len(original["results"]) == 1 and original["results"][0]["id"] == cid
+                and original["results"][0]["ok"] is True, "Original recall stdout omitted its complete return")
+        native_public = original["results"][0]["result"]
+        sdk_public = {"before": sdk_raw["initialState"],
+                      "observations": [row["observed"] for row in sdk_raw["operations"]]}
+        actual_native, actual_sdk = validate_pair(case, native["rawSnapshots"][0], sdk_raw,
+                                                 native_public, sdk_public, directory)
+        pair = data["recallPairs"][cid]
+        require(_same_json(actual_native, pair["openclaw"]) and _same_json(actual_sdk, pair["python"])
+                and digest(raw_path) == raw_sha, "Recall projection or actual raw bytes changed during replay")
+        results.append({"id": cid, "validated": True, "publicMatch": _same_json(actual_native, actual_sdk),
+                        "sdkRawSha256": raw_sha, "nativeCollectorRawSha256": native["sha256"],
+                        "nativeRawSnapshotsSha256": hashlib.sha256(canonical(native["rawSnapshots"])).hexdigest(),
+                        "originalStdoutSha256": stream["sha256"],
+                        "originalStderrSha256": transport["originalProcessStreams"]["stderr"]["sha256"],
+                        "actualOperations": len(actual_native["observations"]),
+                        "actualSourceProducerOperations": sum("producer" in row for row in sdk_raw["operations"]),
+                        "actualFailedOperations": sum(row["completed"] is False for row in actual_native["observations"]),
+                        "nativeOnDiskRawReopened": False})
+    return results
+
+
 def recompute(data, definitions, scope):
     rows = data["cases"]
     require(len(rows) == len(definitions) and len({row["id"] for row in rows}) == len(definitions),
@@ -347,11 +434,13 @@ def assess(args, result):
     host_cases = [case for case in definitions if case["operation"] == "host-turn-barrier-v4-runtime"]
     lineage_cases = [case for case in definitions if case["operation"] == "forget-lineage-runtime"]
     boundary_cases = [case for case in definitions if case["operation"] == "forget-boundaries-runtime"]
+    recall_cases = [case for case in definitions if case["operation"] == "recall-signals-runtime"]
     data = project(args.report, {case["id"] for case in host_cases}, {case["id"] for case in lineage_cases},
-                   {case["id"] for case in boundary_cases})
+                   {case["id"] for case in boundary_cases}, {case["id"] for case in recall_cases})
     result.update(completeReportParsed=True, report=data["report"], projection={
         key: value for key, value in data.items() if key not in {
-            "lineagePairs", "lineageDiagnostics", "lineageTraces", "boundaryPairs", "boundaryDiagnostics", "boundaryTraces"}})
+            "lineagePairs", "lineageDiagnostics", "lineageTraces", "boundaryPairs", "boundaryDiagnostics", "boundaryTraces",
+            "recallPairs", "recallDiagnostics", "recallTraces"}})
     require(data["errors"] == [] and data["mode"] == "full" and data["kind"] == "pinned-differential-acceptance",
             "Global collector error or non-full report; no candidate score")
     require(_same_json(data["implementation"], seal["implementation"])
@@ -376,13 +465,18 @@ def assess(args, result):
     result["hostReplays"] = replay_hosts(data, host_cases, args)
     result["lineageReplays"] = replay_lineage(data, lineage_cases, args)
     result["boundaryReplays"] = replay_boundaries(data, boundary_cases, args)
+    result["recallReplays"] = replay_recall(data, recall_cases, args)
     from equivalence.forget_boundaries import family_complete as boundaries_complete
     from equivalence.forget_lineage_outcomes import family_complete
+    from equivalence.recall_signals import family_complete as recall_complete
 
     require(data["forgetLineageOutcomesFamilyComplete"] is family_complete(data["cases"])
             is metrics["families"]["forget-lineage-runtime"], "Lineage complete-family gate differs")
     require(data["forgetBoundariesFamilyComplete"] is boundaries_complete(data["cases"])
             is metrics["families"]["forget-boundaries-runtime"], "Boundary complete-family gate differs")
+    require(data["recallSignalsFamilyComplete"] is recall_complete(data["cases"])
+            is metrics["families"]["recall-signals-runtime"]
+            is all(row["publicMatch"] for row in result["recallReplays"]), "Recall complete-family gate differs")
     expected_status = ("blocked" if metrics["cases"].get("blocked") else "mismatched"
                        if metrics["cases"].get("mismatched") else "incomplete" if metrics["uncovered"] else "passed")
     require(data["status"] == expected_status and data["fullScopePassed"] is (expected_status == "passed"),
@@ -391,6 +485,7 @@ def assess(args, result):
     require(digest(args.report) == data["report"]["sha256"], "Report changed during assessment")
     require(digest(args.fif_replay) == replay_sha, "FIF replay changed during assessment")
     result.update(status="assessed", candidateAssessment=metrics, deltaFromHistorical71=metrics["verified"] - 71,
+                  deltaFromHistorical77=metrics["verified"] - 77,
                   fifReplaySha256=replay_sha, fullScopePassed=data["fullScopePassed"])
 
 

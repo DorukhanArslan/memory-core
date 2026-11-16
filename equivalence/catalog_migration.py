@@ -8,7 +8,9 @@ ORIGINAL_PREFIX_CASES = 1452
 HISTORICAL_REGISTERED_CASES = 1465
 OUTCOME_REGISTERED_CASES = 1468
 OUTCOME_CATALOG_SHA256 = "e10587f60a72f203f1c9cdfe8954bb4f9b03367ef82009f5fab6f65a62631631"
-REGISTERED_CASES = 1469
+BOUNDARY_REGISTERED_CASES = 1469
+BOUNDARY_CATALOG_SHA256 = "74322960d928ecb2b1ed330f18f891d3e6efb04482eacd6bddf7823e4ea309a8"
+REGISTERED_CASES = 1475
 
 # PR22 changes these three policy texts, not the thirteen cases' business inputs,
 # order, coverage or other fields. Reversing only the exact reviewed fragments
@@ -96,7 +98,8 @@ def definition_authority(cases, *, fif_version):
 
     families = {"v5": forget_index_fence_v5, "v6": forget_index_fence_v6}
     if (fif_version not in families or not isinstance(cases, list)
-            or len(cases) not in {HISTORICAL_REGISTERED_CASES, OUTCOME_REGISTERED_CASES, REGISTERED_CASES}
+            or len(cases) not in {HISTORICAL_REGISTERED_CASES, OUTCOME_REGISTERED_CASES,
+                                  BOUNDARY_REGISTERED_CASES, REGISTERED_CASES}
             or fif_version == "v5" and len(cases) != HISTORICAL_REGISTERED_CASES):
         raise ValueError("Catalog migration requires one complete exact registered definition set")
     frozen = families[fif_version]
@@ -109,13 +112,21 @@ def definition_authority(cases, *, fif_version):
         if lineage != build_cases():
             raise ValueError("Catalog migration changed the exact appended forget outcome family")
         validate_registration(cases)
-    boundaries = cases[OUTCOME_REGISTERED_CASES:]
+    boundaries = cases[OUTCOME_REGISTERED_CASES:BOUNDARY_REGISTERED_CASES]
     if boundaries:
         from equivalence.forget_boundaries import build_cases, validate_registration
 
         if (_sha(cases[:OUTCOME_REGISTERED_CASES]) != OUTCOME_CATALOG_SHA256
                 or _sha(boundaries) != _sha(build_cases())):
             raise ValueError("Catalog migration changed the frozen outcome catalog or exact boundary append")
+        validate_registration(cases)
+    recalls = cases[BOUNDARY_REGISTERED_CASES:]
+    if recalls:
+        from equivalence.recall_signals import build_cases, validate_registration
+
+        if (_sha(cases[:BOUNDARY_REGISTERED_CASES]) != BOUNDARY_CATALOG_SHA256
+                or _sha(recalls) != _sha(build_cases())):
+            raise ValueError("Catalog migration changed the frozen boundary catalog or exact recall append")
         validate_registration(cases)
     frozen.validate_registration(cases)
     prefix = deepcopy(cases[:ORIGINAL_PREFIX_CASES])
@@ -156,7 +167,7 @@ def definition_authority(cases, *, fif_version):
         for index, (prior, current) in enumerate(zip(forget_index_fence_v5.build_cases(), frozen.build_cases(), strict=True), ORIGINAL_PREFIX_CASES):
             tail.append({"index": index, "originalId": prior["id"], "currentId": current["id"],
                          "originalDefinitionSha256": _sha(prior), "currentDefinitionSha256": _sha(current)})
-    return {"kind": "explicit-default-definition-migration", "registeredCases": len(cases),
+    result = {"kind": "explicit-default-definition-migration", "registeredCases": len(cases),
             "fifVersion": fif_version, "originalPrefixCases": ORIGINAL_PREFIX_CASES,
             "originalPrefixSha256": ORIGINAL_PREFIX_SHA256,
             "currentPrefixSha256": _sha(cases[:ORIGINAL_PREFIX_CASES]),
@@ -166,3 +177,8 @@ def definition_authority(cases, *, fif_version):
                               for index, case in enumerate(lineage, HISTORICAL_REGISTERED_CASES)],
             "boundaryAppend": [{"index": index, "id": case["id"], "definitionSha256": _sha(case)}
                                for index, case in enumerate(boundaries, OUTCOME_REGISTERED_CASES)]}
+    if recalls:
+        result["recallAppend"] = [
+            {"index": index, "id": case["id"], "definitionSha256": _sha(case)}
+            for index, case in enumerate(recalls, BOUNDARY_REGISTERED_CASES)]
+    return result

@@ -16,9 +16,9 @@ from equivalence.cases import build_cases  # noqa: E402
 from equivalence.catalog_migration import definition_authority  # noqa: E402
 from equivalence.harness import _adapter_identity, _implementation_identity  # noqa: E402
 
-MERGED = "b08e28399fa00da4b735734170c4749b5b481bd8"
-SDK_SHA = "a90d994bcf005a26a4e15bf40b2e9b95f47a7a8c31cd864ed2131021d9046990"
-CATALOG_SHA = "74322960d928ecb2b1ed330f18f891d3e6efb04482eacd6bddf7823e4ea309a8"
+MERGED = "0dfe8a84a70f2e8753d4d813accd4394abd4a829"
+SDK_SHA = "f756c2e1d9bf3dce55a7acd1e88162ec07d7fbd9eaa5990209e82f21b19fd41e"
+CATALOG_SHA = "8c6f2adb034b7360f0ef9beeb45383d77b7df9bfe9057d2f8df98eb1ac397335"
 SCOPE_SHA = "a8e066e63970dd0be734485d62a5932640894b8c0a42f47ac3eb67f784cbc7b9"
 OUT = ROOT / ".equivalence-results"
 SUMMARY = OUT / "summary"
@@ -53,7 +53,7 @@ def main():
     assert implementation["sourceSha256"] == SDK_SHA and implementation["sourceFiles"] == 162
     cases = build_cases()
     canonical = json.dumps(cases, sort_keys=True, ensure_ascii=True, separators=(",", ":"), allow_nan=False)
-    assert len(cases) == 1469 and hashlib.sha256(canonical.encode()).hexdigest() == CATALOG_SHA
+    assert len(cases) == 1475 and hashlib.sha256(canonical.encode()).hexdigest() == CATALOG_SHA
     assert digest(ROOT / "equivalence/scope.json") == SCOPE_SHA
     tracked, adapters = inventory(), _adapter_identity()
     seal = {"kind": "merged-product-comparison-source-seal", "implementation": implementation,

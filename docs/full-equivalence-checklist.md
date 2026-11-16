@@ -52,30 +52,37 @@ Comparisons must not normalize away behavior. A platform-specific path, generate
 Entries remain pending until their complete acceptance conditions are verified against `v2026.9.9`. Their detailed acceptance points and stable identifiers are in [scope.json](../equivalence/scope.json). A helper that already exists in Python still needs the new differential evidence. A known difference must stay visible until its implementation and tests agree. Bounded passing subsets are recorded below without closing the containing contract.
 
 <!-- CURRENT-VERIFICATION-START -->
-The latest complete assessment has **77/128 verified conditions (60.2%)**,
-with **51 conditions remaining**: **36 complete, five partial and 23 pending
+The latest complete assessment has **79/128 verified conditions (61.7%)**,
+with **49 conditions remaining**: **37 complete, five partial and 22 pending
 contracts**. This measures verified conditions, not effort or elapsed work.
 
-The [forgotten-session boundary closeout](forget_lineage_boundaries_closeout.md)
-records the [single full comparison](https://github.com/DorukhanArslan/memory-core/actions/runs/43796082206)
-on clean comparison head `2e51b61`, with product source pinned to `b08e283`.
-Its SDK bytes are unchanged from merged product `1337209d`. It retains
-**1,469 cases: 1,455 matches, 14 mismatches, zero blocked and no runner
-errors**. The full gate still fails (actual exit 1): **49 uncovered and two
+The [recall recording closeout](recall_signals_closeout.md)
+records the [single full comparison](https://github.com/DorukhanArslan/memory-core/actions/runs/43848857934)
+on clean comparison head `970d5d6`, measuring approved product source `c047294`.
+Its 162 SDK files include the daily identity, grounded day-bucket and retention
+ordering fixes. It retains **1,475 cases: 1,461 matches, 14 mismatches, zero
+blocked and no runner errors**. The full gate still fails (actual exit 1):
+**47 uncovered and two
 registered unresolved conditions**. The fixed 64-contract, 128-condition scope
 is unchanged. Full report SHA-256:
-`10854f20f1bd963111044030dc38d3722c5fc81a0fe6f7b112efa5e465733b5a`.
+`cc44d3c20fd1a7c1a44d1a0d7636a335ce972f0094b4e2543d5830e5904647af`.
 
-The complete nine-operation admission, preview, forget, durable reopen and repeat
-flow verifies `forget.lineage-tombstones.boundaries`: **76 → 77/128, net +1**.
-Forgotten A remains excluded while independent B stays admissible. The contract
-is now **2/2**. All original 14 complete public mismatch pairs remain unchanged.
-SDK production bytes are unchanged by this verification package.
+The complete six-case family verifies both original `promotion.recall-signals`
+conditions: **77 → 79/128, net +2**, completing this contract at **2/2**.
+Actual writer calls cover filtering/events, identity, query/day dedupe, caps,
+source-backed ranges and origin-write failure/recovery. The original 1,469
+definitions and all 14 complete public mismatch pairs remain unchanged.
 
 The frozen CI assessor and local review independently check the full 128-point
 assessment. The closeout records source seals, actual captured evidence, retained
 first failures and scope limits. Another implementation batch requires the
 user's scope approval and must target at least one additional verified condition.
+
+**Historical complete assessment (`2e51b61`, 77/128):** The
+[forgotten-session boundary closeout](forget_lineage_boundaries_closeout.md)
+retains the preceding 1,469-case assessment: **76 → 77/128, net +1**, with
+36 complete, five partial and 23 pending contracts. Durable reopen keeps
+forgotten A excluded while independent B stays admissible.
 
 **Historical complete assessment (`9669482`, 76/128):** The
 [forget selection outcome closeout](forget_lineage_outcomes_closeout.md) retains
@@ -238,10 +245,10 @@ reaching 66/128 before the update/isolation and natural next-turn packages.
 
 | Contract status | Contracts | Verified conditions | Remaining conditions |
 | --- | ---: | ---: | ---: |
-| Complete | 36 | 72 | 0 |
+| Complete | 37 | 74 | 0 |
 | Partial | 5 | 5 | 5 |
-| Pending verification | 23 | 0 | 46 |
-| Total | 64 | 77 | 51 |
+| Pending verification | 22 | 0 | 44 |
+| Total | 64 | 79 | 49 |
 
 Pending verification can include existing implementation. Partial contracts retain one open
 condition. Infrastructure sections 1–3 remain **20/22 tasks completed**; infrastructure and
@@ -292,7 +299,7 @@ Current status of all 64 contracts:
 | 38 | `compaction.memory-budget` | Complete | 2/2 |
 | 39 | `compaction.context-assembly` | Pending verification | 0/2 |
 | 40 | `compaction.provider-overflow` | Pending verification | 0/2 |
-| 41 | `promotion.recall-signals` | Pending verification | 0/2 |
+| 41 | `promotion.recall-signals` | Complete | 2/2 |
 | 42 | `promotion.ranking-gates` | Partial | 1/2 |
 | 43 | `promotion.apply-reconcile` | Complete | 2/2 |
 | 44 | `promotion.deep-consolidation` | Pending verification | 0/2 |
@@ -395,7 +402,7 @@ pre-open race authority, full raw filesystem evidence and broader SDK-only limit
 
 ### Recall and promotion
 
-- [ ] **`promotion.recall-signals` — Match recall recording.** Compare filtering, deduplication, query hashes, day boundaries, retention and recall events. Verify ground truth source ranges and origin recording before published recall state.
+- [x] **`promotion.recall-signals` — Match recall recording.** Compare filtering, deduplication, query hashes, day boundaries, retention and recall events. Verify ground truth source ranges and origin recording before published recall state. Both original conditions are verified by all six frozen real-owner cases, including actual appender-produced ranges, durable origins and real origin-insert failure before recall publication.
 - [ ] **`promotion.ranking-gates` — Match promotion ranking and gates.** Compare scores, custom weights, tie order, diversity, age, trust and visibility gates. Include exact score thresholds and promoted-entry visibility.
 - [x] **`promotion.apply-reconcile` — Match promotion application and reconciliation.** Compare MEMORY.md/DREAMS.md, markers, authoritative candidates and applied/rejected receipts. Interleave candidate changes and verify lock-time rechecks and publication order. Verified through all eight frozen provider-free whole-operation families, complete callback envelopes, physical/API readbacks and live owner receipts; general model plans and origin-reservation behavior remain separate.
 - [ ] **`promotion.deep-consolidation` — Match model-assisted consolidation.** Feed identical deterministic model plans for added, merged, superseded and rejected entries. Compare preimages, loss safeguards, history, origin changes and deterministic fallback.

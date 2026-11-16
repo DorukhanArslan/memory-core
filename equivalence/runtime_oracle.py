@@ -15,6 +15,7 @@ from pathlib import Path, PurePosixPath
 import re
 import stat
 import tempfile
+import traceback
 from typing import Any
 
 from equivalence.release_runtime import ReleaseRuntimeError, validate_release_sources
@@ -921,9 +922,16 @@ class ReleaseOracleExecution:
         """Validate all observed threads and retain case raw state in the report."""
         if not self._entered:
             raise RuntimeOracleError("Release execution evidence requires an active owned context.")
+        if self.embedding_cache_profile is not None:
+            self._last_collection_error = None
         try:
             return self._collect(result, cases)
         except (OSError, KeyError, TypeError, ValueError, ReleaseRuntimeError) as error:
+            if self.embedding_cache_profile is not None:
+                self._last_collection_error = {
+                    "type": type(error).__module__ + "." + type(error).__qualname__,
+                    "message": str(error), "traceback": traceback.format_exc(),
+                }
             if isinstance(error, RuntimeOracleError):
                 raise
             raise RuntimeOracleError("The release oracle returned invalid execution evidence.") from None
@@ -941,6 +949,8 @@ class ReleaseOracleExecution:
                    "kind": "rejected-release-runtime-diagnostics", "caseIds": [],
                    "oracleResult": None, "stdout": None, "stderr": None,
                    "caseDiagnostics": [], "processWorkerTraces": [], "omissions": []}
+        if self.embedding_cache_profile is not None and getattr(self, "_last_collection_error", None) is not None:
+            capture["collectionError"] = deepcopy(self._last_collection_error)
 
         def stream(text: str) -> dict:
             raw = text.encode("utf-8")

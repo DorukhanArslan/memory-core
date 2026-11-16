@@ -1,11 +1,13 @@
 # Promotion and heartbeat maintenance integration
 
 The [active checklist](full-equivalence-checklist.md) records the latest complete
-measurement: **71/128 verified conditions, 57 remaining**, with **33 complete,
-five partial and 26 pending contracts**. The full run measured SDK `cdfb6e9`:
-**1,465 cases, 1,449 matches, 16 mismatches and zero blocked/errors**. It verifies
-forget/index-fence and reopens four path-safety/get conditions. The later refusal
-message fix in PR #20 has no new full assessment and awards no additional points.
+measurement: **76/128 verified conditions, 52 remaining**, with **35 complete,
+six partial and 23 pending contracts**. The single full run measured the SDK
+merged at `f31a288` through comparison head `9669482`: **1,468 cases, 1,454 matches,
+14 mismatches and zero blocked/errors**. The [forget outcome closeout](forget_lineage_outcomes_closeout.md)
+verifies one new condition and restores four path-safety/get conditions after the
+earlier fixes, a net **+5**. First reader failures remain retained; a reader-only
+reassessment checks the same original results without another business comparison.
 
 The historical [query-sync boundary closeout](query_sync_boundaries_closeout.md)
 records **73/128 verified conditions, 55 remaining**, in its complete

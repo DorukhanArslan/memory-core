@@ -17,7 +17,7 @@ from equivalence.catalog_migration import definition_authority  # noqa: E402
 from equivalence.harness import _adapter_identity, _implementation_identity, _same_json  # noqa: E402
 from equivalence.strict_report_reader import Reader, _constant, _finite, _object  # noqa: E402
 
-MAIN = "c047294d62a7c1dedddf5875e4d20cb7d80bfd89"
+PRODUCT = "c047294d62a7c1dedddf5875e4d20cb7d80bfd89"
 SCOPE = "a8e066e63970dd0be734485d62a5932640894b8c0a42f47ac3eb67f784cbc7b9"
 SDK = {"sourceSha256": "f756c2e1d9bf3dce55a7acd1e88162ec07d7fbd9eaa5990209e82f21b19fd41e", "sourceFiles": 162}
 OPERATIONS = ("host-restart-session-runtime", "host-update-isolation-runtime",
@@ -137,7 +137,9 @@ def project(path, host_ids, lineage_ids, boundary_ids, recall_ids):
 
 
 def source_unchanged(seal):
-    require(seal["mergedMainCommit"] == MAIN and _same_json(seal["mergedMainSdk"], SDK), "Wrong merged main authority")
+    require(seal["kind"] == "approved-product-comparison-source-seal"
+            and seal["productSourceCommit"] == PRODUCT and _same_json(seal["productSdk"], SDK)
+            and seal["sdkBytesEqualProductSource"] is True, "Wrong approved product source authority")
     require(seal["scopeSha256"] == digest(ROOT / "equivalence/scope.json") == SCOPE, "Fixed scope changed")
     require(_same_json(_implementation_identity(), seal["implementation"])
             and all(seal["implementation"][key] == value for key, value in SDK.items())
@@ -494,7 +496,7 @@ def main():
     for name in ("report", "seal", "fif-replay", "reference", "node", "release-runtime", "output"):
         parser.add_argument("--" + name, type=Path, required=True)
     args = parser.parse_args()
-    result = {"kind": "merged-sdk-complete-eof-candidate-assessment", "status": "blocked",
+    result = {"kind": "approved-product-complete-eof-candidate-assessment", "status": "blocked",
               "metadataOnlyAssessment": True, "completeRootAudit": False, "acceptancePointsAwarded": 0,
               "originalEnginesExecuted": False, "historicalVerifiedConditions": 71,
               "completeReportParsed": False, "candidateAssessment": None, "errors": []}

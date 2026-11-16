@@ -1,4 +1,4 @@
-"""Run one full comparison against the exact merged SDK; never retry it."""
+"""Run one full comparison against the approved product source; never retry it."""
 from datetime import datetime, timezone
 import hashlib
 import json
@@ -16,7 +16,7 @@ from equivalence.cases import build_cases  # noqa: E402
 from equivalence.catalog_migration import definition_authority  # noqa: E402
 from equivalence.harness import _adapter_identity, _implementation_identity  # noqa: E402
 
-MERGED = "c047294d62a7c1dedddf5875e4d20cb7d80bfd89"
+PRODUCT = "c047294d62a7c1dedddf5875e4d20cb7d80bfd89"
 SDK_SHA = "f756c2e1d9bf3dce55a7acd1e88162ec07d7fbd9eaa5990209e82f21b19fd41e"
 CATALOG_SHA = "8c6f2adb034b7360f0ef9beeb45383d77b7df9bfe9057d2f8df98eb1ac397335"
 SCOPE_SHA = "a8e066e63970dd0be734485d62a5932640894b8c0a42f47ac3eb67f784cbc7b9"
@@ -45,10 +45,10 @@ def inventory():
 
 def main():
     SUMMARY.mkdir(parents=True, exist_ok=False)
-    merged_root = ROOT / ".reference/merged-product"
-    assert git("rev-parse", "HEAD", cwd=merged_root) == MERGED
+    product_root = ROOT / ".reference/product-source"
+    assert git("rev-parse", "HEAD", cwd=product_root) == PRODUCT
     assert not git("status", "--porcelain", "--untracked-files=no")
-    assert git("rev-parse", "HEAD:memory_core") == git("rev-parse", "HEAD:memory_core", cwd=merged_root)
+    assert git("rev-parse", "HEAD:memory_core") == git("rev-parse", "HEAD:memory_core", cwd=product_root)
     implementation = _implementation_identity()
     assert implementation["sourceSha256"] == SDK_SHA and implementation["sourceFiles"] == 162
     cases = build_cases()
@@ -56,12 +56,12 @@ def main():
     assert len(cases) == 1475 and hashlib.sha256(canonical.encode()).hexdigest() == CATALOG_SHA
     assert digest(ROOT / "equivalence/scope.json") == SCOPE_SHA
     tracked, adapters = inventory(), _adapter_identity()
-    seal = {"kind": "merged-product-comparison-source-seal", "implementation": implementation,
-            "mergedMainCommit": MERGED, "mergedMainSdk": {"sourceSha256": SDK_SHA, "sourceFiles": 162},
+    seal = {"kind": "approved-product-comparison-source-seal", "implementation": implementation,
+            "productSourceCommit": PRODUCT, "productSdk": {"sourceSha256": SDK_SHA, "sourceFiles": 162},
             "sdkGitTree": git("rev-parse", "HEAD:memory_core"), "allTrackedFileHashes": tracked,
             "adapters": adapters, "scopeSha256": SCOPE_SHA, "catalogSha256": CATALOG_SHA,
             "registeredCases": len(cases), "definitionMigration": definition_authority(cases, fif_version="v6"),
-            "sdkBytesEqualMergedMain": True, "sealedAt": datetime.now(timezone.utc).isoformat()}
+            "sdkBytesEqualProductSource": True, "sealedAt": datetime.now(timezone.utc).isoformat()}
     write("source-seal.json", seal)
     scratch = Path(os.environ["RUNNER_TEMP"]) / ("memory-core-once-" + os.environ["GITHUB_RUN_ID"])
     scratch.mkdir(exist_ok=False)

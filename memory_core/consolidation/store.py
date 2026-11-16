@@ -26,7 +26,7 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import Any
 
-from memory_core.bootstrap._js import js_trim_end, utf16_len
+from memory_core.bootstrap._js import js_trim_end, locale_sort_key, utf16_len
 from memory_core.config import MemoryConfig
 from memory_core.project_name import PACKAGE_NAME
 from memory_core.index.cjk_chars import truncate_utf16_safe
@@ -502,7 +502,7 @@ def _retention_sort_key(item: tuple[str, dict[str, Any]]) -> tuple[Any, ...]:
         -float(entry.get("totalScore") or 0),
         -float(entry.get("maxScore") or 0),
         -_store_timestamp_ms(entry.get("promotedAt")),
-        key,
+        locale_sort_key(key),
     )
 
 
@@ -512,7 +512,7 @@ def _enforce_short_term_recall_store_retention(store: dict[str, Any]) -> int:
         return 0
     valid = [(key, entry) for key, entry in entries.items() if isinstance(entry, dict)]
     retained = sorted(valid, key=_retention_sort_key)[:SHORT_TERM_RECALL_MAX_ENTRIES]
-    store["entries"] = dict(sorted(retained, key=lambda item: item[0]))
+    store["entries"] = dict(sorted(retained, key=lambda item: locale_sort_key(item[0])))
     return len(entries) - len(store["entries"])
 
 

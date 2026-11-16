@@ -15,8 +15,9 @@ from equivalence import host_turn_barrier_v4 as host
 def test_default_catalog_explicitly_migrates_only_four_host_and_thirteen_fif_definitions():
     cases = build_cases()
     proof = definition_authority(cases, fif_version="v6")
-    assert len(cases) == proof["registeredCases"] == 1468
+    assert len(cases) == proof["registeredCases"] == 1469
     assert len(proof["policyReplacements"]) == 13 and len(proof["lineageAppend"]) == 3
+    assert len(proof["boundaryAppend"]) == 1 and proof["boundaryAppend"][0]["index"] == 1468
     assert proof["originalPrefixUnchanged"] is False
     assert proof["currentPrefixSha256"] != proof["originalPrefixSha256"] == ORIGINAL_PREFIX_SHA256
     assert len(proof["hostReplacements"]) == 4 and len(proof["fifReplacements"]) == 13
@@ -89,7 +90,7 @@ def test_catalog_migration_rejects_any_unreviewed_definition_or_membership(attac
     elif attack == "all-old-fif":
         cases[1452:] = forget_index_fence_v5.build_cases()
     elif attack == "missing-fif":
-        cases.pop()
+        cases.pop(1452)
     elif attack == "extra-case":
         cases.append(deepcopy(cases[0]))
     else:

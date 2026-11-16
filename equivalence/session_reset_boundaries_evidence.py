@@ -218,9 +218,21 @@ def _tools(raw, index, operation, actual, before, after, native):
               "get-all omitted or reordered actual artifacts")
 
 
-def _hook(case, raw, index, request, actual, files, native):
+def _hook(case, raw, index, request, actual, files, capture, native):
     profile = case["input"]["sessions"][request["session"]]
     if native:
+        database_path = Path(raw["transcriptDatabasePath"])
+        _require(database_path.is_relative_to(raw["fixtureBase"]), "the authoritative transcript database escaped its owner")
+        relative = database_path.relative_to(raw["fixtureBase"]).as_posix()
+        database = capture["fixture"]["databases"][relative]
+        _same(raw["states"][index + 1]["rawSql"]["agent"], database,
+              "the original transcript SQL read differs from its full physical database")
+        rows = sorted((row for row in database["tables"]["transcript_events"]
+                       if row["session_id"] == profile["sessionId"]), key=lambda row: row["seq"])
+        _require(all(row["event_zstd"] is None and isinstance(row["event_json"], str) for row in rows),
+                 "a frozen small transcript lost its original stored JSON")
+        _same([json.loads(row["event_json"]) for row in rows], profile["events"],
+              "the authoritative physical transcript differs from the literal input events")
         _same(actual["actualStoredEvents"], profile["events"],
               "the real original transcript store differs from literal host events")
         activation = actual["activation"]
@@ -294,7 +306,14 @@ def _failure(case, raw, actual, before, after, database, native):
           "the actual failure audit differs from physical SQL")
     new = audit_after[len(audit_before):]
     if policy["failureKind"] == "provenance-sqlite":
-        _require("reset-trust-write-blocked" in delta, "the configured actual SQL abort did not occur")
+        if native:
+            # The original store deliberately hides SQL cause text. Its actual
+            # public error plus the exact installed trigger and unchanged audit
+            # bind this failure without fabricating a private cause receipt.
+            _require("PluginStateStoreError" in delta and "Failed to update plugin state entry." in delta,
+                     "the genuine original provenance-store failure log is missing")
+        else:
+            _require("reset-trust-write-blocked" in delta, "the configured actual SQL abort did not occur")
         _same(new, [], "an aborted provenance transaction committed a reservation")
     else:
         if native:
@@ -341,7 +360,7 @@ def _operations(case, raw, public, captures, native):
         _outcome(actual["apiOutcome"])
         _tools(raw, index, request, actual, before, after, native)
         if request["op"] == "hook":
-            _hook(case, raw, index, request, actual, files, native)
+            _hook(case, raw, index, request, actual, files, captures[index + 1], native)
             if policy.get("failedHookIndex") == index:
                 _failure(case, raw, actual, before, after, database, native)
             else:
@@ -424,6 +443,18 @@ def validate_native(case, public, snapshots, evidence):
              "the original capture lost its owned fixture or completion")
     _same(raw["input"], case["input"], "the complete original input differs")
     _same(raw["workspace"], str(base / "workspace"), "the original workspace escaped its fixture")
+    seeds = raw["transcriptSeeds"]
+    resolvers = [call for call in raw["calls"] if call["operation"] == "resolveSessionTranscriptDatabasePath"]
+    _require(len(seeds) == len(resolvers) == len(case["input"]["sessions"]),
+             "an original physical transcript owner resolution is missing")
+    for seed, call, (name, session) in zip(seeds, resolvers, case["input"]["sessions"].items(), strict=True):
+        scope = {"agentId": case["input"]["agentId"], "sessionId": session["sessionId"],
+                 "sessionKey": case["input"]["sessionKey"], "storePath": raw["storePath"]}
+        _require(seed["profile"] == name, "the original transcript profile order changed")
+        _same(seed["scope"], scope, "a transcript owner resolved a different complete scope")
+        _same(call["arguments"], [scope], "the real database path resolver received different arguments")
+        _same(call["returnValue"]["value"], seed["databasePath"], "a real database resolver return was rewritten")
+        _same(seed["databasePath"], raw["transcriptDatabasePath"], "a transcript selected a different physical database")
     expected = set(REQUIRED_OBSERVED_OWNERS)
     owners = raw["codeOwners"]
     _require({(row["modulePath"], row["exportName"], row["name"]) for row in owners} == expected
@@ -458,6 +489,9 @@ def validate_pair(case, native_raw, sdk_raw, native_public, sdk_public, sdk_dire
              and sdk_raw["workspace"] == str(directory / "sdk-fixture/workspace") and sdk_raw["closed"] is True,
              "the actual SDK fixture escaped its owned attempt")
     _same(sdk_raw["input"], case["input"], "the complete SDK input differs")
+    _same(sdk_raw["schemaInitializationProvenanceRead"], {
+        "owner": "MemoryArtifactProvenanceStore.list", "arguments": {"workspace_dir": sdk_raw["workspace"]},
+        "returnValue": {"type": "list", "value": []}}, "the actual fresh-schema trust reader receipt changed")
     required = {"save_session_memory", "capture_session_memory_events", "get_recent_session_projection_from_events",
                 "_write_session_memory_file", "_publish_new_file", "MemoryWriteProvenanceObserver.write",
                 "MemoryArtifactProvenanceStore.record_write", "MemoryArtifactProvenanceStore.list",

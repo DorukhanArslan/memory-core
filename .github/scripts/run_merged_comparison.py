@@ -16,7 +16,7 @@ from equivalence.cases import build_cases  # noqa: E402
 from equivalence.catalog_migration import definition_authority  # noqa: E402
 from equivalence.harness import _adapter_identity, _implementation_identity  # noqa: E402
 
-MERGED = "0dfe8a84a70f2e8753d4d813accd4394abd4a829"
+MERGED = "564d857822029074077fcfa96d5cd694370c42bb"
 SDK_SHA = "f756c2e1d9bf3dce55a7acd1e88162ec07d7fbd9eaa5990209e82f21b19fd41e"
 CATALOG_SHA = "8c6f2adb034b7360f0ef9beeb45383d77b7df9bfe9057d2f8df98eb1ac397335"
 SCOPE_SHA = "a8e066e63970dd0be734485d62a5932640894b8c0a42f47ac3eb67f784cbc7b9"

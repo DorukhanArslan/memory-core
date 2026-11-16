@@ -35,7 +35,7 @@ jobs:
           persist-credentials: false
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
         with:
-          ref: 0dfe8a84a70f2e8753d4d813accd4394abd4a829
+          ref: 564d857822029074077fcfa96d5cd694370c42bb
           path: .reference/merged-product
           persist-credentials: false
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1

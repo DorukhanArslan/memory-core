@@ -31,7 +31,7 @@ def _catalog(case, physical, native):
     return {name: tables[name] for name in names}
 
 
-def _admission(case, raw, actual, observed, native, committed):
+def _admission(case, raw, actual, observed, native, committed, catalog):
     rows = actual["admission"]
     _require(isinstance(rows, list) and len(rows) == 2, "actual A/B admission calls are incomplete")
     decisions = []
@@ -64,6 +64,8 @@ def _admission(case, raw, actual, observed, native, committed):
             returned = {"type": "string", "value": reason} if reason else {"type": "undefined"}
         else:
             _require(set(row) == {"source", "returnValue"}, "the complete SDK admission call carrier changed")
+            window = next(row for row in catalog["memory_session_windows"] if row["session_id"] == identifier)
+            options["updatedAtMs"] = window["transcript_updated_at"]
             source = {"agent_id": "main", "absolute_path": str(Path(raw["fixtureRoot"]) /
                       "agents/main/sessions" / (identifier + ".jsonl")), "foreign": False,
                       "session_path": "sessions/main/" + identifier, "state_key": scope, "scope": scope,
@@ -114,7 +116,7 @@ def validate_pair(case, native_raw, sdk_raw, native_public, sdk_public, sdk_dire
             _equal(_catalog(case, physical[index + 1], native), catalog, "forget/replay changed retained source catalogs")
             if request["op"] == "admission":
                 _require(observed["report"] is None, "admission acquired a forget report")
-                _admission(case, raw, actual, observed, native, index >= 3)
+                _admission(case, raw, actual, observed, native, index >= 3, catalog)
             elif request["op"] == "forget":
                 _require(observed["replay"] is None and isinstance(observed["report"], dict),
                          "the complete forget report is absent")

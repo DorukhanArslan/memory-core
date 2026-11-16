@@ -52,31 +52,44 @@ Comparisons must not normalize away behavior. A platform-specific path, generate
 Entries remain pending until their complete acceptance conditions are verified against `v2026.9.9`. Their detailed acceptance points and stable identifiers are in [scope.json](../equivalence/scope.json). A helper that already exists in Python still needs the new differential evidence. A known difference must stay visible until its implementation and tests agree. Bounded passing subsets are recorded below without closing the containing contract.
 
 <!-- CURRENT-VERIFICATION-START -->
-The latest complete assessment has **79/128 verified conditions (61.7%)**,
-with **49 conditions remaining**: **37 complete, five partial and 22 pending
+The latest complete assessment has **81/128 verified conditions (63.3%)**,
+with **47 conditions remaining**: **38 complete, five partial and 21 pending
 contracts**. This measures verified conditions, not effort or elapsed work.
 
-The [recall recording closeout](recall_signals_closeout.md)
-records the [single full comparison](https://github.com/DorukhanArslan/memory-core/actions/runs/43848857934)
-on clean comparison head `970d5d6`, measuring approved product source `c047294`.
-Its 162 SDK files include the daily identity, grounded day-bucket and retention
-ordering fixes. It retains **1,475 cases: 1,461 matches, 14 mismatches, zero
-blocked and no runner errors**. The full gate still fails (actual exit 1):
-**47 uncovered and two
-registered unresolved conditions**. The fixed 64-contract, 128-condition scope
-is unchanged. Full report SHA-256:
+The [embedding-cache closeout](embedding_cache_lifecycle_closeout.md) records the
+[single full comparison](https://github.com/DorukhanArslan/memory-core/actions/runs/43884962457)
+on clean comparison head `d53c91e`, measuring approved product source `f8a8ffd`.
+Its 162 SDK files add cache disable/re-enable, reuse across source boundaries,
+and admission against each response's fresh source while preserving publication
+and forget fences. The run retains **1,483 cases: 1,469 matches, 14 mismatches,
+zero blocked and no runner errors**. The full gate still fails (actual exit 1):
+**45 uncovered and two registered unresolved conditions**. The fixed 64-contract,
+128-condition scope is unchanged. Full report SHA-256:
+`a9f573fa61457e4955b006f9a7286012a8c78720eba97e341eb3c511220d0879`.
+
+The complete eight-case family verifies both original `indexing.embedding-cache`
+conditions: **79 → 81/128, net +2**, completing this contract at **2/2**.
+All cache columns/BLOB bytes, effective identities and actual embedding calls
+match through edits, reopen, batching, failure and recovery. The original 1,475
+definitions and all previously verified conditions are preserved. All 14 old
+cases remain mismatched and their complete SDK public hashes are unchanged;
+the Native warm-flush public hash changed and remains an uncredited mismatch.
+
+The frozen CI assessor and local root review independently check the full
+128-point assessment. The closeout retains source seals, first failures,
+whole-packet replay receipts and the real outer publication difference outside
+this cache boundary. Broader provider/source lifecycle remains partial.
+Another implementation batch requires the user's scope approval and must
+target at least one additional verified condition.
+
+**Historical complete assessment (`970d5d6`, 79/128):** The
+[recall recording closeout](recall_signals_closeout.md) retains the preceding
+[1,475-case comparison](https://github.com/DorukhanArslan/memory-core/actions/runs/43848857934),
+measuring product source `c047294`: **1,461 matches, 14 mismatches, zero blocked
+and no runner errors**, with **49 conditions remaining** (37 complete, five
+partial and 22 pending contracts). Its complete six-case family verified both
+recall conditions: **77 → 79/128, net +2**. Full report SHA-256:
 `cc44d3c20fd1a7c1a44d1a0d7636a335ce972f0094b4e2543d5830e5904647af`.
-
-The complete six-case family verifies both original `promotion.recall-signals`
-conditions: **77 → 79/128, net +2**, completing this contract at **2/2**.
-Actual writer calls cover filtering/events, identity, query/day dedupe, caps,
-source-backed ranges and origin-write failure/recovery. The original 1,469
-definitions and all 14 complete public mismatch pairs remain unchanged.
-
-The frozen CI assessor and local review independently check the full 128-point
-assessment. The closeout records source seals, actual captured evidence, retained
-first failures and scope limits. Another implementation batch requires the
-user's scope approval and must target at least one additional verified condition.
 
 **Historical complete assessment (`2e51b61`, 77/128):** The
 [forgotten-session boundary closeout](forget_lineage_boundaries_closeout.md)
@@ -245,10 +258,10 @@ reaching 66/128 before the update/isolation and natural next-turn packages.
 
 | Contract status | Contracts | Verified conditions | Remaining conditions |
 | --- | ---: | ---: | ---: |
-| Complete | 37 | 74 | 0 |
+| Complete | 38 | 76 | 0 |
 | Partial | 5 | 5 | 5 |
-| Pending verification | 22 | 0 | 44 |
-| Total | 64 | 79 | 49 |
+| Pending verification | 21 | 0 | 42 |
+| Total | 64 | 81 | 47 |
 
 Pending verification can include existing implementation. Partial contracts retain one open
 condition. Infrastructure sections 1–3 remain **20/22 tasks completed**; infrastructure and
@@ -272,7 +285,7 @@ Current status of all 64 contracts:
 | 11 | `indexing.identity` | Complete | 2/2 |
 | 12 | `indexing.incremental-sync` | Complete | 2/2 |
 | 13 | `indexing.transaction-publication` | Complete | 2/2 |
-| 14 | `indexing.embedding-cache` | Pending verification | 0/2 |
+| 14 | `indexing.embedding-cache` | Complete | 2/2 |
 | 15 | `indexing.query-sync` | Complete | 2/2 |
 | 16 | `retrieval.vector-scoring` | Complete | 2/2 |
 | 17 | `retrieval.hybrid-scoring` | Complete | 2/2 |
@@ -357,7 +370,7 @@ pre-open race authority, full raw filesystem evidence and broader SDK-only limit
 - [x] **`indexing.identity` — Match index identity gating.** Vary provider, model, endpoint settings, scope, sources, tokenizer and chunking versions. Compare missing, matching and stale metadata diagnostics before any query is admitted.
 - [x] **`indexing.incremental-sync` — Match index refresh and invalidation.** Create, update, rename and delete files and sessions while retaining an index. Compare discovery, chunk replacement and unchanged-file handling across reopen.
 - [x] **`indexing.transaction-publication` — Publish one coherent index revision.** Interleave readers with successful and failing rebuilds. Compare visible old/new revisions and prevent partial chunk, FTS or provenance publication. Both acceptance points are covered by the prepared-publication comparisons recorded below.
-- [ ] **`indexing.embedding-cache` — Match embedding reuse and invalidation.** Use a deterministic instrumented embedder to count query and document calls. Compare cache identity, batching, changed chunks, failed batches and retained entries.
+- [x] **`indexing.embedding-cache` — Match embedding reuse and invalidation.** Both original conditions are verified by the complete eight-case real-manager family in the [cache closeout](embedding_cache_lifecycle_closeout.md). Compare complete cache identity/BLOBs, batching, changed chunks, failed batches, retained entries and all actual query/document calls. Outer API returns and full index-publication differences remain honest raw evidence; broader lifecycle is partial.
 - [x] **`indexing.query-sync` — Match query-time synchronization.** Both original conditions are verified for the declared provider-none on-search profile. Compare complete query outcomes and the eight frozen forced-sync/joining, failure, typed retry/exhaustion and dispatch-count schedules. Broader providers and interleavings remain outside this proof.
 
 ### Retrieval and ranking

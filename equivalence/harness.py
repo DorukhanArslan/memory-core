@@ -88,10 +88,11 @@ def _adapter_identity() -> dict[str, str]:
     fixture_manifest = ROOT / "equivalence/openclaw.plugin.json"
     if fixture_manifest.is_file():
         paths.append(fixture_manifest)
-    for name in ("index.mjs", "openclaw.plugin.json"):
-        provider_file = ROOT / "equivalence/host-turn-barrier-provider" / name
-        if provider_file.is_file():
-            paths.append(provider_file)
+    for directory in ("host-turn-barrier-provider", "embedding-cache-provider"):
+        for name in ("index.mjs", "openclaw.plugin.json"):
+            provider_file = ROOT / "equivalence" / directory / name
+            if provider_file.is_file():
+                paths.append(provider_file)
     return {path.relative_to(ROOT / "equivalence").as_posix(): _digest(path) for path in paths}
 
 
@@ -373,6 +374,12 @@ def _validate_scope(scope: Any, cases: Any) -> tuple[list[dict], dict[str, set[s
 
     try:
         validate_recall_signals(cases)
+    except ValueError as error:
+        raise HarnessError("cases-invalid", str(error)) from None
+    from equivalence.embedding_cache_lifecycle import validate_registration as validate_embedding_cache_lifecycle
+
+    try:
+        validate_embedding_cache_lifecycle(cases)
     except ValueError as error:
         raise HarnessError("cases-invalid", str(error)) from None
     return requirements, points
@@ -671,6 +678,10 @@ def _oracle(node: Path, script: Path, checkout: Path, cases: list[dict], timeout
                     from equivalence.recall_signals_profile import prepare_recall_signals_profile
 
                     context_options["recall_signals_profile"] = prepare_recall_signals_profile(cases[0], node)
+                if len(cases) == 1 and cases[0]["operation"] == "embed-cache-lifecycle-runtime":
+                    from equivalence.embedding_cache_lifecycle_profile import prepare_embedding_cache_lifecycle_profile
+
+                    context_options["embedding_cache_profile"] = prepare_embedding_cache_lifecycle_profile(cases[0], node)
 
                 if len(cases) == 1 and cases[0]["operation"] in MODEL_RUNTIME_OPERATIONS:
                     from equivalence.model_runtime_authority import prepare_model_node_authority
@@ -708,10 +719,13 @@ def _oracle(node: Path, script: Path, checkout: Path, cases: list[dict], timeout
                     from equivalence.promotion_apply_profile import prepare_promotion_apply_profile
 
                     context_options["promotion_apply_profile"] = prepare_promotion_apply_profile(node)
-                # Global stability also covers the independent nested provider.
-                # The legacy context retains its plain-filename authority.
+                # Only the dedicated cache capability admits these two nested
+                # provider files. Older contexts retain plain-filename authority.
+                from equivalence.embedding_cache_lifecycle_profile import PROVIDER_ADAPTER_FILES
+
+                cache_provider_files = set(PROVIDER_ADAPTER_FILES) if context_options.get("embedding_cache_profile") else set()
                 legacy_adapters = {name: digest for name, digest in _adapter_identity().items()
-                                   if Path(name).name == name}
+                                   if Path(name).name == name or name in cache_provider_files}
                 execution = resources.enter_context(ReleaseOracleExecution(
                     release_runtime, legacy_adapters, **context_options))
                 # Only this reviewed preload is supplied. User Node options,
@@ -763,6 +777,11 @@ def _oracle(node: Path, script: Path, checkout: Path, cases: list[dict], timeout
         if execution is not None:
             try:
                 result = execution.collect(result, cases)
+                if len(cases) == 1 and cases[0]["operation"] == "embed-cache-lifecycle-runtime":
+                    result["releaseTrace"]["embeddingCacheTransport"]["originalProcessStreams"] = {
+                        name: {"text": value, "bytes": len(value.encode("utf8")),
+                               "sha256": hashlib.sha256(value.encode("utf8")).hexdigest()}
+                        for name, value in (("stdout", stdout), ("stderr", stderr))}
                 if len(cases) == 1 and cases[0]["operation"] == "recall-signals-runtime":
                     result["releaseTrace"]["recallSignalsTransport"]["originalProcessStreams"] = {
                         name: {"text": value, "bytes": len(value.encode("utf8")),
@@ -794,6 +813,36 @@ def _oracle(node: Path, script: Path, checkout: Path, cases: list[dict], timeout
                     }
                 raise failure from None
     except HarnessError as error:
+        if len(cases) == 1 and cases[0]["operation"] == "embed-cache-lifecycle-runtime":
+            if error.rejected_evidence is None:
+                try:
+                    rejected_result = _json(stdout) if len(stdout.encode("utf8")) <= _MAX_OUTPUT_BYTES else None
+                except (ValueError, UnicodeError):
+                    rejected_result = None
+                try:
+                    if execution is None:
+                        raise ValueError("The cache execution context was not created")
+                    error.rejected_evidence = execution.capture_rejected(
+                        rejected_result, cases, stdout=stdout, stderr=stderr,
+                    )
+                except Exception:
+                    error.rejected_evidence = {
+                        "validationStatus": "rejected", "authenticationStatus": "unverified",
+                        "kind": "rejected-release-runtime-diagnostics", "caseIds": [cases[0]["id"]],
+                        "captureStatus": "unavailable-or-unsafe", "processWorkerTraces": [],
+                    }
+
+            def cache_stream(value):
+                payload = value.encode("utf8")
+                text = payload[:_MAX_OUTPUT_BYTES].decode("utf8", errors="ignore")
+                retained = text.encode("utf8")
+                return {"sha256": hashlib.sha256(payload).hexdigest(), "bytes": len(payload),
+                        "capturedBytes": len(retained), "truncated": len(retained) != len(payload), "text": text}
+
+            error.rejected_evidence.setdefault("stdout", cache_stream(stdout))
+            error.rejected_evidence.setdefault("stderr", cache_stream(stderr))
+            error.rejected_evidence["processReturnCode"] = process.returncode if process is not None else None
+            error.rejected_evidence["coverageCredit"] = False
         if source_policy and stdout:
             def source_stream(value):
                 original = value.encode("utf-8")
@@ -1101,6 +1150,7 @@ def run_suite(*, checkout: Path, node: Path, smoke: bool = False,
             "forget-lineage-runtime",
             "forget-boundaries-runtime",
             "recall-signals-runtime",
+            "embed-cache-lifecycle-runtime",
         }
         runtime_cases = [case for case in cases if case["operation"] in runtime_operations]
         source_cases = [case for case in cases if case["operation"] not in runtime_operations]
@@ -1487,6 +1537,13 @@ def run_suite(*, checkout: Path, node: Path, smoke: bool = False,
                 report["recallSignalsBindings"] = prepare_recall_signals_bindings(
                     checkout, Path(runtime_config["runtimeRoot"]))
                 report["recallSignalsNode"] = prepare_model_node_authority(node)
+            if any(case["operation"] == "embed-cache-lifecycle-runtime" for case in runtime_cases):
+                from equivalence.embedding_cache_lifecycle_bindings import prepare_embedding_cache_lifecycle_bindings
+                from equivalence.model_runtime_authority import prepare_model_node_authority
+
+                report["embeddingCacheBindings"] = prepare_embedding_cache_lifecycle_bindings(
+                    checkout, Path(runtime_config["runtimeRoot"]))
+                report["embeddingCacheNode"] = prepare_model_node_authority(node)
             observed_release = {}
             for case in runtime_cases:
                 # The real manager retains global state owners. Each distinct
@@ -1512,6 +1569,11 @@ def run_suite(*, checkout: Path, node: Path, smoke: bool = False,
             try:
                 if prepare_release_runtime(checkout, release_runtime_root) != runtime_config:
                     raise ValueError("Runtime artifacts changed.")
+                if "embeddingCacheBindings" in report and (
+                        prepare_embedding_cache_lifecycle_bindings(checkout, Path(runtime_config["runtimeRoot"]))
+                        != report["embeddingCacheBindings"]
+                        or prepare_model_node_authority(node) != report["embeddingCacheNode"]):
+                    raise ValueError("Original embedding cache source/artifact/executable owners changed.")
                 if "recallSignalsBindings" in report and (
                         prepare_recall_signals_bindings(checkout, Path(runtime_config["runtimeRoot"]))
                         != report["recallSignalsBindings"]
@@ -1726,10 +1788,11 @@ def run_suite(*, checkout: Path, node: Path, smoke: bool = False,
                     native_comparison = native["result"]
                     python_case = deepcopy(case)
                     if case in python_diagnostic_cases:
-                        if case["operation"] in {"index-identity-boundaries-runtime", "query-sync-outcomes-runtime", "query-sync-boundaries-runtime", "forget-lineage-runtime", "forget-boundaries-runtime", "recall-signals-runtime"}:
+                        if case["operation"] in {"index-identity-boundaries-runtime", "query-sync-outcomes-runtime", "query-sync-boundaries-runtime", "forget-lineage-runtime", "forget-boundaries-runtime", "recall-signals-runtime", "embed-cache-lifecycle-runtime"}:
                             # Keep the original child paths and bytes for the post-run
                             # semantic replay, including failed SDK captures.
-                            family = ("recall-signals" if case["operation"] == "recall-signals-runtime" else
+                            family = ("embedding-cache-lifecycle" if case["operation"] == "embed-cache-lifecycle-runtime" else
+                                      "recall-signals" if case["operation"] == "recall-signals-runtime" else
                                       "forget-boundaries" if case["operation"] == "forget-boundaries-runtime" else
                                       "forget-lineage-outcomes" if case["operation"] == "forget-lineage-runtime" else
                                       "query-sync-boundaries" if case["operation"] == "query-sync-boundaries-runtime" else
@@ -1919,10 +1982,27 @@ def run_suite(*, checkout: Path, node: Path, smoke: bool = False,
                             recall_diagnostic["validationStatus"] = "verified"
                             row["runtimeEvidenceValidated"] = True
                             row.update(openclaw=native_comparison, python=python)
+                        if case["operation"] == "embed-cache-lifecycle-runtime":
+                            from equivalence.embedding_cache_lifecycle_evidence import validate_pair
+
+                            cache_diagnostic = {"id": case["id"], "side": "python", "sha256": hashlib.sha256(raw).hexdigest(),
+                                                "rawSnapshots": snapshots, "evidenceDirectory": str(directory),
+                                                "validationStatus": "unverified"}
+                            report["runtimeDiagnostics"].append(cache_diagnostic)
+                            original = next(d for d in report["runtimeDiagnostics"]
+                                            if d["side"] == "native" and d["id"] == case["id"])
+                            if (original.get("validationStatus") != "verified"
+                                    or len(original["rawSnapshots"]) != 1 or len(snapshots) != 1):
+                                raise ValueError("Embedding cache requires one authenticated original and SDK capture")
+                            native_comparison, python = validate_pair(
+                                case, original["rawSnapshots"][0], snapshots[0], native["result"], python, directory)
+                            cache_diagnostic["validationStatus"] = "verified"
+                            row["runtimeEvidenceValidated"] = True
+                            row.update(openclaw=native_comparison, python=python)
                         diagnostic_key = "sourceDiagnostics" if case in source_diagnostic_cases else "runtimeDiagnostics"
                         if case["operation"] not in {"promotion-apply-family-runtime", "host-restart-session-runtime",
                                                      "host-update-isolation-runtime", "host-turn-barrier-runtime",
-                                                     "host-turn-barrier-boundaries-runtime", "index-identity-boundaries-runtime", "query-sync-outcomes-runtime", "query-sync-boundaries-runtime", "forget-lineage-runtime", "forget-boundaries-runtime", "recall-signals-runtime"}:
+                                                     "host-turn-barrier-boundaries-runtime", "index-identity-boundaries-runtime", "query-sync-outcomes-runtime", "query-sync-boundaries-runtime", "forget-lineage-runtime", "forget-boundaries-runtime", "recall-signals-runtime", "embed-cache-lifecycle-runtime"}:
                             report[diagnostic_key].append({
                                 "id": case["id"], "side": "python", "sha256": hashlib.sha256(raw).hexdigest(),
                                 "rawSnapshots": snapshots,
@@ -1937,7 +2017,7 @@ def run_suite(*, checkout: Path, node: Path, smoke: bool = False,
                     row.update(status="blocked", code="python-case-failed")
                     if case["operation"] in {"promotion-apply-family-runtime", "host-restart-session-runtime",
                                              "host-update-isolation-runtime", "host-turn-barrier-runtime",
-                                             "host-turn-barrier-boundaries-runtime", "index-identity-boundaries-runtime", "query-sync-outcomes-runtime", "query-sync-boundaries-runtime", "forget-lineage-runtime", "forget-boundaries-runtime", "recall-signals-runtime"}:
+                                             "host-turn-barrier-boundaries-runtime", "index-identity-boundaries-runtime", "query-sync-outcomes-runtime", "query-sync-boundaries-runtime", "forget-lineage-runtime", "forget-boundaries-runtime", "recall-signals-runtime", "embed-cache-lifecycle-runtime"}:
                         row["evidenceError"] = {"name": type(error).__name__, "message": str(error)}
                     if case["operation"] == "host-update-isolation-runtime" and python_diagnostics is not None:
                         _retain_failed_host_update_capture(
@@ -1973,6 +2053,10 @@ def run_suite(*, checkout: Path, node: Path, smoke: bool = False,
 
         recall_complete = recall_family_complete(report["cases"])
         report["recallSignalsFamilyComplete"] = recall_complete
+        from equivalence.embedding_cache_lifecycle import family_complete as embedding_family_complete, POINTS as embedding_points
+
+        embedding_complete = embedding_family_complete(report["cases"])
+        report["embeddingCacheFamilyComplete"] = embedding_complete
         from equivalence.query_sync_boundaries import POINTS as query_sync_boundary_points
         from equivalence.query_sync_outcomes import POINTS as query_sync_points
         from equivalence.index_identity_boundaries import POINTS as identity_boundary_points
@@ -2004,7 +2088,9 @@ def run_suite(*, checkout: Path, node: Path, smoke: bool = False,
                                                       and (point["id"] not in forget_boundary_points
                                                            or boundary_complete)
                                                       and (point["id"] not in recall_points
-                                                           or recall_complete)]})
+                                                           or recall_complete)
+                                                      and (point["id"] not in embedding_points
+                                                           or embedding_complete)]})
             report["requirements"].append({"id": requirement["id"], "required": requirement["required"],
                                             "acceptance": acceptance, "registeredCases": len(rows)})
         uncovered = [point["id"] for requirement in report["requirements"] if requirement["required"]

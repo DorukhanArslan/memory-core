@@ -15,6 +15,7 @@ from pathlib import Path, PurePosixPath
 import re
 import stat
 import tempfile
+import traceback
 from typing import Any
 
 from equivalence.release_runtime import ReleaseRuntimeError, validate_release_sources
@@ -30,6 +31,11 @@ from equivalence.forget_boundaries_profile import validate_forget_boundaries_pro
 from equivalence.forget_boundaries import case_wire as boundary_case_wire
 from equivalence.recall_signals_profile import validate_recall_signals_profile
 from equivalence.recall_signals import case_wire as recall_case_wire
+from equivalence.embedding_cache_lifecycle_profile import (
+    PROVIDER_ADAPTER_FILES, PROVIDER_SOURCE_HASHES, PROVIDER_MODE as EMBEDDING_PROVIDER_MODE,
+    validate_embedding_cache_lifecycle_profile,
+)
+from equivalence.embedding_cache_lifecycle import case_wire as embedding_case_wire
 
 
 ROOT = Path(__file__).resolve().parents[1]
@@ -45,7 +51,14 @@ _FIXTURE_CAPTURE = re.compile(
     r"tmp/plugin-captures/[0-9a-f-]{36}/captures/openclaw-plugin-build-[A-Za-z0-9]{6}"
     r"/package-0/node_modules/equivalence/flush-execution\.mjs\Z"
 )
+_EMBEDDING_FIXTURE_CAPTURE = re.compile(
+    r"tmp/plugin-captures/[0-9a-f-]{36}/captures/openclaw-plugin-build-[A-Za-z0-9]{6}"
+    r"/package-0/node_modules/embedding-cache-provider/index\.mjs\Z"
+)
 _OPERATIONS = {
+    "embed-cache-lifecycle-runtime": (
+        "embedding-cache-lifecycle-runtime.mjs", "dist/extensions/memory-core/manager-runtime.js", True,
+    ),
     "importance-project-runtime": (
         "importance-project-runtime.mjs", "dist/extensions/memory-core/manager-runtime.js", True,
     ),
@@ -664,7 +677,7 @@ def _owned_regular(root: Path, path: Path, limit: int) -> bytes:
 
 
 class ReleaseOracleExecution:
-    """One fresh provider-none process with a trusted preload inherited by workers."""
+    """One fresh protected process; real provider fixtures require their own capability."""
 
     def __init__(self, config: dict, adapter_hashes: dict[str, str], *, fixture_captures: bool = False,
                  turn_taint_source: dict | None = None, model_node_runtime: dict | None = None,
@@ -673,7 +686,7 @@ class ReleaseOracleExecution:
                  memory_budget_profile: dict | None = None, get_read_race_profile: dict | None = None,
                  promotion_profile: dict | None = None, promotion_apply_profile: dict | None = None,
                  forget_lineage_profile: dict | None = None, forget_boundaries_profile: dict | None = None,
-                 recall_signals_profile: dict | None = None):
+                 recall_signals_profile: dict | None = None, embedding_cache_profile: dict | None = None):
         self.config = deepcopy(config)
         self.adapter_hashes = dict(adapter_hashes)
         self.fixture_captures = fixture_captures
@@ -690,6 +703,7 @@ class ReleaseOracleExecution:
         self.forget_lineage_profile = deepcopy(forget_lineage_profile)
         self.forget_boundaries_profile = deepcopy(forget_boundaries_profile)
         self.recall_signals_profile = deepcopy(recall_signals_profile)
+        self.embedding_cache_profile = deepcopy(embedding_cache_profile)
         self.env: dict[str, str] = {}
         self._temporary = None
         self._entered = False
@@ -699,7 +713,8 @@ class ReleaseOracleExecution:
             capabilities = (self.model_node_runtime, self.entry_profile, self.atomic_profile,
                 self.bootstrap_profile, self.memory_budget_profile, self.promotion_profile,
                 self.promotion_apply_profile, self.get_read_race_profile, self.turn_taint_source,
-                self.forget_lineage_profile, self.forget_boundaries_profile, self.recall_signals_profile)
+                self.forget_lineage_profile, self.forget_boundaries_profile, self.recall_signals_profile,
+                self.embedding_cache_profile)
             if sum(value is not None for value in capabilities) + bool(self.fixture_captures) > 1:
                 raise RuntimeOracleError("Independent native profiles cannot borrow one another's executable, source, backend or hook capabilities.")
             if self.get_read_race_profile is not None:
@@ -732,6 +747,8 @@ class ReleaseOracleExecution:
                 self.forget_boundaries_profile = validate_forget_boundaries_profile(self.forget_boundaries_profile)
             if self.recall_signals_profile is not None:
                 self.recall_signals_profile = validate_recall_signals_profile(self.recall_signals_profile)
+            if self.embedding_cache_profile is not None:
+                self.embedding_cache_profile = validate_embedding_cache_lifecycle_profile(self.embedding_cache_profile)
             if self.entry_profile is not None:
                 self.entry_profile = validate_entry_provenance_profile(self.entry_profile)
                 if self.model_node_runtime is not None or self.turn_taint_source is not None or self.fixture_captures or self.atomic_profile is not None or self.bootstrap_profile is not None or self.memory_budget_profile is not None or self.get_read_race_profile is not None or self.promotion_profile is not None:
@@ -784,9 +801,12 @@ class ReleaseOracleExecution:
             self._packages = package_map
             self._locals = {}
             for name, digest in self.adapter_hashes.items():
-                if Path(name).name != name:
+                embedding_source = self.embedding_cache_profile is not None and name in PROVIDER_ADAPTER_FILES
+                if embedding_source and digest != PROVIDER_SOURCE_HASHES[name]:
+                    raise RuntimeOracleError("An embedding provider source differs from its independently frozen bytes.")
+                if Path(name).name != name and not embedding_source:
                     raise RuntimeOracleError("Oracle adapter identities must use plain filenames.")
-                if not name.endswith(".mjs"):
+                if not name.endswith(".mjs") and not embedding_source:
                     continue
                 path = ROOT / "equivalence" / name
                 if not isinstance(digest, str) or not _HASH.fullmatch(digest):
@@ -852,6 +872,18 @@ class ReleaseOracleExecution:
             if self.recall_signals_profile is not None:
                 self._context["approvedNodeRuntime"] = self.recall_signals_profile["nodeRuntime"]
                 self._context["recallSignalsProfile"] = self.recall_signals_profile
+            if self.embedding_cache_profile is not None:
+                self._context["approvedNodeRuntime"] = self.embedding_cache_profile["nodeRuntime"]
+                self._context["embeddingCacheProfile"] = self.embedding_cache_profile
+                self._context["providerMode"] = EMBEDDING_PROVIDER_MODE
+                source, manifest = [str((ROOT / "equivalence" / name).resolve()) for name in PROVIDER_ADAPTER_FILES]
+                if source not in self._locals or manifest not in self._locals:
+                    raise RuntimeOracleError("The cache capability requires both exact reviewed provider source files.")
+                self._context["embeddingFixtureSourceCaptures"] = [{
+                    "sourcePath": source, "sha256": self._locals[source],
+                    "manifestPath": manifest, "manifestSha256": self._locals[manifest],
+                    "capturePackage": "embedding-cache-provider",
+                }]
             if self.fixture_captures:
                 fixture = str((ROOT / "equivalence/flush-execution.mjs").resolve())
                 if fixture not in self._locals:
@@ -890,9 +922,16 @@ class ReleaseOracleExecution:
         """Validate all observed threads and retain case raw state in the report."""
         if not self._entered:
             raise RuntimeOracleError("Release execution evidence requires an active owned context.")
+        if self.embedding_cache_profile is not None:
+            self._last_collection_error = None
         try:
             return self._collect(result, cases)
         except (OSError, KeyError, TypeError, ValueError, ReleaseRuntimeError) as error:
+            if self.embedding_cache_profile is not None:
+                self._last_collection_error = {
+                    "type": type(error).__module__ + "." + type(error).__qualname__,
+                    "message": str(error), "traceback": traceback.format_exc(),
+                }
             if isinstance(error, RuntimeOracleError):
                 raise
             raise RuntimeOracleError("The release oracle returned invalid execution evidence.") from None
@@ -910,6 +949,8 @@ class ReleaseOracleExecution:
                    "kind": "rejected-release-runtime-diagnostics", "caseIds": [],
                    "oracleResult": None, "stdout": None, "stderr": None,
                    "caseDiagnostics": [], "processWorkerTraces": [], "omissions": []}
+        if self.embedding_cache_profile is not None and getattr(self, "_last_collection_error", None) is not None:
+            capture["collectionError"] = deepcopy(self._last_collection_error)
 
         def stream(text: str) -> dict:
             raw = text.encode("utf-8")
@@ -1008,6 +1049,12 @@ class ReleaseOracleExecution:
         case = cases[0]
         row = result["results"][0]
         operation = case.get("operation")
+        if (self.embedding_cache_profile is not None) is not (operation == "embed-cache-lifecycle-runtime"):
+            raise RuntimeOracleError("Embedding cache authority cannot execute another operation")
+        if self.embedding_cache_profile is not None:
+            profile = validate_embedding_cache_lifecycle_profile(self.embedding_cache_profile)
+            if profile["caseId"] != case.get("id") or profile["caseBindings"][profile["caseId"]] != _digest(embedding_case_wire(case)):
+                raise RuntimeOracleError("An embedding cache case changed its frozen complete inputs")
         if (self.recall_signals_profile is not None) is not (operation == "recall-signals-runtime"):
             raise RuntimeOracleError("Recall signals authority cannot execute another operation")
         if self.recall_signals_profile is not None:
@@ -1108,10 +1155,15 @@ class ReleaseOracleExecution:
                 or row.get("id") != case.get("id") or type(row.get("ok")) is not bool
                 or set(row) != ({"id", "ok", "result"} if row["ok"] else {"id", "ok", "error"})):
             raise RuntimeOracleError("The release oracle returned an unexpected case identity.")
+        expected_provider = EMBEDDING_PROVIDER_MODE if self.embedding_cache_profile is not None else "none"
         if row["ok"] and (not isinstance(row["result"], dict)
                 or operation not in {PROMOTION_RANKING_OPERATION, "recall-signals-runtime"}
-                and row["result"].get("provider") != "none"):
-            raise RuntimeOracleError("Release memory fixtures require provider none.")
+                and row["result"].get("provider") != expected_provider):
+            raise RuntimeOracleError(
+                "Embedding cache fixtures require their declared deterministic provider."
+                if self.embedding_cache_profile is not None else "Release memory fixtures require provider none.")
+        if operation == "embed-cache-lifecycle-runtime" and not row["ok"]:
+            raise RuntimeOracleError("The real embedding-cache manager did not complete its declared fixture flow.")
         if operation == "turn-trust-runtime" and not row["ok"]:
             raise RuntimeOracleError("The real turn-trust caller did not complete its registered execution and persistence flow.")
         if operation in {*MODEL_RUNTIME_OPERATIONS, *ENTRY_PROVENANCE_PROFILES, *ATOMIC_PUBLICATION_PROFILES, *MEMORY_BUDGET_PROFILES, PROMOTION_RANKING_OPERATION, PROMOTION_APPLY_OPERATION} and not row["ok"]:
@@ -1128,6 +1180,7 @@ class ReleaseOracleExecution:
             raise RuntimeOracleError("The release oracle returned missing or excessive thread traces.")
         total = 0
         loaded, bootstrap, worker_imports, local_imports, captures = {}, [], [], set(), {}
+        embedding_captures = {}
         release_by_pid, local_by_pid, process_parents = {}, {}, {}
         atomic_loaded_by_pid, atomic_native_by_pid = {}, {}
         atomic_lifecycle_events = []
@@ -1139,7 +1192,7 @@ class ReleaseOracleExecution:
             if filename is None:
                 raise RuntimeOracleError("A release thread trace has an invalid identity.")
             raw = _regular(trace, MAX_SINGLE_TRACE_BYTES)
-            if self.entry_profile is not None or self.memory_budget_profile is not None or self.promotion_profile is not None or self.promotion_apply_profile is not None or self.forget_lineage_profile is not None or self.forget_boundaries_profile is not None or self.recall_signals_profile is not None:
+            if self.entry_profile is not None or self.memory_budget_profile is not None or self.promotion_profile is not None or self.promotion_apply_profile is not None or self.forget_lineage_profile is not None or self.forget_boundaries_profile is not None or self.recall_signals_profile is not None or self.embedding_cache_profile is not None:
                 entry_trace_files.append({"name": trace.name, "bytes": len(raw), "sha256": _digest(raw),
                                           "text": raw.decode("utf-8")})
             if self.bootstrap_profile is not None:
@@ -1157,7 +1210,7 @@ class ReleaseOracleExecution:
                     or first.get("isMainThread") is not (thread == 0)
                     or first.get("contextSha256") != self._context_digest
                     or first.get("preloadSha256") != self._preload_digest
-                    or first.get("fetchDenied") is not True or first.get("providerMode") != "none"):
+                    or first.get("fetchDenied") is not True or first.get("providerMode") != self._context["providerMode"]):
                 raise RuntimeOracleError("Runtime thread bootstrap protection was not attested.")
             node_authority = (self.model_node_runtime
                               or (self.entry_profile["nodeRuntime"] if self.entry_profile is not None else None)
@@ -1167,7 +1220,8 @@ class ReleaseOracleExecution:
                               or (self.promotion_apply_profile["nodeRuntime"] if self.promotion_apply_profile is not None else None)
                               or (self.forget_lineage_profile["nodeRuntime"] if self.forget_lineage_profile is not None else None)
                               or (self.forget_boundaries_profile["nodeRuntime"] if self.forget_boundaries_profile is not None else None)
-                              or (self.recall_signals_profile["nodeRuntime"] if self.recall_signals_profile is not None else None))
+                              or (self.recall_signals_profile["nodeRuntime"] if self.recall_signals_profile is not None else None)
+                              or (self.embedding_cache_profile["nodeRuntime"] if self.embedding_cache_profile is not None else None))
             if node_authority is not None and first.get("runtime") != node_authority:
                 raise RuntimeOracleError("The actual native process or worker omitted its approved model binary authority.")
             if self.entry_profile is not None and first.get("entryProfile") != self.entry_profile:
@@ -1213,6 +1267,11 @@ class ReleaseOracleExecution:
                 if first.get("recallSignalsProfile") != self.recall_signals_profile:
                     raise RuntimeOracleError("The actual recall process omitted its distinct frozen authority")
                 bootstrap[-1]["recallSignalsProfile"] = deepcopy(first["recallSignalsProfile"])
+            if self.embedding_cache_profile is not None:
+                if first.get("embeddingCacheProfile") != self.embedding_cache_profile:
+                    raise RuntimeOracleError("The actual cache process omitted its distinct manager/provider authority")
+                bootstrap[-1]["embeddingCacheProfile"] = deepcopy(first["embeddingCacheProfile"])
+                bootstrap[-1]["providerMode"] = self._context["providerMode"]
             if thread == 0:
                 process_parents[pid] = first.get("ppid")
             for event in events[1:]:
@@ -1244,6 +1303,32 @@ class ReleaseOracleExecution:
                     if event["event"] == "load":
                         reference_source_imports.append({"path": path, "relativePath": approved["relativePath"],
                             "sha256": digest, "referenceCommit": approved["referenceCommit"], "pid": pid, "threadId": thread})
+                elif kind == "embedding-fixture-capture":
+                    source, capture, proof = event.get("sourcePath"), event.get("capturePath"), event.get("proofPath")
+                    authority = self._context.get("embeddingFixtureSourceCaptures", [])
+                    if (self.embedding_cache_profile is None or operation != "embed-cache-lifecycle-runtime"
+                            or len(authority) != 1 or source != authority[0]["sourcePath"]
+                            or path != source or self._locals.get(source) != digest
+                            or digest != authority[0]["sha256"]
+                            or not isinstance(capture, str) or not _EMBEDDING_FIXTURE_CAPTURE.fullmatch(capture)):
+                        raise RuntimeOracleError("An embedding provider source capture escaped its exact independent authority.")
+                    expected_proof = "embedding-fixture-source-captures/" + _digest(
+                        (capture + "\0" + digest).encode()) + ".mjs"
+                    if proof != expected_proof:
+                        raise RuntimeOracleError("An embedding provider capture has invalid retained proof.")
+                    proof_directory = self.evidence_directory / "embedding-fixture-source-captures"
+                    if (proof_directory.is_symlink() or not proof_directory.is_dir()
+                            or proof_directory.resolve() != proof_directory):
+                        raise RuntimeOracleError("Embedding provider capture proof escaped its owned directory.")
+                    proof_bytes = _regular(self.evidence_directory / proof, MAX_DIAGNOSTIC_BYTES)
+                    if _digest(proof_bytes) != digest:
+                        raise RuntimeOracleError("The complete retained embedding provider source changed.")
+                    if event["event"] == "load":
+                        embedding_captures[capture] = {
+                            "sourcePath": source, "capturePath": capture, "sha256": digest,
+                            "proofPath": proof, "proofSha256": _digest(proof_bytes),
+                            "bytes": len(proof_bytes), "text": proof_bytes.decode("utf8"),
+                        }
                 elif kind == "fixture-capture":
                     source = event.get("sourcePath")
                     capture = event.get("capturePath")
@@ -1370,6 +1455,8 @@ class ReleaseOracleExecution:
                 raise RuntimeOracleError("The original transcript boundary reader and projection owners did not execute.")
         if case.get("operation") == "flush-execution-runtime" and not captures:
             raise RuntimeOracleError("The native provider loader did not execute a reviewed fixture source capture.")
+        if operation == "embed-cache-lifecycle-runtime" and not embedding_captures:
+            raise RuntimeOracleError("The original plugin loader did not execute the exact embedding provider capture.")
         if operation == "flush-execution-runtime" and (
             "node_modules/openclaw", "dist/extensions/memory-core/manager-runtime.js"
         ) not in loaded:
@@ -1389,6 +1476,13 @@ class ReleaseOracleExecution:
         diagnostic = _json(raw)
         if not isinstance(diagnostic, list):
             raise RuntimeOracleError("Native lifecycle diagnostics must retain raw snapshot rows.")
+        if operation == "embed-cache-lifecycle-runtime":
+            from equivalence.embedding_cache_lifecycle_bindings import REQUIRED_RUNTIME_ARTIFACTS
+            from equivalence.embedding_cache_lifecycle_evidence import validate_native
+
+            if any(("node_modules/openclaw", owner) not in loaded for owner in REQUIRED_RUNTIME_ARTIFACTS):
+                raise RuntimeOracleError("The original manager/provider/cache/worker owners did not all execute")
+            validate_native(case, row["result"], diagnostic, evidence.parent)
         if operation == "recall-signals-runtime":
             from equivalence.recall_signals_bindings import REQUIRED_RUNTIME_ARTIFACTS
             from equivalence.recall_signals_evidence import validate_native
@@ -1691,7 +1785,7 @@ class ReleaseOracleExecution:
                                   "threads": bootstrap, "protectedWorkerThreads": sum(
                                       not item["isMainThread"] for item in bootstrap),
                                   "loadedReleaseFiles": len(release_sources),
-                                  "networkFetchDenied": True, "provider": "none",
+                                  "networkFetchDenied": True, "provider": self._context["providerMode"],
                                   "nativeBinaryPolicy": "all artifact bytes authenticated before and after execution"}
         answer["runtimeDiagnostics"] = [{"id": case["id"], "sha256": _digest(raw),
                                           "rawSnapshots": _json(raw) if self.entry_profile is not None or self.memory_budget_profile is not None or self.promotion_profile is not None or self.promotion_apply_profile is not None else diagnostic}]
@@ -1720,6 +1814,13 @@ class ReleaseOracleExecution:
             answer["runtimeDiagnostics"][0]["validationStatus"] = "verified"
             answer["releaseTrace"]["recallSignalsTransport"] = {
                 "profile": deepcopy(self.recall_signals_profile), "traceFiles": entry_trace_files}
+        if self.embedding_cache_profile is not None:
+            answer["runtimeDiagnostics"][0]["rawSnapshots"] = _json(raw)
+            answer["runtimeDiagnostics"][0]["validationStatus"] = "verified"
+            answer["releaseTrace"]["embeddingCacheTransport"] = {
+                "profile": deepcopy(self.embedding_cache_profile), "traceFiles": entry_trace_files,
+                "fixtureSourceCaptures": [embedding_captures[key] for key in sorted(embedding_captures)],
+            }
         if self.turn_taint_source is not None:
             if len(reference_source_imports) != 1:
                 raise RuntimeOracleError("The mixed profile must actually load its sole original source owner exactly once.")

@@ -1,6 +1,11 @@
 # Recall recording and source lineage acceptance
 
-The complete assessment verifies **79/128 conditions (61.7%),
+This is the historical 79/128 assessment. The later
+[embedding-cache closeout](embedding_cache_lifecycle_closeout.md) records the
+latest complete assessment: **81/128, 47 remaining**, net +2 cache conditions.
+The recall run and its source identity below remain unchanged.
+
+This historical assessment verifies **79/128 conditions (61.7%),
 49 remaining**: **37 complete, 5 partial and
 22 pending contracts**. Both original `promotion.recall-signals`
 conditions are verified, taking the previous 77/128 assessment to 79/128:

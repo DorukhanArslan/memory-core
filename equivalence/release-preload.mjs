@@ -13,8 +13,19 @@ if (!contextPath || !path.isAbsolute(contextPath)) throw Error("Trusted release 
 const rawContext = fs.readFileSync(contextPath);
 if (rawContext.byteLength > 64 * 1024 * 1024) throw Error("Release execution context is excessive");
 const context = JSON.parse(rawContext);
-if (context.schemaVersion !== 1 || context.providerMode !== "none" || context.fetchPolicy !== "deny") {
+const embeddingMode = context.embeddingCacheProfile !== undefined;
+const expectedProviderMode = embeddingMode ? "deterministic-embedding-fixture" : "none";
+if (context.schemaVersion !== 1 || context.providerMode !== expectedProviderMode || context.fetchPolicy !== "deny") {
   throw Error("Unsupported release execution policy");
+}
+if (embeddingMode &&
+    ["entryProvenanceProfile", "atomicPublicationProfile", "atomicCaseBinding", "bootstrapDiscoveryProfile",
+     "memoryBudgetProfile", "getReadRaceProfile", "promotionRankingProfile", "promotionApplyProfile",
+     "forgetLineageProfile", "forgetBoundariesProfile", "recallSignalsProfile"].some(key => context[key] !== undefined)) {
+  throw Error("Embedding cache cannot borrow another compiled, model, source or hook capability");
+}
+if (!embeddingMode && context.embeddingFixtureSourceCaptures !== undefined) {
+  throw Error("An embedding provider source capture requires its own exact manager capability");
 }
 if (context.recallSignalsProfile !== undefined &&
     ["entryProvenanceProfile", "atomicPublicationProfile", "atomicCaseBinding", "bootstrapDiscoveryProfile",
@@ -180,6 +191,20 @@ if (context.recallSignalsProfile !== undefined) {
     throw Error("Unapproved independent complete recall-signals capability");
   }
 }
+if (embeddingMode) {
+  const profile = context.embeddingCacheProfile, bindings = profile?.caseBindings;
+  const approvedBindingsSha256 = "3856a25129df0b84e9b49906b8f08b462290bd9ddd1720ddfb2ca6f5429d1790";
+  if (!profile || Object.keys(profile).sort().join() !== "caseBindings,caseId,inputKind,kind,nodeRuntime,operation" ||
+      profile.kind !== "approved-embedding-cache-lifecycle-profile" || profile.operation !== "embed-cache-lifecycle-runtime" ||
+      profile.inputKind !== "embedding-cache-lifecycle" || !bindings || Object.keys(bindings).length !== 8 ||
+      !/^[0-9a-f]{64}$/.test(approvedBindingsSha256) ||
+      hash(JSON.stringify(Object.fromEntries(Object.keys(bindings).sort().map(key => [key, bindings[key]])))) !== approvedBindingsSha256 ||
+      !Object.hasOwn(bindings, profile.caseId) ||
+      JSON.stringify(profile.nodeRuntime) !== JSON.stringify(context.approvedNodeRuntime) ||
+      (context.approvedReferenceSources ?? []).length || (context.fixtureSourceCaptures ?? []).length) {
+    throw Error("Unapproved independent complete embedding-cache manager capability");
+  }
+}
 const permitted = new Map();
 for (const entry of context.allowedLocal) {
   permitted.set(fs.realpathSync(entry.path), { kind: "oracle", path: fs.realpathSync(entry.path), sha256: entry.sha256 });
@@ -231,7 +256,7 @@ if (context.approvedNodeRuntime !== undefined) {
   }
 }
 trace({ event: "bootstrap", isMainThread, ppid: process.ppid, contextSha256: hash(rawContext), preloadSha256: own.sha256,
-        fetchDenied: true, providerMode: "none", ...(approvedNodeRuntime ? { runtime: approvedNodeRuntime } : {}),
+        fetchDenied: true, providerMode: context.providerMode, ...(approvedNodeRuntime ? { runtime: approvedNodeRuntime } : {}),
         ...(context.entryProvenanceProfile ? { entryProfile: context.entryProvenanceProfile } : {}),
         ...(context.atomicPublicationProfile ? { atomicProfile: context.atomicPublicationProfile } : {}),
         ...(bootstrapProfile ? { runtime: bootstrapRuntime, bootstrapProfile } : {}),
@@ -241,7 +266,8 @@ trace({ event: "bootstrap", isMainThread, ppid: process.ppid, contextSha256: has
         ...(context.promotionApplyProfile ? { promotionApplyProfile: context.promotionApplyProfile } : {}),
         ...(context.forgetLineageProfile ? { forgetLineageProfile: context.forgetLineageProfile } : {}),
         ...(context.forgetBoundariesProfile ? { forgetBoundariesProfile: context.forgetBoundariesProfile } : {}),
-        ...(context.recallSignalsProfile ? { recallSignalsProfile: context.recallSignalsProfile } : {}) });
+        ...(context.recallSignalsProfile ? { recallSignalsProfile: context.recallSignalsProfile } : {}),
+        ...(embeddingMode ? { embeddingCacheProfile: context.embeddingCacheProfile } : {}) });
 // Native workers can log directly while retiring after the result is ready.
 // Reserve stdout for the runner's single process.stdout.write JSON envelope.
 // This executes in every worker as well as the parent, before native imports.
@@ -262,7 +288,8 @@ Object.defineProperty(globalThis, "fetch", {
   configurable: false, writable: false,
   value: async function deniedRuntimeFetch() {
     trace({ event: "network-denied", code: "runtime-network-disabled" });
-    throw Error("Network requests are disabled in provider-none release comparisons");
+    throw Error(embeddingMode ? "Network requests are disabled in deterministic embedding fixture comparisons"
+      : "Network requests are disabled in provider-none release comparisons");
   },
 });
 const captureArea = path.join(context.stateDirectory, "tmp", "plugin-captures");
@@ -276,6 +303,26 @@ if (captureSource && (captureSource.basename !== "flush-execution.mjs"
     || permitted.get(captureSource.sourcePath)?.sha256 !== captureSource.sha256)) {
   throw Error("Fixture captures require the specific reviewed provider fixture");
 }
+const embeddingCapturePolicies = context.embeddingFixtureSourceCaptures ?? [];
+if (!Array.isArray(embeddingCapturePolicies) ||
+    embeddingCapturePolicies.length !== (embeddingMode ? 1 : 0)) throw Error("Invalid independent embedding source capture policy");
+const embeddingCaptureSource = embeddingCapturePolicies[0];
+if (embeddingCaptureSource) {
+  const entry = embeddingCaptureSource;
+  if (Object.keys(entry).sort().join() !== "capturePackage,manifestPath,manifestSha256,sha256,sourcePath" ||
+      entry.capturePackage !== "embedding-cache-provider" || typeof entry.sourcePath !== "string" ||
+      entry.sha256 !== "c692c352828b05c43991f7c96a95119f6e83244e46839d5207431885cbe7701e" ||
+      entry.manifestSha256 !== "66ea471ac56d24949725e50fe60c53395bd6b478d1f65b9e6d725544e32b2873" ||
+      path.basename(entry.sourcePath) !== "index.mjs" || path.basename(path.dirname(entry.sourcePath)) !== "embedding-cache-provider" ||
+      entry.manifestPath !== path.join(path.dirname(entry.sourcePath), "openclaw.plugin.json") ||
+      permitted.get(entry.sourcePath)?.kind !== "oracle" || permitted.get(entry.sourcePath)?.sha256 !== entry.sha256 ||
+      permitted.get(entry.manifestPath)?.kind !== "oracle" || permitted.get(entry.manifestPath)?.sha256 !== entry.manifestSha256 ||
+      fs.realpathSync(entry.sourcePath) !== entry.sourcePath || fs.realpathSync(entry.manifestPath) !== entry.manifestPath ||
+      hash(fs.readFileSync(entry.manifestPath)) !== entry.manifestSha256) {
+    throw Error("Embedding fixtures require their exact reviewed provider source and manifest");
+  }
+}
+const embeddingCapturePattern = /^tmp\/plugin-captures\/[0-9a-f-]{36}\/captures\/openclaw-plugin-build-[A-Za-z0-9]{6}\/package-0\/node_modules\/embedding-cache-provider\/index\.mjs$/;
 function isCapturePath(filename) {
   return filename === captureArea || filename.startsWith(captureArea + path.sep);
 }
@@ -319,6 +366,37 @@ function fixtureCaptureAuthority(filename) {
   return { kind: "fixture-capture", path: captureSource.sourcePath, sourcePath: captureSource.sourcePath,
     capturePath: relative, proofPath: proofRelative, sha256: captureSource.sha256 };
 }
+function embeddingFixtureCaptureAuthority(filename) {
+  const absolute = path.resolve(filename);
+  const relative = path.relative(context.stateDirectory, absolute).replaceAll(path.sep, "/");
+  if (!embeddingMode || !embeddingCaptureSource || !embeddingCapturePattern.test(relative)) return rejectCapture(absolute);
+  let cursor = context.stateDirectory;
+  for (const component of relative.split("/").slice(0, -1)) {
+    const directory = fs.lstatSync(cursor);
+    if (!directory.isDirectory() || directory.isSymbolicLink()) return rejectCapture(absolute);
+    cursor = path.join(cursor, component);
+  }
+  const parent = fs.lstatSync(path.dirname(absolute)), info = fs.lstatSync(absolute);
+  if (!parent.isDirectory() || parent.isSymbolicLink() || !info.isFile() || info.isSymbolicLink()
+      || info.nlink !== 1 || fs.realpathSync(absolute) !== absolute
+      || info.size !== fs.statSync(embeddingCaptureSource.sourcePath).size) return rejectCapture(absolute);
+  const raw = fs.readFileSync(absolute);
+  if (hash(raw) !== embeddingCaptureSource.sha256) return rejectCapture(absolute);
+  const proofRelative = `embedding-fixture-source-captures/${hash(Buffer.from(relative + "\0" + embeddingCaptureSource.sha256))}.mjs`;
+  const proofDirectory = path.join(context.evidenceDirectory, "embedding-fixture-source-captures");
+  fs.mkdirSync(proofDirectory, { recursive: true, mode: 0o700 });
+  const proofParent = fs.lstatSync(proofDirectory);
+  if (!proofParent.isDirectory() || proofParent.isSymbolicLink()
+      || fs.realpathSync(proofDirectory) !== proofDirectory) return rejectCapture(absolute);
+  const proof = path.join(context.evidenceDirectory, proofRelative);
+  if (!fs.existsSync(proof)) fs.writeFileSync(proof, raw, { flag: "wx", mode: 0o600 });
+  const proofInfo = fs.lstatSync(proof);
+  if (!proofInfo.isFile() || proofInfo.isSymbolicLink() || proofInfo.nlink !== 1
+      || hash(fs.readFileSync(proof)) !== embeddingCaptureSource.sha256) return rejectCapture(absolute);
+  return { kind: "embedding-fixture-capture", path: embeddingCaptureSource.sourcePath,
+    sourcePath: embeddingCaptureSource.sourcePath, capturePath: relative,
+    proofPath: proofRelative, sha256: embeddingCaptureSource.sha256 };
+}
 function authority(url) {
   if (url.startsWith("node:")) return undefined;
   if (!url.startsWith("file:")) {
@@ -326,7 +404,7 @@ function authority(url) {
     throw Error("Runtime imports require authenticated artifact files");
   }
   const lexical = path.resolve(fileURLToPath(url));
-  if (isCapturePath(lexical)) return fixtureCaptureAuthority(lexical);
+  if (isCapturePath(lexical)) return embeddingMode ? embeddingFixtureCaptureAuthority(lexical) : fixtureCaptureAuthority(lexical);
   const filename = fs.realpathSync(lexical);
   const record = permitted.get(filename);
   if (!record || hash(fs.readFileSync(filename)) !== record.sha256) {
@@ -350,7 +428,9 @@ registerHooks({
     else if (specifier.startsWith(".") && resolveContext.parentURL?.startsWith("file:")) {
       lexical = path.resolve(path.dirname(fileURLToPath(resolveContext.parentURL)), specifier);
     }
-    if (lexical && isCapturePath(lexical)) fixtureCaptureAuthority(lexical);
+    if (lexical && isCapturePath(lexical)) {
+      if (embeddingMode) embeddingFixtureCaptureAuthority(lexical); else fixtureCaptureAuthority(lexical);
+    }
     const resolved = nextResolve(specifier, resolveContext);
     const record = authority(resolved.url);
     if (record?.kind === "release" && record.package === "node_modules/@openclaw/fs-safe" &&

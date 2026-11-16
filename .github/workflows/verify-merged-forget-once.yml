@@ -1,5 +1,6 @@
 name: Verify recall signals once
 # One frozen 1,475-case measurement; retain the first result without retrying.
+# The complete six-case focused comparison passed before this sole full run.
 
 on:
   push:

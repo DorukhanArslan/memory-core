@@ -73,6 +73,10 @@ SOURCE_HASHES = {
     "src/state/openclaw-state-db.ts": "8f4f7a1a7cecb4d4e4ab9b762e85785ed1476d66bc195ef8f157efdc7871704c",
     "src/logging/logger.ts": "8c7832f365fbb826bf338a5488b8136483fcf515dfe202a25b71e2f38d972b9e",
     "extensions/memory-core/src/short-term-promotion-record.ts": "b8d168519af14de5ae793d6738d3a86d51e41cdcc12cbd5b22fb174ba108d8c7",
+    "src/config/sessions/session-accessor.transcript-target.ts": "fa62e1f5a025b008fe4552f0b54dfa9586c0f4aee76719aea9031d8a6725db58",
+    "src/plugin-state/plugin-state-store.database.ts": "b5cc6a569e1f5f95d96ca33b065137a4ee3361371b35bc1e8aa301f5a8a3bbb4",
+    "src/plugin-state/plugin-state-store.kernel.ts": "db0136ba0988fab6cdc5410bd6a459192a0bda964da26dcddfb2584cc5ab2697",
+    "src/plugin-state/plugin-state-store.types.ts": "52085ebed502604a2d827cc5e7e62040e93d5258434497777d703fe8e008a5e0",
 }
 SOURCE_ANCHORS = {
     **_select(_MANAGED_SOURCES, managed.SOURCE_ANCHORS),
@@ -114,6 +118,18 @@ SOURCE_ANCHORS = {
     "src/logging/logger.ts": ("export async function flushLogger(",),
     "extensions/memory-core/src/short-term-promotion-record.ts": (
         "export async function recordShortTermRecalls(",),
+    "src/config/sessions/session-accessor.transcript-target.ts": (
+        "export function resolveSessionTranscriptDatabasePath(",),
+    "src/plugin-state/plugin-state-store.database.ts": (
+        "export function wrapPluginStateError(", "let publicMessage = message;",
+        "// database paths, SQL, or stored values and must stay out of this message.",
+        "message: publicMessage,", "cause: error,"),
+    "src/plugin-state/plugin-state-store.kernel.ts": (
+        "export function createPluginStateError(", "return new PluginStateStoreError(params.message, {",
+        "cause: params.cause,"),
+    "src/plugin-state/plugin-state-store.types.ts": (
+        "export class PluginStateStoreError extends Error {", "super(message, { cause: options.cause });",
+        'this.name = "PluginStateStoreError";'),
 }
 SOURCE_ANCHORS["extensions/memory-core/src/tools.ts"] += (
     "export function createMemoryGetTool(", 'options.oneShotCliRun ? "cli" : undefined',
@@ -124,6 +140,11 @@ SOURCE_ANCHORS["src/config/sessions/session-accessor.sqlite-entry.ts"] = (
 SOURCE_ANCHORS["extensions/memory-core/src/memory-workspace-lock.ts"] += (
     "export async function withMemoryWorkspacePreparation<T>(",
     "  return await inProcessMemoryWorkspaceLocks.enqueue(key, prepare);",
+)
+SOURCE_ANCHORS["src/plugin-state/plugin-state-store.sqlite.ts"] += (
+    "function writePluginState<T>(", "export function pluginStateUpdate(",
+    '"Failed to update plugin state entry.",',
+    'operation === "consume" ? "PLUGIN_STATE_READ_FAILED" : "PLUGIN_STATE_WRITE_FAILED",',
 )
 
 _MANAGED_COMPILED = (
@@ -171,6 +192,8 @@ COMPILED_HASHES = {
     "dist/short-term-promotion-record-CEpBdgKW.mjs": "228c2ebc76cc3ccf81d8c3542f1e4eaf276674547e61924c67bf352bc387469e",
     "dist/short-term-promotion-record-DrLa1fiO.mjs": "26a083e3c17cd6512af9785266c7bdffe459cd02591be4127004efe7eb8887c7",
     "dist/dreaming-dreams-file-BJzlZFlf.mjs": "fbc57813554fc29a6b7c5bcbada4baa21d5f774c33edd54297a3976741fa4492",
+    "dist/session-accessor.transcript-target-vG-nGtYV.mjs": "01158efffa0ae0a91dea780bccaf63d22a65ff73f65ef8a24cbc0770910dc51f",
+    "dist/plugin-state-worker-errors-h0DhWT0Q.mjs": "db3772b09e2817f423d0156c9a20bf015aa99651e2fadaca907642cfecf40f14",
 }
 COMPILED_ANCHORS = {
     **_select(_MANAGED_COMPILED, managed.COMPILED_ANCHORS),
@@ -217,8 +240,18 @@ COMPILED_ANCHORS = {
         "async function recordShortTermRecalls(", "recordShortTermRecalls as i"),
     "dist/dreaming-dreams-file-BJzlZFlf.mjs": (
         "async function withMemoryWorkspacePreparation(", "withMemoryWorkspacePreparation as _"),
+    "dist/session-accessor.transcript-target-vG-nGtYV.mjs": (
+        "function resolveSessionTranscriptDatabasePath(", "resolveSessionTranscriptDatabasePath as n"),
+    "dist/plugin-state-worker-errors-h0DhWT0Q.mjs": (
+        "function wrapPluginStateError(", "let publicMessage = message;", "message: publicMessage,",
+        "function createPluginStateError(", "var PluginStateStoreError = class extends Error {",
+        "wrapPluginStateError as a", "createPluginStateError as f", "PluginStateStoreError as D"),
 }
 COMPILED_ANCHORS["dist/tools-DotaQGXh.mjs"] += ("function createMemoryGetTool(",)
+COMPILED_ANCHORS["dist/plugin-state-store-BPUaLoVD.mjs"] += (
+    'a as wrapPluginStateError', 'from "./plugin-state-worker-errors-h0DhWT0Q.mjs";',
+    'writePluginState("register", "Failed to update plugin state entry.",',
+)
 
 # Failure-only hooks need no CPU task. Authenticate these artifacts without
 # requiring their execution until a case actually performs post-hook indexing.
@@ -232,7 +265,9 @@ GENUINE_HELPER_EXPORTS = {
     "dist/internal-hooks-CwVYIajG.mjs": ("c", "n", "u", "d"),
     "dist/bundled/session-memory/handler.js": ("default", "flushSessionMemoryWritesForTest"),
     "dist/session-accessor-CiKKTlbe.mjs": (
-        "replaceTranscriptEvents", "loadTranscriptEventsSync", "replaceSessionEntry", "loadSessionEntry"),
+        "replaceTranscriptEvents", "loadTranscriptEventsSync", "resolveSessionTranscriptDatabasePath",
+        "replaceSessionEntry", "loadSessionEntry"),
+    "dist/session-accessor.transcript-target-vG-nGtYV.mjs": ("n",),
     "dist/session-accessor.sqlite-entry-BrsmAX-T.mjs": ("m", "s"),
     "dist/tools-DotaQGXh.mjs": ("createMemorySearchTool", "createMemoryGetTool"),
     "dist/session-accessor.sqlite-transcript-write-C5YumkFZ.mjs": ("c",),
@@ -246,6 +281,7 @@ GENUINE_HELPER_EXPORTS = {
     "dist/registry-empty-BTjzcMW2.mjs": ("t",),
     "dist/dreaming-state-VYUvbU-n.mjs": ("p",),
     "dist/plugin-state-store-BPUaLoVD.mjs": ("r", "t", "u"),
+    "dist/plugin-state-worker-errors-h0DhWT0Q.mjs": ("a", "f", "D"),
     "dist/extensions/memory-core/manager-runtime.js": ("MemoryIndexManager", "closeAllMemoryIndexManagers"),
     "dist/openclaw-agent-db-lifecycle-B8sSLgPo.mjs": ("s",),
     "dist/openclaw-state-db.paths-rJI64Ab5.mjs": ("s",),
@@ -268,6 +304,7 @@ REQUIRED_OBSERVED_OWNERS = (
     ("dist/internal-hooks-CwVYIajG.mjs", "d", "unregisterInternalHook"),
     ("dist/session-accessor-CiKKTlbe.mjs", "replaceTranscriptEvents", "replaceTranscriptEvents"),
     ("dist/session-accessor-CiKKTlbe.mjs", "loadTranscriptEventsSync", "loadTranscriptEventsSync"),
+    ("dist/session-accessor-CiKKTlbe.mjs", "resolveSessionTranscriptDatabasePath", "resolveSessionTranscriptDatabasePath"),
     ("dist/session-accessor-CiKKTlbe.mjs", "replaceSessionEntry", "replaceSessionEntry"),
     ("dist/session-accessor-CiKKTlbe.mjs", "loadSessionEntry", "loadSessionEntry"),
     ("dist/capture-C0uwbnBj.mjs", "t", "captureSessionMemoryTranscript"),

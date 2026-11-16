@@ -226,8 +226,15 @@ export async function runSessionResetBoundariesRuntime(input, runtimeConfig) {
       const seed = { profile, scope, literalEvents: clone(session.events) }; raw.transcriptSeeds.push(seed);
       seed.returnValue = returned(await call("replaceTranscriptEvents", sessions.replaceTranscriptEvents, [scope, session.events]));
       seed.actualStoredEvents = await call("loadTranscriptEventsSync", sessions.loadTranscriptEventsSync, [scope]);
+      seed.databasePath = await call("resolveSessionTranscriptDatabasePath", sessions.resolveSessionTranscriptDatabasePath, [scope]);
+      if (typeof seed.databasePath !== "string" || seed.databasePath.length === 0)
+        throw Error("The original transcript owner returned no database path");
+      if (agentPath !== undefined && agentPath !== seed.databasePath)
+        throw Error("Fixture session profiles resolve to different physical transcript databases");
+      agentPath = seed.databasePath;
     }
-    agentPath = (await imp("dist/openclaw-agent-db.paths-Dv3PPTNK.mjs")).c({ agentId: input.agentId });
+    if (agentPath === undefined) throw Error("No fixture transcript database was seeded");
+    raw.transcriptDatabasePath = agentPath;
     hooks = await imp("dist/internal-hooks-CwVYIajG.mjs");
     const hookModule = await imp(HANDLER); handler = hookModule.default; flush = hookModule.flushSessionMemoryWritesForTest;
     for (const key of ["command:new", "command:reset"]) await call("registerInternalHook", hooks.c, [key, handler]);
@@ -248,6 +255,7 @@ export async function runSessionResetBoundariesRuntime(input, runtimeConfig) {
       ["dist/internal-hooks-CwVYIajG.mjs", "d", "unregisterInternalHook", hooks.d],
       ["dist/session-accessor-CiKKTlbe.mjs", "replaceTranscriptEvents", "replaceTranscriptEvents", sessions.replaceTranscriptEvents],
       ["dist/session-accessor-CiKKTlbe.mjs", "loadTranscriptEventsSync", "loadTranscriptEventsSync", sessions.loadTranscriptEventsSync],
+      ["dist/session-accessor-CiKKTlbe.mjs", "resolveSessionTranscriptDatabasePath", "resolveSessionTranscriptDatabasePath", sessions.resolveSessionTranscriptDatabasePath],
       ["dist/session-accessor-CiKKTlbe.mjs", "replaceSessionEntry", "replaceSessionEntry", sessions.replaceSessionEntry],
       ["dist/session-accessor-CiKKTlbe.mjs", "loadSessionEntry", "loadSessionEntry", sessions.loadSessionEntry],
       ["dist/capture-C0uwbnBj.mjs", "t", "captureSessionMemoryTranscript", captureTranscript],

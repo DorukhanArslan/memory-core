@@ -1,10 +1,10 @@
-name: Verify embedding cache once
-# One frozen 1,483-case measurement; retain the first result without retrying.
-# The original 1,475 definitions stay intact; eight cache definitions are appended.
+name: Verify session reset boundaries once
+# One frozen 1,490-case measurement; retain the first result without retrying.
+# The previous 1,483 definitions stay intact; seven reset boundary definitions are appended.
 
 on:
   push:
-    branches: [verify/embedding-cache-once]
+    branches: [verify/session-reset-boundaries-once]
     paths: [.github/workflows/verify-merged-forget-once.yml]
 
 permissions:
@@ -36,7 +36,7 @@ jobs:
           persist-credentials: false
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
         with:
-          ref: f8a8ffd09f633996f299a93ab7306282f0448130
+          ref: 3d70e59d5a282bfa22738451244b37e35662f38d
           path: .reference/product-source
           persist-credentials: false
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
@@ -78,7 +78,7 @@ jobs:
           --reference .reference/openclaw --node "$(command -v node)"
           --sdk-source-root . --adapter-root .
           --output .equivalence-results/summary/forget-family-replay.json
-      - name: Assess the complete report and retained Host, recall and cache captures
+      - name: Assess the complete report and retained Host, recall, cache and reset captures
         if: always() && steps.comparison.outcome != 'skipped'
         id: assessment
         continue-on-error: true
@@ -95,7 +95,7 @@ jobs:
         if: always()
         uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
         with:
-          name: embedding-cache-summary
+          name: session-reset-boundaries-summary
           path: .equivalence-results/summary/
           include-hidden-files: true
           if-no-files-found: warn
@@ -103,7 +103,7 @@ jobs:
         if: always()
         uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
         with:
-          name: embedding-cache-raw-evidence
+          name: session-reset-boundaries-raw-evidence
           path: |
             .equivalence-results/
             /var/tmp/memory-host-v4-*/

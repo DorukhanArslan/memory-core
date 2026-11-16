@@ -9,7 +9,10 @@ from __future__ import annotations
 import hashlib
 import json
 import math
+import os
 from pathlib import Path, PurePosixPath
+import re
+import stat
 import struct
 
 from equivalence.embedding_cache_lifecycle import validate_case
@@ -38,6 +41,11 @@ MANAGER_METHODS = (
     "embedChunksInBatches", "embedBatchWithRetry", "embedQueryWithRetry", "persistGeneratedEmbeddings",
     "getIndexConcurrency",
 )
+HOST_LINK = re.compile(
+    r"tmp/plugin-captures/[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}"
+    r"/captures/openclaw-plugin-build-[A-Za-z0-9]{6}/node_modules/openclaw"
+)
+LINK_IDENTITY = {"device", "inode", "mode", "nlink", "uid", "gid", "size", "atimeNs", "mtimeNs", "ctimeNs", "birthtimeNs"}
 
 
 def _require(value, message):
@@ -80,6 +88,49 @@ def _sources(rows, workspace, files=None):
                     if name.startswith("workspace/")}
         _require(result == expected, "source witnesses differ from the whole physical workspace")
     return result
+
+
+def _links(snapshot, raw, *, fixture, require_live_disk=False):
+    """Retain only the original loader's host link, without reading its target."""
+    links = snapshot.get("links")
+    _require(isinstance(links, dict), "the complete physical symbolic-link map is missing")
+    _require(not fixture or not links, "the input fixture unexpectedly contains a symbolic link")
+    root = Path(snapshot["root"])
+    if require_live_disk:
+        actual_links = set()
+        for directory, directories, filenames in os.walk(root, followlinks=False):
+            for name in directories + filenames:
+                path = Path(directory) / name
+                if path.is_symlink():
+                    actual_links.add(path.relative_to(root).as_posix())
+        _same(sorted(actual_links), sorted(links), "the complete surviving symbolic-link set differs from capture")
+    for name, row in links.items():
+        _relative(name)
+        _require(not fixture and HOST_LINK.fullmatch(name) and set(row) == {"path", "target", "resolvedTarget", "lstatIdentity"},
+                 "a physical symbolic link is outside the original plugin loader's exact host path")
+        path = root / name
+        _same(row["path"], str(path), "a retained loader link escaped its physical owner")
+        _same(row["target"], raw["runtimeRoot"], "the loader link targets a different runtime")
+        _same(row["resolvedTarget"], raw["runtimeRoot"], "the resolved loader target differs from its actual runtime")
+        _require(not any(filename == name or filename.startswith(name + "/") for filename in snapshot["files"]),
+                 "physical evidence followed a loader link or rewrote it as a regular file")
+        identity = row["lstatIdentity"]
+        _require(set(identity) == LINK_IDENTITY
+                 and all(isinstance(value, str) and value.isdigit() for value in identity.values())
+                 and stat.S_ISLNK(int(identity["mode"])) and int(identity["nlink"]) > 0
+                 and int(identity["size"]) == len(row["target"].encode()),
+                 "a loader link lost its complete actual lstat identity")
+        if require_live_disk:
+            observed = path.lstat()
+            fields = {"device": observed.st_dev, "inode": observed.st_ino, "mode": observed.st_mode,
+                      "nlink": observed.st_nlink, "uid": observed.st_uid, "gid": observed.st_gid,
+                      "size": observed.st_size, "atimeNs": observed.st_atime_ns,
+                      "mtimeNs": observed.st_mtime_ns, "ctimeNs": observed.st_ctime_ns}
+            if hasattr(observed, "st_birthtime_ns"):
+                fields["birthtimeNs"] = observed.st_birthtime_ns
+            _same({key: identity[key] for key in fields}, {key: str(value) for key, value in fields.items()},
+                  "the surviving loader link differs from its captured lstat identity")
+            _same(os.readlink(path), row["target"], "the surviving loader link changed its literal target")
 
 
 def _sql(database, native):
@@ -281,6 +332,8 @@ def _capture(raw, capture, state, native, profile, enabled, source_rows, databas
         fixture, durable = capture["fixture"], capture["state"]
         _same(fixture["root"], raw["fixtureBase"], "Native physical fixture ownership changed")
         _same(durable["root"], raw["stateDirectory"], "Native physical state ownership changed")
+        _links(fixture, raw, fixture=True)
+        _links(durable, raw, fixture=False)
         files, durable_files = _files(fixture), _files(durable)
         stores = [(Path(fixture["root"]), _tables(fixture, files)),
                   (Path(durable["root"]), _tables(durable, durable_files))]
@@ -450,6 +503,9 @@ def _native(case, public, snapshots, evidence_directory, *, require_live_disk):
              and raw["closed"] is True and "closePhysicalError" not in raw,
              "the original fixture lost its owned identity or clean close")
     _same(raw["workspace"], str(base / "workspace"), "Native workspace changed")
+    runtime_root = Path(raw["runtimeRoot"])
+    _require(runtime_root.is_absolute() and str(runtime_root) == raw["runtimeRoot"] and ".." not in runtime_root.parts,
+             "the actual original runtime root is not an absolute canonical path")
     _same(raw["request"], case["input"], "the original request was changed")
     _same(raw["clock"], {"owner": "node:test", "apis": ["Date"], "nowMs": case["input"]["nowMs"],
           "dateConstructorReplaced": True, "setTimeoutUnchanged": True, "performanceNowUnchanged": True},
@@ -493,7 +549,8 @@ def _native(case, public, snapshots, evidence_directory, *, require_live_disk):
     _same(Path(raw["physical"][-1]["path"]).name, "native-physical-closed.json", "the final close capture is missing")
     _same(raw["output"], public, "the complete original public packet changed")
     _operations(case, raw, public, captures, True)
-    for tree in (captures[-1]["fixture"], captures[-1]["state"]):
+    for fixture, tree in ((True, captures[-1]["fixture"]), (False, captures[-1]["state"])):
+        _links(tree, raw, fixture=fixture, require_live_disk=require_live_disk)
         files = _files(tree)
         _tables(tree, files)
         for name, data in files.items():

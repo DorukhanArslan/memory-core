@@ -49,7 +49,7 @@ function owned(root, relative) {
   return result;
 }
 
-async function tree(root, withIdentity = false) {
+async function tree(root, withIdentity = false, links = null) {
   const result = {};
   async function walk(directory) {
     let entries;
@@ -57,7 +57,18 @@ async function tree(root, withIdentity = false) {
     catch (error) { if (error.code === "ENOENT") return; throw error; }
     for (const entry of entries.sort((a, b) => a.name.localeCompare(b.name))) {
       const filename = path.join(directory, entry.name);
-      if (entry.isSymbolicLink()) throw Error("Embedding physical evidence contains a symbolic link");
+      if (entry.isSymbolicLink()) {
+        if (withIdentity || links === null) throw Error("Embedding source evidence contains a symbolic link");
+        const target = await fs.readlink(filename), stat = await fs.lstat(filename, { bigint: true });
+        links[path.relative(root, filename).split(path.sep).join("/")] = {
+          path: filename, target, resolvedTarget: path.resolve(path.dirname(filename), target),
+          lstatIdentity: { device: String(stat.dev), inode: String(stat.ino), mode: String(stat.mode),
+            nlink: String(stat.nlink), uid: String(stat.uid), gid: String(stat.gid), size: String(stat.size),
+            atimeNs: String(stat.atimeNs), mtimeNs: String(stat.mtimeNs), ctimeNs: String(stat.ctimeNs),
+            birthtimeNs: String(stat.birthtimeNs) },
+        };
+        continue;
+      }
       if (entry.isDirectory()) await walk(filename);
       else if (entry.isFile()) {
         const payload = await fs.readFile(filename), relative = path.relative(root, filename).split(path.sep).join("/");
@@ -88,11 +99,11 @@ function database(filename) {
 }
 
 async function physical(root) {
-  const files = await tree(root), databases = {};
+  const links = {}, files = await tree(root, false, links), databases = {};
   for (const [relative, payload] of Object.entries(files))
     if (payload.subarray(0, 16).equals(Buffer.from("SQLite format 3\0")))
       databases[relative] = database(path.join(root, relative));
-  return { root, files: Object.fromEntries(Object.entries(files).map(([name, payload]) => [name, bytes(payload)])), databases };
+  return { root, files: Object.fromEntries(Object.entries(files).map(([name, payload]) => [name, bytes(payload)])), databases, links };
 }
 
 export async function runEmbeddingCacheLifecycleRuntime(input, runtimeConfig) {
@@ -113,7 +124,8 @@ export async function runEmbeddingCacheLifecycleRuntime(input, runtimeConfig) {
   const oldDate = Date, oldTimeout = setTimeout, oldPerformance = performance.now;
   mock.timers.enable({ apis: ["Date"], now: input.nowMs });
   const raw = { kind: input.kind, input: clone(input), request: clone(input), fixtureBase: base, workspace,
-    stateDirectory: runtimeConfig.stateDirectory, configPath: runtimeConfig.configPath, environment,
+    stateDirectory: runtimeConfig.stateDirectory, runtimeRoot: runtimeConfig.runtimeRoot,
+    configPath: runtimeConfig.configPath, environment,
     pid: process.pid, ppid: process.ppid, node: { version: process.version, executable: process.execPath },
     clock: { owner: "node:test", apis: ["Date"], nowMs: Date.now(), dateConstructorReplaced: Date !== oldDate,
       setTimeoutUnchanged: setTimeout === oldTimeout, performanceNowUnchanged: performance.now === oldPerformance },

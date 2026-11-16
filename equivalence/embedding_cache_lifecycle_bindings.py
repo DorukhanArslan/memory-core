@@ -194,6 +194,25 @@ COMPILED_ANCHORS["dist/extensions/memory-core/manager-runtime.js"] += (
     "function resolveMemoryIndexConcurrency(params) {", "\tgetIndexConcurrency() {",
 )
 
+# The original loader creates a host-package symlink inside its owned capture.
+# Authenticate that precise observational exception without following the link.
+SOURCE_HASHES.update({
+    "src/plugins/plugin-source-capture-path.ts": "2065e6365ff5f9137c978c5eed61f4c7984c520d9250fd810bdb3cc7124a7017",
+    "src/plugins/plugin-source-capture-directory.ts": "29affbbf41a67b3e20dd82f4d3bfeb5d61cd0df74926497e15cb06708b49ad7f",
+    "src/plugins/plugin-package-metadata-capture.ts": "77536e78285935095eecc815fd4b1df61895614001f03e0f3df0c5b63d8a5690",
+})
+SOURCE_ANCHORS.update({
+    "src/plugins/plugin-source-capture-path.ts": (
+        'export const PLUGIN_SOURCE_CAPTURE_PREFIX = "openclaw-plugin-build-";',
+        "export function resolvePluginSourceCapturesDirectory(stateDir: string): string {"),
+    "src/plugins/plugin-source-capture-directory.ts": (
+        "export function retainPluginSourceCaptureInstance(stateDir?: string) {",
+        "    createDirectory(prefix = PLUGIN_SOURCE_CAPTURE_PREFIX) {"),
+    "src/plugins/plugin-package-metadata-capture.ts": (
+        "export function createPluginSourceCapture(execute?: <T>(run: () => T) => T) {",
+        '      fs.symlinkSync(hostRoot, path.join(modules, "openclaw"), "junction");'),
+})
+
 # The cache kernel is inlined in the genuine manager runtime in this release.
 # No unused standalone cache-kernel artifact is required to execute.
 REQUIRED_RUNTIME_ARTIFACTS = tuple(COMPILED_HASHES)

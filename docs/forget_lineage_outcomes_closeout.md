@@ -1,5 +1,9 @@
 # Forget selection outcome acceptance
 
+This records the earlier 76/128 assessment. The later
+[admission boundary closeout](forget_lineage_boundaries_closeout.md) records
+77/128 and completes this contract at 2/2.
+
 The complete comparison verifies **76/128 conditions (59.4%), 52 remaining**:
 **35 complete, six partial and 23 pending contracts**. Compared with the preceding
 71/128 assessment, the original `forget.lineage-tombstones.outcomes` condition
@@ -65,7 +69,7 @@ Registration requires all three unchanged inputs and only the original outcome
 identifier. A missing/changed case or non-affirmative raw validation gives no
 family credit. The remaining replay, derived-artifact and selector diagnostics
 retain their zero-credit identities. `forget.lineage-tombstones.boundaries`
-remains unverified; this contract is **1/2**, not complete.
+was unverified at this assessment; the contract was **1/2**, not complete.
 
 ## Retained first failures and reader-only correction
 

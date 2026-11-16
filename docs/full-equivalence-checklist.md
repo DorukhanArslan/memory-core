@@ -52,33 +52,36 @@ Comparisons must not normalize away behavior. A platform-specific path, generate
 Entries remain pending until their complete acceptance conditions are verified against `v2026.9.9`. Their detailed acceptance points and stable identifiers are in [scope.json](../equivalence/scope.json). A helper that already exists in Python still needs the new differential evidence. A known difference must stay visible until its implementation and tests agree. Bounded passing subsets are recorded below without closing the containing contract.
 
 <!-- CURRENT-VERIFICATION-START -->
-The latest complete assessment has **76/128 verified conditions (59.4%)**,
-with **52 conditions remaining**: **35 complete, six partial and 23 pending
+The latest complete assessment has **77/128 verified conditions (60.2%)**,
+with **51 conditions remaining**: **36 complete, five partial and 23 pending
 contracts**. This measures verified conditions, not effort or elapsed work.
 
-The [forget selection outcome closeout](forget_lineage_outcomes_closeout.md)
-records the [single full comparison](https://github.com/DorukhanArslan/memory-core/actions/runs/43772670403)
-on clean comparison head `9669482`, measuring the exact SDK merged at `f31a288`.
-It retains **1,468 cases: 1,454 matches, 14 mismatches, zero blocked and no runner
-errors**. The full gate still fails (actual exit 1): **50 uncovered and two
+The [forgotten-session boundary closeout](forget_lineage_boundaries_closeout.md)
+records the [single full comparison](https://github.com/DorukhanArslan/memory-core/actions/runs/43796082206)
+on clean comparison head `2e51b61`, with product source pinned to `b08e283`.
+Its SDK bytes are unchanged from merged product `1337209d`. It retains
+**1,469 cases: 1,455 matches, 14 mismatches, zero blocked and no runner
+errors**. The full gate still fails (actual exit 1): **49 uncovered and two
 registered unresolved conditions**. The fixed 64-contract, 128-condition scope
 is unchanged. Full report SHA-256:
-`63a36bff1fcc78c14c56068dfc0dd3ddf39ada113fb591488ab3e3706348a799`.
+`10854f20f1bd963111044030dc38d3722c5fc81a0fe6f7b112efa5e465733b5a`.
 
-Compared with the preceding 71/128 assessment, the complete three-case forget
-preview/commit family verifies **one new condition**. The earlier refusal-message
-and owned-HOME path fixes restore **four conditions** across `storage.path-safety`
-and `tools.get-contract`: **71 → 76/128, net +5**. All original 14 complete public
-mismatch pairs remain unchanged. SDK production bytes are unchanged by this
-verification package.
+The complete nine-operation admission, preview, forget, durable reopen and repeat
+flow verifies `forget.lineage-tombstones.boundaries`: **76 → 77/128, net +1**.
+Forgotten A remains excluded while independent B stays admissible. The contract
+is now **2/2**. All original 14 complete public mismatch pairs remain unchanged.
+SDK production bytes are unchanged by this verification package.
 
-The original report and first post-run reader failures are retained. A separate
-[reader-only reassessment](https://github.com/DorukhanArslan/memory-core/actions/runs/43788856230)
-corrects obsolete catalog counts and reads the same immutable results; it does
-not rerun the business comparisons or invent the omitted report metadata. See
-the closeout for exact source seals, captured-evidence checks and limitations.
-The next proposed condition is same-session replay admission, targeting +1;
-starting another job requires the user's scope approval.
+The frozen CI assessor and local review independently check the full 128-point
+assessment. The closeout records source seals, actual captured evidence, retained
+first failures and scope limits. Another implementation batch requires the
+user's scope approval and must target at least one additional verified condition.
+
+**Historical complete assessment (`9669482`, 76/128):** The
+[forget selection outcome closeout](forget_lineage_outcomes_closeout.md) retains
+the preceding 1,468-case comparison and reader-only reassessment. It verified
+one new forget outcome condition and restored four path-safety/get conditions:
+**71 → 76/128, net +5**, with 35 complete, six partial and 23 pending contracts.
 
 **Historical complete assessment (`cdfb6e9`, 71/128):** This assessment has
 **71/128 verified conditions (55.5%)**,
@@ -235,10 +238,10 @@ reaching 66/128 before the update/isolation and natural next-turn packages.
 
 | Contract status | Contracts | Verified conditions | Remaining conditions |
 | --- | ---: | ---: | ---: |
-| Complete | 35 | 70 | 0 |
-| Partial | 6 | 6 | 6 |
+| Complete | 36 | 72 | 0 |
+| Partial | 5 | 5 | 5 |
 | Pending verification | 23 | 0 | 46 |
-| Total | 64 | 76 | 52 |
+| Total | 64 | 77 | 51 |
 
 Pending verification can include existing implementation. Partial contracts retain one open
 condition. Infrastructure sections 1–3 remain **20/22 tasks completed**; infrastructure and
@@ -297,7 +300,7 @@ Current status of all 64 contracts:
 | 46 | `dreaming.rem` | Pending verification | 0/2 |
 | 47 | `dreaming.deep` | Pending verification | 0/2 |
 | 48 | `dreaming.diary-provenance` | Pending verification | 0/2 |
-| 49 | `forget.lineage-tombstones` | Partial | 1/2 |
+| 49 | `forget.lineage-tombstones` | Complete | 2/2 |
 | 50 | `forget.index-fence` | Complete | 2/2 |
 | 51 | `trust.secret-redaction` | Pending verification | 0/2 |
 | 52 | `trust.configured-redaction` | Partial | 1/2 |
@@ -406,7 +409,7 @@ pre-open race authority, full raw filesystem evidence and broader SDK-only limit
 
 ### Forget and provenance
 
-- [ ] **`forget.lineage-tombstones` — Match forget selection and tombstones.** Exercise dry-run and commit for direct, promoted, mixed-lineage and missing origins. Compare retained/deleted memory, lineage, tombstones and same-session replay admission. The outcome condition is verified by the complete three-case preview/commit family; same-session replay boundaries remain unverified.
+- [x] **`forget.lineage-tombstones` — Match forget selection and tombstones.** Exercise dry-run and commit for direct, promoted, mixed-lineage and missing origins. Compare retained/deleted memory, lineage, tombstones and same-session replay admission. The outcome condition is verified by the complete three-case preview/commit family. The boundary condition is verified by the nine-operation admission, preview, forget, durable reopen and repeat flow, retaining independent B admission.
 - [x] **`forget.index-fence` — Match forget/index revision fences.** Interleave forget with rebuild, search and promotion using the same source revisions. Prove a stale rebuild cannot republish forgotten entries, including after restart. Both original conditions are verified by all 13 declared scenarios in the latest full run; broader providers and interleavings remain unproved.
 
 ### Trust and redaction

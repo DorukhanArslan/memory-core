@@ -273,6 +273,20 @@ export async function runForgetLineageRuntime(input, runtimeConfig) {
           observed.replay = { admission: decisions, backfill: { returnValue: returned(result),
             beforeCount: Object.keys(before.entries).length, afterCount: Object.keys(after.entries).length } };
           privateOperation.replay = { admission: actualAdmissions, backfill: { arguments: params, returnValue: returned(result) } };
+        } else if (operation.op === "admission") {
+          const decisions = [], actualAdmissions = [];
+          privateOperation.admission = actualAdmissions;
+          for (const agentId of operation.agentIds) {
+            const entries = await call("listSessionTranscriptCorpusEntriesForAgent", corpus.l, [agentId, { includeRetainedSqlite: true }]);
+            for (const entry of entries) {
+              const source = await call("sessionIngestionSourceFromCorpus", admission.u, [entry]);
+              if (!source) throw Error("A literal interactive session has no actual ingestion source");
+              const reason = await call("sessionExclusionReason", admission.l, [source]);
+              decisions.push({ agentId, sessionId: entry.sessionId, reason: reason ?? null });
+              actualAdmissions.push({ entry, source, arguments: [source], returnValue: returned(reason) });
+            }
+          }
+          observed.replay = { admission: decisions };
         } else throw Error("Unknown frozen forget lineage diagnostic operation");
       } catch (error) { observed.error = failure(error); privateOperation.error = failure(error); }
       observed.state = await state(); observations.push(observed);

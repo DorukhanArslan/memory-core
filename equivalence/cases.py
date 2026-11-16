@@ -304,6 +304,9 @@ def build_cases(*, include_prospective: bool = False) -> list[dict[str, Any]]:
     from equivalence.forget_lineage_outcomes import build_cases as build_forget_lineage_outcomes
 
     cases.extend(build_forget_lineage_outcomes())
+    from equivalence.forget_boundaries import build_cases as build_forget_boundaries
+
+    cases.extend(build_forget_boundaries())
     if include_prospective:
         from equivalence.flush_contract import build_prospective_flush_contract_cases
         from equivalence.session_projection import build_prospective_session_projection_cases
@@ -368,6 +371,17 @@ def run_python(case: dict[str, Any]) -> Any:
         from equivalence.index_identity_boundaries_sdk import run_index_identity_boundaries_case
 
         return run_index_identity_boundaries_case(arguments, evidence_directory=case.get("_diagnosticDirectory"))
+    if operation == "forget-boundaries-runtime":
+        from equivalence.forget_boundaries import validate_case as validate_forget_boundary
+        from equivalence.forget_lineage_sdk import run_forget_boundaries
+
+        validate_forget_boundary({key: value for key, value in case.items() if key != "_diagnosticDirectory"})
+        if case.get("_diagnosticDirectory") is not None:
+            return run_forget_boundaries(arguments, case["_diagnosticDirectory"])
+        from tempfile import TemporaryDirectory
+
+        with TemporaryDirectory(prefix="memory-forget-boundaries-sdk-") as directory:
+            return run_forget_boundaries(arguments, directory)
     if operation == "forget-lineage-runtime":
         from equivalence.forget_lineage_outcomes import validate_case as validate_forget_outcome
         from equivalence.forget_lineage_sdk import run_forget_lineage

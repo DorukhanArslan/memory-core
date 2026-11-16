@@ -137,10 +137,27 @@ if (context.forgetLineageProfile !== undefined) {
       !Object.hasOwn(bindings, profile.caseId) ||
       JSON.stringify(profile.nodeRuntime) !== JSON.stringify(context.approvedNodeRuntime) ||
       ["entryProvenanceProfile", "atomicPublicationProfile", "atomicCaseBinding", "bootstrapDiscoveryProfile",
-       "memoryBudgetProfile", "getReadRaceProfile", "promotionRankingProfile", "promotionApplyProfile"]
+       "memoryBudgetProfile", "getReadRaceProfile", "promotionRankingProfile", "promotionApplyProfile", "forgetBoundariesProfile"]
         .some(key => context[key] !== undefined) ||
       (context.approvedReferenceSources ?? []).length || (context.fixtureSourceCaptures ?? []).length) {
     throw Error("Unapproved independent six-case forget/lineage capability");
+  }
+}
+if (context.forgetBoundariesProfile !== undefined) {
+  const profile = context.forgetBoundariesProfile;
+  const bindings = profile?.caseBindings;
+  if (!profile || Object.keys(profile).sort().join() !== "caseBindings,caseId,inputKind,kind,nodeRuntime,operation" ||
+      profile.kind !== "approved-forget-boundaries-profile" || profile.operation !== "forget-boundaries-runtime" ||
+      profile.inputKind !== "forget-lineage-tombstones" || !bindings || Object.keys(bindings).length !== 1 ||
+      hash(JSON.stringify(Object.fromEntries(Object.keys(bindings).sort().map(key => [key, bindings[key]])))) !==
+        "939914d3a8a64c7a128cb634c67773ffe8e37b3851c48549458b084ba05fbc6c" ||
+      !Object.hasOwn(bindings, profile.caseId) ||
+      JSON.stringify(profile.nodeRuntime) !== JSON.stringify(context.approvedNodeRuntime) ||
+      ["entryProvenanceProfile", "atomicPublicationProfile", "atomicCaseBinding", "bootstrapDiscoveryProfile",
+       "memoryBudgetProfile", "getReadRaceProfile", "promotionRankingProfile", "promotionApplyProfile", "forgetLineageProfile"]
+        .some(key => context[key] !== undefined) ||
+      (context.approvedReferenceSources ?? []).length || (context.fixtureSourceCaptures ?? []).length) {
+    throw Error("Unapproved independent durable forget/admission capability");
   }
 }
 const permitted = new Map();
@@ -202,7 +219,8 @@ trace({ event: "bootstrap", isMainThread, ppid: process.ppid, contextSha256: has
         ...(context.getReadRaceProfile ? { getReadRaceProfile: context.getReadRaceProfile } : {}),
         ...(context.promotionRankingProfile ? { promotionProfile: context.promotionRankingProfile } : {}),
         ...(context.promotionApplyProfile ? { promotionApplyProfile: context.promotionApplyProfile } : {}),
-        ...(context.forgetLineageProfile ? { forgetLineageProfile: context.forgetLineageProfile } : {}) });
+        ...(context.forgetLineageProfile ? { forgetLineageProfile: context.forgetLineageProfile } : {}),
+        ...(context.forgetBoundariesProfile ? { forgetBoundariesProfile: context.forgetBoundariesProfile } : {}) });
 // Native workers can log directly while retiring after the result is ready.
 // Reserve stdout for the runner's single process.stdout.write JSON envelope.
 // This executes in every worker as well as the parent, before native imports.

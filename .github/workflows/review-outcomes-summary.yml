@@ -1,0 +1,140 @@
+name: Review retained outcome report
+on:
+  push:
+    branches: [verify/forget-lineage-report-review-43772670403]
+    paths: [.github/workflows/review-outcomes-summary.yml]
+permissions:
+  contents: read
+  actions: read
+jobs:
+  review:
+    runs-on: ubuntu-latest
+    timeout-minutes: 35
+    outputs:
+      artifact_id: ${{ steps.archive.outputs.artifact-id }}
+      artifact_sha: ${{ steps.archive.outputs.artifact-digest }}
+    env:
+      PYTHONDONTWRITEBYTECODE: "1"
+      MEMORY_CORE_REPLAY_SOURCE_ROOT: ${{ github.workspace }}
+      OPENAI_API_KEY: ""
+      ANTHROPIC_API_KEY: ""
+      OPENROUTER_API_KEY: ""
+      MEMORY_CORE_LIVE_OPENAI: ""
+      MEMORY_CORE_DEMO_OPENAI_API_KEY: ""
+      MEMORY_CORE_DEMO_OPENAI_EMBEDDING_API_KEY: ""
+      OPENCLAW_ORACLE_REPO: ""
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
+        with:
+          ref: 9669482d4510b23479c4fe51d99151d40f3e7a68
+          persist-credentials: false
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
+        with:
+          ref: ${{ github.sha }}
+          path: .reference/review-source
+          persist-credentials: false
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
+        with:
+          repository: openclaw/openclaw
+          ref: bcfc88812a35243893585dbeca87ca41b48272ca
+          path: .reference/openclaw
+          persist-credentials: false
+      - uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97
+        with:
+          python-version: "3.12"
+      - uses: actions/setup-node@249970729cb0ef3589644e2896645e5dc5ba9c38
+        with:
+          node-version: "24.16.0"
+      - uses: astral-sh/setup-uv@bec219d24cd3e171d82865faccec33120bb574f4
+        with:
+          version: "0.9.18"
+      - name: Prepare the frozen reader dependencies
+        run: |
+          uv sync --frozen
+          uv run --frozen python -m equivalence.dependencies --reference .reference/openclaw --destination .reference/npm --install
+          uv run --frozen python -m equivalence.release_runtime --reference .reference/openclaw --destination .reference/release-runtime --install
+      - name: Restore only the existing authenticated evidence
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: python .reference/review-source/.github/report-tools/restore_outcomes_artifact.py
+      - name: Prepare external reader corrections and preserve first failures
+        run: |
+          mkdir "$RUNNER_TEMP/outcomes-readers"
+          python .reference/review-source/.github/report-tools/fif_reader_patch.py scripts/replay_forget_index_fence.py "$RUNNER_TEMP/outcomes-readers/replay.py" "$RUNNER_TEMP/fif-reader-correction.json"
+          python .reference/review-source/.github/report-tools/assess_reader_patch.py .github/scripts/assess_merged_comparison.py "$RUNNER_TEMP/outcomes-readers/assess.py" "$RUNNER_TEMP/assessor-reader-correction.json"
+          python - <<'PY'
+          from pathlib import Path
+          import hashlib,json,os,shutil
+          root=Path('.equivalence-results'); old=root/'summary'; out=root/'reviewed-summary';out.mkdir(exist_ok=False)
+          for name in ('source-seal.json','source-after.json','launch.json','os-exit.json','capacity.json','run-summary.json','comparison.stderr.log'):
+              shutil.copyfile(old/name,out/name)
+          failures={}
+          for name in ('assessment.json','forget-family-replay.json'):
+              payload=(old/name).read_bytes(); value=json.loads(payload)
+              failures[name]={'sha256':hashlib.sha256(payload).hexdigest(),'status':value.get('status'),'errors':value.get('errors')}
+          (out/'original-reader-failures.json').write_text(json.dumps({'originalSummaryArtifact':14189487396,'originalSummarySha256':'92bdacb69d662d02cba1f5853b11a10677cce539dadc2a2c403a38688f18aa2d','failures':failures})+'\n')
+          for name in ('restoration.json','fif-reader-correction.json','assessor-reader-correction.json'):
+              shutil.copyfile(Path(os.environ['RUNNER_TEMP'])/name,out/name)
+          (out/'postprocess-source.json').write_text(json.dumps({'originalComparisonRun':43772670403,'originalComparisonCommit':'9669482d4510b23479c4fe51d99151d40f3e7a68','postprocessRun':os.environ['GITHUB_RUN_ID'],'postprocessCommit':os.environ['GITHUB_SHA'],'businessEnginesRerun':False,'originalReportChanged':False})+'\n')
+          PY
+      - name: Read retained forget captures with the corrected catalog count
+        id: replay
+        continue-on-error: true
+        run: >-
+          uv run --frozen python "$RUNNER_TEMP/outcomes-readers/replay.py" --version v6
+          --suite-report .equivalence-results/full.json
+          --native-capture-root .equivalence-results/forget-index-fence-v6
+          --sdk-capture-root .equivalence-results/forget-index-fence-v6
+          --reference .reference/openclaw --node "$(command -v node)"
+          --sdk-source-root . --adapter-root .
+          --output .equivalence-results/reviewed-summary/forget-family-replay.json
+      - name: Recompute the original report without changing its bytes
+        id: assessment
+        continue-on-error: true
+        run: >-
+          uv run --frozen python "$RUNNER_TEMP/outcomes-readers/assess.py"
+          --report .equivalence-results/full.json
+          --seal .equivalence-results/reviewed-summary/source-seal.json
+          --fif-replay .equivalence-results/reviewed-summary/forget-family-replay.json
+          --reference .reference/openclaw --node "$(command -v node)"
+          --release-runtime .reference/release-runtime
+          --output .equivalence-results/reviewed-summary/assessment.json
+      - name: Retain the corrected small review receipt
+        id: archive
+        if: always()
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
+        with:
+          name: forget-lineage-outcomes-reviewed-summary
+          path: .equivalence-results/reviewed-summary/
+          include-hidden-files: true
+          if-no-files-found: error
+      - name: Require an assessed original report
+        if: always()
+        run: |
+          python - <<'PY'
+          from pathlib import Path
+          import json
+          a=json.loads(Path('.equivalence-results/reviewed-summary/assessment.json').read_text())
+          assert a['status']=='assessed' and a['errors']==[]
+          assert a['report']['sha256']=='63a36bff1fcc78c14c56068dfc0dd3ddf39ada113fb591488ab3e3706348a799'
+          PY
+  read-reviewed-summary:
+    needs: review
+    if: always() && needs.review.outputs.artifact_id != ''
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    strategy:
+      fail-fast: false
+      matrix:
+        part: [0, 1, 2, 3, 4, 5, 6, 7]
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
+        with:
+          persist-credentials: false
+      - name: Read one bounded existing summary part
+        env:
+          GH_TOKEN: ${{ github.token }}
+          ARTIFACT_ID: ${{ needs.review.outputs.artifact_id }}
+          ARTIFACT_SHA: ${{ needs.review.outputs.artifact_sha }}
+          REPORT_PART: ${{ matrix.part }}
+        run: python .github/report-tools/emit_reviewed_summary_part.py

@@ -14,6 +14,7 @@ const operations = {
   "importance-project-runtime": ["importance-project-runtime.mjs", "runImportanceProjectRuntime"],
   "exact-path-runtime": ["exact-path-runtime.mjs", "runExactPathRuntime"],
   "index-lifecycle-runtime": ["index-lifecycle.mjs", "runIndexLifecycle"],
+  "forget-lineage-runtime": ["forget-lineage-runtime.mjs", "runForgetLineageRuntime"],
   "flush-trigger-runtime": ["flush-runtime.mjs", "runFlushRuntime"],
   "flush-execution-runtime": ["flush-execution.mjs", "runFlushExecution"],
   "search-contract-runtime": ["search-contract-runtime.mjs", "runSearchContractRuntime"],
@@ -94,7 +95,8 @@ for (const testCase of request.cases) {
       "trust-worker-runtime": null, "model-tool-error-runtime": null };
     const modelAuthority = context.approvedNodeRuntime !== undefined && context.entryProvenanceProfile === undefined &&
       context.atomicPublicationProfile === undefined && context.memoryBudgetProfile === undefined &&
-      context.promotionRankingProfile === undefined && context.promotionApplyProfile === undefined;
+      context.promotionRankingProfile === undefined && context.promotionApplyProfile === undefined &&
+      context.forgetLineageProfile === undefined;
     if (modelAuthority !== Object.hasOwn(modelKinds, testCase.operation) ||
         modelAuthority && modelKinds[testCase.operation] !== null && testCase.input?.kind !== modelKinds[testCase.operation]) {
       throw Error("The model binary capability cannot execute another operation or input contract before import");
@@ -142,6 +144,20 @@ for (const testCase of request.cases) {
           promotionApplyProfile.inputKind !== testCase.input?.kind ||
           crypto.createHash("sha256").update(wire).digest("hex") !== promotionApplyProfile.caseWireSha256) {
         throw Error("The apply capability cannot execute a changed literal case before import");
+      }
+    }
+    const lineageProfile = context.forgetLineageProfile;
+    if ((lineageProfile !== undefined) !== (testCase.operation === "forget-lineage-runtime")) {
+      throw Error("The forget/lineage capability is restricted to its exact compiled operation");
+    }
+    if (lineageProfile !== undefined) {
+      const stable = value => Array.isArray(value) ? value.map(stable) : value !== null && typeof value === "object"
+        ? Object.fromEntries(Object.keys(value).sort().map(key => [key, stable(value[key])])) : value;
+      const wire = JSON.stringify(stable({id:testCase.id,operation:testCase.operation,input:testCase.input}));
+      if (lineageProfile.caseId !== testCase.id || lineageProfile.operation !== testCase.operation ||
+          lineageProfile.inputKind !== testCase.input?.kind ||
+          crypto.createHash("sha256").update(wire).digest("hex") !== lineageProfile.caseBindings[testCase.id]) {
+        throw Error("The forget/lineage caller received changed or substituted literal inputs");
       }
     }
     const binding = operations[testCase.operation];

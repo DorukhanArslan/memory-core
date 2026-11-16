@@ -1,0 +1,53 @@
+name: Read retained outcome summary
+on:
+  push:
+    branches: [verify/forget-lineage-outcomes-report-43772670403]
+    paths: [.github/workflows/read-outcomes-summary.yml]
+permissions:
+  contents: read
+  actions: read
+jobs:
+  read-summary:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    strategy:
+      fail-fast: false
+      matrix:
+        part: [0, 1, 2, 3, 4, 5, 6, 7]
+    steps:
+      - name: Read the existing authenticated summary archive
+        env:
+          GH_TOKEN: ${{ github.token }}
+          REPORT_PART: ${{ matrix.part }}
+        run: |
+          python - <<'PY'
+          import base64, hashlib, os, urllib.request, urllib.error
+          from urllib.parse import urlsplit
+          class NoRedirect(urllib.request.HTTPRedirectHandler):
+              def redirect_request(self, req, fp, code, msg, headers, newurl):
+                  return None
+          request = urllib.request.Request(
+              'https://api.github.com/repos/DorukhanArslan/memory-core/actions/artifacts/14189487396/zip',
+              headers={'Authorization': 'Bearer ' + os.environ['GH_TOKEN'],
+                       'Accept': 'application/vnd.github+json', 'X-GitHub-Api-Version': '2022-11-28'})
+          try:
+              response = urllib.request.build_opener(NoRedirect()).open(request, timeout=30)
+          except urllib.error.HTTPError as error:
+              assert error.code == 302, 'Unexpected artifact download status'
+              target = error.headers['Location']
+              assert urlsplit(target).scheme == 'https', 'The artifact redirect must use TLS'
+              # Send no authorization header to the signed artifact storage URL.
+              response = urllib.request.urlopen(target, timeout=30)
+          with response:
+              archive = response.read(558794)
+          assert len(archive) == 558793, 'Unexpected summary ZIP size'
+          assert hashlib.sha256(archive).hexdigest() == '92bdacb69d662d02cba1f5853b11a10677cce539dadc2a2c403a38688f18aa2d', 'Summary ZIP changed'
+          part = int(os.environ['REPORT_PART'])
+          assert 0 <= part < 8
+          payload = archive[part * 73728:(part + 1) * 73728]
+          encoded = base64.b64encode(payload).decode('ascii')
+          print(f'REPORT_ZIP_BEGIN:14189487396:{part}:{len(payload)}')
+          for ordinal, offset in enumerate(range(0, len(encoded), 8192)):
+              print(f'REPORT_ZIP_CHUNK:{part}:{ordinal}:' + encoded[offset:offset + 8192])
+          print(f'REPORT_ZIP_END:14189487396:{part}')
+          PY

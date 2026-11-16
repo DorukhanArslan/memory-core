@@ -16,6 +16,12 @@ const context = JSON.parse(rawContext);
 if (context.schemaVersion !== 1 || context.providerMode !== "none" || context.fetchPolicy !== "deny") {
   throw Error("Unsupported release execution policy");
 }
+if (context.recallSignalsProfile !== undefined &&
+    ["entryProvenanceProfile", "atomicPublicationProfile", "atomicCaseBinding", "bootstrapDiscoveryProfile",
+     "memoryBudgetProfile", "getReadRaceProfile", "promotionRankingProfile", "promotionApplyProfile",
+     "forgetLineageProfile", "forgetBoundariesProfile"].some(key => context[key] !== undefined)) {
+  throw Error("Recall signals cannot borrow another compiled, model, source or hook capability");
+}
 if (context.entryProvenanceProfile !== undefined) {
   const profile = context.entryProvenanceProfile;
   const kinds = { "entry-memory-publication-runtime": "published-memory",
@@ -160,6 +166,20 @@ if (context.forgetBoundariesProfile !== undefined) {
     throw Error("Unapproved independent durable forget/admission capability");
   }
 }
+if (context.recallSignalsProfile !== undefined) {
+  const profile = context.recallSignalsProfile;
+  const bindings = profile?.caseBindings;
+  if (!profile || Object.keys(profile).sort().join() !== "caseBindings,caseId,inputKind,kind,nodeRuntime,operation" ||
+      profile.kind !== "approved-recall-signals-profile" || profile.operation !== "recall-signals-runtime" ||
+      profile.inputKind !== "recall-signals" || !bindings || Object.keys(bindings).length !== 6 ||
+      hash(JSON.stringify(Object.fromEntries(Object.keys(bindings).sort().map(key => [key, bindings[key]])))) !==
+        "9f193bac51d7e944796148d1f0119083217084ace56d4da83dc16708491bec5e" ||
+      !Object.hasOwn(bindings, profile.caseId) ||
+      JSON.stringify(profile.nodeRuntime) !== JSON.stringify(context.approvedNodeRuntime) ||
+      (context.approvedReferenceSources ?? []).length || (context.fixtureSourceCaptures ?? []).length) {
+    throw Error("Unapproved independent complete recall-signals capability");
+  }
+}
 const permitted = new Map();
 for (const entry of context.allowedLocal) {
   permitted.set(fs.realpathSync(entry.path), { kind: "oracle", path: fs.realpathSync(entry.path), sha256: entry.sha256 });
@@ -220,7 +240,8 @@ trace({ event: "bootstrap", isMainThread, ppid: process.ppid, contextSha256: has
         ...(context.promotionRankingProfile ? { promotionProfile: context.promotionRankingProfile } : {}),
         ...(context.promotionApplyProfile ? { promotionApplyProfile: context.promotionApplyProfile } : {}),
         ...(context.forgetLineageProfile ? { forgetLineageProfile: context.forgetLineageProfile } : {}),
-        ...(context.forgetBoundariesProfile ? { forgetBoundariesProfile: context.forgetBoundariesProfile } : {}) });
+        ...(context.forgetBoundariesProfile ? { forgetBoundariesProfile: context.forgetBoundariesProfile } : {}),
+        ...(context.recallSignalsProfile ? { recallSignalsProfile: context.recallSignalsProfile } : {}) });
 // Native workers can log directly while retiring after the result is ready.
 // Reserve stdout for the runner's single process.stdout.write JSON envelope.
 // This executes in every worker as well as the parent, before native imports.

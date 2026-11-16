@@ -1,5 +1,9 @@
 # Forgotten-session admission after durable reopen
 
+This records the earlier 77/128 assessment. The later
+[recall recording closeout](recall_signals_closeout.md) records 79/128 after
+verifying both original recall conditions.
+
 The complete comparison verifies **77/128 conditions (60.2%),
 51 remaining**: **36 complete, 5 partial and
 23 pending contracts**. The original

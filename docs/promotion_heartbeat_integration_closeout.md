@@ -1,14 +1,15 @@
 # Promotion and heartbeat maintenance integration
 
 The [active checklist](full-equivalence-checklist.md) records the latest complete
-measurement: **77/128 verified conditions, 51 remaining**, with **36 complete,
-five partial and 23 pending contracts**. The single full run pins product source
-`b08e283` through comparison head `2e51b61`, with SDK bytes unchanged from merged
-product `1337209d`: **1,469 cases, 1,455 matches, 14 mismatches and zero
-blocked/errors**. The [forgotten-session boundary closeout](forget_lineage_boundaries_closeout.md)
-verifies that forgotten A remains excluded after durable reopen while independent
-B remains admissible: **76 → 77/128, net +1**. The forget lineage/tombstone
-contract is now complete at 2/2; the original 14 public mismatch pairs are unchanged.
+measurement: **79/128 verified conditions, 49 remaining**, with **37 complete,
+five partial and 22 pending contracts**. The single full run measures approved
+product source `c047294` through comparison head `970d5d6`: **1,475 cases,
+1,461 matches, 14 mismatches and zero blocked/errors**. The
+[recall recording closeout](recall_signals_closeout.md) records three SDK fixes
+and verifies both recall conditions through six complete real-owner cases:
+**77 → 79/128, net +2**. Actual source ranges and origin-write failure/recovery
+are included. The recall contract is now complete at 2/2; the original 14
+public mismatch pairs are unchanged.
 
 The historical [query-sync boundary closeout](query_sync_boundaries_closeout.md)
 records **73/128 verified conditions, 55 remaining**, in its complete

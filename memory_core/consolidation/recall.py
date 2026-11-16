@@ -1,16 +1,16 @@
 """Record short-term recall and dreaming signals into the recall stores.
 
-Ports from ``extensions/memory-core/src/short-term-promotion.ts`` at OpenClaw
-pin 4c42815348: ``recordShortTermRecalls`` (memory_search hits under
-``memory/`` become recall entries), the daily-flush signal variant
-(``signalType: "daily"``), ``recordDreamingPhaseSignals`` (light/REM hits) and
-``isContaminatedDreamingSnippet`` (dream diary, transcript and promotion
-scaffolding never becomes a recall entry).
+Ports ``recordShortTermRecalls`` and ``recordGroundedShortTermCandidates``
+from ``extensions/memory-core/src/short-term-promotion-record.ts`` and the
+light/REM phase-signal owners. Recall, daily and grounded signals preserve
+source ranges, query/day deduplication, claim identity, dreaming-timezone days
+and bounded recall events. An injected origins ledger reserves session lineage
+before publication and rejects forgotten sources. The host supplies authoritative
+source-backed search results; arbitrary result dictionaries do not prove them.
 
-Known gaps, unchanged from the demo pipeline: snippets are split per line into
-single-line entries, recall days use the UTC date rather than the dreaming
-timezone, ``dedupeByQueryPerDay``/``claimHash`` grounding and the
-``memory.recall.*`` host events are not ported.
+Daily identity and grounded day-bucket options use nullish precedence: an
+explicit empty value is retained rather than replaced by an outer default.
+Store retention resolves equal priorities using the host's locale ordering.
 """
 
 from __future__ import annotations
@@ -321,8 +321,8 @@ def record_short_term_recalls(
             ):
                 continue
             identity_snippet = (
-                normalize_snippet(str(result.get("identitySnippet") or raw_snippet))
-                if signal_type == "daily"
+                normalize_snippet(str(result["identitySnippet"]))
+                if signal_type == "daily" and result.get("identitySnippet") is not None
                 else raw_snippet
             )
             claim_hash = build_claim_hash(identity_snippet)
@@ -374,9 +374,9 @@ def record_short_term_recalls(
             query_hash = hash_query(effective_query.lower().strip())
             day = (
                 normalize_iso_day(
-                    (result.get("dayBucket") if signal_type == "grounded" else None)
-                    or day_bucket
-                    or ""
+                    result["dayBucket"]
+                    if signal_type == "grounded" and result.get("dayBucket") is not None
+                    else day_bucket
                 )
                 or today_bucket
             )

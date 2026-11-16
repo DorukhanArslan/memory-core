@@ -307,6 +307,9 @@ def build_cases(*, include_prospective: bool = False) -> list[dict[str, Any]]:
     from equivalence.forget_boundaries import build_cases as build_forget_boundaries
 
     cases.extend(build_forget_boundaries())
+    from equivalence.recall_signals import build_cases as build_recall_signals
+
+    cases.extend(build_recall_signals())
     if include_prospective:
         from equivalence.flush_contract import build_prospective_flush_contract_cases
         from equivalence.session_projection import build_prospective_session_projection_cases
@@ -371,6 +374,12 @@ def run_python(case: dict[str, Any]) -> Any:
         from equivalence.index_identity_boundaries_sdk import run_index_identity_boundaries_case
 
         return run_index_identity_boundaries_case(arguments, evidence_directory=case.get("_diagnosticDirectory"))
+    if operation == "recall-signals-runtime":
+        from equivalence.recall_signals import validate_case as validate_recall_signals_case
+        from equivalence.recall_signals_sdk import run_recall_signals
+
+        validate_recall_signals_case({key: value for key, value in case.items() if key != "_diagnosticDirectory"})
+        return run_recall_signals(arguments, evidence_directory=case.get("_diagnosticDirectory"))
     if operation == "forget-boundaries-runtime":
         from equivalence.forget_boundaries import validate_case as validate_forget_boundary
         from equivalence.forget_lineage_sdk import run_forget_boundaries

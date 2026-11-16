@@ -1,7 +1,23 @@
 # Promotion and heartbeat maintenance integration
 
 The [active checklist](full-equivalence-checklist.md) records the latest complete
-measurement: **81/128 verified conditions, 47 remaining**, with **38 complete,
+measurement: **82/128 verified conditions, 46 remaining**, with **38 complete,
+six partial and 20 pending contracts**. The single full run measures approved
+product source `3d70e59` through comparison head `a1bdec4`: **1,490 cases,
+1,476 matches, 14 mismatches and zero blocked/errors**. The
+[reset-hook boundary closeout](session_reset_boundaries_closeout.md) verifies
+one original condition through seven complete real-owner cases:
+**81 → 82/128, net +1**. Saved source windows, whole trust records and complete
+search/read results agree, including sequential filename collisions and real
+write failure/recovery. All previously verified conditions are preserved.
+The old 14 SDK mismatch payload hashes are unchanged; the Native warm-flush
+hash changed again and still earns no credit. The separate reset outcomes and
+broader lifecycle remain partial. The full scope gate still fails with
+44 uncovered and two registered unresolved conditions.
+
+The preceding [embedding-cache assessment](embedding_cache_lifecycle_closeout.md)
+records the historical measurement: **81/128 verified conditions, 47 remaining**,
+with **38 complete,
 five partial and 21 pending contracts**. The single full run measures approved
 product source `f8a8ffd` through comparison head `d53c91e`: **1,483 cases,
 1,469 matches, 14 mismatches and zero blocked/errors**. The

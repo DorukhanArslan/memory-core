@@ -2,8 +2,10 @@
 
 This is the historical 79/128 assessment. The later
 [embedding-cache closeout](embedding_cache_lifecycle_closeout.md) records the
-latest complete assessment: **81/128, 47 remaining**, net +2 cache conditions.
-The recall run and its source identity below remain unchanged.
+81/128 cache assessment. The latest
+[reset-hook boundary closeout](session_reset_boundaries_closeout.md) records
+**82/128, 46 remaining**, net +1 original reset boundary condition. The recall
+run and its source identity below remain unchanged.
 
 This historical assessment verifies **79/128 conditions (61.7%),
 49 remaining**: **37 complete, 5 partial and

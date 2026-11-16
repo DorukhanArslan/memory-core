@@ -47,6 +47,7 @@ const operations = {
   "memory-budget-apply-runtime": ["memory-budget-runtime.mjs", "runMemoryBudgetRuntime"],
   "promotion-ranking-runtime": ["promotion-ranking-runtime.mjs", "runPromotionRankingRuntime"],
   "recall-signals-runtime": ["recall-signals-runtime.mjs", "runRecallSignalsRuntime"],
+  "session-reset-boundaries-runtime": ["session-reset-boundaries-runtime.mjs", "runSessionResetBoundariesRuntime"],
   "embed-cache-lifecycle-runtime": ["embedding-cache-lifecycle-runtime.mjs", "runEmbeddingCacheLifecycleRuntime"],
   "promotion-apply-reconcile-runtime": ["promotion-apply-runtime.mjs", "runPromotionApplyRuntime"],
 };
@@ -103,7 +104,8 @@ for (const testCase of request.cases) {
       context.atomicPublicationProfile === undefined && context.memoryBudgetProfile === undefined &&
       context.promotionRankingProfile === undefined && context.promotionApplyProfile === undefined &&
       context.forgetLineageProfile === undefined && context.forgetBoundariesProfile === undefined &&
-      context.recallSignalsProfile === undefined && context.embeddingCacheProfile === undefined;
+      context.recallSignalsProfile === undefined && context.embeddingCacheProfile === undefined &&
+      context.sessionResetBoundariesProfile === undefined;
     if (modelAuthority !== Object.hasOwn(modelKinds, testCase.operation) ||
         modelAuthority && modelKinds[testCase.operation] !== null && testCase.input?.kind !== modelKinds[testCase.operation]) {
       throw Error("The model binary capability cannot execute another operation or input contract before import");
@@ -193,6 +195,20 @@ for (const testCase of request.cases) {
           recallProfile.inputKind !== testCase.input?.kind ||
           crypto.createHash("sha256").update(wire).digest("hex") !== recallProfile.caseBindings[testCase.id]) {
         throw Error("The recall caller received changed or substituted literal inputs");
+      }
+    }
+    const resetProfile = context.sessionResetBoundariesProfile;
+    if ((resetProfile !== undefined) !== (testCase.operation === "session-reset-boundaries-runtime")) {
+      throw Error("The session reset boundaries capability cannot borrow another operation");
+    }
+    if (resetProfile !== undefined) {
+      const stable = value => Array.isArray(value) ? value.map(stable) : value !== null && typeof value === "object"
+        ? Object.fromEntries(Object.keys(value).sort().map(key => [key, stable(value[key])])) : value;
+      const wire = JSON.stringify(stable({id:testCase.id,operation:testCase.operation,input:testCase.input}));
+      if (resetProfile.caseId !== testCase.id || resetProfile.operation !== testCase.operation ||
+          resetProfile.inputKind !== testCase.input?.kind ||
+          crypto.createHash("sha256").update(wire).digest("hex") !== resetProfile.caseBindings[testCase.id]) {
+        throw Error("The session reset caller received changed or substituted literal inputs");
       }
     }
     const embeddingProfile = context.embeddingCacheProfile;

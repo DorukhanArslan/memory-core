@@ -1,6 +1,12 @@
 # Managed embedding-cache acceptance
 
-The complete assessment verifies **81/128 conditions (63.3%), 47 remaining**:
+This is the historical **81/128** cache assessment. The later
+[reset-hook boundary closeout](session_reset_boundaries_closeout.md) records the
+latest complete assessment: **82/128, 46 remaining**, net +1 original reset
+boundary condition. This cache run, its source identity and its +2 result below
+remain unchanged.
+
+This historical complete assessment verifies **81/128 conditions (63.3%), 47 remaining**:
 **38 complete, five partial and 21 pending contracts**. Both original
 `indexing.embedding-cache` conditions are verified: **79 → 81/128, net +2**.
 Verified IDs are `indexing.embedding-cache.outcomes` and

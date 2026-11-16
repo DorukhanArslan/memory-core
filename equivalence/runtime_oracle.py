@@ -31,6 +31,8 @@ from equivalence.forget_boundaries_profile import validate_forget_boundaries_pro
 from equivalence.forget_boundaries import case_wire as boundary_case_wire
 from equivalence.recall_signals_profile import validate_recall_signals_profile
 from equivalence.recall_signals import case_wire as recall_case_wire
+from equivalence.session_reset_boundaries_profile import validate_session_reset_boundaries_profile
+from equivalence.session_reset_boundaries import case_wire as reset_case_wire
 from equivalence.embedding_cache_lifecycle_profile import (
     PROVIDER_ADAPTER_FILES, PROVIDER_SOURCE_HASHES, PROVIDER_MODE as EMBEDDING_PROVIDER_MODE,
     validate_embedding_cache_lifecycle_profile,
@@ -69,6 +71,7 @@ _OPERATIONS = {
     "forget-lineage-runtime": ("forget-lineage-runtime.mjs", "dist/cli.runtime-CVRN4xUp.mjs", False),
     "forget-boundaries-runtime": ("forget-lineage-runtime.mjs", "dist/cli.runtime-CVRN4xUp.mjs", False),
     "recall-signals-runtime": ("recall-signals-runtime.mjs", "dist/short-term-promotion-record-DrLa1fiO.mjs", False),
+    "session-reset-boundaries-runtime": ("session-reset-boundaries-runtime.mjs", "dist/bundled/session-memory/handler.js", False),
     "flush-trigger-runtime": (
         "flush-runtime.mjs", "dist/agent-runner-memory-Cc4lCZcs.mjs", False,
     ),
@@ -686,7 +689,8 @@ class ReleaseOracleExecution:
                  memory_budget_profile: dict | None = None, get_read_race_profile: dict | None = None,
                  promotion_profile: dict | None = None, promotion_apply_profile: dict | None = None,
                  forget_lineage_profile: dict | None = None, forget_boundaries_profile: dict | None = None,
-                 recall_signals_profile: dict | None = None, embedding_cache_profile: dict | None = None):
+                 recall_signals_profile: dict | None = None, embedding_cache_profile: dict | None = None,
+                 session_reset_boundaries_profile: dict | None = None):
         self.config = deepcopy(config)
         self.adapter_hashes = dict(adapter_hashes)
         self.fixture_captures = fixture_captures
@@ -704,6 +708,7 @@ class ReleaseOracleExecution:
         self.forget_boundaries_profile = deepcopy(forget_boundaries_profile)
         self.recall_signals_profile = deepcopy(recall_signals_profile)
         self.embedding_cache_profile = deepcopy(embedding_cache_profile)
+        self.session_reset_boundaries_profile = deepcopy(session_reset_boundaries_profile)
         self.env: dict[str, str] = {}
         self._temporary = None
         self._entered = False
@@ -714,7 +719,7 @@ class ReleaseOracleExecution:
                 self.bootstrap_profile, self.memory_budget_profile, self.promotion_profile,
                 self.promotion_apply_profile, self.get_read_race_profile, self.turn_taint_source,
                 self.forget_lineage_profile, self.forget_boundaries_profile, self.recall_signals_profile,
-                self.embedding_cache_profile)
+                self.embedding_cache_profile, self.session_reset_boundaries_profile)
             if sum(value is not None for value in capabilities) + bool(self.fixture_captures) > 1:
                 raise RuntimeOracleError("Independent native profiles cannot borrow one another's executable, source, backend or hook capabilities.")
             if self.get_read_race_profile is not None:
@@ -749,6 +754,8 @@ class ReleaseOracleExecution:
                 self.recall_signals_profile = validate_recall_signals_profile(self.recall_signals_profile)
             if self.embedding_cache_profile is not None:
                 self.embedding_cache_profile = validate_embedding_cache_lifecycle_profile(self.embedding_cache_profile)
+            if self.session_reset_boundaries_profile is not None:
+                self.session_reset_boundaries_profile = validate_session_reset_boundaries_profile(self.session_reset_boundaries_profile)
             if self.entry_profile is not None:
                 self.entry_profile = validate_entry_provenance_profile(self.entry_profile)
                 if self.model_node_runtime is not None or self.turn_taint_source is not None or self.fixture_captures or self.atomic_profile is not None or self.bootstrap_profile is not None or self.memory_budget_profile is not None or self.get_read_race_profile is not None or self.promotion_profile is not None:
@@ -869,6 +876,9 @@ class ReleaseOracleExecution:
             if self.forget_boundaries_profile is not None:
                 self._context["approvedNodeRuntime"] = self.forget_boundaries_profile["nodeRuntime"]
                 self._context["forgetBoundariesProfile"] = self.forget_boundaries_profile
+            if self.session_reset_boundaries_profile is not None:
+                self._context["approvedNodeRuntime"] = self.session_reset_boundaries_profile["nodeRuntime"]
+                self._context["sessionResetBoundariesProfile"] = self.session_reset_boundaries_profile
             if self.recall_signals_profile is not None:
                 self._context["approvedNodeRuntime"] = self.recall_signals_profile["nodeRuntime"]
                 self._context["recallSignalsProfile"] = self.recall_signals_profile
@@ -922,12 +932,12 @@ class ReleaseOracleExecution:
         """Validate all observed threads and retain case raw state in the report."""
         if not self._entered:
             raise RuntimeOracleError("Release execution evidence requires an active owned context.")
-        if self.embedding_cache_profile is not None:
+        if self.embedding_cache_profile is not None or self.session_reset_boundaries_profile is not None:
             self._last_collection_error = None
         try:
             return self._collect(result, cases)
         except (OSError, KeyError, TypeError, ValueError, ReleaseRuntimeError) as error:
-            if self.embedding_cache_profile is not None:
+            if self.embedding_cache_profile is not None or self.session_reset_boundaries_profile is not None:
                 self._last_collection_error = {
                     "type": type(error).__module__ + "." + type(error).__qualname__,
                     "message": str(error), "traceback": traceback.format_exc(),
@@ -949,7 +959,8 @@ class ReleaseOracleExecution:
                    "kind": "rejected-release-runtime-diagnostics", "caseIds": [],
                    "oracleResult": None, "stdout": None, "stderr": None,
                    "caseDiagnostics": [], "processWorkerTraces": [], "omissions": []}
-        if self.embedding_cache_profile is not None and getattr(self, "_last_collection_error", None) is not None:
+        if (self.embedding_cache_profile is not None or self.session_reset_boundaries_profile is not None) and getattr(
+                self, "_last_collection_error", None) is not None:
             capture["collectionError"] = deepcopy(self._last_collection_error)
 
         def stream(text: str) -> dict:
@@ -1055,6 +1066,12 @@ class ReleaseOracleExecution:
             profile = validate_embedding_cache_lifecycle_profile(self.embedding_cache_profile)
             if profile["caseId"] != case.get("id") or profile["caseBindings"][profile["caseId"]] != _digest(embedding_case_wire(case)):
                 raise RuntimeOracleError("An embedding cache case changed its frozen complete inputs")
+        if (self.session_reset_boundaries_profile is not None) is not (operation == "session-reset-boundaries-runtime"):
+            raise RuntimeOracleError("Session reset boundaries authority cannot execute another operation")
+        if self.session_reset_boundaries_profile is not None:
+            profile = validate_session_reset_boundaries_profile(self.session_reset_boundaries_profile)
+            if profile["caseId"] != case.get("id") or profile["caseBindings"][profile["caseId"]] != _digest(reset_case_wire(case)):
+                raise RuntimeOracleError("A session reset boundaries case changed its frozen inputs")
         if (self.recall_signals_profile is not None) is not (operation == "recall-signals-runtime"):
             raise RuntimeOracleError("Recall signals authority cannot execute another operation")
         if self.recall_signals_profile is not None:
@@ -1164,6 +1181,8 @@ class ReleaseOracleExecution:
                 if self.embedding_cache_profile is not None else "Release memory fixtures require provider none.")
         if operation == "embed-cache-lifecycle-runtime" and not row["ok"]:
             raise RuntimeOracleError("The real embedding-cache manager did not complete its declared fixture flow.")
+        if operation == "session-reset-boundaries-runtime" and not row["ok"]:
+            raise RuntimeOracleError("The real session reset caller did not complete its declared capture and recall flow.")
         if operation == "turn-trust-runtime" and not row["ok"]:
             raise RuntimeOracleError("The real turn-trust caller did not complete its registered execution and persistence flow.")
         if operation in {*MODEL_RUNTIME_OPERATIONS, *ENTRY_PROVENANCE_PROFILES, *ATOMIC_PUBLICATION_PROFILES, *MEMORY_BUDGET_PROFILES, PROMOTION_RANKING_OPERATION, PROMOTION_APPLY_OPERATION} and not row["ok"]:
@@ -1192,7 +1211,7 @@ class ReleaseOracleExecution:
             if filename is None:
                 raise RuntimeOracleError("A release thread trace has an invalid identity.")
             raw = _regular(trace, MAX_SINGLE_TRACE_BYTES)
-            if self.entry_profile is not None or self.memory_budget_profile is not None or self.promotion_profile is not None or self.promotion_apply_profile is not None or self.forget_lineage_profile is not None or self.forget_boundaries_profile is not None or self.recall_signals_profile is not None or self.embedding_cache_profile is not None:
+            if self.entry_profile is not None or self.memory_budget_profile is not None or self.promotion_profile is not None or self.promotion_apply_profile is not None or self.forget_lineage_profile is not None or self.forget_boundaries_profile is not None or self.recall_signals_profile is not None or self.embedding_cache_profile is not None or self.session_reset_boundaries_profile is not None:
                 entry_trace_files.append({"name": trace.name, "bytes": len(raw), "sha256": _digest(raw),
                                           "text": raw.decode("utf-8")})
             if self.bootstrap_profile is not None:
@@ -1221,6 +1240,7 @@ class ReleaseOracleExecution:
                               or (self.forget_lineage_profile["nodeRuntime"] if self.forget_lineage_profile is not None else None)
                               or (self.forget_boundaries_profile["nodeRuntime"] if self.forget_boundaries_profile is not None else None)
                               or (self.recall_signals_profile["nodeRuntime"] if self.recall_signals_profile is not None else None)
+                              or (self.session_reset_boundaries_profile["nodeRuntime"] if self.session_reset_boundaries_profile is not None else None)
                               or (self.embedding_cache_profile["nodeRuntime"] if self.embedding_cache_profile is not None else None))
             if node_authority is not None and first.get("runtime") != node_authority:
                 raise RuntimeOracleError("The actual native process or worker omitted its approved model binary authority.")
@@ -1263,6 +1283,10 @@ class ReleaseOracleExecution:
                 if first.get("forgetBoundariesProfile") != self.forget_boundaries_profile:
                     raise RuntimeOracleError("The actual admission process omitted its distinct authority")
                 bootstrap[-1]["forgetBoundariesProfile"] = deepcopy(first["forgetBoundariesProfile"])
+            if self.session_reset_boundaries_profile is not None:
+                if first.get("sessionResetBoundariesProfile") != self.session_reset_boundaries_profile:
+                    raise RuntimeOracleError("The actual session reset process omitted its distinct frozen authority")
+                bootstrap[-1]["sessionResetBoundariesProfile"] = deepcopy(first["sessionResetBoundariesProfile"])
             if self.recall_signals_profile is not None:
                 if first.get("recallSignalsProfile") != self.recall_signals_profile:
                     raise RuntimeOracleError("The actual recall process omitted its distinct frozen authority")
@@ -1482,6 +1506,13 @@ class ReleaseOracleExecution:
 
             if any(("node_modules/openclaw", owner) not in loaded for owner in REQUIRED_RUNTIME_ARTIFACTS):
                 raise RuntimeOracleError("The original manager/provider/cache/worker owners did not all execute")
+            validate_native(case, row["result"], diagnostic, evidence.parent)
+        if operation == "session-reset-boundaries-runtime":
+            from equivalence.session_reset_boundaries_bindings import REQUIRED_RUNTIME_ARTIFACTS
+            from equivalence.session_reset_boundaries_evidence import validate_native
+
+            if any(("node_modules/openclaw", owner) not in loaded for owner in REQUIRED_RUNTIME_ARTIFACTS):
+                raise RuntimeOracleError("The original session reset/capture/provenance owners did not all execute")
             validate_native(case, row["result"], diagnostic, evidence.parent)
         if operation == "recall-signals-runtime":
             from equivalence.recall_signals_bindings import REQUIRED_RUNTIME_ARTIFACTS
@@ -1809,6 +1840,11 @@ class ReleaseOracleExecution:
             answer["runtimeDiagnostics"][0]["validationStatus"] = "verified"
             answer["releaseTrace"]["forgetBoundariesTransport"] = {
                 "profile": deepcopy(self.forget_boundaries_profile), "traceFiles": entry_trace_files}
+        if self.session_reset_boundaries_profile is not None:
+            answer["runtimeDiagnostics"][0]["rawSnapshots"] = _json(raw)
+            answer["runtimeDiagnostics"][0]["validationStatus"] = "verified"
+            answer["releaseTrace"]["sessionResetBoundariesTransport"] = {
+                "profile": deepcopy(self.session_reset_boundaries_profile), "traceFiles": entry_trace_files}
         if self.recall_signals_profile is not None:
             answer["runtimeDiagnostics"][0]["rawSnapshots"] = _json(raw)
             answer["runtimeDiagnostics"][0]["validationStatus"] = "verified"

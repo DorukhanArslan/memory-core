@@ -63,7 +63,8 @@ _COMPILED_NAMES = (
     "dist/openclaw-agent-db-lifecycle-B8sSLgPo.mjs",
 )
 COMPILED_HASHES = {name: digest for name, digest in ranking.COMPILED_HASHES.items()
-                   if name not in {"dist/short-term-promotion-MX1vHJuE.mjs", "dist/memory-budget-BodJnew-.mjs"}}
+                   if name not in {"dist/short-term-promotion-MX1vHJuE.mjs", "dist/memory-budget-BodJnew-.mjs",
+                                   "dist/short-term-promotion-types-UVm8XCDd.mjs"}}
 COMPILED_HASHES.update(_select(_COMPILED_NAMES, lineage.COMPILED_HASHES, budget.COMPILED_HASHES))
 COMPILED_HASHES.update({
     "dist/openclaw-agent-db-DRy3ui_B.mjs": "f851c6fa5b6a766e6afff83684ad02883c45589532bd8ac1e790f20bbb3b0d93",

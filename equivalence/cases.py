@@ -313,6 +313,9 @@ def build_cases(*, include_prospective: bool = False) -> list[dict[str, Any]]:
     from equivalence.recall_signals import build_cases as build_recall_signals
 
     cases.extend(build_recall_signals())
+    from equivalence.embedding_cache_lifecycle import build_cases as build_embedding_cache_lifecycle
+
+    cases.extend(build_embedding_cache_lifecycle())
     if include_prospective:
         from equivalence.flush_contract import build_prospective_flush_contract_cases
         from equivalence.session_projection import build_prospective_session_projection_cases
@@ -393,6 +396,12 @@ def run_python(case: dict[str, Any]) -> Any:
         from equivalence.index_identity_boundaries_sdk import run_index_identity_boundaries_case
 
         return run_index_identity_boundaries_case(arguments, evidence_directory=case.get("_diagnosticDirectory"))
+    if operation == "embed-cache-lifecycle-runtime":
+        from equivalence.embedding_cache_lifecycle import validate_case as validate_embedding_cache_case
+        from equivalence.embedding_cache_lifecycle_sdk import run_embedding_cache_lifecycle
+
+        validate_embedding_cache_case({key: value for key, value in case.items() if key != "_diagnosticDirectory"})
+        return run_embedding_cache_lifecycle(arguments, evidence_directory=case.get("_diagnosticDirectory"))
     if operation == "recall-signals-runtime":
         from equivalence.recall_signals import validate_case as validate_recall_signals_case
         from equivalence.recall_signals_sdk import run_recall_signals

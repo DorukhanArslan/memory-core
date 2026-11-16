@@ -44,6 +44,7 @@ const operations = {
   "memory-budget-apply-runtime": ["memory-budget-runtime.mjs", "runMemoryBudgetRuntime"],
   "promotion-ranking-runtime": ["promotion-ranking-runtime.mjs", "runPromotionRankingRuntime"],
   "recall-signals-runtime": ["recall-signals-runtime.mjs", "runRecallSignalsRuntime"],
+  "embed-cache-lifecycle-runtime": ["embedding-cache-lifecycle-runtime.mjs", "runEmbeddingCacheLifecycleRuntime"],
   "promotion-apply-reconcile-runtime": ["promotion-apply-runtime.mjs", "runPromotionApplyRuntime"],
 };
 function sameGetReadRaceLiteral(actual, expected) {
@@ -99,7 +100,7 @@ for (const testCase of request.cases) {
       context.atomicPublicationProfile === undefined && context.memoryBudgetProfile === undefined &&
       context.promotionRankingProfile === undefined && context.promotionApplyProfile === undefined &&
       context.forgetLineageProfile === undefined && context.forgetBoundariesProfile === undefined &&
-      context.recallSignalsProfile === undefined;
+      context.recallSignalsProfile === undefined && context.embeddingCacheProfile === undefined;
     if (modelAuthority !== Object.hasOwn(modelKinds, testCase.operation) ||
         modelAuthority && modelKinds[testCase.operation] !== null && testCase.input?.kind !== modelKinds[testCase.operation]) {
       throw Error("The model binary capability cannot execute another operation or input contract before import");
@@ -189,6 +190,20 @@ for (const testCase of request.cases) {
           recallProfile.inputKind !== testCase.input?.kind ||
           crypto.createHash("sha256").update(wire).digest("hex") !== recallProfile.caseBindings[testCase.id]) {
         throw Error("The recall caller received changed or substituted literal inputs");
+      }
+    }
+    const embeddingProfile = context.embeddingCacheProfile;
+    if ((embeddingProfile !== undefined) !== (testCase.operation === "embed-cache-lifecycle-runtime")) {
+      throw Error("The embedding cache manager capability cannot borrow another operation");
+    }
+    if (embeddingProfile !== undefined) {
+      const stable = value => Array.isArray(value) ? value.map(stable) : value !== null && typeof value === "object"
+        ? Object.fromEntries(Object.keys(value).sort().map(key => [key, stable(value[key])])) : value;
+      const wire = JSON.stringify(stable({id:testCase.id,operation:testCase.operation,input:testCase.input}));
+      if (embeddingProfile.caseId !== testCase.id || embeddingProfile.operation !== testCase.operation ||
+          embeddingProfile.inputKind !== testCase.input?.kind ||
+          crypto.createHash("sha256").update(wire).digest("hex") !== embeddingProfile.caseBindings[testCase.id]) {
+        throw Error("The embedding cache caller received changed or substituted literal inputs");
       }
     }
     const binding = operations[testCase.operation];

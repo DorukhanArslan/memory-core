@@ -320,6 +320,9 @@ def validate_native(case, public, snapshots, evidence):
              and base.name.startswith("native-recall-signals-") and raw["closed"] is True,
              "the original fixture lost its exact owned identity or completion")
     _same(raw["workspace"], str(base / "workspace"), "Native workspace changed")
+    _require(raw["config"]["memory"]["search"]["provider"] == "none"
+             and raw["config"]["memory"]["search"]["fallback"] == "none",
+             "the actual owned Native configuration admitted a provider")
     _same(raw["clock"], {"owner": "node:test", "apis": ["Date"], "nowMs": case["input"]["nowMs"],
           "dateConstructorReplaced": True, "setTimeoutUnchanged": True, "performanceNowUnchanged": True},
           "the original clock changed scheduler ownership")

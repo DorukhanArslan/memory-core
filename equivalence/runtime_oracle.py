@@ -1109,7 +1109,8 @@ class ReleaseOracleExecution:
                 or set(row) != ({"id", "ok", "result"} if row["ok"] else {"id", "ok", "error"})):
             raise RuntimeOracleError("The release oracle returned an unexpected case identity.")
         if row["ok"] and (not isinstance(row["result"], dict)
-                or operation != PROMOTION_RANKING_OPERATION and row["result"].get("provider") != "none"):
+                or operation not in {PROMOTION_RANKING_OPERATION, "recall-signals-runtime"}
+                and row["result"].get("provider") != "none"):
             raise RuntimeOracleError("Release memory fixtures require provider none.")
         if operation == "turn-trust-runtime" and not row["ok"]:
             raise RuntimeOracleError("The real turn-trust caller did not complete its registered execution and persistence flow.")

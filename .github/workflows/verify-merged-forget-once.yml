@@ -8,9 +8,13 @@ on:
 
 permissions:
   contents: read
+  actions: read
 
 jobs:
   compare:
+    outputs:
+      summary_id: ${{ steps.summary.outputs.artifact-id }}
+      summary_sha: ${{ steps.summary.outputs.artifact-digest }}
     runs-on: ubuntu-latest
     timeout-minutes: 240
     env:
@@ -86,6 +90,7 @@ jobs:
           --release-runtime .reference/release-runtime
           --output .equivalence-results/summary/assessment.json
       - name: Retain the small review summary
+        id: summary
         if: always()
         uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
         with:
@@ -122,3 +127,24 @@ jobs:
               code = 2
           sys.exit(code)
           PY
+
+  read-summary:
+    needs: compare
+    if: always() && needs.compare.outputs.summary_id != ''
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    strategy:
+      fail-fast: false
+      matrix:
+        part: [0, 1, 2, 3, 4, 5, 6, 7]
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
+        with:
+          persist-credentials: false
+      - name: Read one bounded retained summary part
+        env:
+          GH_TOKEN: ${{ github.token }}
+          ARTIFACT_ID: ${{ needs.compare.outputs.summary_id }}
+          ARTIFACT_SHA: ${{ needs.compare.outputs.summary_sha }}
+          REPORT_PART: ${{ matrix.part }}
+        run: python scripts/read_retained_summary_part.py

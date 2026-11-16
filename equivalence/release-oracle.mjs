@@ -97,7 +97,7 @@ for (const testCase of request.cases) {
     const modelAuthority = context.approvedNodeRuntime !== undefined && context.entryProvenanceProfile === undefined &&
       context.atomicPublicationProfile === undefined && context.memoryBudgetProfile === undefined &&
       context.promotionRankingProfile === undefined && context.promotionApplyProfile === undefined &&
-      context.forgetLineageProfile === undefined;
+      context.forgetLineageProfile === undefined && context.forgetBoundariesProfile === undefined;
     if (modelAuthority !== Object.hasOwn(modelKinds, testCase.operation) ||
         modelAuthority && modelKinds[testCase.operation] !== null && testCase.input?.kind !== modelKinds[testCase.operation]) {
       throw Error("The model binary capability cannot execute another operation or input contract before import");

@@ -320,9 +320,14 @@ def validate_native(case, public, snapshots, evidence):
              and base.name.startswith("native-recall-signals-") and raw["closed"] is True,
              "the original fixture lost its exact owned identity or completion")
     _same(raw["workspace"], str(base / "workspace"), "Native workspace changed")
-    _require(raw["config"]["memory"]["search"]["provider"] == "none"
-             and raw["config"]["memory"]["search"]["fallback"] == "none",
-             "the actual owned Native configuration admitted a provider")
+    _same(raw["config"], {
+        "agents": {"defaults": {"workspace": raw["workspace"]},
+                   "list": [{"id": "main", "workspace": raw["workspace"]}]},
+        "logging": {"level": "silent", "consoleLevel": "silent", "file": str(base / "native.log")}},
+        "the original writer-only fixture configuration changed")
+    _same(raw["environment"], {"OPENCLAW_STATE_DIR": raw["stateDirectory"],
+          "OPENCLAW_CONFIG_PATH": raw["configPath"], "OPENCLAW_HOME": str(base)},
+          "the original durable owners escaped the owned fixture environment")
     _same(raw["clock"], {"owner": "node:test", "apis": ["Date"], "nowMs": case["input"]["nowMs"],
           "dateConstructorReplaced": True, "setTimeoutUnchanged": True, "performanceNowUnchanged": True},
           "the original clock changed scheduler ownership")

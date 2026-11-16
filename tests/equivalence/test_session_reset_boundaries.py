@@ -30,7 +30,7 @@ def test_exact_seven_case_authority_covers_only_the_original_boundary_point():
     assert POINTS == ("sessions.reset-hook.boundaries",)
     assert all(case["covers"] == list(POINTS) for case in cases)
     assert hashlib.sha256(canonical(CASE_HASHES)).hexdigest() == (
-        "a266db484ae8d353074c212cb5d4a8d60eeb05d52dbd1a8337bda56857a0fecb"
+        "6d2d4043125f71ae236fe4482af8e2aec408d9a63b0ea00de201d315daa500ae"
     )
     assert validate_session_reset_boundaries_profile(_profile()) == _profile()
 

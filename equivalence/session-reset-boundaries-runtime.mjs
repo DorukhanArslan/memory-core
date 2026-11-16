@@ -150,6 +150,7 @@ export async function runSessionResetBoundariesRuntime(input, runtimeConfig) {
       .map(([name, payload]) => [name, payload.toString("utf8")]));
   }
   function auditRows() { return stateHandle.db.prepare(`SELECT * FROM ${AUDIT} ORDER BY seq`).all().map(row => ({ ...row })); }
+  function temporarySchema() { return stateHandle.db.prepare("SELECT * FROM sqlite_temp_schema ORDER BY type,name").all().map(row => ({ ...row })); }
   async function state() {
     const orderedProvenanceRows = await call("listMemoryArtifactProvenance", listProvenance, [{ workspaceDir: workspace }]);
     const provenance = {};
@@ -160,6 +161,7 @@ export async function runSessionResetBoundariesRuntime(input, runtimeConfig) {
     const value = { files: await artifactFiles(), provenance, toolCalls: clone(toolCalls) };
     raw.states.push({ operationIndex, state: clone(value), orderedProvenanceRows: clone(orderedProvenanceRows),
       rawSql: { state: database(statePath), agent: database(agentPath) }, auditRows: auditRows(),
+      temporarySchema: temporarySchema(),
       sources: await tree(workspace, true), logBytes: await logBytes() });
     return value;
   }
@@ -212,12 +214,20 @@ export async function runSessionResetBoundariesRuntime(input, runtimeConfig) {
       `CREATE TABLE ${AUDIT}(seq INTEGER PRIMARY KEY,event TEXT NOT NULL,store_key TEXT NOT NULL,old_value TEXT,new_value TEXT)`,
       ...["INSERT", "UPDATE", "DELETE"].map(event => {
         const selected = event === "DELETE" ? "OLD" : "NEW";
-        return `CREATE TRIGGER reset_boundary_trust_${event.toLowerCase()} AFTER ${event} ON plugin_state_entries WHEN ${selected}.plugin_id='core:memory-artifact-provenance' AND ${selected}.namespace='workspace-files' BEGIN INSERT INTO ${AUDIT}(event,store_key,old_value,new_value) VALUES('${event.toLowerCase()}',${selected}.entry_key,${event === "INSERT" ? "NULL" : "OLD.value_json"},${event === "DELETE" ? "NULL" : "NEW.value_json"}); END`;
+        return `CREATE TEMP TRIGGER reset_boundary_trust_${event.toLowerCase()} AFTER ${event} ON main.plugin_state_entries WHEN ${selected}.plugin_id='core:memory-artifact-provenance' AND ${selected}.namespace='workspace-files' BEGIN INSERT INTO ${AUDIT}(event,store_key,old_value,new_value) VALUES('${event.toLowerCase()}',${selected}.entry_key,${event === "INSERT" ? "NULL" : "OLD.value_json"},${event === "DELETE" ? "NULL" : "NEW.value_json"}); END`;
       }),
     ];
-    for (const statement of auditStatements) stateHandle.db.exec(statement);
+    raw.temporarySchemaOwner = { databasePath: statePath, source: "stateHandle.db",
+      databaseConstructor: stateHandle.db.constructor.name, isOpen: stateHandle.db.isOpen };
     raw.auditDefinition = { table: AUDIT, predicate: TRUST_PREDICATE, statements: auditStatements, databasePath: statePath,
-      schema: database(statePath).schema };
+      schemaBefore: database(statePath).schema, temporarySchemaBefore: temporarySchema(), receipts: [] };
+    for (const statement of auditStatements) {
+      const receipt = { statement }; raw.auditDefinition.receipts.push(receipt);
+      try { receipt.returnValue = returned(stateHandle.db.exec(statement)); }
+      catch (error) { receipt.error = wire(error); throw error; }
+    }
+    raw.auditDefinition.schema = database(statePath).schema;
+    raw.auditDefinition.temporarySchema = temporarySchema();
     sessions = await imp("dist/session-accessor-CiKKTlbe.mjs");
     captureTranscript = (await imp("dist/capture-C0uwbnBj.mjs")).t;
     listProvenance = (await imp("dist/memory-artifact-provenance-DhnyWiV1.mjs")).n;
@@ -277,7 +287,8 @@ export async function runSessionResetBoundariesRuntime(input, runtimeConfig) {
     for (operationIndex = 0; operationIndex < input.operations.length; operationIndex++) {
       const operation = input.operations[operationIndex]; mock.timers.setTime(operation.nowMs);
       const actual = { operation: clone(operation), sourcesBefore: await tree(workspace, true),
-        logBefore: await logBytes(), auditBefore: auditRows(), sqlBefore: { state: database(statePath), agent: database(agentPath) } };
+        logBefore: await logBytes(), auditBefore: auditRows(), temporarySchemaBefore: temporarySchema(),
+        sqlBefore: { state: database(statePath), agent: database(agentPath) } };
       raw.operations.push(actual);
       try {
         let result;
@@ -341,12 +352,16 @@ export async function runSessionResetBoundariesRuntime(input, runtimeConfig) {
         } else if (operation.op === "trust-failure") {
           if (!/^[a-z][a-z0-9_]*$/.test(operation.fault.name)) throw Error("The frozen SQL trigger name is invalid");
           actual.trigger = { databasePath: statePath, name: operation.fault.name, schemaBefore: database(statePath).schema,
+            temporarySchemaBefore: temporarySchema(),
             statement: operation.enabled ? operation.fault.nativeSql : "DROP TRIGGER " + operation.fault.name };
           result = stateHandle.db.exec(actual.trigger.statement); actual.trigger.schemaAfter = database(statePath).schema;
+          actual.trigger.returnValue = returned(result);
+          actual.trigger.temporarySchemaAfter = temporarySchema();
         } else throw Error("An undeclared reset operation reached its owner");
         actual.apiOutcome = { kind: "return", returnValue: returned(result) };
       } catch (error) { actual.apiOutcome = { kind: "throw", error: wire(error) }; }
       actual.sourcesAfter = await tree(workspace, true); actual.logAfter = await logBytes(); actual.auditAfter = auditRows();
+      actual.temporarySchemaAfter = temporarySchema();
       actual.sqlAfter = { state: database(statePath), agent: database(agentPath) };
       const observation = { operation: clone(operation), state: await state() };
       actual.observed = clone(observation); observations.push(observation); await capture(String(operationIndex));

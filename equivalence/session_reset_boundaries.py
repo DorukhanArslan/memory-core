@@ -13,7 +13,7 @@ CASE_HASHES = {
     "session-reset-boundaries-tainted-least-trust": "808a9b4f3e667c1ae89beb73715d86a9b6ed49701e4afe19a02890281ac4c4e8",
     "session-reset-boundaries-reset-kept-branch": "9564ed42a904a8acbe08f99642397cc6d82b9813ab0158411099a602c64cddb6",
     "session-reset-boundaries-sequential-collisions": "bb7205ea17aed96fcc59367a06c2010c72fda2f6375608e87bd73f39c04d1287",
-    "session-reset-boundaries-trust-failure-recovery": "29874f8798a3284eb391358ca2eee4ecb9d6f8d2aa82c7288b4b15df735ff9ea",
+    "session-reset-boundaries-trust-failure-recovery": "5c803995ca5701a9cfe5d6602f76ef431b46408b3e1ccaffc1529ae0ccbd15a3",
     "session-reset-boundaries-publication-failure-rollback": "04446c153b9fc59fba9597a9a34302a2c4c208248d4d56ec28fabbf13a89412c",
 }
 POLICY = (
@@ -24,8 +24,11 @@ POLICY = (
     "ordering is not this trust-record map contract. Raw evidence preserves "
     "all persisted transcript/source facts, actual registered hook dispatch and "
     "drain calls, SDK save/index/tool returns and exceptions, complete Native "
-    "error logs, SQL/index state, physical files and IO receipts. No generic "
-    "shared completed flag or conversion of logged/raised errors into success "
+    "error logs, SQL/index state, physical files and IO receipts. "
+    "Native connection-local TEMP triggers retain their complete live schema "
+    "separately from physical main-schema snapshots; their committed audit "
+    "rows remain in the real durable database. No schema validation is bypassed. "
+    "No generic shared completed flag or conversion of logged/raised errors into success "
     "is permitted. Failure cases require an actual failure receipt and the "
     "absence of an untracked artifact, with real reservation/rollback and "
     "recovery proof. No search hit, score, provenance field or tool result is "
@@ -53,7 +56,7 @@ DRIVER_SCOPE = (
 )
 TRUST_FAULT = {
     "name": "reset_trust_abort",
-    "nativeSql": "CREATE TRIGGER reset_trust_abort BEFORE INSERT ON plugin_state_entries "
+    "nativeSql": "CREATE TEMP TRIGGER reset_trust_abort BEFORE INSERT ON plugin_state_entries "
                  "WHEN NEW.plugin_id='core:memory-artifact-provenance' AND NEW.namespace='workspace-files' "
                  "BEGIN SELECT RAISE(ABORT,'reset-trust-write-blocked'); END",
     "sdkSql": "CREATE TRIGGER reset_trust_abort BEFORE INSERT ON memory_artifact_provenance "

@@ -193,7 +193,7 @@ if (context.recallSignalsProfile !== undefined) {
 }
 if (context.sessionResetBoundariesProfile !== undefined) {
   const profile = context.sessionResetBoundariesProfile, bindings = profile?.caseBindings;
-  const approvedBindingsSha256 = "a266db484ae8d353074c212cb5d4a8d60eeb05d52dbd1a8337bda56857a0fecb";
+  const approvedBindingsSha256 = "6d2d4043125f71ae236fe4482af8e2aec408d9a63b0ea00de201d315daa500ae";
   if (!profile || Object.keys(profile).sort().join() !== "caseBindings,caseId,inputKind,kind,nodeRuntime,operation" ||
       profile.kind !== "approved-session-reset-boundaries-profile" || profile.operation !== "session-reset-boundaries-runtime" ||
       profile.inputKind !== "session-reset-boundaries" || !bindings || Object.keys(bindings).length !== 7 ||

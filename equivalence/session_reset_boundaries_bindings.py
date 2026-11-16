@@ -74,6 +74,8 @@ SOURCE_HASHES = {
     "src/logging/logger.ts": "8c7832f365fbb826bf338a5488b8136483fcf515dfe202a25b71e2f38d972b9e",
     "extensions/memory-core/src/short-term-promotion-record.ts": "b8d168519af14de5ae793d6738d3a86d51e41cdcc12cbd5b22fb174ba108d8c7",
     "src/config/sessions/session-accessor.transcript-target.ts": "fa62e1f5a025b008fe4552f0b54dfa9586c0f4aee76719aea9031d8a6725db58",
+    "src/infra/sqlite-schema-contract.ts": "37287b0f93c7b32521e99ce47c6c8ad847b8fddbb7134fdaf645e7e4c8ec066c",
+    "src/plugin-state/plugin-state-store.import.test.ts": "70e6ff71b3634dbc84439d75935de0def54e2a2341fc4128f901ef0bc463ee4c",
     "src/plugin-state/plugin-state-store.database.ts": "b5cc6a569e1f5f95d96ca33b065137a4ee3361371b35bc1e8aa301f5a8a3bbb4",
     "src/plugin-state/plugin-state-store.kernel.ts": "db0136ba0988fab6cdc5410bd6a459192a0bda964da26dcddfb2584cc5ab2697",
     "src/plugin-state/plugin-state-store.types.ts": "52085ebed502604a2d827cc5e7e62040e93d5258434497777d703fe8e008a5e0",
@@ -120,6 +122,16 @@ SOURCE_ANCHORS = {
         "export async function recordShortTermRecalls(",),
     "src/config/sessions/session-accessor.transcript-target.ts": (
         "export function resolveSessionTranscriptDatabasePath(",),
+    "src/infra/sqlite-schema-contract.ts": (
+        "export function assertSqliteSchemaContains(",
+        "function collectSqliteSchemaIssuesInSnapshot(",
+        "  for (const [tableName, expectedTable] of expected) {",
+        '        add("unexpected-trigger", actualTrigger.name);',
+        "    SELECT tbl_name, name, sql FROM sqlite_schema WHERE type = 'trigger' ORDER BY tbl_name, name"),
+    # This committed fixture is static policy evidence; no test is executed.
+    "src/plugin-state/plugin-state-store.import.test.ts": (
+        "db.exec(`CREATE TEMP TRIGGER fail_import BEFORE DELETE ON plugin_state_entries",
+        "db.exec(`CREATE TEMP TRIGGER abort_import BEFORE INSERT ON plugin_state_entries"),
     "src/plugin-state/plugin-state-store.database.ts": (
         "export function wrapPluginStateError(", "let publicMessage = message;",
         "// database paths, SQL, or stored values and must stay out of this message.",
@@ -193,6 +205,7 @@ COMPILED_HASHES = {
     "dist/short-term-promotion-record-DrLa1fiO.mjs": "26a083e3c17cd6512af9785266c7bdffe459cd02591be4127004efe7eb8887c7",
     "dist/dreaming-dreams-file-BJzlZFlf.mjs": "fbc57813554fc29a6b7c5bcbada4baa21d5f774c33edd54297a3976741fa4492",
     "dist/session-accessor.transcript-target-vG-nGtYV.mjs": "01158efffa0ae0a91dea780bccaf63d22a65ff73f65ef8a24cbc0770910dc51f",
+    "dist/sqlite-schema-contract-htlQbbqu.mjs": "4e4c257fed8d19b03276f9e821a64739d04b9dad221a15db6e6dddf27cafa727",
     "dist/plugin-state-worker-errors-h0DhWT0Q.mjs": "db3772b09e2817f423d0156c9a20bf015aa99651e2fadaca907642cfecf40f14",
 }
 COMPILED_ANCHORS = {
@@ -242,6 +255,11 @@ COMPILED_ANCHORS = {
         "async function withMemoryWorkspacePreparation(", "withMemoryWorkspacePreparation as _"),
     "dist/session-accessor.transcript-target-vG-nGtYV.mjs": (
         "function resolveSessionTranscriptDatabasePath(", "resolveSessionTranscriptDatabasePath as n"),
+    "dist/sqlite-schema-contract-htlQbbqu.mjs": (
+        "function assertSqliteSchemaContains(", "function collectSqliteSchemaIssuesInSnapshot(",
+        "\tfor (const [tableName, expectedTable] of expected) {",
+        'add("unexpected-trigger", actualTrigger.name)',
+        "    SELECT tbl_name, name, sql FROM sqlite_schema WHERE type = 'trigger' ORDER BY tbl_name, name"),
     "dist/plugin-state-worker-errors-h0DhWT0Q.mjs": (
         "function wrapPluginStateError(", "let publicMessage = message;", "message: publicMessage,",
         "function createPluginStateError(", "var PluginStateStoreError = class extends Error {",
@@ -282,6 +300,7 @@ GENUINE_HELPER_EXPORTS = {
     "dist/dreaming-state-VYUvbU-n.mjs": ("p",),
     "dist/plugin-state-store-BPUaLoVD.mjs": ("r", "t", "u"),
     "dist/plugin-state-worker-errors-h0DhWT0Q.mjs": ("a", "f", "D"),
+    "dist/sqlite-schema-contract-htlQbbqu.mjs": ("t",),
     "dist/extensions/memory-core/manager-runtime.js": ("MemoryIndexManager", "closeAllMemoryIndexManagers"),
     "dist/openclaw-agent-db-lifecycle-B8sSLgPo.mjs": ("s",),
     "dist/openclaw-state-db.paths-rJI64Ab5.mjs": ("s",),
@@ -380,6 +399,11 @@ def prepare_session_reset_boundaries_bindings(checkout: Path, runtime_root: Path
         "genuineHelperExports": {name: list(exports) for name, exports in GENUINE_HELPER_EXPORTS.items()},
         "requiredObservedOwners": [list(owner) for owner in REQUIRED_OBSERVED_OWNERS],
         "nativeArtifacts": native_evidence, "indexWorkerRoute": list(INDEX_WORKER_ROUTE),
+        "staticFixtureSourceProof": {
+            "path": "src/plugin-state/plugin-state-store.import.test.ts",
+            "sha256": SOURCE_HASHES["src/plugin-state/plugin-state-store.import.test.ts"],
+            "purpose": "Original connection-local TEMP triggers exercise plugin-state write failures",
+            "executed": False, "runtimeExecutionRequired": False},
         "requiresIndexWorkerForEveryCase": False,
         "provider": "none", "llmSlug": False, "managerConstructed": True,
         "hookInvocation": "Original registration, event construction, dispatch, pending-write drain and unregister",

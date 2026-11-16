@@ -6,6 +6,7 @@ from collections import Counter
 import hashlib
 import json
 from pathlib import Path
+import re
 import subprocess
 import sys
 
@@ -17,14 +18,14 @@ from equivalence.catalog_migration import definition_authority  # noqa: E402
 from equivalence.harness import _adapter_identity, _implementation_identity, _same_json  # noqa: E402
 from equivalence.strict_report_reader import Reader, _constant, _finite, _object  # noqa: E402
 
-PRODUCT = "c047294d62a7c1dedddf5875e4d20cb7d80bfd89"
+PRODUCT = "f8a8ffd09f633996f299a93ab7306282f0448130"
 SCOPE = "a8e066e63970dd0be734485d62a5932640894b8c0a42f47ac3eb67f784cbc7b9"
-SDK = {"sourceSha256": "f756c2e1d9bf3dce55a7acd1e88162ec07d7fbd9eaa5990209e82f21b19fd41e", "sourceFiles": 162}
+SDK = {"sourceSha256": "48973e195a41e1d2dfdc8bbe366293b8ebed0830571b3d0764ebe8a8a7b443a0", "sourceFiles": 162}
 OPERATIONS = ("host-restart-session-runtime", "host-update-isolation-runtime",
               "host-turn-barrier-boundaries-runtime", "index-identity-boundaries-runtime",
               "query-sync-outcomes-runtime", "query-sync-boundaries-runtime",
               "host-turn-barrier-v4-runtime", "forget-index-fence-v6-runtime", "forget-lineage-runtime",
-              "forget-boundaries-runtime", "recall-signals-runtime")
+              "forget-boundaries-runtime", "recall-signals-runtime", "embed-cache-lifecycle-runtime")
 
 
 def require(value, message):
@@ -47,18 +48,20 @@ def load(path):
     return value
 
 
-def project(path, host_ids, lineage_ids, boundary_ids, recall_ids):
+def project(path, host_ids, lineage_ids, boundary_ids, recall_ids, cache_ids):
     kept = {"schemaVersion", "kind", "mode", "status", "fullScopePassed", "implementation",
             "reference", "manifestSha256", "adapterSha256", "casesSha256", "definitionMigration",
             "summary", "requirements", "errors", "startedAt", "finishedAt", "durationSeconds",
             "referenceExecution", "paidProviderCalls", "providerCredentialsForwarded",
             "forgetLineageOutcomesFamilyComplete", "forgetBoundariesFamilyComplete",
             "forgetLineageBindings", "forgetLineageNode", "recallSignalsFamilyComplete",
-            "recallSignalsBindings", "recallSignalsNode"}
+            "recallSignalsBindings", "recallSignalsNode", "embeddingCacheFamilyComplete",
+            "embeddingCacheBindings", "embeddingCacheNode"}
     result = {"cases": [], "hostPairs": {}, "hostDiagnostics": {}, "mismatchPairs": {},
               "lineagePairs": {}, "lineageDiagnostics": {}, "lineageTraces": {},
               "boundaryPairs": {}, "boundaryDiagnostics": {}, "boundaryTraces": {},
-              "recallPairs": {}, "recallDiagnostics": {}, "recallTraces": {}}
+              "recallPairs": {}, "recallDiagnostics": {}, "recallTraces": {},
+              "cachePairs": {}, "cacheDiagnostics": {}, "cacheTraces": {}}
     before = digest(path)
 
     def accept(key, value, array):
@@ -84,10 +87,23 @@ def project(path, host_ids, lineage_ids, boundary_ids, recall_ids):
                     result["boundaryPairs"][value["id"]] = pair
                 if value["id"] in recall_ids:
                     result["recallPairs"][value["id"]] = pair
+                if value["id"] in cache_ids:
+                    result["cachePairs"][value["id"]] = pair
                 if value["status"] == "mismatched":
                     result["mismatchPairs"][value["id"]] = pair
             require(value["status"] != "mismatched" or "python" in value, "Mismatch omitted whole public values")
             result["cases"].append(row)
+        elif key == "runtimeDiagnostics" and value.get("id") in cache_ids:
+            require(value.get("side") in {"native", "python"}, "Unknown embedding cache diagnostic side")
+            identity = value["id"] + "--" + value["side"]
+            require(identity not in result["cacheDiagnostics"], "Duplicate embedding cache diagnostic")
+            require(isinstance(value.get("rawSnapshots"), list) and len(value["rawSnapshots"]) == 1
+                    and isinstance(value["rawSnapshots"][0], dict),
+                    "Embedding cache diagnostic is not a complete singleton packet")
+            result["cacheDiagnostics"][identity] = value
+        elif key == "releaseTraces" and value.get("id") in cache_ids:
+            require(value["id"] not in result["cacheTraces"], "Duplicate embedding cache process trace")
+            result["cacheTraces"][value["id"]] = value
         elif key == "runtimeDiagnostics" and value.get("id") in recall_ids:
             require(value.get("side") in {"native", "python"}, "Unknown recall diagnostic side")
             identity = value["id"] + "--" + value["side"]
@@ -372,6 +388,192 @@ def replay_recall(data, cases, args):
     return results
 
 
+def _cache_carrier(carrier, fields):
+    require(isinstance(carrier, dict) and set(carrier) == set(fields)
+            and isinstance(carrier.get("text"), str) and type(carrier.get("bytes")) is int
+            and carrier["bytes"] >= 0 and isinstance(carrier.get("sha256"), str)
+            and re.fullmatch(r"[0-9a-f]{64}", carrier["sha256"]),
+            "Embedding cache transport carrier has an invalid complete shape")
+    payload = carrier["text"].encode("utf8")
+    require(len(payload) == carrier["bytes"] and hashlib.sha256(payload).hexdigest() == carrier["sha256"],
+            "A complete original embedding cache transport carrier changed")
+    return payload
+
+
+def replay_cache(data, cases, args):
+    from equivalence.embedding_cache_lifecycle import CASE_HASHES, validate_registration
+    from equivalence.embedding_cache_lifecycle_bindings import (
+        COMPILED_HASHES, REQUIRED_RUNTIME_ARTIFACTS, REQUIRED_WORKER_ROUTE,
+        prepare_embedding_cache_lifecycle_bindings,
+    )
+    from equivalence.embedding_cache_lifecycle_evidence import validate_pair
+    from equivalence.embedding_cache_lifecycle_profile import (
+        PROVIDER_MODE, PROVIDER_SOURCE_HASHES, prepare_embedding_cache_lifecycle_profile,
+    )
+    from equivalence.model_runtime_authority import prepare_model_node_authority
+    from equivalence.release_runtime import prepare_release_runtime
+
+    validate_registration(cases)
+    require(len(cases) == 8 and [case["id"] for case in cases] == list(CASE_HASHES),
+            "Embedding cache replay requires the complete frozen eight-case family")
+    require(set(data["cachePairs"]) == set(data["cacheTraces"]) == set(CASE_HASHES)
+            and set(data["cacheDiagnostics"]) == {
+                cid + "--" + side for cid in CASE_HASHES for side in ("native", "python")},
+            "Embedding cache replay omitted a whole public pair, raw packet or process trace")
+    runtime = prepare_release_runtime(args.reference, args.release_runtime, download=False)
+    node = prepare_model_node_authority(args.node)
+    require(_same_json(data["embeddingCacheBindings"], prepare_embedding_cache_lifecycle_bindings(
+        args.reference, Path(runtime["runtimeRoot"]))) and _same_json(data["embeddingCacheNode"], node),
+        "Embedding cache source/artifact/executable authority changed")
+    for relative, expected in PROVIDER_SOURCE_HASHES.items():
+        source = ROOT / "equivalence" / relative
+        require(not source.is_symlink() and source.resolve(strict=True) == source and digest(source) == expected,
+                "The reviewed embedding cache provider source or manifest changed")
+    family = ROOT / ".equivalence-results/embedding-cache-lifecycle"
+    require(family.resolve(strict=True) == family and not family.is_symlink(),
+            "Embedding cache evidence family is not its canonical owned directory")
+    capture_pattern = re.compile(
+        r"tmp/plugin-captures/[0-9a-f-]{36}/captures/openclaw-plugin-build-[A-Za-z0-9]{6}"
+        r"/package-0/node_modules/embedding-cache-provider/index\.mjs\Z")
+    source = ROOT / "equivalence/embedding-cache-provider/index.mjs"
+    provider_sha = PROVIDER_SOURCE_HASHES["embedding-cache-provider/index.mjs"]
+    results = []
+    for case in cases:
+        cid = case["id"]
+        native = data["cacheDiagnostics"][cid + "--native"]
+        sdk = data["cacheDiagnostics"][cid + "--python"]
+        require(native["validationStatus"] == sdk["validationStatus"] == "verified"
+                and isinstance(native["sha256"], str) and re.fullmatch(r"[0-9a-f]{64}", native["sha256"]),
+                "Embedding cache capture was not affirmatively validated")
+        directory = Path(sdk["evidenceDirectory"])
+        require(directory.is_absolute() and directory.resolve(strict=True) == directory
+                and directory.parent == family and directory.name.startswith("sdk-attempt-"),
+                "Embedding cache SDK capture escaped its actual family root")
+        raw_path = directory / "python-raw.json"
+        require(raw_path.is_file() and not raw_path.is_symlink() and raw_path.resolve(strict=True) == raw_path,
+                "Embedding cache SDK raw file is not its original owned regular path")
+        raw_sha, records = digest(raw_path), load(raw_path)
+        require(isinstance(records, list) and len(records) == 1 and isinstance(records[0], dict)
+                and raw_sha == sdk["sha256"] and _same_json(records, sdk["rawSnapshots"]),
+                "Complete retained embedding cache SDK raw bytes differ from the full report")
+        sdk_raw = records[0]
+        trace = data["cacheTraces"][cid]
+        transport = trace["embeddingCacheTransport"]
+        profile = prepare_embedding_cache_lifecycle_profile(case, args.node)
+        require(trace["kind"] == "authenticated-process-thread-trace"
+                and trace["provider"] == PROVIDER_MODE and trace["networkFetchDenied"] is True
+                and _same_json(transport["profile"], profile),
+                "Embedding cache original process capability changed")
+        require(isinstance(transport["traceFiles"], list) and transport["traceFiles"]
+                and isinstance(transport["originalProcessStreams"], dict)
+                and set(transport["originalProcessStreams"]) == {"stdout", "stderr"}
+                and isinstance(transport["fixtureSourceCaptures"], list),
+                "The complete embedding cache traces, process streams or source proof list are missing")
+        threads, loaded, worker_loaded, capture_loads, trace_names = [], set(), set(), {}, set()
+        for carrier in transport["traceFiles"]:
+            payload = _cache_carrier(carrier, ("name", "bytes", "sha256", "text"))
+            name = carrier["name"]
+            matched = re.fullmatch(r"([1-9][0-9]*)-([0-9]+)\.jsonl", name)
+            require(matched is not None and name not in trace_names and payload.endswith(b"\n"),
+                    "Embedding cache thread carrier is duplicated or incomplete")
+            trace_names.add(name)
+            pid, thread = int(matched[1]), int(matched[2])
+            events = [json.loads(line, object_pairs_hook=_object, parse_constant=_constant)
+                      for line in payload.splitlines()]
+            _finite(events)
+            require(events and all(isinstance(event, dict) for event in events),
+                    "Embedding cache protected thread trace is empty or invalid")
+            first = events[0]
+            require(first.get("event") == "bootstrap" and first.get("pid") == pid
+                    and first.get("threadId") == thread and first.get("isMainThread") is (thread == 0)
+                    and first.get("fetchDenied") is True and first.get("providerMode") == PROVIDER_MODE
+                    and first.get("preloadSha256") == digest(ROOT / "equivalence/release-preload.mjs")
+                    and _same_json(first.get("runtime"), node)
+                    and _same_json(first.get("embeddingCacheProfile"), profile),
+                    "Embedding cache thread bypassed its declared protected runtime")
+            threads.append({"pid": pid, "threadId": thread, "isMainThread": thread == 0, "runtime": node,
+                            "embeddingCacheProfile": profile, "providerMode": PROVIDER_MODE})
+            for event in events[1:]:
+                require(event.get("event") in {"load", "resolve-native"}
+                        and event.get("pid") == pid and event.get("threadId") == thread,
+                        "Embedding cache trace contains an undeclared import or network event")
+                if event["event"] != "load":
+                    continue
+                if event.get("kind") == "release":
+                    key = (event.get("package"), event.get("path"), event.get("sha256"))
+                    loaded.add(key)
+                    if thread > 0:
+                        worker_loaded.add(key)
+                elif event.get("kind") == "embedding-fixture-capture":
+                    key = event.get("capturePath")
+                    require(isinstance(key, str), "Embedding provider source capture path is invalid")
+                    capture_loads.setdefault(key, []).append(event)
+        require(_same_json(trace["threads"], threads)
+                and any(row["isMainThread"] for row in threads)
+                and type(trace["protectedWorkerThreads"]) is int and trace["protectedWorkerThreads"] > 0
+                and trace["protectedWorkerThreads"] == sum(not row["isMainThread"] for row in threads),
+                "Embedding cache protected process/worker inventory changed")
+        require(all(("node_modules/openclaw", relative, COMPILED_HASHES[relative]) in loaded
+                    for relative in REQUIRED_RUNTIME_ARTIFACTS)
+                and all(("node_modules/openclaw", relative, COMPILED_HASHES[relative]) in worker_loaded
+                        for relative in REQUIRED_WORKER_ROUTE),
+                "Embedding cache replay omitted an actual declared compiled owner or worker route")
+        captured = {}
+        for carrier in transport["fixtureSourceCaptures"]:
+            payload = _cache_carrier(carrier, (
+                "sourcePath", "capturePath", "sha256", "proofPath", "proofSha256", "bytes", "text"))
+            capture = carrier["capturePath"]
+            require(isinstance(capture, str) and capture_pattern.fullmatch(capture)
+                    and capture not in captured and carrier["sourcePath"] == str(source)
+                    and carrier["sha256"] == carrier["proofSha256"] == provider_sha
+                    and payload == source.read_bytes()
+                    and carrier["proofPath"] == "embedding-fixture-source-captures/" + hashlib.sha256(
+                        (capture + "\0" + provider_sha).encode()).hexdigest() + ".mjs",
+                    "Embedding cache provider proof escaped its exact frozen source authority")
+            captured[capture] = carrier
+        require(set(captured) == set(capture_loads),
+                "Embedding cache provider source load and complete retained proof list differ")
+        for capture, events in capture_loads.items():
+            proof = captured[capture]
+            require(all(event.get("sourcePath") == event.get("path") == proof["sourcePath"]
+                        and event.get("sha256") == proof["sha256"]
+                        and event.get("proofPath") == proof["proofPath"] for event in events),
+                    "Embedding cache source proof does not authenticate its actual provider load")
+        for carrier in transport["originalProcessStreams"].values():
+            _cache_carrier(carrier, ("text", "bytes", "sha256"))
+        stream = transport["originalProcessStreams"]["stdout"]
+        original = json.loads(stream["text"], object_pairs_hook=_object, parse_constant=_constant)
+        _finite(original)
+        require(isinstance(original, dict) and isinstance(original.get("results"), list)
+                and len(original["results"]) == 1 and original["results"][0]["id"] == cid
+                and original["results"][0]["ok"] is True,
+                "Original embedding cache stdout omitted its complete return")
+        native_public = original["results"][0]["result"]
+        native_raw = native["rawSnapshots"][0]
+        require(native_raw["runtimeRoot"] == runtime["runtimeRoot"]
+                and native_raw["node"] == {"version": node["nodeVersion"], "executable": node["execPath"]}
+                and any(row["isMainThread"] and row["pid"] == native_raw["pid"] for row in threads),
+                "The retained cache manager belongs to another original process or runtime")
+        sdk_public = {"provider": PROVIDER_MODE, "before": sdk_raw["initialState"],
+                      "observations": [row["observed"] for row in sdk_raw["operations"]]}
+        actual_native, actual_sdk = validate_pair(case, native_raw, sdk_raw,
+                                                 native_public, sdk_public, directory)
+        pair = data["cachePairs"][cid]
+        require(_same_json(actual_native, pair["openclaw"]) and _same_json(actual_sdk, pair["python"])
+                and digest(raw_path) == raw_sha,
+                "Embedding cache whole public projection or actual raw bytes changed during replay")
+        results.append({"id": cid, "validated": True, "publicMatch": _same_json(actual_native, actual_sdk),
+                        "sdkRawSha256": raw_sha, "nativeCollectorRawSha256": native["sha256"],
+                        "nativeRawSnapshotsSha256": hashlib.sha256(canonical(native["rawSnapshots"])).hexdigest(),
+                        "originalStdoutSha256": stream["sha256"],
+                        "originalStderrSha256": transport["originalProcessStreams"]["stderr"]["sha256"],
+                        "actualOperations": len(actual_native["observations"]),
+                        "actualProviderCalls": len(actual_native["observations"][-1]["state"]["providerCalls"]),
+                        "protectedWorkerThreads": trace["protectedWorkerThreads"],
+                        "fixtureSourceCaptures": len(captured), "nativeOnDiskRawReopened": False})
+    return results
+
+
 def recompute(data, definitions, scope):
     rows = data["cases"]
     require(len(rows) == len(definitions) and len({row["id"] for row in rows}) == len(definitions),
@@ -433,16 +635,26 @@ def assess(args, result):
     migration = definition_authority(definitions, fif_version="v6")
     require(len(definitions) == seal["registeredCases"]
             and hashlib.sha256(canonical(definitions)).hexdigest() == seal["catalogSha256"], "Sealed catalog changed")
+    previous = {"registeredCases": 1475,
+                "sha256": "8c6f2adb034b7360f0ef9beeb45383d77b7df9bfe9057d2f8df98eb1ac397335",
+                "completePrefixUnchanged": True}
+    require(len(definitions) == 1483 and seal["catalogSha256"] ==
+            "33277abb724a6b89423085e735fc08b950b647b577db9879df8f2395e519a93d"
+            and _same_json(seal["previousCatalog"], previous)
+            and hashlib.sha256(canonical(definitions[:1475])).hexdigest() == previous["sha256"],
+            "The complete prior comparison catalog changed or the frozen cache append is incomplete")
     host_cases = [case for case in definitions if case["operation"] == "host-turn-barrier-v4-runtime"]
     lineage_cases = [case for case in definitions if case["operation"] == "forget-lineage-runtime"]
     boundary_cases = [case for case in definitions if case["operation"] == "forget-boundaries-runtime"]
     recall_cases = [case for case in definitions if case["operation"] == "recall-signals-runtime"]
+    cache_cases = [case for case in definitions if case["operation"] == "embed-cache-lifecycle-runtime"]
     data = project(args.report, {case["id"] for case in host_cases}, {case["id"] for case in lineage_cases},
-                   {case["id"] for case in boundary_cases}, {case["id"] for case in recall_cases})
+                   {case["id"] for case in boundary_cases}, {case["id"] for case in recall_cases},
+                   {case["id"] for case in cache_cases})
     result.update(completeReportParsed=True, report=data["report"], projection={
         key: value for key, value in data.items() if key not in {
             "lineagePairs", "lineageDiagnostics", "lineageTraces", "boundaryPairs", "boundaryDiagnostics", "boundaryTraces",
-            "recallPairs", "recallDiagnostics", "recallTraces"}})
+            "recallPairs", "recallDiagnostics", "recallTraces", "cachePairs", "cacheDiagnostics", "cacheTraces"}})
     require(data["errors"] == [] and data["mode"] == "full" and data["kind"] == "pinned-differential-acceptance",
             "Global collector error or non-full report; no candidate score")
     require(_same_json(data["implementation"], seal["implementation"])
@@ -468,6 +680,8 @@ def assess(args, result):
     result["lineageReplays"] = replay_lineage(data, lineage_cases, args)
     result["boundaryReplays"] = replay_boundaries(data, boundary_cases, args)
     result["recallReplays"] = replay_recall(data, recall_cases, args)
+    result["embeddingCacheReplays"] = replay_cache(data, cache_cases, args)
+    from equivalence.embedding_cache_lifecycle import family_complete as cache_complete
     from equivalence.forget_boundaries import family_complete as boundaries_complete
     from equivalence.forget_lineage_outcomes import family_complete
     from equivalence.recall_signals import family_complete as recall_complete
@@ -479,6 +693,10 @@ def assess(args, result):
     require(data["recallSignalsFamilyComplete"] is recall_complete(data["cases"])
             is metrics["families"]["recall-signals-runtime"]
             is all(row["publicMatch"] for row in result["recallReplays"]), "Recall complete-family gate differs")
+    require(data["embeddingCacheFamilyComplete"] is cache_complete(data["cases"])
+            is metrics["families"]["embed-cache-lifecycle-runtime"]
+            is all(row["publicMatch"] for row in result["embeddingCacheReplays"]),
+            "Embedding cache complete-family gate differs")
     expected_status = ("blocked" if metrics["cases"].get("blocked") else "mismatched"
                        if metrics["cases"].get("mismatched") else "incomplete" if metrics["uncovered"] else "passed")
     require(data["status"] == expected_status and data["fullScopePassed"] is (expected_status == "passed"),
@@ -488,6 +706,7 @@ def assess(args, result):
     require(digest(args.fif_replay) == replay_sha, "FIF replay changed during assessment")
     result.update(status="assessed", candidateAssessment=metrics, deltaFromHistorical71=metrics["verified"] - 71,
                   deltaFromHistorical77=metrics["verified"] - 77,
+                  deltaFromHistorical79=metrics["verified"] - 79,
                   fifReplaySha256=replay_sha, fullScopePassed=data["fullScopePassed"])
 
 
@@ -498,7 +717,7 @@ def main():
     args = parser.parse_args()
     result = {"kind": "approved-product-complete-eof-candidate-assessment", "status": "blocked",
               "metadataOnlyAssessment": True, "completeRootAudit": False, "acceptancePointsAwarded": 0,
-              "originalEnginesExecuted": False, "historicalVerifiedConditions": 71,
+              "originalEnginesExecuted": False, "historicalVerifiedConditions": 79,
               "completeReportParsed": False, "candidateAssessment": None, "errors": []}
     try:
         assess(args, result)

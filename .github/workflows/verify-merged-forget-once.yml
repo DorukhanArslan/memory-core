@@ -1,10 +1,10 @@
-name: Verify recall signals once
-# One frozen 1,475-case measurement; retain the first result without retrying.
-# The complete six-case focused comparison passed before this sole full run.
+name: Verify embedding cache once
+# One frozen 1,483-case measurement; retain the first result without retrying.
+# The original 1,475 definitions stay intact; eight cache definitions are appended.
 
 on:
   push:
-    branches: [verify/recall-signals-once]
+    branches: [verify/embedding-cache-once]
     paths: [.github/workflows/verify-merged-forget-once.yml]
 
 permissions:
@@ -36,7 +36,7 @@ jobs:
           persist-credentials: false
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
         with:
-          ref: c047294d62a7c1dedddf5875e4d20cb7d80bfd89
+          ref: f8a8ffd09f633996f299a93ab7306282f0448130
           path: .reference/product-source
           persist-credentials: false
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
@@ -78,7 +78,7 @@ jobs:
           --reference .reference/openclaw --node "$(command -v node)"
           --sdk-source-root . --adapter-root .
           --output .equivalence-results/summary/forget-family-replay.json
-      - name: Assess the complete report and retained Host and recall captures
+      - name: Assess the complete report and retained Host, recall and cache captures
         if: always() && steps.comparison.outcome != 'skipped'
         id: assessment
         continue-on-error: true
@@ -95,7 +95,7 @@ jobs:
         if: always()
         uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
         with:
-          name: recall-signals-summary
+          name: embedding-cache-summary
           path: .equivalence-results/summary/
           include-hidden-files: true
           if-no-files-found: warn
@@ -103,7 +103,7 @@ jobs:
         if: always()
         uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
         with:
-          name: recall-signals-raw-evidence
+          name: embedding-cache-raw-evidence
           path: |
             .equivalence-results/
             /var/tmp/memory-host-v4-*/
@@ -137,7 +137,7 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        part: [0, 1, 2, 3, 4, 5, 6, 7]
+        part: [0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15]
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
         with:

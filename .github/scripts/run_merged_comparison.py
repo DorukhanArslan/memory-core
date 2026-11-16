@@ -16,9 +16,12 @@ from equivalence.cases import build_cases  # noqa: E402
 from equivalence.catalog_migration import definition_authority  # noqa: E402
 from equivalence.harness import _adapter_identity, _implementation_identity  # noqa: E402
 
-PRODUCT = "c047294d62a7c1dedddf5875e4d20cb7d80bfd89"
-SDK_SHA = "f756c2e1d9bf3dce55a7acd1e88162ec07d7fbd9eaa5990209e82f21b19fd41e"
-CATALOG_SHA = "8c6f2adb034b7360f0ef9beeb45383d77b7df9bfe9057d2f8df98eb1ac397335"
+PRODUCT = "f8a8ffd09f633996f299a93ab7306282f0448130"
+SDK_SHA = "48973e195a41e1d2dfdc8bbe366293b8ebed0830571b3d0764ebe8a8a7b443a0"
+SDK_FILES = 162
+PREVIOUS_CASES = 1475
+PREVIOUS_CATALOG_SHA = "8c6f2adb034b7360f0ef9beeb45383d77b7df9bfe9057d2f8df98eb1ac397335"
+CATALOG_SHA = "33277abb724a6b89423085e735fc08b950b647b577db9879df8f2395e519a93d"
 SCOPE_SHA = "a8e066e63970dd0be734485d62a5932640894b8c0a42f47ac3eb67f784cbc7b9"
 OUT = ROOT / ".equivalence-results"
 SUMMARY = OUT / "summary"
@@ -44,23 +47,30 @@ def inventory():
 
 
 def main():
+    assert len(PRODUCT) == 40 and all(char in "0123456789abcdef" for char in PRODUCT), "Product commit is not frozen"
+    assert len(SDK_SHA) == 64 and all(char in "0123456789abcdef" for char in SDK_SHA), "SDK source is not frozen"
     SUMMARY.mkdir(parents=True, exist_ok=False)
     product_root = ROOT / ".reference/product-source"
     assert git("rev-parse", "HEAD", cwd=product_root) == PRODUCT
     assert not git("status", "--porcelain", "--untracked-files=no")
     assert git("rev-parse", "HEAD:memory_core") == git("rev-parse", "HEAD:memory_core", cwd=product_root)
     implementation = _implementation_identity()
-    assert implementation["sourceSha256"] == SDK_SHA and implementation["sourceFiles"] == 162
+    assert implementation["sourceSha256"] == SDK_SHA and implementation["sourceFiles"] == SDK_FILES
     cases = build_cases()
     canonical = json.dumps(cases, sort_keys=True, ensure_ascii=True, separators=(",", ":"), allow_nan=False)
-    assert len(cases) == 1475 and hashlib.sha256(canonical.encode()).hexdigest() == CATALOG_SHA
+    assert len(cases) == 1483 and hashlib.sha256(canonical.encode()).hexdigest() == CATALOG_SHA
+    prefix = json.dumps(cases[:PREVIOUS_CASES], sort_keys=True, ensure_ascii=True,
+                        separators=(",", ":"), allow_nan=False).encode()
+    assert hashlib.sha256(prefix).hexdigest() == PREVIOUS_CATALOG_SHA
     assert digest(ROOT / "equivalence/scope.json") == SCOPE_SHA
     tracked, adapters = inventory(), _adapter_identity()
     seal = {"kind": "approved-product-comparison-source-seal", "implementation": implementation,
-            "productSourceCommit": PRODUCT, "productSdk": {"sourceSha256": SDK_SHA, "sourceFiles": 162},
+            "productSourceCommit": PRODUCT, "productSdk": {"sourceSha256": SDK_SHA, "sourceFiles": SDK_FILES},
             "sdkGitTree": git("rev-parse", "HEAD:memory_core"), "allTrackedFileHashes": tracked,
             "adapters": adapters, "scopeSha256": SCOPE_SHA, "catalogSha256": CATALOG_SHA,
             "registeredCases": len(cases), "definitionMigration": definition_authority(cases, fif_version="v6"),
+            "previousCatalog": {"registeredCases": PREVIOUS_CASES, "sha256": PREVIOUS_CATALOG_SHA,
+                                "completePrefixUnchanged": True},
             "sdkBytesEqualProductSource": True, "sealedAt": datetime.now(timezone.utc).isoformat()}
     write("source-seal.json", seal)
     scratch = Path(os.environ["RUNNER_TEMP"]) / ("memory-core-once-" + os.environ["GITHUB_RUN_ID"])

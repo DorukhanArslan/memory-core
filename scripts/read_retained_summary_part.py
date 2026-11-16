@@ -1,6 +1,11 @@
 """Read one bounded part of the existing reviewed summary; no engine execution."""
 
-import base64, hashlib, json, os, urllib.request, urllib.error
+import base64
+import hashlib
+import json
+import os
+import urllib.error
+import urllib.request
 from urllib.parse import urlsplit
 
 artifact = os.environ["ARTIFACT_ID"]
@@ -35,12 +40,12 @@ except urllib.error.HTTPError as error:
     assert urlsplit(target).scheme == "https"
     response = urllib.request.urlopen(target, timeout=30)
 with response:
-    archive = response.read(640001)
-assert len(archive) == metadata["size_in_bytes"] and len(archive) <= 640000
+    archive = response.read(1000001)
+assert len(archive) == metadata["size_in_bytes"] and len(archive) <= 1000000
 assert hashlib.sha256(archive).hexdigest() == expected
 part = int(os.environ["REPORT_PART"])
-assert 0 <= part < 8
-width = (len(archive) + 7) // 8
+assert 0 <= part < 16
+width = (len(archive) + 15) // 16
 payload = archive[part * width : (part + 1) * width]
 encoded = base64.b64encode(payload).decode("ascii")
 print(f"REPORT_ZIP_BEGIN:{artifact}:{part}:{len(payload)}")

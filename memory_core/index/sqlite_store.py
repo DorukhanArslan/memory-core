@@ -270,6 +270,7 @@ class SQLiteMemoryStore:
         *,
         revision_fence: IndexRevisionFence | None = None,
         artifact_provenance: MemoryArtifactProvenanceStore | None = None,
+        embedding_cache_enabled: bool = True,
     ):
         # The ``memory_index_state`` fence a rebuild is published against (see :meth:`reindex`);
         # assignable after construction, ``None`` (default) means no fence.
@@ -281,6 +282,7 @@ class SQLiteMemoryStore:
         self.config = config
         self.flags = config.effective_flags()
         self.embeddings = embeddings
+        self.embedding_cache_enabled = embedding_cache_enabled
         self.path.parent.mkdir(parents=True, exist_ok=True)
         self._init_schema()
 
@@ -891,80 +893,77 @@ class SQLiteMemoryStore:
         embeddings: list[list[float]] = [[] for _ in chunks]
         if provider is not None and chunks:
             chunk_refs = [{"hash": _text_hash(chunk.text)} for chunk in chunks]
-            with self.connect() as db:
-                cached = load_memory_embedding_cache(
-                    db, enabled=True, provider_identities=identities,
-                    hashes=[entry["hash"] for entry in chunk_refs],
-                )
-            # Hits and new vectors must occupy one space, including across
-            # providers' alias identities and a process restart.
-            for chunk_hash, embedding in list(cached.items()):
-                valid = (is_valid_memory_embedding(embedding) if active_dimensions is None
-                         else is_valid_memory_embedding(embedding, active_dimensions))
-                if not valid:
-                    del cached[chunk_hash]
-                elif active_dimensions is None:
-                    active_dimensions = len(embedding)
-            collected = collect_memory_cached_embeddings(chunk_refs, cached)
-            embeddings = collected["embeddings"]
-            missing = collected["missing"]
-            if missing:
-                def accept_generated(batch, generated):
-                    nonlocal active_dimensions
-                    try:
-                        dimensions = validate_memory_embedding_batch(
-                            generated, len(batch), dimensions=active_dimensions,
-                        )
-                    except ValueError:
-                        if (active_dimensions is not None and isinstance(generated, list)
-                                and any(is_valid_memory_embedding(value)
-                                        and len(value) != active_dimensions for value in generated)):
-                            # Separate successful requests can disagree. Keep
-                            # published rows but discard this ambiguous space.
-                            with self.connect() as db:
-                                db.execute("BEGIN IMMEDIATE")
-                                assert_owner(db)
-                                clear_memory_embedding_cache_identities(db, identities)
-                                db.execute(
-                                    f"UPDATE {INDEX_SYNC_TABLE} SET needs_rebuild = 1, "
-                                    "revision = revision + 1 WHERE id = 1"
-                                )
-                        raise
-                    active_dimensions = dimensions
-                    assert_sources_current()
-                    with self.connect() as db:
-                        db.execute("BEGIN IMMEDIATE")
-                        assert_owner(db)
-                        upsert_memory_embedding_cache(
-                            db, enabled=True, provider=provider, provider_key=provider_key,
-                            max_entries=EMBEDDING_CACHE_MAX_ENTRIES,
-                            entries=[{"hash": chunk_refs[item["index"]]["hash"], "embedding": value}
-                                     for item, value in zip(batch, generated, strict=True)],
-                        )
-                    for item, value in zip(batch, generated, strict=True):
-                        embeddings[item["index"]] = value
-
-                missing_by_index = {item["index"]: item for item in missing}
-                source_offset = 0
-                # The native inline manager dispatches each source separately;
-                # its cache-admission callback runs after every successful
-                # request/sub-batch, before a later terminal request can fail.
-                for source_chunks in prepared.values():
-                    source_missing = [missing_by_index[index]
-                                      for index in range(source_offset, source_offset + len(source_chunks))
-                                      if index in missing_by_index]
-                    source_offset += len(source_chunks)
-                    batches = build_memory_embedding_batches(
-                        source_missing, lambda item: chunks[item["index"]].text,
+            def accept_generated(batch, generated):
+                nonlocal active_dimensions
+                try:
+                    dimensions = validate_memory_embedding_batch(
+                        generated, len(batch), dimensions=active_dimensions,
                     )
-                    for batch in batches:
-                        run_memory_embedding_batch_retry_with_split(
-                            batch,
-                            lambda items: embedding_provider.embed_documents(
-                                [chunks[item["index"]].text for item in items]
-                            ),
-                            on_success=accept_generated,
-                        )
+                except ValueError:
+                    if (active_dimensions is not None and isinstance(generated, list)
+                            and any(is_valid_memory_embedding(value)
+                                    and len(value) != active_dimensions for value in generated)):
+                        # Separate successful requests can disagree. Keep
+                        # published rows but discard this ambiguous space.
+                        with self.connect() as db:
+                            db.execute("BEGIN IMMEDIATE")
+                            assert_owner(db)
+                            clear_memory_embedding_cache_identities(db, identities)
+                            db.execute(
+                                f"UPDATE {INDEX_SYNC_TABLE} SET needs_rebuild = 1, "
+                                "revision = revision + 1 WHERE id = 1"
+                            )
+                    raise
+                active_dimensions = dimensions
+                assert_sources_current()
+                with self.connect() as db:
+                    db.execute("BEGIN IMMEDIATE")
+                    assert_owner(db)
+                    upsert_memory_embedding_cache(
+                        db, enabled=self.embedding_cache_enabled, provider=provider, provider_key=provider_key,
+                        max_entries=EMBEDDING_CACHE_MAX_ENTRIES,
+                        entries=[{"hash": chunk_refs[item["index"]]["hash"], "embedding": value}
+                                 for item, value in zip(batch, generated, strict=True)],
+                    )
+                for item, value in zip(batch, generated, strict=True):
+                    embeddings[item["index"]] = value
+
+            source_offset = 0
+            # The original sequential inline path reads cache at each source
+            # boundary, so vectors admitted by an earlier source are reusable.
+            # It collects once per source, preserving request/sub-batch behavior.
+            for source_chunks in prepared.values():
+                source_refs = chunk_refs[source_offset:source_offset + len(source_chunks)]
+                with self.connect() as db:
+                    cached = load_memory_embedding_cache(
+                        db, enabled=self.embedding_cache_enabled, provider_identities=identities,
+                        hashes=[entry["hash"] for entry in source_refs],
+                    )
+                # Hits and generated vectors must inhabit one space, including
+                # across provider aliases and an ordinary process restart.
+                for chunk_hash, embedding in list(cached.items()):
+                    valid = (is_valid_memory_embedding(embedding) if active_dimensions is None
+                             else is_valid_memory_embedding(embedding, active_dimensions))
+                    if not valid:
+                        del cached[chunk_hash]
+                    elif active_dimensions is None:
+                        active_dimensions = len(embedding)
+                collected = collect_memory_cached_embeddings(source_refs, cached)
+                embeddings[source_offset:source_offset + len(source_chunks)] = collected["embeddings"]
+                source_missing = [{**item, "index": source_offset + item["index"]}
+                                  for item in collected["missing"]]
+                source_offset += len(source_chunks)
+                batches = build_memory_embedding_batches(
+                    source_missing, lambda item: chunks[item["index"]].text,
+                )
+                for batch in batches:
+                    run_memory_embedding_batch_retry_with_split(
+                        batch,
+                        lambda items: embedding_provider.embed_documents(
+                            [chunks[item["index"]].text for item in items]
+                        ),
+                        on_success=accept_generated,
+                    )
 
         assert_sources_current()
         has_chunks = bool(chunks) or any(previous_counts.get(key, 0) for key in remaining_old)

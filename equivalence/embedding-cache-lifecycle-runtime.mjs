@@ -133,7 +133,7 @@ export async function runEmbeddingCacheLifecycleRuntime(input, runtimeConfig) {
     providerCalls: [], operations: [], physical: [], closeReceipts: [], closed: false };
   const imp = relative => import(pathToFileURL(path.join(runtimeConfig.runtimeRoot, relative)).href);
   const providerCalls = [];
-  let selected = input.provider, cacheEnabled = input.cacheEnabled ?? true, manager, configRuntime, closeManagers, closeDatabases;
+  let selected = input.provider, cacheEnabled = input.cacheEnabled ?? true, manager, configRuntime, closeManagers, closeDatabases, closeState;
   let control = {}, documentOrdinal = 0, mutationFired = false, operationIndex = -1;
   let queryFailures = 0, documentFailures = 0, decode, originalHash;
   const profile = () => {
@@ -290,6 +290,26 @@ export async function runEmbeddingCacheLifecycleRuntime(input, runtimeConfig) {
     await updateConfig();
     configRuntime = await imp("dist/plugin-sdk/config-runtime.js");
     await call("setRuntimeConfigSnapshot", configRuntime.setRuntimeConfigSnapshot, [cfg]);
+    const dreaming = await imp("dist/dreaming-state-VYUvbU-n.mjs");
+    const keyed = await imp("dist/plugin-state-store-BPUaLoVD.mjs");
+    closeState = keyed.u;
+    const openStateStore = options => {
+      const args = ["memory-core", { ...options, env: environment }];
+      const actual = { operation: "createPluginStateKeyedStore", operationIndex, arguments: transported(args) };
+      raw.calls.push(actual);
+      try {
+        const result = keyed.r(...args);
+        actual.returnValue = returned(result);
+        return result;
+      } catch (error) { actual.error = errorRecord(error); throw error; }
+    };
+    await call("configureMemoryCoreDreamingState", dreaming.p, [openStateStore]);
+    for (const spec of [
+      ["dist/dreaming-state-VYUvbU-n.mjs", "p", "configureMemoryCoreDreamingState", dreaming.p],
+      ["dist/dreaming-state-VYUvbU-n.mjs", "v", "openMemoryCoreStateStore", dreaming.v],
+      ["dist/plugin-state-store-BPUaLoVD.mjs", "r", "createPluginStateKeyedStore", keyed.r],
+      ["dist/plugin-state-store-BPUaLoVD.mjs", "u", "closePluginStateDatabaseAsync", closeState],
+    ]) await owner(...spec);
     const { w: setRegistry } = await imp("dist/runtime-9cxii0oQ.mjs");
     const { t: emptyRegistry } = await imp("dist/registry-empty-BTjzcMW2.mjs");
     await call("setActivePluginRegistry", setRegistry, [emptyRegistry(), "startup-registry", "gateway-bindable", workspace]);
@@ -385,7 +405,7 @@ export async function runEmbeddingCacheLifecycleRuntime(input, runtimeConfig) {
   finally {
     let cleanupComplete = true;
     for (const [operation, fn] of [["closeAllMemoryIndexManagers", closeManagers],
-      ["closeOpenClawAgentDatabasesAsync", closeDatabases]]) {
+      ["closeOpenClawAgentDatabasesAsync", closeDatabases], ["closePluginStateDatabaseAsync", closeState]]) {
       if (!fn) continue;
       try {
         const value = await call(operation, fn, []);

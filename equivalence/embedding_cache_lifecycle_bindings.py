@@ -213,6 +213,42 @@ SOURCE_ANCHORS.update({
         '      fs.symlinkSync(hostRoot, path.join(modules, "openclaw"), "junction");'),
 })
 
+# The genuine manager's publication path takes the memory workspace lease.
+# Authenticate the configuration/open/close bridge directly. Its transitive
+# worker artifact bytes remain covered by the complete release manifest.
+SOURCE_HASHES.update({
+    "extensions/memory-core/src/dreaming-state.ts": "b115fa0ce1c2757abc282f2822d08dc365c07a3b88c6e90ff7b1e7b87fb64458",
+    "extensions/memory-core/src/memory-workspace-lock.ts": "557bf3bdb03a8139af1c3fe40d106b3fb74e8ad20c30969bd888a7bccf25beb2",
+    "src/plugin-state/plugin-state-store.ts": "361e7571e9c93efde048462fd967e845c6e68a7a9f7a9c6f9a0823b6cad8b530",
+    "src/plugin-state/plugin-state-store.sqlite.ts": "5c8a00ecd21695bb20acac0be92d0477a9a5533f1795f7b0ee153c1e462a5498",
+})
+SOURCE_ANCHORS.update({
+    "extensions/memory-core/src/dreaming-state.ts": (
+        "export function configureMemoryCoreDreamingState(",
+        "export function openMemoryCoreStateStore<T>("),
+    "extensions/memory-core/src/memory-workspace-lock.ts": (
+        "export async function withMemoryWorkspaceLock<T>(",
+        "async function acquireMemoryWorkspaceLock(",
+        "      const observation = await lockStore.observe(lockKey);"),
+    "src/plugin-state/plugin-state-store.ts": (
+        "export function createPluginStateKeyedStore<T>(",
+        "      const observation = await observePluginStateInWorker({"),
+    "src/plugin-state/plugin-state-store.sqlite.ts": (
+        "export async function closePluginStateDatabaseAsync()",),
+})
+COMPILED_HASHES.update({
+    "dist/dreaming-state-VYUvbU-n.mjs": "8676156b95cc8b73d0cc830e1305bc3460eb90f2bf1114d9e5a6b008269a3e2c",
+    "dist/plugin-state-store-BPUaLoVD.mjs": "4d010227d5baea72f1dfc1e117efe2cc1eb596eeab579e6c92c047abf75f7efc",
+})
+COMPILED_ANCHORS.update({
+    "dist/dreaming-state-VYUvbU-n.mjs": (
+        "function configureMemoryCoreDreamingState(", "configureMemoryCoreDreamingState as p",
+        "function openMemoryCoreStateStore(", "openMemoryCoreStateStore as v"),
+    "dist/plugin-state-store-BPUaLoVD.mjs": (
+        "function createPluginStateKeyedStore(", "createPluginStateKeyedStore as r",
+        "async function closePluginStateDatabaseAsync(", "closePluginStateDatabaseAsync as u"),
+})
+
 # The cache kernel is inlined in the genuine manager runtime in this release.
 # No unused standalone cache-kernel artifact is required to execute.
 REQUIRED_RUNTIME_ARTIFACTS = tuple(COMPILED_HASHES)
@@ -226,6 +262,8 @@ GENUINE_HELPER_EXPORTS = {
     "dist/embedding-vector-CGPWflQ5.mjs": ("n",),
     "dist/hash-CAMhNIP1.mjs": ("t",),
     "dist/openclaw-agent-db-lifecycle-B8sSLgPo.mjs": ("s",),
+    "dist/dreaming-state-VYUvbU-n.mjs": ("p", "v"),
+    "dist/plugin-state-store-BPUaLoVD.mjs": ("r", "u"),
 }
 REQUIRED_WORKER_ROUTE = (
     "dist/extensions/memory-core/memory-index.worker.js",

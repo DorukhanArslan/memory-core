@@ -517,7 +517,11 @@ def _native(case, public, snapshots, evidence_directory, *, require_live_disk):
                 "loadPluginMetadataSnapshot": ("dist/plugin-metadata-snapshot-DT_pRp6g.mjs", "o"),
                 "loadAndActivateRootPluginRegistry": ("dist/loader-DpAS3szV.mjs", "t"),
                 "decodeMemoryEmbedding": ("dist/embedding-vector-CGPWflQ5.mjs", "n"),
-                "hashText": ("dist/hash-CAMhNIP1.mjs", "t")}
+                "hashText": ("dist/hash-CAMhNIP1.mjs", "t"),
+                "configureMemoryCoreDreamingState": ("dist/dreaming-state-VYUvbU-n.mjs", "p"),
+                "openMemoryCoreStateStore": ("dist/dreaming-state-VYUvbU-n.mjs", "v"),
+                "createPluginStateKeyedStore": ("dist/plugin-state-store-BPUaLoVD.mjs", "r"),
+                "closePluginStateDatabaseAsync": ("dist/plugin-state-store-BPUaLoVD.mjs", "u")}
     expected.update({"MemoryIndexManager." + name: (MANAGER, "MemoryIndexManager") for name in MANAGER_METHODS})
     _require(len(raw["codeOwners"]) == len(expected) and {row["name"] for row in raw["codeOwners"]} == set(expected),
              "an actual Native owner is missing or duplicated")
@@ -536,7 +540,8 @@ def _native(case, public, snapshots, evidence_directory, *, require_live_disk):
         and all(row["pluginId"] == "fixture-embedding-cache" for row in registrations),
         "the real plugin registry did not own exactly the three declared provider adapters")
     _same([row["operation"] for row in raw["closeReceipts"]],
-          ["closeAllMemoryIndexManagers", "closeOpenClawAgentDatabasesAsync"], "a real durable close owner was omitted")
+          ["closeAllMemoryIndexManagers", "closeOpenClawAgentDatabasesAsync", "closePluginStateDatabaseAsync"],
+          "a real durable close owner was omitted")
     _require(all(row.get("returnValue") == {"type": "undefined"} and "error" not in row for row in raw["closeReceipts"]),
              "a real close owner failed")
     captures = []

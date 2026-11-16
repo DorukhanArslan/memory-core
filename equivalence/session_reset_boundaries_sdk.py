@@ -7,7 +7,9 @@ from __future__ import annotations
 
 from contextlib import closing
 from copy import deepcopy
+from datetime import UTC
 import hashlib
+import inspect
 import json
 import os
 from pathlib import Path
@@ -23,6 +25,7 @@ from equivalence.search_contract import decode_search_tool_envelope
 from memory_core.config import MemoryConfig
 from memory_core.consolidation.artifact_provenance import MemoryArtifactProvenanceStore
 from memory_core.flags import FeatureFlags
+from memory_core.index import temporal_decay
 from memory_core.index.sqlite_store import SQLiteMemoryStore
 from memory_core.memory_write_provenance import MemoryWriteProvenanceObserver
 from memory_core.runtime_identity import OPENCLAW_COMPAT_RUNTIME_IDENTITY
@@ -233,7 +236,33 @@ def _run(value, directory):
     if root.exists():
         raise ValueError("Session-reset boundaries require a fresh SDK evidence directory")
     original_clock, original_monotonic, original_sleep = time.time_ns, time.monotonic, time.sleep
+    original_datetime = temporal_decay.datetime
+    ranking_owners = {name: getattr(temporal_decay, name) for name in (
+        "calculate_temporal_decay_multiplier", "apply_temporal_decay_to_score",
+        "apply_temporal_decay_to_hybrid_results",
+    )}
     now = [value["nowMs"]]
+
+    class PhaseDateTime(original_datetime):
+        @classmethod
+        def now(cls, tz=None):
+            return cls.fromtimestamp(now[0] / 1000, tz=tz)
+
+    def wall_clock_read(phase, operation_index=None):
+        observed = temporal_decay.datetime.now(tz=UTC)
+        return {"phase": phase, "operationIndex": operation_index, "requestedNowMs": now[0],
+                "actualNowMs": int(observed.timestamp() * 1000), "returnedIso": observed.isoformat(),
+                "datetimeOwner": {"module": temporal_decay.datetime.__module__,
+                                  "name": temporal_decay.datetime.__qualname__},
+                "nowOwner": {"module": temporal_decay.datetime.now.__module__,
+                             "name": temporal_decay.datetime.now.__qualname__},
+                "datetimeIsFixture": temporal_decay.datetime is PhaseDateTime,
+                "inheritedMethodsUnchanged": {name: inspect.getattr_static(PhaseDateTime, name)
+                    is inspect.getattr_static(original_datetime, name)
+                    for name in ("fromtimestamp", "timestamp", "isoformat", "__new__", "__sub__")},
+                "rankingOwnersUnchanged": {name: getattr(temporal_decay, name) is function
+                                           for name, function in ranking_owners.items()}}
+
     raw = {"kind": "session-reset-boundaries-sdk-raw", "input": deepcopy(value),
            "fixtureRoot": str(root), "workspace": str(root / "workspace"),
            "databasePath": str(root / "index.sqlite"), "trustPath": str(root / "trust.sqlite"),
@@ -245,13 +274,20 @@ def _run(value, directory):
                MemorySearchTool.wait_for_recalls)],
            "auditStatements": list(AUDIT_SQL), "clock": {"owner": "time.time_ns", "requestedNowMs": value["nowMs"],
                "clockFunctionReplaced": False, "monotonicUnchanged": True, "sleepUnchanged": True,
-               "originalClockRestored": False}, "operations": [], "physical": [], "closed": False}
+               "originalClockRestored": False},
+           "wallClock": {"owner": "memory_core.index.temporal_decay.datetime.now",
+                         "originalDatetimeOwner": {"module": original_datetime.__module__,
+                                                   "name": original_datetime.__qualname__},
+                         "readings": [], "originalDatetimeRestored": False},
+           "operations": [], "physical": [], "closed": False}
     owners = None
     try:
-        with patch("time.time_ns", lambda: now[0] * 1_000_000):
+        with (patch("time.time_ns", lambda: now[0] * 1_000_000),
+              patch.object(temporal_decay, "datetime", PhaseDateTime)):
             raw["clock"].update(clockFunctionReplaced=time.time_ns is not original_clock,
                 actualNowMs=time.time_ns() // 1_000_000, monotonicUnchanged=time.monotonic is original_monotonic,
                 sleepUnchanged=time.sleep is original_sleep)
+            raw["wallClock"]["readings"].append(wall_clock_read("initial"))
             owners = _Owners(root, value)
             raw["schemaInitializationProvenanceRead"] = owners.schema_initialization_provenance_read
             raw["orderedProvenanceReads"] = owners.provenance_reads
@@ -263,6 +299,7 @@ def _run(value, directory):
             observations = []
             for operation in value["operations"]:
                 now[0] = owners.now = operation["nowMs"]
+                raw["wallClock"]["readings"].append(wall_clock_read("operation", len(raw["operations"])))
                 actual = {"operation": deepcopy(operation), "sourcesBefore": _sources(owners.workspace),
                           "databasesBefore": owners.databases(), "modeBefore": owners.mode()}
                 try:
@@ -284,6 +321,10 @@ def _run(value, directory):
             owners.memory_dir.chmod(0o700)
             raw["restoredMode"] = owners.mode()
         raw["clock"]["originalClockRestored"] = time.time_ns is original_clock
+        raw["wallClock"]["originalDatetimeRestored"] = temporal_decay.datetime is original_datetime
+        raw["wallClock"]["rankingOwnersRestored"] = {
+            name: getattr(temporal_decay, name) is function for name, function in ranking_owners.items()
+        }
         _write(directory / "python-raw.json", [raw])
 
 

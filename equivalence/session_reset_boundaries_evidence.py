@@ -8,6 +8,7 @@ from __future__ import annotations
 
 import hashlib
 import json
+from datetime import datetime
 from pathlib import Path
 import stat
 
@@ -140,6 +141,29 @@ def _temporary_schema(raw, rows, fault):
         _same(row["sql"], expected[row["name"]], "a temporary trigger differs from its actual declared SQL")
 
 
+def _wall_clock(case, raw):
+    wall = raw["wallClock"]
+    _same(wall["owner"], "memory_core.index.temporal_decay.datetime.now", "a different wall-clock seam was used")
+    _same(wall["originalDatetimeOwner"], {"module": "datetime", "name": "datetime"},
+          "the real datetime owner was already replaced before the fixture")
+    ranking = {name: True for name in ("calculate_temporal_decay_multiplier", "apply_temporal_decay_to_score",
+                                       "apply_temporal_decay_to_hybrid_results")}
+    inherited = {name: True for name in ("fromtimestamp", "timestamp", "isoformat", "__new__", "__sub__")}
+    _require(wall["originalDatetimeRestored"] is True, "the actual wall clock was not restored")
+    _same(wall["rankingOwnersRestored"], ranking, "the real temporal-ranking owners were changed")
+    times = [case["input"]["nowMs"], *(operation["nowMs"] for operation in case["input"]["operations"])]
+    _require(len(wall["readings"]) == len(times), "an initial or per-operation real wall-clock read is missing")
+    for index, (reading, now) in enumerate(zip(wall["readings"], times, strict=True)):
+        _require(reading["requestedNowMs"] == reading["actualNowMs"] == now
+                 and reading["phase"] == ("initial" if index == 0 else "operation")
+                 and reading["operationIndex"] == (None if index == 0 else index - 1)
+                 and reading["datetimeIsFixture"] is True
+                 and int(datetime.fromisoformat(reading["returnedIso"]).timestamp() * 1000) == now,
+                 "the actual ranking clock differs from the paired original operation time")
+        _same(reading["inheritedMethodsUnchanged"], inherited, "the clock fixture changed datetime arithmetic")
+        _same(reading["rankingOwnersUnchanged"], ranking, "the clock fixture replaced a ranking kernel")
+
+
 def _sources(rows, workspace, physical_files):
     native = isinstance(rows, dict)
     _require(native or isinstance(rows, list), "whole physical source identities are missing")
@@ -178,7 +202,7 @@ def _tools(raw, index, operation, actual, before, after, native):
         _same(added, [], "a non-tool operation fabricated a tool result")
         return
     calls = ([row for row in raw["toolEnvelopes"] if row["operationIndex"] == index]
-             if native else actual.get("toolCalls"))
+             if native else actual.get("toolCalls", []))
     _require(isinstance(calls, list) and len(calls) == len(added),
              "a real tool envelope was dropped or added")
     expected_tool = "memory_search" if operation["op"] == "search" else "memory_get"
@@ -539,6 +563,7 @@ def validate_pair(case, native_raw, sdk_raw, native_public, sdk_public, sdk_dire
              and sdk_raw["workspace"] == str(directory / "sdk-fixture/workspace") and sdk_raw["closed"] is True,
              "the actual SDK fixture escaped its owned attempt")
     _same(sdk_raw["input"], case["input"], "the complete SDK input differs")
+    _wall_clock(case, sdk_raw)
     _same(sdk_raw["schemaInitializationProvenanceRead"], {
         "owner": "MemoryArtifactProvenanceStore.list", "arguments": {"workspace_dir": sdk_raw["workspace"]},
         "returnValue": {"type": "list", "value": []}}, "the actual fresh-schema trust reader receipt changed")

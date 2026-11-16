@@ -1399,9 +1399,9 @@ def run_suite(*, checkout: Path, node: Path, smoke: bool = False,
             cases = build_cases() if cases is None else cases
             python_runner = run_python if python_runner is None else python_runner
         requirements, _ = _validate_scope(scope, cases)
-        if not smoke and len(cases) == 1465:
-            from equivalence.catalog_migration import definition_authority
+        from equivalence.catalog_migration import REGISTERED_CASES, definition_authority
 
+        if not smoke and len(cases) == REGISTERED_CASES:
             report["definitionMigration"] = definition_authority(cases, fif_version="v6")
         runtime_operations = {
             "index-lifecycle-runtime", "flush-trigger-runtime", "flush-execution-runtime",

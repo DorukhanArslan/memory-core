@@ -1,9 +1,9 @@
-name: Verify forget lineage outcomes once
-# One frozen 1,468-case measurement; retain the first result without retrying.
+name: Verify forget boundaries once
+# One frozen 1,469-case measurement; retain the first result without retrying.
 
 on:
   push:
-    branches: [verify/forget-lineage-outcomes-full]
+    branches: [verify/forget-boundaries-once]
     paths: [.github/workflows/verify-merged-forget-once.yml]
 
 permissions:
@@ -31,7 +31,7 @@ jobs:
           persist-credentials: false
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
         with:
-          ref: f31a2880369443de583fded55a20a390442198dc
+          ref: 1337209d0428790fd8a42f9d765651ea0b635a01
           path: .reference/merged-product
           persist-credentials: false
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
@@ -89,7 +89,7 @@ jobs:
         if: always()
         uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
         with:
-          name: forget-lineage-outcomes-summary
+          name: forget-boundaries-summary
           path: .equivalence-results/summary/
           include-hidden-files: true
           if-no-files-found: warn
@@ -97,7 +97,7 @@ jobs:
         if: always()
         uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
         with:
-          name: forget-lineage-outcomes-raw-evidence
+          name: forget-boundaries-raw-evidence
           path: |
             .equivalence-results/
             /var/tmp/memory-host-v4-*/

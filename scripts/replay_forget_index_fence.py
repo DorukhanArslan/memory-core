@@ -300,7 +300,7 @@ def _suite_authority(frozen):
     return cases, scope, {"scope": scope_seal, "reference": reference,
                          "casesModule": _seal(ROOT / "equivalence/cases.py"),
                          "adapters": _suite_adapter_hashes(),
-                         "registeredCases": 1465, "priorDefinitionsSha256": OLD_DEFINITIONS_SHA256,
+                         "registeredCases": len(cases), "priorDefinitionsSha256": OLD_DEFINITIONS_SHA256,
                          "definitionMigration": migration}
 
 
@@ -442,7 +442,7 @@ def _admit_suite_report(args, authority, report, frozen):
         raise ValueError("The full suite changed during streaming admission")
     del reader  # Release the last decoded wire buffer before opening raw captures.
     if (not {"cases", "runtimeDiagnostics", "requirements", "errors", "uncoveredAcceptance"} <= arrays
-            or case_index != 1465 or requirements_index != 64 or len(selected) != 13
+            or case_index != len(definitions) or requirements_index != 64 or len(selected) != 13
             or set(host_rows) != host_ids
             or set(diagnostics) != {(identifier, side) for identifier in frozen.CASE_HASHES for side in ("native", "python")}):
         raise ValueError("The full suite is incomplete or omits a V5 physical engine capture")
@@ -485,7 +485,7 @@ def _admit_suite_report(args, authority, report, frozen):
     execution = metadata.get("referenceExecution", {})
     groups = [execution.get("trackedTypeScriptCaseIds"), execution.get("compiledReleaseCaseIds")]
     if (any(not isinstance(group, list) for group in groups)
-            or len(groups[0] + groups[1]) != 1465
+            or len(groups[0] + groups[1]) != len(definitions)
             or set(groups[0] + groups[1]) != {case["id"] for case in definitions}
             or not set(frozen.CASE_HASHES) <= set(groups[1])):
         raise ValueError("The suite lost the complete source/release dispatch identities")
@@ -499,7 +499,7 @@ def _admit_suite_report(args, authority, report, frozen):
         expected_host_ids = [case["id"] for case in definitions if case["id"] in host_ids]
         if outcome is None or outcome["matchedCaseIds"] != (expected_host_ids if host_match else []):
             raise ValueError("The migrated Host outcome lost its exact four-member atomic gate")
-    report["sourceReports"].append({"mode": "registered-suite", "report": sealed, "registeredCases": 1465,
+    report["sourceReports"].append({"mode": "registered-suite", "report": sealed, "registeredCases": len(definitions),
                                     "fixedAcceptancePoints": 128, "sourceStatus": metadata["status"],
                                     "retainedWholeHostCases": len(host_rows)})
     report["suiteAuthority"] = suite

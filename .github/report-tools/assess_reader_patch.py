@@ -15,6 +15,9 @@ changes=[
   '    result["migrationProofMethod"] = "Exact sealed catalog and every streamed report definition; original field absence retained"\n'
   '    result.update(completeReportParsed=True, report=data["report"], projection={'),
 ]
+archived=Path(__file__).with_name("archive_host_replay.py").read_text().rstrip()+"\n\n"
+start=text.index("def replay_hosts(");end=text.index("def replay_lineage(",start)
+changes.append((text[start:end],archived))
 for before,after in changes:
  assert text.count(before)==1, before
  text=text.replace(before,after,1)

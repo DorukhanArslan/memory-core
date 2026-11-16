@@ -80,6 +80,10 @@ with zipfile.ZipFile(archive) as package:
         target = root.joinpath(*parts[index + 1:]); require(target not in seen, "Duplicate ZIP destination"); seen.add(target)
         safe_parent(target if item.is_dir() else target.parent)
         require(item.is_dir() or not target.exists(), "An original output already exists")
+        if os.environ.get("MEMORY_CORE_RESTORE_ESSENTIAL") == "1":
+            relative = target.relative_to(workspace / ".equivalence-results") if target.is_relative_to(workspace / ".equivalence-results") else None
+            if relative is None or not (relative.as_posix() == "full.json" or relative.parts and relative.parts[0] in {"summary", "host-turn-barrier-v4", "forget-lineage-outcomes"}):
+                continue
         planned.append((item, target)); roots.add(str(root))
         if not item.is_dir():
             ancestor = target.parent
@@ -92,6 +96,6 @@ with zipfile.ZipFile(archive) as package:
         with package.open(item) as source, target.open("xb") as output: shutil.copyfileobj(source, output, 1024 * 1024)
 report = workspace / ".equivalence-results/full.json"; report_seal = digest(report)
 require(report_seal["sha256"] == REPORT_SHA, "Original full report SHA differs")
-record = {"artifactId": ARTIFACT, "archive": {"bytes": downloaded, "sha256": hasher.hexdigest()}, "archivedRootPrefixes": sorted("/".join(prefix) for prefix in prefixes.values()), "restoredRoots": sorted(roots), "zipEntries": len(entries), "restoredFiles": sum(not item.is_dir() for item, _ in planned), "restoredBytes": sum(item.file_size for item, _ in planned), "fullReport": {"path": str(report), **report_seal}, "trackedSourceFilesModified": False}
+record = {"artifactId": ARTIFACT, "archive": {"bytes": downloaded, "sha256": hasher.hexdigest()}, "archivedRootPrefixes": sorted("/".join(prefix) for prefix in prefixes.values()), "restoredRoots": sorted(roots), "zipEntries": len(entries), "restoredFiles": sum(not item.is_dir() for item, _ in planned), "restoredBytes": sum(item.file_size for item, _ in planned), "fullReport": {"path": str(report), **report_seal}, "trackedSourceFilesModified": False, "restorationView": "archived-host-business-and-lineage" if os.environ.get("MEMORY_CORE_RESTORE_ESSENTIAL") == "1" else "complete"}
 with receipt.open("x") as output: json.dump(record, output, sort_keys=True); output.write("\n")
 print(json.dumps(record, sort_keys=True))

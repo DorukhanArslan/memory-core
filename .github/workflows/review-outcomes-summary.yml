@@ -56,6 +56,7 @@ jobs:
       - name: Restore only the existing authenticated evidence
         env:
           GH_TOKEN: ${{ github.token }}
+          MEMORY_CORE_RESTORE_ESSENTIAL: "1"
         run: python .reference/review-source/.github/report-tools/restore_outcomes_artifact.py
       - name: Prepare external reader corrections and preserve first failures
         run: |
@@ -77,17 +78,10 @@ jobs:
               shutil.copyfile(Path(os.environ['RUNNER_TEMP'])/name,out/name)
           (out/'postprocess-source.json').write_text(json.dumps({'originalComparisonRun':43772670403,'originalComparisonCommit':'9669482d4510b23479c4fe51d99151d40f3e7a68','postprocessRun':os.environ['GITHUB_RUN_ID'],'postprocessCommit':os.environ['GITHUB_SHA'],'businessEnginesRerun':False,'originalReportChanged':False})+'\n')
           PY
-      - name: Read retained forget captures with the corrected catalog count
-        id: replay
-        continue-on-error: true
-        run: >-
-          uv run --frozen python "$RUNNER_TEMP/outcomes-readers/replay.py" --version v6
-          --suite-report .equivalence-results/full.json
-          --native-capture-root .equivalence-results/forget-index-fence-v6
-          --sdk-capture-root .equivalence-results/forget-index-fence-v6
-          --reference .reference/openclaw --node "$(command -v node)"
-          --sdk-source-root . --adapter-root .
-          --output .equivalence-results/reviewed-summary/forget-family-replay.json
+      - name: Reuse the already authenticated thirteen-case receipt
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: python .reference/review-source/.github/report-tools/reuse_fif_receipt.py
       - name: Recompute the original report without changing its bytes
         id: assessment
         continue-on-error: true

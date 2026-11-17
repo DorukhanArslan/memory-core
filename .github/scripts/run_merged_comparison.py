@@ -16,12 +16,13 @@ from equivalence.cases import build_cases  # noqa: E402
 from equivalence.catalog_migration import definition_authority  # noqa: E402
 from equivalence.harness import _adapter_identity, _implementation_identity  # noqa: E402
 
-PRODUCT = "3d70e59d5a282bfa22738451244b37e35662f38d"
-SDK_SHA = "ae9c42578a913e04816b67831d70b540bd89bb1e65c07d9a656efc00f7df283b"
-SDK_FILES = 162
-PREVIOUS_CASES = 1483
-PREVIOUS_CATALOG_SHA = "33277abb724a6b89423085e735fc08b950b647b577db9879df8f2395e519a93d"
-CATALOG_SHA = "a6b6d9d2fee122e0759d421d0d170ab171fecc58e86bbb3f322dc0154742d7b8"
+PRODUCT = "907944efb61245208812e81b5555560051ae11cc"
+SDK_SHA = "375890b10db63088c9fb1d2e6ce7ddafed363acfd6aa020da52dfd46de0d0517"
+SDK_FILES = 164
+PREVIOUS_CASES = 1490
+PREVIOUS_CATALOG_SHA = "a6b6d9d2fee122e0759d421d0d170ab171fecc58e86bbb3f322dc0154742d7b8"
+CATALOG_SHA = "96bf1edb8fe29618d1b62792d1ffbf58423cd16f804eb490ba3f0a7c6c187ebb"
+REGISTERED_CASES = 1500
 SCOPE_SHA = "a8e066e63970dd0be734485d62a5932640894b8c0a42f47ac3eb67f784cbc7b9"
 OUT = ROOT / ".equivalence-results"
 SUMMARY = OUT / "summary"
@@ -58,7 +59,7 @@ def main():
     assert implementation["sourceSha256"] == SDK_SHA and implementation["sourceFiles"] == SDK_FILES
     cases = build_cases()
     canonical = json.dumps(cases, sort_keys=True, ensure_ascii=True, separators=(",", ":"), allow_nan=False)
-    assert len(cases) == 1490 and hashlib.sha256(canonical.encode()).hexdigest() == CATALOG_SHA
+    assert len(cases) == REGISTERED_CASES and REGISTERED_CASES > PREVIOUS_CASES and hashlib.sha256(canonical.encode()).hexdigest() == CATALOG_SHA
     prefix = json.dumps(cases[:PREVIOUS_CASES], sort_keys=True, ensure_ascii=True,
                         separators=(",", ":"), allow_nan=False).encode()
     assert hashlib.sha256(prefix).hexdigest() == PREVIOUS_CATALOG_SHA

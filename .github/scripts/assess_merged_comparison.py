@@ -18,18 +18,20 @@ from equivalence.catalog_migration import definition_authority  # noqa: E402
 from equivalence.harness import _adapter_identity, _implementation_identity, _same_json  # noqa: E402
 from equivalence.strict_report_reader import Reader, _constant, _finite, _object  # noqa: E402
 
-PRODUCT = "3d70e59d5a282bfa22738451244b37e35662f38d"
+PRODUCT = "907944efb61245208812e81b5555560051ae11cc"
 SCOPE = "a8e066e63970dd0be734485d62a5932640894b8c0a42f47ac3eb67f784cbc7b9"
-SDK = {"sourceSha256": "ae9c42578a913e04816b67831d70b540bd89bb1e65c07d9a656efc00f7df283b", "sourceFiles": 162}
+SDK = {"sourceSha256": "375890b10db63088c9fb1d2e6ce7ddafed363acfd6aa020da52dfd46de0d0517", "sourceFiles": 164}
+CATALOG_SHA = "96bf1edb8fe29618d1b62792d1ffbf58423cd16f804eb490ba3f0a7c6c187ebb"
+REGISTERED_CASES = 1500
 OPERATIONS = ("host-restart-session-runtime", "host-update-isolation-runtime",
               "host-turn-barrier-boundaries-runtime", "index-identity-boundaries-runtime",
               "query-sync-outcomes-runtime", "query-sync-boundaries-runtime",
               "host-turn-barrier-v4-runtime", "forget-index-fence-v6-runtime", "forget-lineage-runtime",
               "forget-boundaries-runtime", "recall-signals-runtime", "embed-cache-lifecycle-runtime",
-              "session-reset-boundaries-runtime")
+              "session-reset-boundaries-runtime", "prompt-runtime-context-runtime")
 
 
-PREVIOUS_COMPARISON = {'runId': 43884962457, 'reportSha256': 'a9f573fa61457e4955b006f9a7286012a8c78720eba97e341eb3c511220d0879', 'assessmentSha256': '6e34fef97ffe71d3eb3e0a7fea031c9f17eb41beabedcb28e8b8db346ae27ac8', 'verified': 81}
+PREVIOUS_COMPARISON = {'runId': 43961408161, 'reportSha256': 'f972a33cafa280c0a58098f3b3e5616185a33bd23df769ecb4d221a6b5f9544f', 'assessmentSha256': 'a7a710ef0d2be6d9cce3111cd05f27160fec0cc756a245ff8aa88b4c77f17853', 'verified': 82}
 PREVIOUS_MISMATCH_PUBLIC_SHA256 = {
     "bootstrap-discovery-legacy-state-gate": {
         "openclaw": "0c17c9620066864fed5e7643e4cb638e91b6691dfa3f4a4156d37abc2890dcb1",
@@ -40,7 +42,7 @@ PREVIOUS_MISMATCH_PUBLIC_SHA256 = {
         "python": "4426dc0e10fee7057e3d2f819367cd7954fee262858c8c3f5bcfc2abb0f8d4a2"
     },
     "flush-execution-warm-index-first-recall": {
-        "openclaw": "208c57d0be33f822c949bc0dd3a4136e11593b56d6e07a91f32f665cb5cdcf3f",
+        "openclaw": "cb844e6214b8fd7526c42e6e3dd968c97ea9963230260e4c29ce178f0fb94ec5",
         "python": "f5f748474b212ead4420d77fe1a6c3ba3425db777e1f15c318be567057925802"
     },
     "hybrid-unicode-path-collation-diagnostic": {
@@ -110,7 +112,7 @@ def load(path):
     return value
 
 
-def project(path, host_ids, lineage_ids, boundary_ids, recall_ids, cache_ids, reset_ids):
+def project(path, host_ids, lineage_ids, boundary_ids, recall_ids, cache_ids, reset_ids, prompt_ids):
     kept = {"schemaVersion", "kind", "mode", "status", "fullScopePassed", "implementation",
             "reference", "manifestSha256", "adapterSha256", "casesSha256", "definitionMigration",
             "summary", "requirements", "errors", "startedAt", "finishedAt", "durationSeconds",
@@ -119,13 +121,15 @@ def project(path, host_ids, lineage_ids, boundary_ids, recall_ids, cache_ids, re
             "forgetLineageBindings", "forgetLineageNode", "recallSignalsFamilyComplete",
             "recallSignalsBindings", "recallSignalsNode", "embeddingCacheFamilyComplete",
             "embeddingCacheBindings", "embeddingCacheNode", "sessionResetBoundariesFamilyComplete",
-            "sessionResetBoundariesBindings", "sessionResetBoundariesNode"}
+            "sessionResetBoundariesBindings", "sessionResetBoundariesNode",
+            "promptRuntimeContextFamilyComplete", "promptRuntimeContextBindings", "promptRuntimeContextNode"}
     result = {"cases": [], "hostPairs": {}, "hostDiagnostics": {}, "mismatchPairs": {},
               "lineagePairs": {}, "lineageDiagnostics": {}, "lineageTraces": {},
               "boundaryPairs": {}, "boundaryDiagnostics": {}, "boundaryTraces": {},
               "recallPairs": {}, "recallDiagnostics": {}, "recallTraces": {},
               "cachePairs": {}, "cacheDiagnostics": {}, "cacheTraces": {},
-              "resetPairs": {}, "resetDiagnostics": {}, "resetTraces": {}}
+              "resetPairs": {}, "resetDiagnostics": {}, "resetTraces": {},
+              "promptPairs": {}, "promptDiagnostics": {}, "promptTraces": {}}
     before = digest(path)
 
     def accept(key, value, array):
@@ -155,10 +159,23 @@ def project(path, host_ids, lineage_ids, boundary_ids, recall_ids, cache_ids, re
                     result["cachePairs"][value["id"]] = pair
                 if value["id"] in reset_ids:
                     result["resetPairs"][value["id"]] = pair
+                if value["id"] in prompt_ids:
+                    result["promptPairs"][value["id"]] = pair
                 if value["status"] == "mismatched":
                     result["mismatchPairs"][value["id"]] = pair
             require(value["status"] != "mismatched" or "python" in value, "Mismatch omitted whole public values")
             result["cases"].append(row)
+        elif key == "runtimeDiagnostics" and value.get("id") in prompt_ids:
+            require(value.get("side") in {"native", "python"}, "Unknown prompt diagnostic side")
+            identity = value["id"] + "--" + value["side"]
+            require(identity not in result["promptDiagnostics"], "Duplicate prompt diagnostic")
+            require(isinstance(value.get("rawSnapshots"), list) and len(value["rawSnapshots"]) == 1
+                    and isinstance(value["rawSnapshots"][0], dict),
+                    "Prompt diagnostic is not a complete singleton packet")
+            result["promptDiagnostics"][identity] = value
+        elif key == "releaseTraces" and value.get("id") in prompt_ids:
+            require(value["id"] not in result["promptTraces"], "Duplicate prompt process trace")
+            result["promptTraces"][value["id"]] = value
         elif key == "runtimeDiagnostics" and value.get("id") in reset_ids:
             require(value.get("side") in {"native", "python"}, "Unknown reset boundary diagnostic side")
             identity = value["id"] + "--" + value["side"]
@@ -806,6 +823,221 @@ def replay_reset(data, cases, args):
     return results
 
 
+def replay_prompt(data, cases, args):
+    from equivalence.model_runtime_authority import prepare_model_node_authority
+    from equivalence.release_runtime import prepare_release_runtime
+    from equivalence.prompt_runtime_context import CASE_HASHES, HOST_TIMEZONE, validate_registration
+    from equivalence.prompt_runtime_context_bindings import (
+        COMPILED_HASHES, REQUIRED_RUNTIME_ARTIFACTS, prepare_prompt_runtime_context_bindings,
+    )
+    from equivalence.prompt_runtime_context_evidence import decode_native_capture, validate_pair
+    from equivalence.prompt_runtime_context_profile import (
+        PROVIDER_SOURCE_HASHES, prepare_prompt_runtime_context_profile,
+    )
+
+    validate_registration(cases)
+    require(cases and [case["id"] for case in cases] == list(CASE_HASHES),
+            "Prompt replay requires the complete frozen prompt family")
+    require(set(data["promptPairs"]) == set(data["promptTraces"]) == set(CASE_HASHES)
+            and set(data["promptDiagnostics"]) == {
+                cid + "--" + side for cid in CASE_HASHES for side in ("native", "python")},
+            "Prompt replay omitted a complete public pair, raw packet or process trace")
+    runtime = prepare_release_runtime(args.reference, args.release_runtime, download=False)
+    node = prepare_model_node_authority(args.node)
+    require(_same_json(data["promptRuntimeContextBindings"], prepare_prompt_runtime_context_bindings(
+        args.reference, Path(runtime["runtimeRoot"]))) and _same_json(data["promptRuntimeContextNode"], node),
+        "Prompt source/artifact/executable authority changed")
+    authenticated = {(package["location"], item["path"]): item["sha256"]
+                     for package in runtime["packages"] for item in package["files"]}
+    for relative, expected in PROVIDER_SOURCE_HASHES.items():
+        source_file = ROOT / "equivalence" / relative
+        require(not source_file.is_symlink() and source_file.resolve(strict=True) == source_file
+                and digest(source_file) == expected,
+                "The frozen prompt provider source or manifest changed")
+    capture_pattern = re.compile(
+        r"tmp/plugin-captures/[0-9a-f-]{36}/captures/openclaw-plugin-build-[A-Za-z0-9]{6}"
+        r"/package-0/node_modules/prompt-runtime-provider/index\.mjs\Z")
+    provider_source = ROOT / "equivalence/prompt-runtime-provider/index.mjs"
+    provider_sha = PROVIDER_SOURCE_HASHES["prompt-runtime-provider/index.mjs"]
+    family = ROOT / ".equivalence-results/prompt-runtime-context"
+    require(family.resolve(strict=True) == family and not family.is_symlink(),
+            "Prompt evidence family is not its canonical owned directory")
+    results = []
+    for case in cases:
+        cid = case["id"]
+        native, sdk = (data["promptDiagnostics"][cid + "--" + side] for side in ("native", "python"))
+        require(native["validationStatus"] == sdk["validationStatus"] == "verified"
+                and isinstance(native["sha256"], str) and re.fullmatch(r"[0-9a-f]{64}", native["sha256"]),
+                "Prompt original singleton raw packet was not affirmatively validated")
+        directory = Path(sdk["evidenceDirectory"])
+        require(directory.is_absolute() and directory.resolve(strict=True) == directory
+                and directory.parent == family and directory.name.startswith("sdk-attempt-"),
+                "Prompt SDK capture escaped its actual family root")
+        raw_path = directory / "python-raw.json"
+        require(raw_path.is_file() and not raw_path.is_symlink() and raw_path.resolve(strict=True) == raw_path,
+                "Prompt SDK raw file is not its original owned regular path")
+        raw_sha, records = digest(raw_path), load(raw_path)
+        require(isinstance(records, list) and len(records) == 1 and isinstance(records[0], dict)
+                and raw_sha == sdk["sha256"] and _same_json(records, sdk["rawSnapshots"]),
+                "Complete retained prompt SDK raw bytes differ from the full report")
+        native_path = Path(native["retainedNativeRawPath"])
+        require(native_path.is_absolute() and native_path.name == "native-raw.json"
+                and native_path.resolve(strict=True) == native_path
+                and native_path.parent.parent == family
+                and native_path.parent.name.startswith("native-attempt-")
+                and not native_path.parent.is_symlink() and not native_path.is_symlink(),
+                "Prompt original raw envelope escaped its retained canonical owner")
+        native_info = native_path.lstat()
+        require(native_path.is_file() and native_info.st_nlink == 1
+                and type(native["nativeRawBytes"]) is int
+                and 0 < native_info.st_size == native["nativeRawBytes"] <= 16 * 1024**2,
+                "Prompt original raw envelope is unsafe or exceeds the unchanged wire-file bound")
+        with native_path.open("rb") as native_stream:
+            native_payload = native_stream.read(16 * 1024**2 + 1)
+        native_sha = hashlib.sha256(native_payload).hexdigest()
+        require(len(native_payload) == native_info.st_size and native_sha == native["sha256"],
+                "Retained prompt envelope differs from the complete original wire bytes")
+        envelope = json.loads(native_payload.decode("utf8"), object_pairs_hook=_object, parse_constant=_constant)
+        _finite(envelope)
+        native_records = decode_native_capture(envelope)
+        require(_same_json(native_records, native["rawSnapshots"]),
+                "Losslessly decoded prompt envelope differs from the whole original collector packet")
+        sdk_raw, native_raw = records[0], native_records[0]
+        trace = data["promptTraces"][cid]
+        transport = trace["promptRuntimeContextTransport"]
+        profile = prepare_prompt_runtime_context_profile(case, args.node)
+        require(trace["kind"] == "authenticated-process-thread-trace"
+                and trace["provider"] == "none" and trace["networkFetchDenied"] is True
+                and set(transport) == {"profile", "traceFiles", "fixtureSourceCaptures", "originalProcessStreams"}
+                and _same_json(transport["profile"], profile),
+                "Prompt original process capability changed or borrowed another capability")
+        require(isinstance(transport["traceFiles"], list) and transport["traceFiles"]
+                and isinstance(transport["originalProcessStreams"], dict)
+                and set(transport["originalProcessStreams"]) == {"stdout", "stderr"}
+                and isinstance(transport["fixtureSourceCaptures"], list),
+                "The complete prompt traces or original process streams are missing")
+        threads, loaded, locals_loaded, contexts, names, capture_loads = [], set(), set(), set(), set(), {}
+        for carrier in transport["traceFiles"]:
+            require(set(carrier) == {"name", "bytes", "sha256", "text"}, "Prompt trace carrier lost fields")
+            payload = carrier["text"].encode("utf8")
+            require(type(carrier["bytes"]) is int and len(payload) == carrier["bytes"]
+                    and hashlib.sha256(payload).hexdigest() == carrier["sha256"],
+                    "A complete original prompt trace carrier changed")
+            matched = re.fullmatch(r"([1-9][0-9]*)-([0-9]+)\.jsonl", carrier["name"])
+            require(matched is not None and carrier["name"] not in names and payload.endswith(b"\n"),
+                    "Prompt thread carrier is duplicated or incomplete")
+            names.add(carrier["name"])
+            pid, thread = int(matched[1]), int(matched[2])
+            events = [json.loads(line, object_pairs_hook=_object, parse_constant=_constant)
+                      for line in payload.splitlines()]
+            _finite(events)
+            require(events and all(isinstance(event, dict) for event in events),
+                    "Prompt protected thread trace is empty or invalid")
+            first = events[0]
+            require(first.get("event") == "bootstrap" and first.get("pid") == pid
+                    and first.get("threadId") == thread and first.get("isMainThread") is (thread == 0)
+                    and first.get("fetchDenied") is True and first.get("providerMode") == "none"
+                    and first.get("preloadSha256") == digest(ROOT / "equivalence/release-preload.mjs")
+                    and isinstance(first.get("contextSha256"), str)
+                    and re.fullmatch(r"[0-9a-f]{64}", first["contextSha256"])
+                    and _same_json(first.get("runtime"), node)
+                    and _same_json(first.get("promptRuntimeContextProfile"), profile)
+                    and first.get("promptRuntimeContextHostTimezone") == HOST_TIMEZONE,
+                    "Prompt thread bypassed its declared protected runtime")
+            contexts.add(first["contextSha256"])
+            threads.append({"pid": pid, "threadId": thread, "isMainThread": thread == 0,
+                            "runtime": node, "promptRuntimeContextProfile": profile,
+                            "promptRuntimeContextHostTimezone": HOST_TIMEZONE})
+            for event in events[1:]:
+                require(event.get("event") in {"load", "resolve-native"}
+                        and event.get("pid") == pid and event.get("threadId") == thread,
+                        "Prompt trace contains an undeclared import or network event")
+                if event.get("kind") == "release":
+                    key = event.get("package"), event.get("path")
+                    require(authenticated.get(key) == event.get("sha256"),
+                            "Prompt import lost its authenticated official artifact")
+                    if event["event"] == "load":
+                        loaded.add((*key, event["sha256"]))
+                elif event.get("kind") == "oracle":
+                    path = Path(event["path"])
+                    require(path.parent == ROOT / "equivalence" and path.suffix == ".mjs"
+                            and data["adapterSha256"].get(path.name) == event.get("sha256"),
+                            "Prompt import borrowed an unreviewed local or source capability")
+                    if event["event"] == "load":
+                        locals_loaded.add(path.name)
+                elif event.get("kind") == "prompt-fixture-capture":
+                    capture = event.get("capturePath")
+                    require(event["event"] == "load" and isinstance(capture, str)
+                            and capture_pattern.fullmatch(capture),
+                            "Prompt provider source capture escaped its exact protected package")
+                    capture_loads.setdefault(capture, []).append(event)
+                else:
+                    raise ValueError("Prompt replay encountered an undeclared source/provider import authority")
+        require(len(contexts) == 1 and _same_json(trace["threads"], threads)
+                and any(row["isMainThread"] for row in threads)
+                and type(trace["protectedWorkerThreads"]) is int
+                and trace["protectedWorkerThreads"] == sum(not row["isMainThread"] for row in threads),
+                "Prompt protected process/worker inventory changed")
+        require({"release-oracle.mjs", "prompt-runtime-context-runtime.mjs"} <= locals_loaded
+                and all(("node_modules/openclaw", relative, COMPILED_HASHES[relative]) in loaded
+                        for relative in REQUIRED_RUNTIME_ARTIFACTS)
+                and trace["loadedReleaseFiles"] == len(loaded),
+                "Prompt replay omitted an actual declared compiled owner or adapter")
+        captured = {}
+        for carrier in transport["fixtureSourceCaptures"]:
+            payload = _cache_carrier(carrier, (
+                "sourcePath", "capturePath", "sha256", "proofPath", "proofSha256", "bytes", "text"))
+            capture = carrier["capturePath"]
+            require(isinstance(capture, str) and capture_pattern.fullmatch(capture)
+                    and capture not in captured and carrier["sourcePath"] == str(provider_source)
+                    and carrier["sha256"] == carrier["proofSha256"] == provider_sha
+                    and payload == provider_source.read_bytes()
+                    and carrier["proofPath"] == "prompt-fixture-source-captures/" + hashlib.sha256(
+                        (capture + "\0" + provider_sha).encode()).hexdigest() + ".mjs",
+                    "Prompt provider proof escaped its exact frozen source authority")
+            captured[capture] = carrier
+        require(captured and set(captured) == set(capture_loads),
+                "Prompt provider source load and complete retained proof list differ")
+        for capture, events in capture_loads.items():
+            proof = captured[capture]
+            require(all(event.get("sourcePath") == event.get("path") == proof["sourcePath"]
+                        and event.get("sha256") == proof["sha256"]
+                        and event.get("proofPath") == proof["proofPath"] for event in events),
+                    "Prompt source proof does not authenticate its actual provider load")
+        for carrier in transport["originalProcessStreams"].values():
+            require(set(carrier) == {"text", "bytes", "sha256"}, "Prompt process stream lost fields")
+            payload = carrier["text"].encode("utf8")
+            require(type(carrier["bytes"]) is int and len(payload) == carrier["bytes"]
+                    and hashlib.sha256(payload).hexdigest() == carrier["sha256"],
+                    "A complete original prompt process stream changed")
+        stream = transport["originalProcessStreams"]["stdout"]
+        original = json.loads(stream["text"], object_pairs_hook=_object, parse_constant=_constant)
+        _finite(original)
+        require(isinstance(original, dict) and isinstance(original.get("results"), list)
+                and len(original["results"]) == 1 and original["results"][0]["id"] == cid
+                and original["results"][0]["ok"] is True,
+                "Original prompt stdout omitted its complete return")
+        require(native_raw["runtimeRoot"] == runtime["runtimeRoot"]
+                and native_raw["node"] == {"version": node["nodeVersion"], "executable": node["execPath"]}
+                and any(row["isMainThread"] and row["pid"] == native_raw["pid"] for row in threads),
+                "The retained prompt attempt belongs to another original process or runtime")
+        native_public = original["results"][0]["result"]
+        sdk_public = sdk_raw["output"]
+        actual_native, actual_sdk = validate_pair(case, native_raw, sdk_raw, native_public, sdk_public, directory)
+        pair = data["promptPairs"][cid]
+        require(_same_json(actual_native, pair["openclaw"]) and _same_json(actual_sdk, pair["python"])
+                and digest(raw_path) == raw_sha and digest(native_path) == native_sha,
+                "Prompt whole public projection or actual original/SDK raw bytes changed during replay")
+        results.append({"id": cid, "validated": True, "publicMatch": _same_json(actual_native, actual_sdk),
+                        "sdkRawSha256": raw_sha, "nativeCollectorRawSha256": native["sha256"],
+                        "nativeRawFileSha256": native_sha, "nativeRawFileBytes": len(native_payload),
+                        "nativeRawSnapshotsSha256": hashlib.sha256(canonical(native["rawSnapshots"])).hexdigest(),
+                        "originalStdoutSha256": stream["sha256"],
+                        "originalStderrSha256": transport["originalProcessStreams"]["stderr"]["sha256"],
+                        "protectedWorkerThreads": trace["protectedWorkerThreads"], "nativeOnDiskRawReopened": True})
+    return results
+
+
 def recompute(data, definitions, scope):
     rows = data["cases"]
     require(len(rows) == len(definitions) and len({row["id"] for row in rows}) == len(definitions),
@@ -867,28 +1099,30 @@ def assess(args, result):
     migration = definition_authority(definitions, fif_version="v6")
     require(len(definitions) == seal["registeredCases"]
             and hashlib.sha256(canonical(definitions)).hexdigest() == seal["catalogSha256"], "Sealed catalog changed")
-    previous = {"registeredCases": 1483,
-                "sha256": "33277abb724a6b89423085e735fc08b950b647b577db9879df8f2395e519a93d",
+    previous = {"registeredCases": 1490,
+                "sha256": "a6b6d9d2fee122e0759d421d0d170ab171fecc58e86bbb3f322dc0154742d7b8",
                 "completePrefixUnchanged": True}
-    require(len(definitions) == 1490 and seal["catalogSha256"] ==
-            "a6b6d9d2fee122e0759d421d0d170ab171fecc58e86bbb3f322dc0154742d7b8"
+    require(len(definitions) == REGISTERED_CASES and REGISTERED_CASES > previous["registeredCases"]
+            and seal["catalogSha256"] == CATALOG_SHA
             and _same_json(seal["previousCatalog"], previous)
-            and hashlib.sha256(canonical(definitions[:1483])).hexdigest() == previous["sha256"],
-            "The complete prior comparison catalog changed or the frozen reset boundary append is incomplete")
+            and hashlib.sha256(canonical(definitions[:1490])).hexdigest() == previous["sha256"],
+            "The complete prior comparison catalog changed or the frozen prompt append is incomplete")
     host_cases = [case for case in definitions if case["operation"] == "host-turn-barrier-v4-runtime"]
     lineage_cases = [case for case in definitions if case["operation"] == "forget-lineage-runtime"]
     boundary_cases = [case for case in definitions if case["operation"] == "forget-boundaries-runtime"]
     recall_cases = [case for case in definitions if case["operation"] == "recall-signals-runtime"]
     cache_cases = [case for case in definitions if case["operation"] == "embed-cache-lifecycle-runtime"]
     reset_cases = [case for case in definitions if case["operation"] == "session-reset-boundaries-runtime"]
+    prompt_cases = [case for case in definitions if case["operation"] == "prompt-runtime-context-runtime"]
     data = project(args.report, {case["id"] for case in host_cases}, {case["id"] for case in lineage_cases},
                    {case["id"] for case in boundary_cases}, {case["id"] for case in recall_cases},
-                   {case["id"] for case in cache_cases}, {case["id"] for case in reset_cases})
+                   {case["id"] for case in cache_cases}, {case["id"] for case in reset_cases},
+                   {case["id"] for case in prompt_cases})
     result.update(completeReportParsed=True, report=data["report"], projection={
         key: value for key, value in data.items() if key not in {
             "lineagePairs", "lineageDiagnostics", "lineageTraces", "boundaryPairs", "boundaryDiagnostics", "boundaryTraces",
             "recallPairs", "recallDiagnostics", "recallTraces", "cachePairs", "cacheDiagnostics", "cacheTraces",
-            "resetPairs", "resetDiagnostics", "resetTraces"}})
+            "resetPairs", "resetDiagnostics", "resetTraces", "promptPairs", "promptDiagnostics", "promptTraces"}})
     require(data["errors"] == [] and data["mode"] == "full" and data["kind"] == "pinned-differential-acceptance",
             "Global collector error or non-full report; no candidate score")
     require(_same_json(data["implementation"], seal["implementation"])
@@ -916,11 +1150,13 @@ def assess(args, result):
     result["recallReplays"] = replay_recall(data, recall_cases, args)
     result["embeddingCacheReplays"] = replay_cache(data, cache_cases, args)
     result["sessionResetBoundariesReplays"] = replay_reset(data, reset_cases, args)
+    result["promptRuntimeContextReplays"] = replay_prompt(data, prompt_cases, args)
     from equivalence.embedding_cache_lifecycle import family_complete as cache_complete
     from equivalence.forget_boundaries import family_complete as boundaries_complete
     from equivalence.forget_lineage_outcomes import family_complete
     from equivalence.recall_signals import family_complete as recall_complete
     from equivalence.session_reset_boundaries import family_complete as reset_complete
+    from equivalence.prompt_runtime_context import family_complete as prompt_complete
 
     require(data["forgetLineageOutcomesFamilyComplete"] is family_complete(data["cases"])
             is metrics["families"]["forget-lineage-runtime"], "Lineage complete-family gate differs")
@@ -937,6 +1173,10 @@ def assess(args, result):
             is metrics["families"]["session-reset-boundaries-runtime"]
             is all(row["publicMatch"] for row in result["sessionResetBoundariesReplays"]),
             "Session reset boundary complete-family gate differs")
+    require(data["promptRuntimeContextFamilyComplete"] is prompt_complete(data["cases"])
+            is metrics["families"]["prompt-runtime-context-runtime"]
+            is all(row["publicMatch"] for row in result["promptRuntimeContextReplays"]),
+            "Prompt runtime-context complete-family gate differs")
     public = {row["id"]: row.get("publicValueSha256") for row in data["cases"]}
     require(set(PREVIOUS_MISMATCH_PUBLIC_SHA256) <= set(public), "A previous mismatch case disappeared")
     result["previousComparison"] = PREVIOUS_COMPARISON
@@ -967,6 +1207,7 @@ def assess(args, result):
                   deltaFromHistorical77=metrics["verified"] - 77,
                   deltaFromHistorical79=metrics["verified"] - 79,
                   deltaFromHistorical81=metrics["verified"] - 81,
+                  deltaFromHistorical82=metrics["verified"] - 82,
                   fifReplaySha256=replay_sha, fullScopePassed=data["fullScopePassed"])
 
 
@@ -977,7 +1218,7 @@ def main():
     args = parser.parse_args()
     result = {"kind": "approved-product-complete-eof-candidate-assessment", "status": "blocked",
               "metadataOnlyAssessment": True, "completeRootAudit": False, "acceptancePointsAwarded": 0,
-              "originalEnginesExecuted": False, "historicalVerifiedConditions": 81,
+              "originalEnginesExecuted": False, "historicalVerifiedConditions": 82,
               "completeReportParsed": False, "candidateAssessment": None, "errors": []}
     try:
         assess(args, result)

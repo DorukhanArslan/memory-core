@@ -28,6 +28,8 @@ DAMAGE_SQL = {
 
 
 def run_recovery_index_repair(value, *, evidence_directory):
+    if not any(value == row["input"] for row in recovery_index_cases()):
+        raise ValueError("Unknown index recovery fixture")
     directory = Path(evidence_directory).resolve()
     directory.mkdir(parents=True, exist_ok=True)
     base = Path(tempfile.mkdtemp(prefix="sdk-index-repair-", dir=directory))

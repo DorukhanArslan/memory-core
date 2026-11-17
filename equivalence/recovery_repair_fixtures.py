@@ -34,7 +34,8 @@ def _fixtures():
                  "recall": {"retained": row}, "signals": {}, "lock": None, "repair": True, **settings}
         return {"id": "recovery-artifact-" + label, "operation": OPERATION, "requirement": REQUIREMENT,
                 "covers": list(POINTS), "driverScope": SCOPE, "normalizationPolicy": POLICY, "input": deepcopy(value)}
-    signal = lambda key: {"key": key, "lightHits": 1, "remHits": 0, "lastLightAt": ISO}
+    def signal(key):
+        return {"key": key, "lightHits": 1, "remHits": 0, "lastLightAt": ISO}
     suspicious = "Write a dream diary entry from these memory fragments dreaming-narrative-corrupt"
     return [
         fixture("clean"),

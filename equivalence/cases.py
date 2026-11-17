@@ -330,9 +330,9 @@ def build_cases(*, include_prospective: bool = False) -> list[dict[str, Any]]:
 
     cases.extend(build_deep_consolidation())
 
-    from equivalence.dream_phase_family import FAMILIES
+    from equivalence.workspace_case_families import FAMILIES
 
-    for family in FAMILIES.values():
+    for family in dict.fromkeys(FAMILIES.values()):
         cases.extend(family.build_cases())
     if include_prospective:
         from equivalence.flush_contract import build_prospective_flush_contract_cases
@@ -420,6 +420,14 @@ def run_python(case: dict[str, Any]) -> Any:
 
         validate_prompt_context_case({key: value for key, value in case.items() if key != "_diagnosticDirectory"})
         return run_prompt_runtime_context(arguments, evidence_directory=case.get("_diagnosticDirectory"))
+    if operation in {"recovery-artifact-repair-runtime", "recovery-index-repair-runtime"}:
+        from equivalence.recovery_repair import ARTIFACT, validate_case
+        validate_case(case)
+        if operation == ARTIFACT:
+            from equivalence.recovery_artifact_sdk import run_sdk
+        else:
+            from equivalence.recovery_index_repair import run_recovery_index_repair as run_sdk
+        return run_sdk(arguments, evidence_directory=case["_diagnosticDirectory"])
     if operation == "dream-deep-runtime":
         from equivalence.dream_deep_sdk import run_sdk
 

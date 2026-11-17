@@ -11,7 +11,6 @@ from memory_core.config import MemoryConfig
 from memory_core.runtime_identity import MEMORY_CORE_RUNTIME_IDENTITY, OPENCLAW_COMPAT_RUNTIME_IDENTITY, RuntimeIdentity
 from memory_core.consolidation._util import iso_ms
 from memory_core.consolidation.store import (
-    empty_recall_store,
     is_valid_short_term_recall_entry,
     lock_is_stale,
     promotion_lock_path,
@@ -121,7 +120,7 @@ def audit_short_term_promotion_artifacts(
                     severity="error",
                     code="recall-store-unreadable",
                     message="Short-term recall store could not be read.",
-                    fixable=True,
+                    fixable=False,
                 ),
             ),
         )
@@ -170,7 +169,7 @@ def repair_short_term_promotion_artifacts(
 ) -> ShortTermRepairResult:
     """Repair the recall store and lock under ``config.workspace_dir``.
 
-    An unreadable or malformed store is replaced by an empty one; invalid
+    Unreadable store bytes remain intact and an error is raised. Individual invalid
     entries are dropped (store ``updatedAt`` becomes ``now_ms``); a lock older
     than the stale window is removed if it did not change meanwhile.
     """
@@ -185,29 +184,17 @@ def repair_short_term_promotion_artifacts(
 
     with recall_store_lock(config.workspace_dir):
         if store_path.exists():
-            try:
-                raw = json.loads(store_path.read_text(encoding="utf-8"))
-            except (OSError, UnicodeDecodeError, json.JSONDecodeError):
-                write_recall_store(store_path, empty_recall_store(now_ms))
+            raw = json.loads(store_path.read_text(encoding="utf-8"))
+            entries = raw.get("entries") if isinstance(raw, dict) else None
+            if not isinstance(entries, dict):
+                raise ValueError("Short-term recall store does not contain a readable entries object.")
+            valid_entries = {key: entry for key, entry in entries.items()
+                             if is_valid_short_term_recall_entry(entry)}
+            removed_invalid_entries = len(entries) - len(valid_entries)
+            if removed_invalid_entries:
+                raw.update(version=1, updatedAt=iso_ms(now_ms), entries=valid_entries)
+                write_recall_store(store_path, raw)
                 rewrote_store = True
-            else:
-                entries = raw.get("entries") if isinstance(raw, dict) else None
-                if not isinstance(raw, dict) or not isinstance(entries, dict):
-                    write_recall_store(store_path, empty_recall_store(now_ms))
-                    rewrote_store = True
-                else:
-                    valid_entries = {
-                        key: entry
-                        for key, entry in entries.items()
-                        if is_valid_short_term_recall_entry(entry)
-                    }
-                    removed_invalid_entries = len(entries) - len(valid_entries)
-                    if removed_invalid_entries:
-                        raw["version"] = 1
-                        raw["updatedAt"] = iso_ms(now_ms)
-                        raw["entries"] = valid_entries
-                        write_recall_store(store_path, raw)
-                        rewrote_store = True
 
     if lock_path.exists() and lock_is_stale(lock_path, now_ms):
         removed_stale_lock = remove_stale_lock(lock_path, now_ms)

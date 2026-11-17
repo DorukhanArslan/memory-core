@@ -1,6 +1,6 @@
 # OpenClaw bellek eşdeğerliği: bitiş ve ilerleme takibi
 
-**Durum: tamamlanmadı. Son güncelleme: 17 Kasım 2026.**
+**Durum: tamamlanmadı. Son güncelleme: 18 Kasım 2026.**
 
 Hedef, sabitlenmiş **OpenClaw v2026.9.9 bellek sözleşmesi** için eşdeğerliktir.
 Bu sayfa mevcut [ana planın bitiş şartlarını](full-equivalence-checklist.md#5-completion-evidence-and-release-decision)
@@ -19,12 +19,11 @@ izler; yeni kabul koşulu veya puan eklemez. **128/128 tek başına bitiş deği
 | Engellenen örnekler / koşu hataları | 0 / 0 | 0 / 0 |
 | Tam eşdeğerlik kapısı | Geçmedi; gerçek çıkış kodu 1 | `fullScopePassed: true`, çıkış kodu 0 |
 
-**Devam eden paket (18 Kasım).** Kayıtlı sohbeti koruyarak eksik araç
-cevaplarını onarma (8/8 örnek) ve sayı sınırlarında aynı kararları verme
-(4/4 örnek) odaklı karşılaştırmalarda geçti. Üçüncü iş, notlar birleştiğinde
-önceki metni ve kaynağını korumak. Bu üç işin ortak hedefi **84 → 90**.
-Tablodaki puan, tüm örneklerin ortak karşılaştırması doğrulandığında güncellenir.
-[Uygulama ve kanıtların takibi, PR #30](https://github.com/DorukhanArslan/memory-core/pull/30)
+**Devam eden paket (18 Kasım).** Eksik araç sonuçlarının sohbeti bozmadan
+onarılması 8/8, sayı sınırları 4/4, birleşen notların önceki içeriği ve
+kaynağının korunması 7/7 örnekte eşleşti. **84 → 90** hedefi için bu 19
+örnek önceki 1.500 örnekle birlikte çalıştırılıyor.
+[Genel karşılaştırma](https://github.com/DorukhanArslan/memory-core/actions/runs/44189169478) · [PR #30](https://github.com/DorukhanArslan/memory-core/pull/30)
 
 84/128, kabul koşullarının %65,6'sıdır; harcanan işin veya genel parity'nin
 %65,6'sı anlamına gelmez. **44 koşul ve 14 fark toplanmaz:** farklı ölçülerdir.
@@ -146,10 +145,10 @@ Sonraki kabul edilen koşu yalnızca B2'nin iki koşulunu kapatır;
 B2–B8 ve kayıtlı 14 fark açık kalır. Dört eski farkın değer incelemeleri
 beklemede kalır; yeni kanıt bu incelemeleri yeniden başlatmadı.
 
-**Sonraki iş önerisi: `prompt.history-repair`.** Hedef **+2 (84 → 86)**:
-örneğin eksik bir araç sonucunu modele görünen geçmişte onarırken kalıcı
-konuşma kaydını değiştirmemek. Tahmin **3–4 saat**, tam karşılaştırma dahil.
-Bu öneri henüz onaylanmadı; uygulama başlatılmadı.
+Kullanıcı 128 koşula doğru ilerlemeyi onayladı. Sıradaki işler arasında,
+zamanı gelen bir bellek görevinin tek kez çalışması ve gün sonu bakımında
+güncel bilgilerin seçilmesi var. Puanlar tamamlanan genel karşılaştırmaya
+göre işlenir.
 
 ## Bitişte kullanılabilecek ifade
 

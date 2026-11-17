@@ -10,7 +10,6 @@ from tempfile import TemporaryDirectory
 
 from equivalence.deep_consolidation import FACT, KEPT, LINEAGE, OLD_FACT, OLD_KEY, validate_case
 from equivalence.promotion_apply_family_evidence import require, same
-from equivalence.strict_report_reader import _object, _constant
 
 _ORIGIN_FIELDS = {
     "entry_key": "entryKey", "agent_id": "agentId", "session_id": "sessionId",
@@ -23,7 +22,15 @@ def _sha(text):
 
 
 def _json(value):
-    return json.loads(value, object_pairs_hook=_object, parse_constant=_constant)
+    def object_pairs(pairs):
+        result = dict(pairs)
+        require(len(pairs) == len(result), "Duplicate property in persisted consolidation JSON")
+        return result
+
+    def invalid_constant(token):
+        raise ValueError(f"Nonfinite number in persisted consolidation JSON: {token}")
+
+    return json.loads(value, object_pairs_hook=object_pairs, parse_constant=invalid_constant)
 
 
 def _table_rows(snapshot, filename, table, *, native):

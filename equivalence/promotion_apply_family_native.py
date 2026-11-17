@@ -167,12 +167,20 @@ def run_native_case(case, node, runtime, directory, *, timeout=120):
         if not any(row["package"] == "node_modules/openclaw" and row["path"] == owner
                    and row["sha256"] == COMPILED_HASHES[owner] for row in trace["loaded"]):
             raise ValueError("The original release origin owner did not execute")
+    process_fields = {}
+    if case["operation"] == "deep-consolidation-runtime":
+        streams = {}
+        for label, filename in (("stdout", "stdout.json"), ("stderr", "stderr.log")):
+            path = directory / filename
+            streams[label] = {"sha256": digest(path), "bytes": path.stat().st_size}
+        process_fields["processReceipt"] = {"processPid": process.pid, "coordinatorPid": os.getpid(),
+            "actualReturnCode": process.returncode, "originalProcessStreams": streams}
     return {"kind": "official-release-runtime-comparison", "sources": [],
             "results": [returned], "releaseSources": trace["loaded"],
             "releaseTrace": {"kind": "authenticated-promotion-family-process-thread-trace",
                 "threads": trace["bootstraps"], "networkFetchDenied": True, "provider": "none",
                 "protectedWorkerThreads": len(trace["bootstraps"]) - 1,
-                "familyProfile": profile,
+                "familyProfile": profile, **process_fields,
                 "rawProcessWorkerTraces": [{"name": p.name, "text": p.read_text(), "sha256": digest(p)}
                                            for p in sorted(traces.glob("*.jsonl"))]},
             "runtimeDiagnostics": [{"id": case["id"], "sha256": digest(evidence / "native-raw.json"),

@@ -14,7 +14,8 @@ from tempfile import TemporaryDirectory
 import zlib
 
 from equivalence.dream_light import RECALL, SIGNALS, canonical, validate_case
-from equivalence.dream_light_bindings import COMPILED, FUNCTION_HASHES
+from equivalence.dream_light_bindings import COMPILED, FUNCTION_HASHES, REM_COMPILED
+from equivalence import dream_rem
 
 
 def require(condition, message):
@@ -97,20 +98,26 @@ def _event_paths(events, workspace):
 
 
 def validate_dream_light_native(case, public, snapshots, evidence_directory, loaded):
-    validate_case(case)
+    phase = 'rem' if case.get('operation') == dream_rem.OPERATION else 'light'
+    if phase == 'rem':
+        from equivalence import dream_rem_evidence as rem
+        dream_rem.validate_case(case)
+    else:
+        validate_case(case)
     require(isinstance(snapshots, list) and len(snapshots) == 1, 'One complete native capture required')
     raw = snapshots[0]
     value = case['input']
     root = Path(raw['root'])
     workspace = str(root / 'workspace')
-    require(root.is_absolute() and root.parent == Path(evidence_directory) and root.name.startswith('native-light-')
-            and raw['workspace'] == workspace, 'Light sweep lost its owned workspace')
-    require(raw['kind'] == 'official-light-sweep' and raw.get('completed') is True
+    require(root.is_absolute() and root.parent == Path(evidence_directory) and root.name.startswith(f'native-{phase}-')
+            and raw['workspace'] == workspace, 'Native sweep lost its owned workspace')
+    require(raw['kind'] == f'official-{phase}-sweep' and raw.get('completed') is True
             and raw.get('storeClosed') is True and raw.get('clockRestored') is True
-            and not ({'error', 'closeError', 'snapshotError'} & raw.keys()), 'Original light sweep did not close')
+            and not ({'error', 'closeError', 'snapshotError'} & raw.keys()), 'Original sweep did not close')
     same(raw['input'], value, 'Native input changed')
     require(raw['inputSha256'] == hashlib.sha256(canonical(value)).hexdigest(), 'Native input hash changed')
-    for owner, (sha, _) in COMPILED.items():
+    compiled = {**COMPILED, **REM_COMPILED} if phase == 'rem' else COMPILED
+    for owner, (sha, _) in compiled.items():
         item = loaded.get(('node_modules/openclaw', owner))
         require(isinstance(item, dict) and item['sha256'] == sha, 'Missing original runtime module ' + owner)
     store = 'dist/short-term-promotion-store-B6T388Bo.mjs'
@@ -137,9 +144,14 @@ def validate_dream_light_native(case, public, snapshots, evidence_directory, loa
     env = {'OPENCLAW_STATE_DIR': str(root / 'state'), 'OPENCLAW_HOME': str(root),
            'OPENCLAW_CONFIG_PATH': str(root / 'openclaw.json')}
     opts = value['options']
+    if phase == 'rem':
+        phases = rem.phase_config(opts)
+        rem.validate_callbacks(raw, opts)
+    else:
+        phases = {'light': {'enabled': True, **{k: opts[k] for k in ('limit', 'lookbackDays', 'dedupeSimilarity')}},
+                  'rem': {'enabled': False}}
     plugin = {'dreaming': {'enabled': opts['enabled'], 'timezone': opts['timezone'],
-              'storage': {'mode': opts['storageMode']}, 'phases': {'light': {'enabled': True,
-              **{k: opts[k] for k in ('limit', 'lookbackDays', 'dedupeSimilarity')}}, 'rem': {'enabled': False}}}}
+                           'storage': {'mode': opts['storageMode']}, 'phases': phases}}
     same(raw['cfg'], cfg, 'Native configuration changed')
     same(raw['env'], env, 'Native storage escaped its owned fixture')
     same(raw['pluginConfig'], plugin, 'Native phase configuration changed')
@@ -173,16 +185,24 @@ def validate_dream_light_native(case, public, snapshots, evidence_directory, loa
         if file in value['files']:
             take(method, [workspace, json.loads(value['files'][file])], undefined=True)
     observations = []
+    model_calls, sweep_results = [], []
     for operation, tree in zip(value['operations'], trees[1:], strict=True):
-        if operation['op'] == 'light':
+        if operation['op'] == phase:
             now_ms = operation['nowMs']
-            outcome = take('runDreamingSweepPhases', [{'workspaceDir': workspace, 'agentId': 'main',
-                           'cfg': cfg, 'pluginConfig': plugin, 'nowMs': now_ms}])
+        now = datetime.fromtimestamp(now_ms / 1000, timezone.utc).isoformat(timespec='milliseconds').replace('+00:00', 'Z')
+        if operation['op'] == phase:
+            args = {'workspaceDir': workspace, 'cfg': cfg, 'pluginConfig': plugin, 'nowMs': now_ms}
+            agent = opts['agentId'] if phase == 'rem' else 'main'
+            if agent is not None:
+                args['agentId'] = agent
+            outcome = take('runDreamingSweepPhases', [args])
             require(set(outcome) == {'degradedPhases', 'pendingNarratives'} and all(type(n) is int for n in outcome.values()),
                     'Incomplete original sweep return')
+            if phase == 'rem':
+                model_calls.extend(rem.callback_effects(raw, now_ms, now, workspace, take))
+                sweep_results.append(outcome)
         else:
             require('workspace/' + operation['path'] not in tree, 'Removed input still exists')
-        now = datetime.fromtimestamp(now_ms / 1000, timezone.utc).isoformat(timespec='milliseconds').replace('+00:00', 'Z')
         physical, recorded = _physical(tree, workspace, now)
         for kind in ('recall', 'phase'):
             same(take('readShortTermStore', [workspace, kind, now]), physical[kind], 'Native SQLite store differs from its API')
@@ -193,6 +213,11 @@ def validate_dream_light_native(case, public, snapshots, evidence_directory, loa
         documents = {k[len('workspace/'):]: v.decode() for k, v in tree.items() if k.startswith('workspace/') and k.endswith('.md')}
         observations.append({'operation': operation, 'documents': documents, 'recall': recall,
                              'signals': signals, 'events': _event_paths(events, workspace)})
+        if phase == 'rem':
+            observations[-1].update(modelCalls=list(model_calls), sweepResults=list(sweep_results))
+    if phase == 'rem':
+        same(model_calls, [entry['request'] for entry in raw['modelCalls']], 'Native callback escaped its invocation')
+        rem.validate_publication(case, raw, trees, observations)
     require(not calls, 'Unexpected native invocation')
     same(raw['observations'], observations, 'Native observation differs from its actual state')
     same(public, {'observations': observations}, 'Public result lost original fields')

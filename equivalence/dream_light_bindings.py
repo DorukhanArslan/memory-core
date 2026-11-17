@@ -85,6 +85,37 @@ COMPILED = {
         ('export { appendMemoryHostEvent,',)),
 }
 
+
+REM_SOURCE = {
+    "extensions/memory-core/src/dreaming-phases.ts": (
+        "8e1357d90e083f62ba1afa2b233ebf734270d02c0b2ae460abfa783273a5ce2c",
+        ('function runRemDreaming(', 'function selectRemCandidateTruths(', 'function buildRemReflections(')),
+    "extensions/memory-core/src/dreaming-narrative.ts": (
+        "1274c328923b0d4d219a0ca5dae16535aca0d9aaf1a4b3b6f8223a05400c9818",
+        ('function runDreamNarrative(', 'function generateAndAppendDreamNarrative(', 'function buildNarrativePrompt(', 'function appendFallbackNarrativeEntry(')),
+    "extensions/memory-core/src/dreaming-dreams-file.ts": (
+        "91ef8ad95b9b16e7975c06572e0b6c4c96bdb15b98679a520efd840cd263a43b",
+        ('function appendNarrativeEntry(', 'function assertSafeDreamsPath(')),
+    "extensions/memory-core/src/short-term-promotion-stats.ts": (
+        "f10c97fcbe12a499c747910425659ca2e00ce49b8c44ed2feb77bc74e38c5372",
+        ('function recordRemConsideredPhaseSignals(', 'function readLightStagedKeys(', 'function recordDreamingPhaseSignals(')),
+}
+
+REM_COMPILED = {
+    "dist/dreaming-phases-rmgXNBLP.mjs": (
+        "a6cb36f29a58a368fadd5edfe59eb7c4c2ba09f6f72057f5b3601f312159ee3a",
+        ('function runRemDreaming(', 'function selectRemCandidateTruths(', 'function buildRemReflections(')),
+    "dist/dreaming-narrative-B8Hp3Mc_.mjs": (
+        "db2106633d04a70616bb0b9596d9c35f506d984312325f57e6a32fbfbf46ed79",
+        ('function runDreamNarrative(', 'function generateAndAppendDreamNarrative(', 'function buildNarrativePrompt(', 'function appendFallbackNarrativeEntry(')),
+    "dist/dreaming-dreams-file-BJzlZFlf.mjs": (
+        "fbc57813554fc29a6b7c5bcbada4baa21d5f774c33edd54297a3976741fa4492",
+        ('function appendNarrativeEntry(', 'function assertSafeDreamsPath(')),
+    "dist/short-term-promotion-MX1vHJuE.mjs": (
+        "be3114e9aa8c448bdeedbd750b41b25ac06bc00ad8a728edb70db376aa3bc1da",
+        ('function recordRemConsideredPhaseSignals(', 'function readLightStagedKeys(', 'function recordDreamingPhaseSignals(')),
+}
+
 REQUIRED_RUNTIME_ARTIFACTS = tuple(COMPILED)
 FUNCTION_HASHES = {"readShortTermStore": "4c9ea7bd8a2d4bb40f607296fce8c0332eb6b0f255b1f578fa2c56bf39285c84",
 'createPluginStateKeyedStore': '3c4f0e6163afd4d4f9462fe11b1c18410332764b5ea591361ed6c66034d0c203',
@@ -98,20 +129,25 @@ FUNCTION_HASHES = {"readShortTermStore": "4c9ea7bd8a2d4bb40f607296fce8c0332eb6b0
  'readMemoryHostEventRecords': '60d1b7c8011d88df7ab3d057a30c2983a4614e9a327dbc91fb1ddcb748b7c4d9'}
 
 
-def prepare_dream_light_bindings(checkout: Path, runtime_root: Path):
+def prepare_dream_light_bindings(checkout: Path, runtime_root: Path, phase="light"):
     checkout, runtime_root = Path(checkout).resolve(), Path(runtime_root).resolve()
     if _git(checkout, "rev-parse", "HEAD").decode().strip() != REFERENCE_COMMIT:
         raise ValueError("The light sweep requires the pinned OpenClaw source commit")
+
+    if phase not in ("light", "rem"):
+        raise ValueError("Unknown dreaming phase")
+    source = {**SOURCE, **REM_SOURCE} if phase == "rem" else SOURCE
+    compiled = {**COMPILED, **REM_COMPILED} if phase == "rem" else COMPILED
 
     def verify(root, table, committed):
         hashes = {name: row[0] for name, row in table.items()}
         anchors = {name: row[1] for name, row in table.items()}
         return _owners(root, hashes, anchors, committed=committed)[1]
 
-    return {"kind": "official-release-light-dreaming-owners", "referenceCommit": REFERENCE_COMMIT,
-            "sourceBindings": verify(checkout, SOURCE, True),
-            "compiledBindings": verify(runtime_root, COMPILED, False),
-            "requiredLoadedArtifacts": list(REQUIRED_RUNTIME_ARTIFACTS),
+    return {"kind": f"official-release-{phase}-dreaming-owners", "referenceCommit": REFERENCE_COMMIT,
+            "sourceBindings": verify(checkout, source, True),
+            "compiledBindings": verify(runtime_root, compiled, False),
+            "requiredLoadedArtifacts": list(compiled),
             "sourceBuildReproduced": False, "sourceFallbackAllowed": False,
             "entryPoint": {"artifact": "dist/dreaming-phases-rmgXNBLP.mjs", "export": "r",
                            "name": "runDreamingSweepPhases"}}

@@ -114,8 +114,26 @@ def pid_definitely_dead(pid: int) -> bool:
     """``isPidDefinitelyDead``: invalid, missing (``ESRCH``) or a single-threaded zombie."""
     if pid <= 0:
         return True
+    if sys.platform == "win32":
+        import ctypes
+        from ctypes import wintypes
+
+        kernel = ctypes.WinDLL("kernel32", use_last_error=True)
+        kernel.OpenProcess.argtypes = [wintypes.DWORD, wintypes.BOOL, wintypes.DWORD]
+        kernel.OpenProcess.restype = wintypes.HANDLE
+        kernel.WaitForSingleObject.argtypes = [wintypes.HANDLE, wintypes.DWORD]
+        kernel.CloseHandle.argtypes = [wintypes.HANDLE]
+        handle = kernel.OpenProcess(0x00100000, False, pid)  # SYNCHRONIZE
+        if not handle:
+            return ctypes.get_last_error() == 87  # ERROR_INVALID_PARAMETER for an absent PID
+        try:
+            return kernel.WaitForSingleObject(handle, 0) == 0  # WAIT_OBJECT_0
+        finally:
+            kernel.CloseHandle(handle)
     try:
         os.kill(pid, 0)
+    except OverflowError:
+        return True
     except ProcessLookupError:
         return True
     except OSError:

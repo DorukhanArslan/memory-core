@@ -143,6 +143,12 @@ def test_stale_owner_release_does_not_delete_new_owner_lock(tmp_path: Path):
     first_released = False
     try:
         assert first.acquired is True
+        with acquire_short_term_promotion_lock(config, second_now) as live_contender:
+            assert live_contender.acquired is False
+        # Simulate replacement of the persisted lease while the old callback is active.
+        # An old release must only delete the epoch and owner it originally acquired.
+        previous = json.loads(lock_path.read_text())
+        lock_path.write_text(json.dumps({**previous, "pid": 999999, "ownerToken": "abandoned"}))
         second_manager = acquire_short_term_promotion_lock(config, second_now)
         second = second_manager.__enter__()
         try:

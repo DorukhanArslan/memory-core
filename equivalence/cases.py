@@ -339,6 +339,10 @@ def build_cases(*, include_prospective: bool = False) -> list[dict[str, Any]]:
     from equivalence.automation_job_state import build_cases as build_automation_jobs
 
     cases.extend(build_automation_jobs())
+
+    from equivalence.workspace_lock_cases import build_cases as build_workspace_locks
+
+    cases.extend(build_workspace_locks())
     if include_prospective:
         from equivalence.flush_contract import build_prospective_flush_contract_cases
         from equivalence.session_projection import build_prospective_session_projection_cases
@@ -364,6 +368,11 @@ def run_python(case: dict[str, Any]) -> Any:
             with TemporaryDirectory() as directory:
                 return run_sdk(case, Path(directory))
         return run_sdk(case, diagnostic)
+
+    if operation == "workspace-lock-process-runtime":
+        from equivalence.workspace_lock_evidence import run_sdk_case
+
+        return run_sdk_case(case)
     if operation == "engine-numeric-boundaries":
         from equivalence.engine_numeric_boundaries import run_engine_numeric_boundaries
 

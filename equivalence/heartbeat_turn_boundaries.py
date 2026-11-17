@@ -116,10 +116,11 @@ def _require(value, message):
         raise ValueError(message)
 
 
-def validate_corpus(case, result, sources):
+def validate_corpus(case, result, sources, imported):
     owners = {item["path"] for item in sources}
-    _require("packages/memory-host-sdk/src/host/session-files.ts" in owners,
-             "Missing the original corpus reader")
+    expected = ["packages/memory-host-sdk/src/host/session-files.ts",
+                "packages/memory-host-sdk/src/host/session-reset-recall.ts"]
+    _require(imported == expected and set(expected) <= owners, "Missing an original corpus source owner")
     reads = result["reads"]
     _require(len(reads) == 2 and reads[0] == reads[1], "The stored transcript changed between opens")
     sample = reads[0]
@@ -146,12 +147,21 @@ def validate_flush(case, result, raw_native, raw_sdk):
              "Eligible normal and heartbeat flush decisions did not follow the input order")
     first, middle, last = snapshots
     _require(first["bytesBase64"] is None and middle["bytesBase64"] and middle["bytesBase64"] == last["bytesBase64"]
-             and not first["provenance"] and middle["provenance"] == last["provenance"] and len(middle["provenance"]) == 1,
+             and not first["provenance"] and len(middle["provenance"]) == len(last["provenance"]) == 1,
              "Automatic polls must leave the actual maintenance file and provenance untouched")
     _require([s["modelCalls"] for s in snapshots] == [0, 2, 0]
              and [len(s["toolResults"]) for s in snapshots] == [0, 1, 0] and all(s["sourceUnchanged"] for s in snapshots),
              "Model/tool activity or the original conversation was not preserved")
     _require(len(raw_native) == len(raw_sdk) == len(snapshots), "Missing raw native or SDK flush drives")
+    # The durable writer is the ordinary run. Its identity remains the same
+    # when the later poll has no current maintenance run to match against.
+    for captures in (raw_native, raw_sdk):
+        _require(not captures[0]["provenanceRaw"] and captures[1]["provenanceRaw"]
+                 and captures[1]["provenanceRaw"] == captures[2]["provenanceRaw"],
+                 "A later poll changed the persisted writer or source hash")
+    for field in ("matchesRunSession", "matchesRunKey"):
+        _require(middle["provenance"][0]["writer"][field] is True
+                 and last["provenance"][0]["writer"][field] is False, "Unexpected run identity")
     for n, s, obs in zip(raw_native, raw_sdk, snapshots, strict=True):
         _require(n.get("invokedOwner") == "runMemoryFlushIfNeeded" and len(n["modelCalls"]) == obs["modelCalls"]
                  and len(n["toolEvents"]) == len(s["receipts"]) == len(obs["toolResults"])

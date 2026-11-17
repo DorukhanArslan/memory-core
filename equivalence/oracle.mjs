@@ -200,10 +200,12 @@ const number = (value) => typeof value === "string"
 
 const sourceDiagnostics = [];
 const numericSourceImports = {};
+const heartbeatCorpusSourceImports = {};
 async function execute(operation, input, id) {
-  if (operation === "engine-numeric-boundaries") {
+  if (operation === "engine-numeric-boundaries" || (operation === "session-projection" && input.reopenHeartbeatCorpus)) {
+    const receipts = operation === "engine-numeric-boundaries" ? numericSourceImports : heartbeatCorpusSourceImports;
     const imports = new Set();
-    numericSourceImports[id] = [];
+    receipts[id] = [];
     try {
       return await adapters.get(operation)(input, async relative => {
         const module = await import(sourceUrl(relative));
@@ -211,7 +213,7 @@ async function execute(operation, input, id) {
         return module;
       });
     } finally {
-      numericSourceImports[id] = [...imports].sort();
+      receipts[id] = [...imports].sort();
     }
   }
   if (adapters.has(operation)) return adapters.get(operation)(input, (relative) => import(sourceUrl(relative)), {
@@ -261,6 +263,7 @@ for (const testCase of request.cases) {
 process.stdout.write(JSON.stringify({
   results,
   sourceDiagnostics,
+  ...(Object.keys(heartbeatCorpusSourceImports).length ? { heartbeatCorpusSourceImports } : {}),
   ...(Object.keys(numericSourceImports).length ? { numericSourceImports } : {}),
   sources: [...sources].sort().map((relative) => ({
     path: relative,

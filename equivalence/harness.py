@@ -2009,6 +2009,9 @@ def run_suite(*, checkout: Path, node: Path, smoke: bool = False,
         if after != report["reference"]:
             raise HarnessError("reference-changed", "The reference checkout changed during comparison.")
         report["sources"] = oracle.get("sources", [])
+        heartbeat_source_imports = oracle.get("heartbeatCorpusSourceImports", {})
+        if heartbeat_source_imports:
+            report["heartbeatCorpusSourceImports"] = heartbeat_source_imports
         numeric_source_imports = oracle.get("numericSourceImports", {})
         if numeric_source_imports:
             report["numericSourceImports"] = numeric_source_imports
@@ -2428,6 +2431,7 @@ def run_suite(*, checkout: Path, node: Path, smoke: bool = False,
                     if case["requirement"] == "heartbeat.turn-decisions" and "heartbeat.turn-decisions.boundaries" in case["covers"]:
                         from equivalence.heartbeat_turn_boundaries import FLUSH, validate_corpus, validate_flush
 
+                        row.update(openclaw=native_comparison, python=python)
                         if case["id"] == FLUSH:
                             original = next(d for d in report["runtimeDiagnostics"]
                                             if d["side"] == "native" and d["id"] == case["id"])
@@ -2435,8 +2439,8 @@ def run_suite(*, checkout: Path, node: Path, smoke: bool = False,
                                 validate_flush(case, public, original["rawSnapshots"], snapshots)
                         else:
                             for public in (native_comparison, python):
-                                validate_corpus(case, public, report["sources"])
-                        row.update(heartbeatExclusionEvidenceValidated=True, openclaw=native_comparison, python=python)
+                                validate_corpus(case, public, report["sources"], heartbeat_source_imports.get(case["id"]))
+                        row["heartbeatExclusionEvidenceValidated"] = True
                     # Reject non-JSON outputs and non-finite values explicitly.
                     python = _json(json.dumps(python, ensure_ascii=False, allow_nan=False))
                     row["status"] = "matched" if _same_json(python, native_comparison) else "mismatched"

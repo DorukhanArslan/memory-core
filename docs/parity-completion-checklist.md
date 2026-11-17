@@ -19,6 +19,13 @@ izler; yeni kabul koşulu veya puan eklemez. **128/128 tek başına bitiş deği
 | Engellenen örnekler / koşu hataları | 0 / 0 | 0 / 0 |
 | Tam eşdeğerlik kapısı | Geçmedi; gerçek çıkış kodu 1 | `fullScopePassed: true`, çıkış kodu 0 |
 
+**Devam eden paket (18 Kasım).** Kayıtlı sohbeti koruyarak eksik araç
+cevaplarını onarma (8/8 örnek) ve sayı sınırlarında aynı kararları verme
+(4/4 örnek) odaklı karşılaştırmalarda geçti. Üçüncü iş, notlar birleştiğinde
+önceki metni ve kaynağını korumak. Bu üç işin ortak hedefi **84 → 90**.
+Tablodaki puan, tüm örneklerin ortak karşılaştırması doğrulandığında güncellenir.
+[Uygulama ve kanıtların takibi, PR #30](https://github.com/DorukhanArslan/memory-core/pull/30)
+
 84/128, kabul koşullarının %65,6'sıdır; harcanan işin veya genel parity'nin
 %65,6'sı anlamına gelmez. **44 koşul ve 14 fark toplanmaz:** farklı ölçülerdir.
 14 farkın 11'i puana bağlanmamış teşhis örnekleridir (`covers: []`);

@@ -241,7 +241,7 @@ export async function runFlushExecution(input, config) {
       progress(`before-native-run:${step.label}`);
       const result = await runMemoryFlushIfNeeded({ cfg, followupRun, promptForEstimate: "", defaultModel: modelId,
         resolvedVerboseLevel: "off", sessionEntry: entry, sessionStore: { [sessionKey]: entry }, sessionKey, storePath,
-        isHeartbeat: false, abortSignal: activeController.signal,
+        isHeartbeat: step.isHeartbeat === true, abortSignal: activeController.signal,
         replyOperation: { abortSignal: activeController.signal, setPhase: (phase) => progress(`reply-phase:${phase}`) },
         onVisibleErrorPayloads: (payloads) => visibleErrors.push(...payloads) });
       clearTimeout(deadline);

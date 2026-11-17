@@ -311,7 +311,10 @@ def _validate_scope(scope: Any, cases: Any) -> tuple[list[dict], dict[str, set[s
     from equivalence.automation_job_state import validate_registration as validate_jobs_registration
     from equivalence.engine_numeric_family import validate_registration as validate_numeric_registration
     try:
+        from equivalence.heartbeat_turn_boundaries import validate_registration as validate_heartbeat_exclusions
+
         validate_numeric_registration(cases)
+        validate_heartbeat_exclusions(cases)
         validate_jobs_registration(cases)
         validate_job_outcomes(cases)
     except (ValueError, KeyError, TypeError) as error:
@@ -2006,6 +2009,9 @@ def run_suite(*, checkout: Path, node: Path, smoke: bool = False,
         if after != report["reference"]:
             raise HarnessError("reference-changed", "The reference checkout changed during comparison.")
         report["sources"] = oracle.get("sources", [])
+        heartbeat_source_imports = oracle.get("heartbeatCorpusSourceImports", {})
+        if heartbeat_source_imports:
+            report["heartbeatCorpusSourceImports"] = heartbeat_source_imports
         numeric_source_imports = oracle.get("numericSourceImports", {})
         if numeric_source_imports:
             report["numericSourceImports"] = numeric_source_imports
@@ -2422,6 +2428,19 @@ def run_suite(*, checkout: Path, node: Path, smoke: bool = False,
                                         if d["side"] == "native" and d["id"] == case["id"])
                         validate_numeric_rank(case, native_comparison, python, original["rawSnapshots"], snapshots)
                         row["numericEvidenceValidated"] = True
+                    if case["requirement"] == "heartbeat.turn-decisions" and "heartbeat.turn-decisions.boundaries" in case["covers"]:
+                        from equivalence.heartbeat_turn_boundaries import FLUSH, validate_corpus, validate_flush
+
+                        row.update(openclaw=native_comparison, python=python)
+                        if case["id"] == FLUSH:
+                            original = next(d for d in report["runtimeDiagnostics"]
+                                            if d["side"] == "native" and d["id"] == case["id"])
+                            for public in (native_comparison, python):
+                                validate_flush(case, public, original["rawSnapshots"], snapshots)
+                        else:
+                            for public in (native_comparison, python):
+                                validate_corpus(case, public, report["sources"], heartbeat_source_imports.get(case["id"]))
+                        row["heartbeatExclusionEvidenceValidated"] = True
                     # Reject non-JSON outputs and non-finite values explicitly.
                     python = _json(json.dumps(python, ensure_ascii=False, allow_nan=False))
                     row["status"] = "matched" if _same_json(python, native_comparison) else "mismatched"
@@ -2432,6 +2451,8 @@ def run_suite(*, checkout: Path, node: Path, smoke: bool = False,
                     if case["requirement"] == "engine.numeric-boundaries":
                         row["numericError"] = {"type": type(error).__name__, "message": str(error)}
                     row.update(status="blocked", code="python-case-failed")
+                    if case["requirement"] == "heartbeat.turn-decisions":
+                        row["evidenceError"] = {"name": type(error).__name__, "message": str(error)}
                     if case["operation"] in {"automation-job-outcomes-runtime", "workspace-lock-process-runtime", "promotion-apply-family-runtime", "deep-consolidation-runtime", "host-restart-session-runtime",
                                              "host-update-isolation-runtime", "host-turn-barrier-runtime",
                                              "host-turn-barrier-boundaries-runtime", "index-identity-boundaries-runtime", "query-sync-outcomes-runtime", "query-sync-boundaries-runtime", "forget-lineage-runtime", "forget-boundaries-runtime", "recall-signals-runtime", "embed-cache-lifecycle-runtime", "session-reset-boundaries-runtime", "prompt-runtime-context-runtime", "prompt-history-repair-runtime", *DREAM_FAMILIES}:
@@ -2495,6 +2516,10 @@ def run_suite(*, checkout: Path, node: Path, smoke: bool = False,
             dream_points.update(dict.fromkeys(family.POINTS, complete))
         from equivalence.engine_numeric_family import family_complete as numeric_family_complete, POINTS as numeric_points
 
+        from equivalence.heartbeat_turn_boundaries import family_complete as heartbeat_exclusions_complete, POINT as heartbeat_boundary
+
+        heartbeat_complete = heartbeat_exclusions_complete(report["cases"])
+        report["heartbeatExclusionsComplete"] = heartbeat_complete
         numeric_complete = numeric_family_complete(report["cases"])
         report["engineNumericFamilyComplete"] = numeric_complete
 
@@ -2559,6 +2584,7 @@ def run_suite(*, checkout: Path, node: Path, smoke: bool = False,
                                                            or history_complete)
                                                       and (point["id"] != jobs_point or jobs_complete)
                                                       and (point["id"] != job_outcome_point or outcomes_complete)
+                                                      and (point["id"] != heartbeat_boundary or heartbeat_complete)
                                                       and dream_points.get(point["id"], True)
                                                       and (point["id"] not in numeric_points or numeric_complete)
                                                       and (point["id"] not in deep_points or deep_complete)

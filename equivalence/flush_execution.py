@@ -285,6 +285,7 @@ def run_flush_execution(arguments: dict[str, Any], *,
                 target.write_bytes(step["externalText"].encode("utf-8"))
             record = kit.prepare_flush(
                 state, transcript=source_messages,
+                is_heartbeat=step.get("isHeartbeat"),
                 untrusted_turn=step.get("untrusted", supplied.get("untrusted", False)),
             )
             request = record.flush

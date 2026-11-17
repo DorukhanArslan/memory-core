@@ -640,7 +640,7 @@
           "path": "memory_core/host/kit.py",
           "symbol": "HostKit",
           "anchor": "class HostKit:",
-          "line": 213
+          "line": 214
         },
         {
           "path": "memory_core/index/embedding_limits.py",
@@ -2552,7 +2552,7 @@
           "path": "memory_core/host/kit.py",
           "symbol": "HostKit.__init__",
           "anchor": "    def __init__(",
-          "line": 223
+          "line": 224
         },
         {
           "path": "memory_core/tools/memory_search.py",
@@ -3328,25 +3328,25 @@
           "path": "memory_core/session_catalog.py",
           "symbol": "MemorySessionCatalog.upsert_session",
           "anchor": "    def upsert_session(",
-          "line": 754
+          "line": 784
         },
         {
           "path": "memory_core/session_catalog.py",
           "symbol": "MemorySessionCatalog.snapshot",
           "anchor": "    def snapshot(",
-          "line": 1269
+          "line": 1299
         },
         {
           "path": "memory_core/session_catalog.py",
           "symbol": "MemorySessionCatalog.read_transcript",
           "anchor": "    def read_transcript(",
-          "line": 1356
+          "line": 1386
         },
         {
           "path": "memory_core/session_catalog.py",
           "symbol": "MemorySessionCatalog.record_archive",
           "anchor": "    def record_archive(",
-          "line": 1243
+          "line": 1273
         },
         {
           "path": "memory_core/session_visibility.py",
@@ -3370,19 +3370,19 @@
           "path": "memory_core/session_catalog.py",
           "symbol": "MemorySessionCatalog.record_participant",
           "anchor": "    def record_participant(",
-          "line": 1148
+          "line": 1178
         },
         {
           "path": "memory_core/session_catalog.py",
           "symbol": "MemorySessionCatalog.list_participants",
           "anchor": "    def list_participants(",
-          "line": 1215
+          "line": 1245
         },
         {
           "path": "memory_core/session_catalog.py",
           "symbol": "MemorySessionCatalog.load_session_metadata",
           "anchor": "    def load_session_metadata(",
-          "line": 1446
+          "line": 1476
         },
         {
           "path": "memory_core/session_visibility.py",
@@ -3586,7 +3586,7 @@
           "path": "memory_core/session_catalog.py",
           "symbol": "MemorySessionCatalog.read_transcript",
           "anchor": "    def read_transcript(",
-          "line": 1356
+          "line": 1386
         },
         {
           "path": "memory_core/session_corpus.py",
@@ -3766,25 +3766,25 @@
           "path": "memory_core/session_catalog.py",
           "symbol": "MemorySessionCatalog.read_transcript",
           "anchor": "    def read_transcript(",
-          "line": 1356
+          "line": 1386
         },
         {
           "path": "memory_core/session_catalog.py",
           "symbol": "MemorySessionCatalog.read_reset_cutoff",
           "anchor": "    def read_reset_cutoff(",
-          "line": 1384
+          "line": 1414
         },
         {
           "path": "memory_core/session_catalog.py",
           "symbol": "MemorySessionCatalog.snapshot",
           "anchor": "    def snapshot(",
-          "line": 1269
+          "line": 1299
         },
         {
           "path": "memory_core/session_catalog.py",
           "symbol": "MemorySessionCatalog.tombstone_session",
           "anchor": "    def tombstone_session(",
-          "line": 1258
+          "line": 1288
         },
         {
           "path": "memory_core/tools/memory_search.py",
@@ -3843,7 +3843,7 @@
           "path": "memory_core/host/kit.py",
           "symbol": "on_new_session",
           "anchor": "def on_new_session(",
-          "line": 765
+          "line": 766
         }
       ],
       "implementation": "partial",
@@ -4050,25 +4050,25 @@
           "path": "memory_core/session_catalog.py",
           "symbol": "MemorySessionCatalog.append_message",
           "anchor": "    def append_message(",
-          "line": 986
+          "line": 1016
         },
         {
           "path": "memory_core/session_catalog.py",
           "symbol": "MemorySessionCatalog.read_continuation",
           "anchor": "    def read_continuation(",
-          "line": 1390
+          "line": 1420
         },
         {
           "path": "memory_core/session_catalog.py",
           "symbol": "MemorySessionCatalog.read_anchor",
           "anchor": "    def read_anchor(",
-          "line": 1108
+          "line": 1138
         },
         {
           "path": "memory_core/session_catalog.py",
           "symbol": "MemorySessionCatalog.list_transcript_instances",
           "anchor": "    def list_transcript_instances(",
-          "line": 1290
+          "line": 1320
         },
         {
           "path": "memory_core/session_context.py",
@@ -4707,7 +4707,7 @@
           "path": "memory_core/host/kit.py",
           "symbol": "HostKit.prepare_flush",
           "anchor": "    def prepare_flush(",
-          "line": 615
+          "line": 616
         },
         {
           "path": "memory_core/memory_flush.py",
@@ -4743,7 +4743,7 @@
           "path": "memory_core/host/kit.py",
           "symbol": "after_turn",
           "anchor": "def after_turn(",
-          "line": 565
+          "line": 566
         }
       ],
       "implementation": "present",
@@ -5893,7 +5893,7 @@
           "path": "memory_core/host/kit.py",
           "symbol": "HostKit.after_turn",
           "anchor": "    def after_turn(",
-          "line": 565
+          "line": 566
         },
         {
           "path": "memory_core/turn_trust.py",
@@ -5977,13 +5977,13 @@
           "path": "memory_core/automation.py",
           "symbol": "FileAutomationStore",
           "anchor": "class FileAutomationStore:",
-          "line": 440
+          "line": 501
         },
         {
           "path": "memory_core/heartbeat_migration.py",
           "symbol": "migrate_heartbeat_md",
           "anchor": "def migrate_heartbeat_md(",
-          "line": 754
+          "line": 757
         }
       ],
       "implementation": "partial",
@@ -6105,37 +6105,55 @@
           "path": "memory_core/automation.py",
           "symbol": "compute_job_next_run_at_ms",
           "anchor": "def compute_job_next_run_at_ms(",
-          "line": 290
+          "line": 315
         },
         {
           "path": "memory_core/automation.py",
           "symbol": "is_job_due",
           "anchor": "def is_job_due(",
-          "line": 319
+          "line": 348
         },
         {
           "path": "memory_core/automation.py",
           "symbol": "record_automation_job_run",
           "anchor": "def record_automation_job_run(",
-          "line": 380
+          "line": 407
         },
         {
           "path": "memory_core/heartbeat_migration.py",
           "symbol": "migrate_heartbeat_tasks",
           "anchor": "def migrate_heartbeat_tasks(",
-          "line": 1105
+          "line": 1109
         },
         {
           "path": "memory_core/host/kit.py",
           "symbol": "HostKit.heartbeat_task_prompt",
           "anchor": "    def heartbeat_task_prompt(",
-          "line": 872
+          "line": 873
+        },
+        {
+          "path": "memory_core/automation_schedule.py",
+          "symbol": "next_calendar_run",
+          "anchor": "def next_calendar_run(",
+          "line": 333
+        },
+        {
+          "path": "memory_core/host/kit.py",
+          "symbol": "run_heartbeat_task",
+          "anchor": "def run_heartbeat_task(",
+          "line": 896
+        },
+        {
+          "path": "memory_core/consolidation/dreaming_automation.py",
+          "symbol": "reconcile_dreaming_jobs",
+          "anchor": "def reconcile_dreaming_jobs(",
+          "line": 119
         }
       ],
       "implementation": "partial",
       "notes": [
-        "Python job scheduling supports recurring every intervals; native at/cron schedules, timezone/DST handling, staggering and stream schedule state are outside that implementation.",
-        "Python due decisions honor persisted queued and running markers. Forced runs and in-process scheduler claims remain host responsibilities. Run recording covers successful/skipped recurring runs. Error/backoff/deletion outcomes and durable run recovery remain open."
+        "The SDK drives memory jobs explicitly, including recurring intervals, absolute times, cron calendars, forced runs and stored active reservations. The host owns timers and broader gateway admission, pacing and recovery policy.",
+        "The SDK carries legacy heartbeat timestamps into migrated jobs and separately reconciles managed dreaming declarations. Generated rows expose the command and storage identity of their producer."
       ]
     },
     {
@@ -6316,7 +6334,7 @@
           "path": "memory_core/host/kit.py",
           "symbol": "HostKit.after_turn",
           "anchor": "    def after_turn(",
-          "line": 565
+          "line": 566
         },
         {
           "path": "memory_core/index/sqlite_store.py",
@@ -6595,7 +6613,7 @@
           "path": "memory_core/host/kit.py",
           "symbol": "HostKit.after_turn",
           "anchor": "    def after_turn(",
-          "line": 565
+          "line": 566
         },
         {
           "path": "demo/lab_chat.py",
@@ -6694,7 +6712,7 @@
           "path": "memory_core/host/kit.py",
           "symbol": "HostKit.on_new_session",
           "anchor": "    def on_new_session(",
-          "line": 765
+          "line": 766
         },
         {
           "path": "demo/lab_runtime.py",
@@ -6742,7 +6760,7 @@
           "path": "memory_core/session_catalog.py",
           "symbol": "MemorySessionCatalog.compare_and_patch_host_lifecycle",
           "anchor": "    def compare_and_patch_host_lifecycle(",
-          "line": 699
+          "line": 729
         },
         {
           "path": "memory_core/session_catalog.py",
@@ -6793,7 +6811,7 @@
           "path": "memory_core/host/kit.py",
           "symbol": "HostKit.dispatcher",
           "anchor": "    def dispatcher(",
-          "line": 426
+          "line": 427
         },
         {
           "path": "memory_core/live/__init__.py",

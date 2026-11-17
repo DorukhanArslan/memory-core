@@ -24,6 +24,7 @@ from memory_core.automation import (
     FileAutomationStore,
     due_automation_jobs,
     is_heartbeat_task_job,
+    record_automation_job_run,
     heartbeat_scheduled_tasks,
 )
 from memory_core.bootstrap import (
@@ -891,6 +892,43 @@ class HostKit:
             session, due=due, started_at=started_at, source="interval", reason=wake.reason, context_mode="full",
             runtime_context=None, offer_tools=True, ensure=ensure, scheduled_wake=wake,
         )
+
+    def run_heartbeat_task(
+        self, session: SessionState, job_id: str, heartbeat: Callable[[HeartbeatRun], Mapping[str, Any]], *,
+        forced: bool = False, schedule_now_ms: int | None = None, ensure: bool = True,
+    ) -> dict[str, Any]:
+        """Reserve an explicit task and pass its prepared turn to the host heartbeat runner.
+
+        The host returns a settlement with status ran, skipped or failed. A
+        skipped/failed settlement includes its reason. This method owns recording
+        the completion, including the future slot of a forced one-shot run.
+        """
+        store = self._automation_store
+        if not hasattr(store, "claim_heartbeat_task") or not hasattr(store, "complete_claimed_job"):
+            raise TypeError("the automation store must support durable heartbeat task reservations")
+        at = self._clock() if schedule_now_ms is None else schedule_now_ms
+        claim = store.claim_heartbeat_task(self._memory.config.agent_id, job_id, at, forced=forced)
+        if isinstance(claim, str):
+            return {"ok": True, "ran": False, "reason": claim}
+        wake = ScheduledHeartbeatWake(claim)
+        try:
+            run = self._prepare_heartbeat_run(
+                session, due=[claim], started_at=at, source="interval", reason=wake.reason, context_mode="full",
+                runtime_context=None, offer_tools=True, ensure=ensure, scheduled_wake=wake,
+            )
+            result = heartbeat(run)
+            disposition = result["status"]
+            if disposition not in {"ran", "skipped", "failed"}:
+                raise ValueError("invalid heartbeat settlement")
+            state = {"ran": "ok", "skipped": "skipped", "failed": "error"}[disposition]
+            error = None if disposition == "ran" else f"heartbeat {disposition}: {result['reason']}"
+        except Exception as exc:
+            state, error = "error", str(exc)
+        ended = self._clock() if schedule_now_ms is None else at
+        completed = record_automation_job_run(claim, started_at_ms=at, ended_at_ms=ended, status=state,
+                                               error=error, forced=forced)
+        store.complete_claimed_job(claim, completed)
+        return {"ok": True, "ran": True}
 
     def _prepare_heartbeat_run(
         self, session: SessionState, *, due: list[AutomationJob], started_at: int,

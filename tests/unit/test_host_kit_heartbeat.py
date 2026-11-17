@@ -315,3 +315,20 @@ def test_explicit_task_delivers_only_the_selected_due_job_and_reopens(tmp_path):
     reopened = _kit(tmp_path)
     assert reopened.heartbeat_task_prompt(_session(), first.id) is None
     assert reopened.heartbeat_task_prompt(_session(), second.id).jobs == (second,)
+
+
+def test_durable_claim_excludes_a_second_forced_run_and_preserves_an_edit(tmp_path):
+    job = _job("job-a", "inbox")
+    store = _store(tmp_path, job)
+    kit = _kit(tmp_path)
+    def callback(run):
+        nested = _kit(tmp_path).run_heartbeat_task(_session(), job.id, lambda _: pytest.fail("duplicate task"), forced=True)
+        assert nested == {"ok": True, "ran": False, "reason": "already-running"}
+        [claimed] = store.list_jobs()
+        store.save_jobs([dataclasses.replace(claimed, text="New instructions", next_run_at_ms=NOW_MS + 4 * HOUR)])
+        return {"status": "ran"}
+    assert kit.run_heartbeat_task(_session(), job.id, callback) == {"ok": True, "ran": True}
+    [completed] = FileAutomationStore(tmp_path).list_jobs()
+    assert (completed.text, completed.next_run_at_ms) == ("New instructions", NOW_MS + 4 * HOUR)
+    assert completed.runtime_state["lastRunStatus"] == "ok"
+    assert completed.running_at_ms is None

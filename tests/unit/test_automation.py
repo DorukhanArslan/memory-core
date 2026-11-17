@@ -161,9 +161,9 @@ def test_store_skips_rows_it_cannot_load_and_keeps_them(tmp_path):
     data["jobs"] += [cron_row, "not a job", bad_state]
     store.path.write_text(json.dumps(data), encoding="utf-8")
 
-    assert [job.id for job in store.list_jobs()] == ["job-1"]
+    assert [job.id for job in store.list_jobs()] == ["job-1", "cron-1"]
     assert [(row.index, row.job_id) for row in store.skipped_job_rows()] == [
-        (1, "cron-1"), (2, None), (3, "job-2"),
+        (2, None), (3, "job-2"),
     ]
     store.save_jobs([record_automation_job_run(inbox, started_at_ms=NOW + 1)])
     kept = json.loads(store.path.read_text(encoding="utf-8"))["jobs"]

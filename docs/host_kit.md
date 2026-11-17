@@ -947,6 +947,12 @@ Use `kit.dispatch` with `run.session` for model tool calls and `run.complete` to
 that job. A missing, paused, already queued, running or early task returns `None`.
 The calling scheduler serializes admission for the same job.
 
+With a file-backed automation store, `kit.run_heartbeat_task(session, job_id, callback)`
+reserves the job under the store lock. The callback receives the prepared turn and returns
+`{"status": "ran"}`, or a `skipped`/`failed` status with a reason. The kit persists the
+settlement and the next due time. Forcing an early one-shot preserves its original slot.
+The host can choose its own scheduler and callback, including a model-free reader.
+
 - Composes: `memory_core/automation.py:due_automation_jobs(store.list_jobs(agent_id), schedule_now_ms)`,
   `heartbeat_scheduled_tasks`, `memory_core/heartbeat.py:prepare_heartbeat_turn(now_ms, scratch=
   store.read_scratch(agent_id), scheduled_tasks, source, reason, timezone, time_format)`, and,

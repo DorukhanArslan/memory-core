@@ -4302,13 +4302,13 @@
           "path": "memory_core/model_prompt.py",
           "symbol": "ModelPrompt",
           "anchor": "class ModelPrompt:",
-          "line": 257
+          "line": 262
         },
         {
           "path": "memory_core/host/lifecycle.py",
           "symbol": "HostTurn.model_request",
           "anchor": "    def model_request(self) -> dict[str, Any]:",
-          "line": 255
+          "line": 257
         },
         {
           "path": "memory_core/current_time.py",
@@ -4354,6 +4354,120 @@
           "symbol": "sanitizeSessionHistory",
           "anchor": "export async function sanitizeSessionHistory(params: {",
           "line": 640
+        },
+        {
+          "path": "src/agents/embedded-agent-runner/run/attempt.ts",
+          "symbol": "runEmbeddedAttempt",
+          "anchor": "export async function runEmbeddedAttempt(",
+          "line": 64
+        },
+        {
+          "path": "src/agents/embedded-agent-runner/run/attempt-execution-phase.ts",
+          "symbol": "runEmbeddedAttemptExecutionPhase",
+          "anchor": "export async function runEmbeddedAttemptExecutionPhase(",
+          "line": 27
+        },
+        {
+          "path": "src/agents/embedded-agent-runner/run/attempt-history-prepare.ts",
+          "symbol": "prepareEmbeddedAttemptHistory",
+          "anchor": "export async function prepareEmbeddedAttemptHistory(",
+          "line": 30
+        },
+        {
+          "path": "src/agents/embedded-agent-runner/history.ts",
+          "symbol": "getHistoryLimitFromSessionKey",
+          "anchor": "export function getHistoryLimitFromSessionKey(",
+          "line": 106
+        },
+        {
+          "path": "src/agents/embedded-agent-runner/replay-history.ts",
+          "symbol": "validateReplayTurns",
+          "anchor": "export async function validateReplayTurns(params: {",
+          "line": 832
+        },
+        {
+          "path": "src/agents/transcript-policy.ts",
+          "symbol": "resolveTranscriptPolicy",
+          "anchor": "export function resolveTranscriptPolicy(params: {",
+          "line": 282
+        },
+        {
+          "path": "src/agents/transcript-policy.ts",
+          "symbol": "buildUnownedProviderTransportReplayFallback",
+          "anchor": "function buildUnownedProviderTransportReplayFallback(params: {",
+          "line": 95
+        },
+        {
+          "path": "src/agents/embedded-agent-runner/run/attempt-stream.ts",
+          "symbol": "installEmbeddedAttemptStreamGuards",
+          "anchor": "export function installEmbeddedAttemptStreamGuards(",
+          "line": 101
+        },
+        {
+          "path": "src/agents/embedded-agent-runner/run/attempt-tool-call-replay-sanitization.ts",
+          "symbol": "wrapStreamFnSanitizeMalformedToolCalls",
+          "anchor": "export function wrapStreamFnSanitizeMalformedToolCalls(",
+          "line": 357
+        },
+        {
+          "path": "src/agents/embedded-agent-runner/run/attempt-tool-call-replay-sanitization.ts",
+          "symbol": "sanitizeReplayToolCallInputs",
+          "anchor": "function sanitizeReplayToolCallInputs(",
+          "line": 117
+        },
+        {
+          "path": "src/agents/embedded-agent-runner/run/attempt-tool-call-replay-sanitization.ts",
+          "symbol": "sanitizeReplayToolCallIdsForStream",
+          "anchor": "export function sanitizeReplayToolCallIdsForStream(params: {",
+          "line": 332
+        },
+        {
+          "path": "src/agents/embedded-agent-runner/run/attempt-tool-call-replay-sanitization.ts",
+          "symbol": "sanitizeOpenAIResponsesReplayForStream",
+          "anchor": "export function sanitizeOpenAIResponsesReplayForStream(messages: AgentMessage[]): AgentMessage[] {",
+          "line": 352
+        },
+        {
+          "path": "src/agents/embedded-agent-helpers/openai.ts",
+          "symbol": "normalizeOpenAIResponsesToolCallIds",
+          "anchor": "export function normalizeOpenAIResponsesToolCallIds(messages: AgentMessage[]): AgentMessage[] {",
+          "line": 94
+        },
+        {
+          "path": "src/agents/embedded-agent-helpers/openai.ts",
+          "symbol": "downgradeOpenAIFunctionCallReasoningPairs",
+          "anchor": "export function downgradeOpenAIFunctionCallReasoningPairs(",
+          "line": 168
+        },
+        {
+          "path": "src/agents/embedded-agent-helpers/openai.ts",
+          "symbol": "dropStaleOpenAIReasoning",
+          "anchor": "export function dropStaleOpenAIReasoning(",
+          "line": 301
+        },
+        {
+          "path": "packages/ai/src/transports/openai-responses-tool-call-id-shape.ts",
+          "symbol": "normalizeOpenAIResponsesFunctionCallId",
+          "anchor": "export function normalizeOpenAIResponsesFunctionCallId(id: string): string {",
+          "line": 59
+        },
+        {
+          "path": "src/agents/embedded-agent-helpers/turns.ts",
+          "symbol": "validateGeminiTurns",
+          "anchor": "export function validateGeminiTurns(messages: AgentMessage[]): AgentMessage[] {",
+          "line": 383
+        },
+        {
+          "path": "src/agents/embedded-agent-helpers/turns.ts",
+          "symbol": "validateAnthropicTurns",
+          "anchor": "export function validateAnthropicTurns(",
+          "line": 427
+        },
+        {
+          "path": "src/shared/google-turn-ordering.ts",
+          "symbol": "sanitizeGoogleAssistantFirstOrdering",
+          "anchor": "export function sanitizeGoogleAssistantFirstOrdering(messages: AgentMessage[]): AgentMessage[] {",
+          "line": 6
         }
       ],
       "python": [
@@ -4361,7 +4475,7 @@
           "path": "memory_core/history.py",
           "symbol": "limit_history_turns",
           "anchor": "def limit_history_turns(messages: list[dict[str, Any]], limit: int | None) -> list[dict[str, Any]]:",
-          "line": 19
+          "line": 20
         },
         {
           "path": "memory_core/replay_repair.py",
@@ -4380,11 +4494,132 @@
           "symbol": "normalize_assistant_replay_content",
           "anchor": "def normalize_assistant_replay_content(messages: list[dict[str, Any]]) -> list[dict[str, Any]]:",
           "line": 27
+        },
+        {
+          "path": "memory_core/history_replay.py",
+          "symbol": "HistoryReplayContext",
+          "anchor": "class HistoryReplayContext:",
+          "line": 48
+        },
+        {
+          "path": "memory_core/history_replay.py",
+          "symbol": "resolve_history_replay_policy",
+          "anchor": "def resolve_history_replay_policy(model: ReplayModel) -> HistoryReplayPolicy:",
+          "line": 92
+        },
+        {
+          "path": "memory_core/history_replay.py",
+          "symbol": "HistoryReplay.prepare",
+          "anchor": "    def prepare(self, messages):",
+          "line": 281
+        },
+        {
+          "path": "memory_core/history_replay.py",
+          "symbol": "HistoryReplay.request",
+          "anchor": "    def request(self, messages):",
+          "line": 313
+        },
+        {
+          "path": "memory_core/model_prompt.py",
+          "symbol": "RuntimePromptInput",
+          "anchor": "class RuntimePromptInput:",
+          "line": 68
+        },
+        {
+          "path": "memory_core/model_prompt.py",
+          "symbol": "ModelPrompt.bind_current_user",
+          "anchor": "    def bind_current_user(self, canonical_user, position, *, prior_messages=()):",
+          "line": 321
+        },
+        {
+          "path": "memory_core/model_prompt.py",
+          "symbol": "ModelPrompt.request",
+          "anchor": "    def request(self, messages):",
+          "line": 334
+        },
+        {
+          "path": "memory_core/host/lifecycle.py",
+          "symbol": "HostSessionRunner._prepare_model_prompt",
+          "anchor": "    def _prepare_model_prompt(self, effective_prompt, options, context, user_key):",
+          "line": 1004
+        },
+        {
+          "path": "memory_core/host/lifecycle.py",
+          "symbol": "HostSessionRunner.run_turn",
+          "anchor": "    async def run_turn(self, user_message: str | Mapping[str, Any], *,",
+          "line": 785
+        },
+        {
+          "path": "memory_core/host/lifecycle.py",
+          "symbol": "HostTurn.model_request",
+          "anchor": "    def model_request(self) -> dict[str, Any]:",
+          "line": 257
+        },
+        {
+          "path": "memory_core/host/lifecycle.py",
+          "symbol": "HostTurn.record_message",
+          "anchor": "    def record_message(self, message: Mapping[str, Any]) -> dict[str, Any]:",
+          "line": 273
+        },
+        {
+          "path": "memory_core/history.py",
+          "symbol": "get_history_limit_from_session_key",
+          "anchor": "def get_history_limit_from_session_key(",
+          "line": 72
+        },
+        {
+          "path": "memory_core/history_stream_inputs.py",
+          "symbol": "sanitize_replay_tool_call_inputs",
+          "anchor": "def sanitize_replay_tool_call_inputs(",
+          "line": 180
+        },
+        {
+          "path": "memory_core/history_validation.py",
+          "symbol": "sanitize_google_turn_ordering",
+          "anchor": "def sanitize_google_turn_ordering(",
+          "line": 216
+        },
+        {
+          "path": "memory_core/history_validation.py",
+          "symbol": "validate_gemini_turns",
+          "anchor": "def validate_gemini_turns(messages: list[Any]) -> list[Any]:",
+          "line": 198
+        },
+        {
+          "path": "memory_core/history_validation.py",
+          "symbol": "validate_anthropic_turns",
+          "anchor": "def validate_anthropic_turns(",
+          "line": 208
+        },
+        {
+          "path": "memory_core/responses_history.py",
+          "symbol": "normalize_openai_responses_function_call_id",
+          "anchor": "def normalize_openai_responses_function_call_id(identifier: str) -> str:",
+          "line": 76
+        },
+        {
+          "path": "memory_core/responses_history.py",
+          "symbol": "normalize_openai_responses_tool_call_ids",
+          "anchor": "def normalize_openai_responses_tool_call_ids(messages: list[dict[str, Any]]) -> list[dict[str, Any]]:",
+          "line": 109
+        },
+        {
+          "path": "memory_core/responses_history.py",
+          "symbol": "downgrade_openai_function_call_reasoning_pairs",
+          "anchor": "def downgrade_openai_function_call_reasoning_pairs(",
+          "line": 167
+        },
+        {
+          "path": "memory_core/responses_history.py",
+          "symbol": "drop_stale_openai_reasoning",
+          "anchor": "def drop_stale_openai_reasoning(",
+          "line": 246
         }
       ],
       "implementation": "partial",
       "notes": [
-        "Windowing, call/result repair and replay normalization helpers exist. Python does not provide the native sanitizeSessionHistory provider pipeline as one orchestrated durable-transcript projection; hosts must select and order helpers without persisting repaired messages over the original transcript."
+        "HostSessionRunner prepares the prior transcript window from the registered tools, model, session key, channel configuration and route. Each provider callback receives the prepared prefix and current messages after replay repair. Original transcript events remain available when the catalog reopens.",
+        "The integrated policy covers unowned OpenAI completions and Responses transports. Bundled provider hooks, signed thinking, media conversion, compaction execution and the final transport encoding remain outside this mapping."
       ]
     },
     {
@@ -6342,7 +6577,7 @@
           "path": "memory_core/host/lifecycle.py",
           "symbol": "HostSessionRunner.run_turn",
           "anchor": "    async def run_turn(",
-          "line": 783
+          "line": 785
         },
         {
           "path": "memory_core/host/managed_session.py",
@@ -6435,7 +6670,7 @@
           "path": "memory_core/host/lifecycle.py",
           "symbol": "HostSessionRunner._load",
           "anchor": "    def _load(",
-          "line": 647
+          "line": 649
         },
         {
           "path": "memory_core/host/managed_index.py",
@@ -12163,6 +12398,253 @@
         "normalizeMessagesForCurrentPromptBoundary",
         "normalizeMessagesForLlmBoundary",
         "usesEscapedRuntimeContext"
+      ]
+    },
+    {
+      "path": "src/agents/embedded-agent-runner/run/attempt.ts",
+      "sha256": "dc29b5a469b2e84a43fedb67fdd690093d2842080a08246179de3d2680ae3781",
+      "sourceImports": [
+        "../../../context-engine/host-compat.js",
+        "../../../context-engine/registry.js",
+        "../../../shared/async-work-resources.js",
+        "../../../shared/async-work-scope.js",
+        "../../admitted-run-context.js",
+        "../../agent-bundle-lsp-runtime.js",
+        "../../agent-bundle-mcp-tools.js",
+        "../../agent-run-terminal-error.js",
+        "../../agent-run-terminal-outcome.js",
+        "../../agent-scope.js",
+        "../../exec-auto-review-transcript.js",
+        "../../run-cleanup-timeout.js",
+        "../../tool-search.js",
+        "../logger.js",
+        "../sandbox-skills.js",
+        "../skill-runtime.js",
+        "./attempt-bootstrap-prepare.js",
+        "./attempt-bundle-tools.js",
+        "./attempt-execution-phase.js",
+        "./attempt-finalize.js",
+        "./attempt-preparation.js",
+        "./attempt-prompt-support.js",
+        "./attempt-session-runtime-prepare.js",
+        "./attempt-session-settle.js",
+        "./attempt-sessions-yield.js",
+        "./attempt-setup.js",
+        "./attempt-stage-timing.js",
+        "./attempt-system-prompt-prepare.js",
+        "./attempt-tool-catalog.js",
+        "./attempt-tool-prepare.js",
+        "./attempt-transcript-lifecycle-prepare.js",
+        "./preparation-timing.js",
+        "./tool-activity-heartbeat.js",
+        "./types.js"
+      ],
+      "exportedDeclarations": [
+        "runEmbeddedAttempt"
+      ]
+    },
+    {
+      "path": "src/agents/embedded-agent-runner/run/attempt-execution-phase.ts",
+      "sha256": "8504ff1ff654f2b943fa9660e2bee0e57ce89a4647e701da3fba3516df6df7b8",
+      "sourceImports": [
+        "../../../config/sessions/transcript-write-context.js",
+        "../../../logging/diagnostic-run-activity.js",
+        "../../admitted-run-context.js",
+        "../../agent-run-terminal-outcome.js",
+        "../../sessions/agent-session-compaction.js",
+        "../logger.js",
+        "../runs.js",
+        "../wait-for-idle-before-flush.js",
+        "./abortable.js",
+        "./attempt-execution-types.js",
+        "./attempt-finalize.js",
+        "./attempt-history-prepare.js",
+        "./attempt-settle.js",
+        "./attempt-stream-prepare.js",
+        "./attempt-stream.js",
+        "./attempt-subscription-cleanup.js",
+        "./attempt-timeout-prepare.js",
+        "./types.js"
+      ],
+      "exportedDeclarations": [
+        "runEmbeddedAttemptExecutionPhase"
+      ]
+    },
+    {
+      "path": "src/agents/embedded-agent-runner/run/attempt-history-prepare.ts",
+      "sha256": "6ad004bb0ddbeb9338224b30a9f0208a5c78ec6479eeb9680e79e8607e8daff4",
+      "sourceImports": [
+        "../../../auto-reply/handoff-summarizer.js",
+        "../../../auto-reply/heartbeat-filter.js",
+        "../../../config/sessions/paths.js",
+        "../../../config/sessions/session-accessor.js",
+        "../../../context-engine/host-compat.js",
+        "../../../context-engine/types.js",
+        "../../../infra/heartbeat-summary.js",
+        "../../defaults.js",
+        "../../harness/context-engine-lifecycle.js",
+        "../../runtime/index.js",
+        "../../session-transcript-repair.js",
+        "../history.js",
+        "../logger.js",
+        "../replay-history.js",
+        "./attempt-execution-types.js",
+        "./attempt-transcript-helpers.js",
+        "./preemptive-compaction.js",
+        "@openclaw/ai/internal/shared",
+        "@openclaw/ai/transports"
+      ],
+      "exportedDeclarations": [
+        "prepareEmbeddedAttemptHistory"
+      ]
+    },
+    {
+      "path": "src/agents/transcript-policy.ts",
+      "sha256": "bf2bb906e44e8e8fc07b093456581021f0dc9baa22d593bbb1ba65e9fb31871c",
+      "sourceImports": [
+        "../config/types.openclaw.js",
+        "../plugins/plugin-control-plane-context.js",
+        "../plugins/provider-hook-runtime.js",
+        "../plugins/provider-replay-helpers.js",
+        "../plugins/provider-runtime-model.types.js",
+        "../plugins/types.js",
+        "./embedded-agent-helpers/anthropic-api.js",
+        "./embedded-agent-helpers/google.js",
+        "./tool-call-id.js",
+        "@openclaw/llm-core",
+        "@openclaw/model-catalog-core/provider-id",
+        "@openclaw/normalization-core/string-coerce"
+      ],
+      "exportedDeclarations": [
+        "TranscriptPolicy",
+        "resolveTranscriptPolicy"
+      ]
+    },
+    {
+      "path": "src/agents/embedded-agent-runner/run/attempt-stream.ts",
+      "sha256": "97a8459dbfe30f37767854bde6ce53ce280edbf3ffa8331fb6d31791f0bddd54",
+      "sourceImports": [
+        "../../../infra/diagnostic-llm-content.js",
+        "../../../infra/net/undici-global-dispatcher.js",
+        "../../../logging/diagnostic-run-activity.js",
+        "../../../plugins/provider-model-compat.js",
+        "../../../shared/async-work-scope.js",
+        "../../admitted-run-context.js",
+        "../../embedded-agent-helpers/turns.js",
+        "../../plugin-text-transforms.js",
+        "../../runtime/index.js",
+        "../../sessions/session-manager-write-admission.js",
+        "../../timeout.js",
+        "../../tool-loop-detection.js",
+        "../../transcript-code-mode-source.js",
+        "../../usage.js",
+        "../logger.js",
+        "../prompt-cache-request-observer.js",
+        "../thinking-replay-repair.js",
+        "../thinking.js",
+        "../tool-call-argument-decoding.js",
+        "./attempt-execution-types.js",
+        "./attempt-sessions-yield.js",
+        "./attempt-stop-reason-recovery.js",
+        "./attempt-tool-call-replay-sanitization.js",
+        "./attempt-tool-call-stream-normalization.js",
+        "./attempt-tool-call-text-promotion.js",
+        "./attempt.model-diagnostic-events.js",
+        "./attempt.tool-call-argument-repair.js",
+        "./llm-idle-timeout.js",
+        "./message-transform-stream-wrapper.js",
+        "./stream-wrapper.js",
+        "@openclaw/ai/transports"
+      ],
+      "exportedDeclarations": [
+        "installEmbeddedAttemptStreamGuards"
+      ]
+    },
+    {
+      "path": "src/agents/embedded-agent-runner/run/attempt-tool-call-replay-sanitization.ts",
+      "sha256": "67c04274eea92dce61cf6986cdd65106a8ab37e2ac767bf344724d7161657109",
+      "sourceImports": [
+        "../../embedded-agent-helpers/openai.js",
+        "../../embedded-agent-helpers/turns.js",
+        "../../runtime/index.js",
+        "../../session-transcript-repair.js",
+        "../../thinking-block.js",
+        "../../tool-call-id.js",
+        "../../tool-call-shared.js",
+        "../../transcript-policy.js",
+        "./attempt-tool-call-block-type.js",
+        "./attempt-tool-call-name-resolution.js",
+        "@openclaw/ai/transports",
+        "@openclaw/normalization-core/record-coerce",
+        "@openclaw/normalization-core/string-coerce",
+        "@openclaw/normalization-core/string-normalization"
+      ],
+      "exportedDeclarations": [
+        "sanitizeOpenAIResponsesReplayForStream",
+        "sanitizeReplayToolCallIdsForStream",
+        "shouldApplyReplayToolCallIdSanitizer",
+        "wrapStreamFnSanitizeMalformedToolCalls"
+      ]
+    },
+    {
+      "path": "src/agents/embedded-agent-helpers/openai.ts",
+      "sha256": "851d3ee9938222da28080daa4971aa5382060b6149decee4402985995fe09f90",
+      "sourceImports": [
+        "../runtime/index.js",
+        "../tool-call-id.js",
+        "@openclaw/ai/transports",
+        "@openclaw/normalization-core/number-coercion"
+      ],
+      "exportedDeclarations": [
+        "downgradeOpenAIFunctionCallReasoningPairs",
+        "dropStaleOpenAIReasoning",
+        "normalizeOpenAIResponsesToolCallIds"
+      ]
+    },
+    {
+      "path": "packages/ai/src/transports/openai-responses-tool-call-id-shape.ts",
+      "sha256": "28bd3f91f75eefbddc447b93f3722b92d63df1720ad19b9f62671e8992fcf06b",
+      "sourceImports": [
+        "./transport-utils.js"
+      ],
+      "exportedDeclarations": [
+        "OPENAI_RESPONSES_CALL_ID_RE",
+        "OPENAI_RESPONSES_FUNCTION_CALL_ITEM_ID_RE",
+        "OPENAI_RESPONSES_ID_MAX_LENGTH",
+        "normalizeOpenAIResponsesFunctionCallId",
+        "shouldNormalizeOpenAIResponsesToolCallId",
+        "splitOpenAIFunctionCallPairing"
+      ]
+    },
+    {
+      "path": "src/agents/embedded-agent-helpers/turns.ts",
+      "sha256": "09758eadf30d707b0b2440ba4156adfa5ddb6a5ff4d0e4806884045a48210a45",
+      "sourceImports": [
+        "../runtime/index.js",
+        "../thinking-block.js",
+        "../tool-call-id.js",
+        "../transcript-policy.js",
+        "./anthropic-api.js",
+        "@openclaw/model-catalog-core/provider-id",
+        "@openclaw/normalization-core/string-coerce"
+      ],
+      "exportedDeclarations": [
+        "mergeConsecutiveUserMessages",
+        "providerRequiresSignedThinking",
+        "shouldAllowProviderOwnedThinkingReplay",
+        "shouldMergeConsecutiveUserTurns",
+        "validateAnthropicTurns",
+        "validateGeminiTurns"
+      ]
+    },
+    {
+      "path": "src/shared/google-turn-ordering.ts",
+      "sha256": "c21220290c89de861d939573f38ec9081b935dc90db118508a58738f0316dd97",
+      "sourceImports": [
+        "../agents/runtime/index.js"
+      ],
+      "exportedDeclarations": [
+        "sanitizeGoogleAssistantFirstOrdering"
       ]
     }
   ]

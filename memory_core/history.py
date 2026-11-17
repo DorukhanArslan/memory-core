@@ -5,6 +5,7 @@ from collections.abc import Mapping
 from typing import Any
 
 from memory_core.bootstrap._js import js_trim
+from memory_core.session_context import is_session_history_prelude
 
 
 _THREAD_SUFFIX_RE = re.compile(
@@ -32,6 +33,9 @@ def limit_history_turns(messages: list[dict[str, Any]], limit: int | None) -> li
 
     conversation_start = 0
     while conversation_start < len(messages):
+        if is_session_history_prelude(messages[conversation_start]):
+            conversation_start += 1
+            continue
         if messages[conversation_start].get("role") in {"user", "assistant"}:
             break
         conversation_start += 1

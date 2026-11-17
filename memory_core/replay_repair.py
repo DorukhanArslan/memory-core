@@ -217,6 +217,7 @@ def repair_tool_use_result_pairing(
     errored_assistant_result_policy: ErroredAssistantResultPolicy = "preserve",
     missing_tool_result_text: str | None = None,
     preserve_unframed_tool_results: bool = False,
+    now_ms: int | float | None = None,
 ) -> ToolUseRepairReport:
     """Port of ``repairToolUseResultPairing`` (session-transcript-repair.ts:391-480).
 
@@ -262,6 +263,7 @@ def repair_tool_use_result_pairing(
                     tool_call_id=occurrence.id,
                     tool_name=occurrence.name,
                     text=missing_tool_result_text,
+                    now_ms=now_ms,
                 )
                 occurrence.result = missing
                 added.append(missing)
@@ -299,6 +301,7 @@ def sanitize_tool_use_result_pairing(
     errored_assistant_result_policy: ErroredAssistantResultPolicy = "preserve",
     missing_tool_result_text: str | None = None,
     preserve_unframed_tool_results: bool = False,
+    now_ms: int | float | None = None,
 ) -> list[AgentMessage]:
     """``sanitizeToolUseResultPairing``: the repaired messages only."""
     return repair_tool_use_result_pairing(
@@ -306,11 +309,12 @@ def sanitize_tool_use_result_pairing(
         errored_assistant_result_policy=errored_assistant_result_policy,
         missing_tool_result_text=missing_tool_result_text,
         preserve_unframed_tool_results=preserve_unframed_tool_results,
+        now_ms=now_ms,
     ).messages
 
 
 def sanitize_tool_use_result_pairing_for_model(
-    messages: list[AgentMessage], is_openai_responses_api: bool
+    messages: list[AgentMessage], is_openai_responses_api: bool, *, now_ms: int | float | None = None
 ) -> list[AgentMessage]:
     """``sanitizeToolUseResultPairingForModel`` (session-transcript-repair.ts:367-376).
 
@@ -321,6 +325,7 @@ def sanitize_tool_use_result_pairing_for_model(
         messages,
         errored_assistant_result_policy="drop",
         missing_tool_result_text="aborted" if is_openai_responses_api else None,
+        now_ms=now_ms,
     )
 
 
@@ -674,7 +679,8 @@ def _normalize_optional_string(value: Any) -> str | None:
 
 
 def _make_missing_tool_result(
-    *, tool_call_id: str, tool_name: str | None, text: str | None
+    *, tool_call_id: str, tool_name: str | None, text: str | None,
+    now_ms: int | float | None = None,
 ) -> AgentMessage:
     """``makeMissingToolResult`` (tool-result-pairing.ts:149-163)."""
     return {
@@ -689,5 +695,5 @@ def _make_missing_tool_result(
             "reason": "missing_tool_result",
         },
         "isError": True,
-        "timestamp": int(time.time() * 1000),
+        "timestamp": int(time.time() * 1000) if now_ms is None else now_ms,
     }

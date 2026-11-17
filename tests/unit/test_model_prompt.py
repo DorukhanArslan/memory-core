@@ -9,7 +9,8 @@ import pytest
 from memory_core.config import MemoryConfig
 from memory_core.current_time import format_current_time_line, resolve_cron_style_now
 from memory_core.flags import FeatureFlags
-from memory_core.host import HostModelResult, HostSessionRunner, RuntimePromptInput, SessionState
+from memory_core.host import HistoryReplayContext, HostModelResult, HostSessionRunner, RuntimePromptInput, SessionState
+from memory_core.compaction_replay import ReplayModel
 from memory_core.model_prompt import normalize_model_messages
 from memory_core.runtime_context_prompt import project_runtime_context_fragments, resolve_runtime_context_prompt_parts
 from memory_core.runtime_identity import OPENCLAW_COMPAT_RUNTIME_IDENTITY as IDENTITY
@@ -229,7 +230,8 @@ def test_explicit_host_clock_fallback_preserves_existing_default_utc(tmp_path):
     asyncio.run(scenario())
 
 
-def test_real_memory_get_loop_keeps_business_return_and_source_owned_model_json(tmp_path):
+@pytest.mark.parametrize("repair_history", [False, True])
+def test_real_memory_get_loop_keeps_business_return_and_source_owned_model_json(tmp_path, repair_history):
     async def scenario():
         policy = resolve_memory_search_source_policy(["memory"], remember_across_conversations=False,
                                                       configured_session_memory=False)
@@ -282,7 +284,9 @@ def test_real_memory_get_loop_keeps_business_return_and_source_owned_model_json(
 
         outcome = await runner.run_turn("Read the saved fact.", execute=model,
             request_id="owned-get-loop",
-            prompt_context=RuntimePromptInput(offered_tool_names=["memory_get", "memory_search"], tool_call_id_mode="strict"))
+            prompt_context=RuntimePromptInput(offered_tool_names=["memory_get", "memory_search"], tool_call_id_mode="strict",
+                history_replay=HistoryReplayContext(ReplayModel("custom-provider", "openai-completions", "fixture-model"))
+                if repair_history else None))
         assert outcome.ready
         recorded = next(event["message"] for event in runner.catalog.read_transcript(SESSION).events
                         if event.get("message", {}).get("role") == "toolResult")
@@ -298,5 +302,170 @@ def test_real_memory_get_loop_keeps_business_return_and_source_owned_model_json(
             assert db.execute("SELECT DISTINCT source FROM chunks").fetchall() == [("memory",)]
         assert any(event.get("message", {}).get("role") == "user"
                    for event in runner.catalog.read_transcript(SESSION).events)
+
+    asyncio.run(scenario())
+
+
+@pytest.mark.parametrize("api", ["openai-completions", "openai-responses"])
+def test_host_history_repair_preserves_original_rows_and_derives_model_switch(tmp_path, api):
+    async def scenario():
+        runner = _runner(tmp_path)
+        model_identity = ReplayModel("custom-provider", api, "fixture-model")
+        runner.catalog.upsert_session(KEY, {"sessionId": SESSION})
+        runner.catalog.append_events(SESSION, [{"type": "custom", "id": "prior-model", "parentId": None,
+            "customType": "model-snapshot", "data": {"timestamp": NOW - 1000,
+                "provider": model_identity.provider, "modelApi": api, "modelId": model_identity.id}}], session_key=KEY)
+        runner.catalog.append_message(SESSION, {"role": "user", "content": "historic prompt", "timestamp": NOW},
+            session_key=KEY, event_id="historic-user", now_ms=NOW)
+        seed = {"role": "assistant", "content": [
+            {"type": "thinking", "thinking": "saved reasoning", "thinkingSignature": '{"id":"rs_old","type":"reasoning"}'},
+            {"type": "text", "text": "preserved text", "textSignature": '{"v":1,"id":"msg_old","phase":"commentary"}'},
+            {"type": "toolCall", "id": "call_old|fc_old", "name": "\ufeffmemory_get\ufeff", "arguments": {"path": "memory/missing.md"}},
+            {"type": "toolCall", "id": "bad-call", "name": "invalid tool", "arguments": {}},
+        ], "timestamp": NOW, "stopReason": "toolUse", "provider": model_identity.provider,
+            "api": api, "model": model_identity.id, "responseId": "historic-response",
+            "callerMetadata": {"keep": [False, None]}}
+        runner.catalog.append_message(SESSION, seed, session_key=KEY, event_id="historic-assistant", now_ms=NOW)
+        before = deepcopy(runner.catalog.read_transcript(SESSION).events)
+        requests = []
+
+        async def model(turn):
+            request = turn.model_request()
+            requests.append(request)
+            assert turn.model_request() == request
+            return _reply(turn)
+
+        await runner.run_turn("current prompt", execute=model, request_id="history-first",
+            prompt_context=RuntimePromptInput(history_replay=HistoryReplayContext(model_identity)))
+        identifier = "call_old|fc_old" if api == "openai-responses" else "calloldfcold"
+        expected_assistant = deepcopy(seed)
+        expected_assistant["content"] = ([deepcopy(seed["content"][0])] if api == "openai-responses" else []) + [
+            deepcopy(seed["content"][1]), {**seed["content"][2], "id": identifier, "name": "memory_get"}]
+        expected_assistant["usage"] = {"input": 0, "output": 0, "cacheRead": 0, "cacheWrite": 0, "totalTokens": 0,
+            "cost": {"input": 0, "output": 0, "cacheRead": 0, "cacheWrite": 0, "total": 0}}
+        assert requests[0]["messages"] == [
+            {"role": "user", "content": "[Thu 2026-01-01 00:00 UTC] historic prompt", "timestamp": NOW},
+            expected_assistant,
+            {"role": "toolResult", "toolCallId": identifier, "toolName": "memory_get", "content": [{"type": "text",
+                "text": "aborted" if api == "openai-responses" else "[openclaw] missing tool result in session history; inserted synthetic error result for transcript repair."}],
+                "isError": True, "timestamp": NOW},
+            {"role": "user", "content": "[Thu 2026-01-01 00:00 UTC] current prompt", "timestamp": NOW},
+        ]
+        assert runner.catalog.read_transcript(SESSION).events[:len(before)] == before
+        assert not any(event.get("message", {}).get("role") == "toolResult"
+                       for event in runner.catalog.read_transcript(SESSION).events)
+        if api == "openai-responses":
+            await runner.run_turn("after switch", execute=model, request_id="history-switch",
+                prompt_context=RuntimePromptInput(history_replay=HistoryReplayContext(
+                    ReplayModel(model_identity.provider, api, "changed-model"))))
+            switched = next(message for message in requests[1]["messages"] if message.get("responseId") == "historic-response")
+            assert switched["content"] == [
+                {"type": "text", "text": "preserved text", "textSignature": '{"v":1,"phase":"commentary"}'},
+                {**seed["content"][2], "id": "call_old", "name": "memory_get"},
+            ]
+            owner = runner.last_model_prompt.history_replay
+            assert owner.snapshot_state["latestSwitchTimestamp"] == NOW
+            assert owner.snapshot_state["modelChanged"] is True
+            snapshots = [event["data"] for event in runner.catalog.read_transcript(SESSION).events
+                         if event.get("customType") == "model-snapshot"]
+            assert len(snapshots) == 2 and snapshots[-1]["modelId"] == "changed-model"
+            assert runner.catalog.read_transcript(SESSION).events[:len(before)] == before
+
+    asyncio.run(scenario())
+
+
+def test_host_history_window_excludes_current_user_and_reuses_prepared_prefix(tmp_path):
+    async def scenario():
+        context = HistoryReplayContext(ReplayModel("custom-provider", "openai-completions", "fixture-model"),
+            config={"channels": {"telegram": {"dmHistoryLimit": 1}}})
+        # The host owns the session key; select a real channel/session route.
+        catalog = MemorySessionCatalog(tmp_path / "window-catalog.sqlite", clock_ms=lambda: NOW)
+        config = MemoryConfig(workspace_dir=tmp_path / "window-workspace",
+            flags=FeatureFlags(vector_search=False, temporal_decay=False))
+        runner = HostSessionRunner.open(config.workspace_dir, catalog=catalog,
+            session=SessionState.new(session_key="agent:main:telegram:direct:peer", session_id=SESSION), config=config,
+            identity=IDENTITY, seed_bootstrap=False, now_ms=lambda: NOW)
+        counts, limited = [], []
+        original = []
+
+        async def model(turn):
+            request = turn.model_request()
+            counts.append(sum(message.get("role") == "user" for message in request["messages"]))
+            owner = turn.model_prompt.history_replay
+            limited.append(deepcopy(next(stage["messages"] for stage in owner.stages if stage["stage"] == "session:limited")))
+            assert turn.model_request() == request
+            return _reply(turn)
+
+        for index in range(4):
+            previous = runner.catalog.read_transcript(SESSION)
+            before = deepcopy(previous.events) if previous else ()
+            await runner.run_turn(f"window request {index}", execute=model, request_id=f"window-{index}",
+                prompt_context=RuntimePromptInput(history_replay=context))
+            after = runner.catalog.read_transcript(SESSION).events
+            assert after[:len(before)] == before
+            original = after
+        assert counts == [1, 2, 3, 2]
+        assert [sum(message.get("role") == "user" for message in messages) for messages in limited] == [0, 1, 2, 1]
+        assert all("window request 3" not in str(message) for message in limited[-1])
+        assert len([event for event in original if event.get("message", {}).get("role") == "user"]) == 4
+
+    asyncio.run(scenario())
+
+
+@pytest.mark.parametrize("stale_usage", [False, True])
+def test_host_history_callback_drops_completed_prior_turn_reasoning_after_current_user(tmp_path, stale_usage):
+    async def scenario():
+        runner = _runner(tmp_path)
+        runner.catalog.upsert_session(KEY, {"sessionId": SESSION})
+        reasoning = {"type": "thinking", "thinking": "completed prior tool reasoning"}
+        usage = {"input": 1, "output": 2, "cacheRead": 3, "cacheWrite": 4, "totalTokens": 10,
+                 "reasoningTokens": 2, "providerMetadata": {"keep": [False, None]},
+                 "contextUsage": {"state": "available", "promptTokens": 10, "totalTokens": 12,
+                                  "providerContext": "keep"},
+                 "cost": {"input": 1, "output": 2, "cacheRead": 3, "cacheWrite": 4, "total": 10,
+                          "totalOrigin": "provider-billed", "providerCost": "keep"}}
+        assistant = {"role": "assistant", "usage": usage, "content": [reasoning,
+            {"type": "toolCall", "id": "completedprior", "name": "memory_get",
+             "arguments": {"path": "MEMORY.md"}}], "stopReason": "toolUse", "timestamp": NOW}
+        for index, message in enumerate([
+                {"role": "user", "content": "historic request", "timestamp": NOW},
+                assistant,
+                {"role": "toolResult", "toolCallId": "completedprior", "toolName": "memory_get",
+                 "content": [{"type": "text", "text": "historic result"}], "timestamp": NOW}]):
+            runner.catalog.append_message(SESSION, message, session_key=KEY,
+                event_id=f"prior-completed-{index}", now_ms=NOW)
+        if stale_usage:
+            runner.catalog.append_events(SESSION, [{"type": "compaction", "id": "usage-compaction",
+                "parentId": "prior-completed-2", "timestamp": "2026-01-01T00:00:00.000Z",
+                "summary": "Compacted context", "tokensBefore": 10, "firstKeptEntryId": "prior-completed-0"}],
+                session_key=KEY)
+        before = deepcopy(runner.catalog.read_transcript(SESSION).events)
+        requests = []
+
+        async def model(turn):
+            owner = turn.model_prompt.history_replay
+            prepared = next(stage["messages"] for stage in owner.stages
+                            if stage["stage"] == "session:limited")
+            assert next(message for message in prepared if message.get("role") == "assistant")["content"][0] == reasoning
+            request = turn.model_request()
+            requests.append(request)
+            assert turn.model_request() == request
+            projected_assistant = next(message for message in request["messages"] if message.get("role") == "assistant")
+            assert projected_assistant["content"] == assistant["content"][1:]
+            assert projected_assistant["usage"] == (
+                {"input": 0, "output": 0, "cacheRead": 0, "cacheWrite": 0, "totalTokens": 0,
+                 "cost": {"input": 0, "output": 0, "cacheRead": 0, "cacheWrite": 0, "total": 0}}
+                if stale_usage else usage)
+            assert request["messages"][-1]["content"].endswith("current request")
+            assert owner.prepared == prepared
+            return _reply(turn)
+
+        outcome = await runner.run_turn("current request", execute=model, request_id="reasoning-after-current-user",
+            prompt_context=RuntimePromptInput(history_replay=HistoryReplayContext(
+                ReplayModel("custom-provider", "openai-completions", "fixture-model"))))
+        assert outcome.ready and len(requests) == 1
+        after = runner.catalog.read_transcript(SESSION).events
+        assert after[:len(before)] == before
+        assert next(event["message"] for event in after if event.get("id") == "prior-completed-1") == assistant
 
     asyncio.run(scenario())

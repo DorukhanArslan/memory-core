@@ -49,6 +49,7 @@ const operations = {
   "recall-signals-runtime": ["recall-signals-runtime.mjs", "runRecallSignalsRuntime"],
   "session-reset-boundaries-runtime": ["session-reset-boundaries-runtime.mjs", "runSessionResetBoundariesRuntime"],
   "prompt-runtime-context-runtime": ["prompt-runtime-context-runtime.mjs", "runPromptRuntimeContextRuntime"],
+  "prompt-history-repair-runtime": ["prompt-history-repair-runtime.mjs", "runPromptHistoryRepairRuntime"],
   "embed-cache-lifecycle-runtime": ["embedding-cache-lifecycle-runtime.mjs", "runEmbeddingCacheLifecycleRuntime"],
   "promotion-apply-reconcile-runtime": ["promotion-apply-runtime.mjs", "runPromotionApplyRuntime"],
 };
@@ -106,7 +107,8 @@ for (const testCase of request.cases) {
       context.promotionRankingProfile === undefined && context.promotionApplyProfile === undefined &&
       context.forgetLineageProfile === undefined && context.forgetBoundariesProfile === undefined &&
       context.recallSignalsProfile === undefined && context.embeddingCacheProfile === undefined &&
-      context.sessionResetBoundariesProfile === undefined && context.promptRuntimeContextProfile === undefined;
+      context.sessionResetBoundariesProfile === undefined && context.promptRuntimeContextProfile === undefined &&
+      context.promptHistoryRepairProfile === undefined;
     if (modelAuthority !== Object.hasOwn(modelKinds, testCase.operation) ||
         modelAuthority && modelKinds[testCase.operation] !== null && testCase.input?.kind !== modelKinds[testCase.operation]) {
       throw Error("The model binary capability cannot execute another operation or input contract before import");
@@ -224,6 +226,20 @@ for (const testCase of request.cases) {
           promptProfile.inputKind !== testCase.input?.kind ||
           crypto.createHash("sha256").update(wire).digest("hex") !== promptProfile.caseBindings[testCase.id]) {
         throw Error("The prompt runtime context caller received changed or substituted literal inputs");
+      }
+    }
+    const historyProfile = context.promptHistoryRepairProfile;
+    if ((historyProfile !== undefined) !== (testCase.operation === "prompt-history-repair-runtime")) {
+      throw Error("The prompt history repair capability cannot borrow another operation");
+    }
+    if (historyProfile !== undefined) {
+      const stable = value => Array.isArray(value) ? value.map(stable) : value !== null && typeof value === "object"
+        ? Object.fromEntries(Object.keys(value).sort().map(key => [key, stable(value[key])])) : value;
+      const wire = JSON.stringify(stable({id:testCase.id,operation:testCase.operation,input:testCase.input}));
+      if (historyProfile.caseId !== testCase.id || historyProfile.operation !== testCase.operation ||
+          historyProfile.inputKind !== testCase.input?.kind ||
+          crypto.createHash("sha256").update(wire).digest("hex") !== historyProfile.caseBindings[testCase.id]) {
+        throw Error("The prompt history repair caller received changed or substituted literal inputs");
       }
     }
     const embeddingProfile = context.embeddingCacheProfile;

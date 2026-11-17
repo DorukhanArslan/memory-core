@@ -15,6 +15,7 @@ if (rawContext.byteLength > 64 * 1024 * 1024) throw Error("Release execution con
 const context = JSON.parse(rawContext);
 const embeddingMode = context.embeddingCacheProfile !== undefined;
 const promptMode = context.promptRuntimeContextProfile !== undefined;
+const historyMode = context.promptHistoryRepairProfile !== undefined;
 const expectedProviderMode = embeddingMode ? "deterministic-embedding-fixture" : "none";
 if (context.schemaVersion !== 1 || context.providerMode !== expectedProviderMode || context.fetchPolicy !== "deny") {
   throw Error("Unsupported release execution policy");
@@ -22,7 +23,7 @@ if (context.schemaVersion !== 1 || context.providerMode !== expectedProviderMode
 if (embeddingMode &&
     ["entryProvenanceProfile", "atomicPublicationProfile", "atomicCaseBinding", "bootstrapDiscoveryProfile",
      "memoryBudgetProfile", "getReadRaceProfile", "promotionRankingProfile", "promotionApplyProfile",
-     "forgetLineageProfile", "forgetBoundariesProfile", "recallSignalsProfile", "sessionResetBoundariesProfile", "promptRuntimeContextProfile"].some(key => context[key] !== undefined)) {
+     "forgetLineageProfile", "forgetBoundariesProfile", "recallSignalsProfile", "sessionResetBoundariesProfile", "promptRuntimeContextProfile", "promptHistoryRepairProfile"].some(key => context[key] !== undefined)) {
   throw Error("Embedding cache cannot borrow another compiled, model, source or hook capability");
 }
 if (!embeddingMode && context.embeddingFixtureSourceCaptures !== undefined) {
@@ -228,10 +229,36 @@ if (context.promptRuntimeContextProfile !== undefined) {
       JSON.stringify(profile.nodeRuntime) !== JSON.stringify(context.approvedNodeRuntime) ||
       ["entryProvenanceProfile", "atomicPublicationProfile", "atomicCaseBinding", "bootstrapDiscoveryProfile",
        "memoryBudgetProfile", "getReadRaceProfile", "promotionRankingProfile", "promotionApplyProfile",
-       "forgetLineageProfile", "forgetBoundariesProfile", "recallSignalsProfile", "embeddingCacheProfile", "sessionResetBoundariesProfile"]
+       "forgetLineageProfile", "forgetBoundariesProfile", "recallSignalsProfile", "embeddingCacheProfile", "sessionResetBoundariesProfile", "promptHistoryRepairProfile"]
         .some(key => context[key] !== undefined) ||
       (context.approvedReferenceSources ?? []).length || (context.fixtureSourceCaptures ?? []).length) {
     throw Error("Unapproved independent complete prompt runtime context capability");
+  }
+}
+if ((context.promptHistoryRepairProfile !== undefined) !==
+    (context.promptHistoryRepairHostTimezone !== undefined)) {
+  throw Error("A history host timezone requires its distinct complete repair capability");
+}
+if (context.promptHistoryRepairProfile !== undefined) {
+  const profile = context.promptHistoryRepairProfile, bindings = profile?.caseBindings;
+  const approvedBindingsSha256 = "656ca2012bb7f8f53a9f44109d93153a79ce910c5afc33a56fdebad78881ebb2";
+  if (!profile || Object.keys(profile).sort().join() !== "caseBindings,caseId,driverScopeSha256,inputKind,kind,nodeRuntime,operation,policySha256" ||
+      profile.kind !== "approved-prompt-history-repair-profile" || profile.operation !== "prompt-history-repair-runtime" ||
+      context.promptHistoryRepairHostTimezone !== "UTC" ||
+      process.env.TZ !== context.promptHistoryRepairHostTimezone ||
+      profile.policySha256 !== "354c67f4dc0ca90bb6e6d989d5a0a7ceb6b0404465891a04104dadac6056621e" ||
+      profile.driverScopeSha256 !== "2e3ce984de0537c4316b10a912eb3a8ce1e25556ad10c21b28ea5de4d23f5f16" ||
+      profile.inputKind !== "prompt-history-repair" || !bindings || Object.keys(bindings).length !== 8 ||
+      !/^[0-9a-f]{64}$/.test(approvedBindingsSha256) ||
+      hash(JSON.stringify(Object.fromEntries(Object.keys(bindings).sort().map(key => [key, bindings[key]])))) !== approvedBindingsSha256 ||
+      !Object.hasOwn(bindings, profile.caseId) ||
+      JSON.stringify(profile.nodeRuntime) !== JSON.stringify(context.approvedNodeRuntime) ||
+      ["entryProvenanceProfile", "atomicPublicationProfile", "atomicCaseBinding", "bootstrapDiscoveryProfile",
+       "memoryBudgetProfile", "getReadRaceProfile", "promotionRankingProfile", "promotionApplyProfile",
+       "forgetLineageProfile", "forgetBoundariesProfile", "recallSignalsProfile", "embeddingCacheProfile", "sessionResetBoundariesProfile", "promptRuntimeContextProfile"]
+        .some(key => context[key] !== undefined) ||
+      (context.approvedReferenceSources ?? []).length || (context.fixtureSourceCaptures ?? []).length) {
+    throw Error("Unapproved independent complete prompt history repair capability");
   }
 }
 if (embeddingMode) {
@@ -313,6 +340,8 @@ trace({ event: "bootstrap", isMainThread, ppid: process.ppid, contextSha256: has
         ...(context.sessionResetBoundariesProfile ? { sessionResetBoundariesProfile: context.sessionResetBoundariesProfile } : {}),
         ...(context.promptRuntimeContextProfile ? { promptRuntimeContextProfile: context.promptRuntimeContextProfile,
           promptRuntimeContextHostTimezone: context.promptRuntimeContextHostTimezone } : {}),
+        ...(context.promptHistoryRepairProfile ? { promptHistoryRepairProfile: context.promptHistoryRepairProfile,
+          promptHistoryRepairHostTimezone: context.promptHistoryRepairHostTimezone } : {}),
         ...(embeddingMode ? { embeddingCacheProfile: context.embeddingCacheProfile } : {}) });
 // Native workers can log directly while retiring after the result is ready.
 // Reserve stdout for the runner's single process.stdout.write JSON envelope.
@@ -371,7 +400,7 @@ if (embeddingCaptureSource) {
 const embeddingCapturePattern = /^tmp\/plugin-captures\/[0-9a-f-]{36}\/captures\/openclaw-plugin-build-[A-Za-z0-9]{6}\/package-0\/node_modules\/embedding-cache-provider\/index\.mjs$/;
 const promptCapturePolicies = context.promptFixtureSourceCaptures ?? [];
 if (!Array.isArray(promptCapturePolicies) ||
-    promptCapturePolicies.length !== (promptMode ? 1 : 0)) throw Error("Invalid independent prompt source capture policy");
+    promptCapturePolicies.length !== (promptMode || historyMode ? 1 : 0)) throw Error("Invalid independent prompt source capture policy");
 const promptCaptureSource = promptCapturePolicies[0];
 if (promptCaptureSource) {
   const entry = promptCaptureSource;
@@ -466,7 +495,7 @@ function embeddingFixtureCaptureAuthority(filename) {
 function promptFixtureCaptureAuthority(filename) {
   const absolute = path.resolve(filename);
   const relative = path.relative(context.stateDirectory, absolute).replaceAll(path.sep, "/");
-  if (!promptMode || !promptCaptureSource || !promptCapturePattern.test(relative)) return rejectCapture(absolute);
+  if (!(promptMode || historyMode) || !promptCaptureSource || !promptCapturePattern.test(relative)) return rejectCapture(absolute);
   let cursor = context.stateDirectory;
   for (const component of relative.split("/").slice(0, -1)) {
     const directory = fs.lstatSync(cursor);
@@ -502,7 +531,7 @@ function authority(url) {
   }
   const lexical = path.resolve(fileURLToPath(url));
   if (isCapturePath(lexical)) return embeddingMode ? embeddingFixtureCaptureAuthority(lexical)
-    : promptMode ? promptFixtureCaptureAuthority(lexical) : fixtureCaptureAuthority(lexical);
+    : promptMode || historyMode ? promptFixtureCaptureAuthority(lexical) : fixtureCaptureAuthority(lexical);
   const filename = fs.realpathSync(lexical);
   const record = permitted.get(filename);
   if (!record || hash(fs.readFileSync(filename)) !== record.sha256) {
@@ -528,7 +557,7 @@ registerHooks({
     }
     if (lexical && isCapturePath(lexical)) {
       if (embeddingMode) embeddingFixtureCaptureAuthority(lexical);
-      else if (promptMode) promptFixtureCaptureAuthority(lexical);
+      else if (promptMode || historyMode) promptFixtureCaptureAuthority(lexical);
       else fixtureCaptureAuthority(lexical);
     }
     const resolved = nextResolve(specifier, resolveContext);

@@ -294,3 +294,24 @@ def test_heartbeat_prompt_without_ensure_writes_nothing(tmp_path):
     assert [job.id for job in run.jobs] == ["job-a"]
     assert sorted(path.relative_to(tmp_path) for path in tmp_path.rglob("*")) == before
     assert kit.heartbeat_prompt(_session()).context.workspace_init is not None
+
+
+def test_explicit_task_delivers_only_the_selected_due_job_and_reopens(tmp_path):
+    first = _job("job-a", "inbox", next_run=NOW_MS)
+    second = _job("job-b", "calendar", next_run=NOW_MS)
+    _store(tmp_path, first, second)
+    kit = _kit(tmp_path)
+
+    assert kit.heartbeat_task_prompt(_session(), first.id, schedule_now_ms=NOW_MS - 1) is None
+    run = kit.heartbeat_task_prompt(_session(), first.id)
+    assert run.jobs == (first,)
+    assert [task.job_id for task in run.turn.scheduled_tasks] == [first.id]
+    assert run.scheduled_wake.to_json() == {
+        "source": "interval", "intent": "task", "reason": "heartbeat-task:job-a", "agentId": "main",
+        "tasks": [{"jobId": "job-a", "name": "inbox", "prompt": "Check inbox."}],
+    }
+    assert [job.id for job in run.complete("NO_REPLY").jobs_recorded] == [first.id]
+
+    reopened = _kit(tmp_path)
+    assert reopened.heartbeat_task_prompt(_session(), first.id) is None
+    assert reopened.heartbeat_task_prompt(_session(), second.id).jobs == (second,)

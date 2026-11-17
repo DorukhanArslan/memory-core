@@ -19,9 +19,11 @@ from typing import Any, Literal, get_args
 
 from memory_core._memory_flush_constants import CONVERSATION_CONTEXT_HEADER
 from memory_core.automation import (
+    AutomationJob,
     AutomationStore,
     FileAutomationStore,
     due_automation_jobs,
+    is_heartbeat_task_job,
     heartbeat_scheduled_tasks,
 )
 from memory_core.bootstrap import (
@@ -55,7 +57,7 @@ from memory_core.heartbeat import prepare_heartbeat_turn, resolve_message_text
 from memory_core.heartbeat_scratch import resolve_heartbeat_store_scratch
 from memory_core.host._calls import ToolCallRefused, read_tool_call, tool_error
 from memory_core.host.flush import FlushRequest
-from memory_core.host.heartbeat_run import HeartbeatRun
+from memory_core.host.heartbeat_run import HeartbeatRun, ScheduledHeartbeatWake
 from memory_core.host.session import SessionState, TurnUsage, apply_turn_usage
 from memory_core.host.tool_calls import ToolCallRepair, repair_tool_calls
 from memory_core.memory_write_provenance import MemoryWriteProvenanceObserver
@@ -861,9 +863,44 @@ class HostKit:
         """
         agent_id = self._memory.config.agent_id
         started_at = schedule_now_ms if schedule_now_ms is not None else self._clock()
+        due = due_automation_jobs(self._automation_store.list_jobs(agent_id=agent_id), started_at)
+        return self._prepare_heartbeat_run(
+            session, due=due, started_at=started_at, source=source, reason=reason, context_mode=context_mode,
+            runtime_context=runtime_context, offer_tools=offer_tools, ensure=ensure,
+        )
+
+    def heartbeat_task_prompt(
+        self, session: SessionState, job_id: str, *, schedule_now_ms: int | None = None,
+        ensure: bool = True,
+    ) -> HeartbeatRun | None:
+        """Prepare the individually scheduled memory task if its stored job is due.
+
+        Hosts calling from a single-job scheduler receive just that task, even when
+        another task is due at the same instant. Use the returned run's session for
+        tool dispatch, then call its ``complete`` after the model settles. The host
+        retains ownership of scheduler admission and of concurrent executions.
+        """
+        started_at = self._clock() if schedule_now_ms is None else schedule_now_ms
+        jobs = self._automation_store.list_jobs(agent_id=self._memory.config.agent_id)
+        due = [job for job in due_automation_jobs(jobs, started_at)
+               if job.id == job_id and is_heartbeat_task_job(job)]
+        if not due:
+            return None
+        wake = ScheduledHeartbeatWake(due[0])
+        return self._prepare_heartbeat_run(
+            session, due=due, started_at=started_at, source="interval", reason=wake.reason, context_mode="full",
+            runtime_context=None, offer_tools=True, ensure=ensure, scheduled_wake=wake,
+        )
+
+    def _prepare_heartbeat_run(
+        self, session: SessionState, *, due: list[AutomationJob], started_at: int,
+        source: str | None, reason: str | None, context_mode: BootstrapContextMode,
+        runtime_context: str | None, offer_tools: bool, ensure: bool,
+        scheduled_wake: ScheduledHeartbeatWake | None = None,
+    ) -> HeartbeatRun:
+        agent_id = self._memory.config.agent_id
         store = self._automation_store
         scratch, scratch_owner = resolve_heartbeat_store_scratch(store, agent_id)
-        due = due_automation_jobs(store.list_jobs(agent_id=agent_id), started_at)
         turn = prepare_heartbeat_turn(
             now_ms=self._clock(),
             scratch=scratch,
@@ -897,6 +934,7 @@ class HostKit:
             store=store,
             agent_id=agent_id,
             scratch_owner=scratch_owner,
+            scheduled_wake=scheduled_wake,
             scratch_revision=scratch.current_revision,
             owned_scratch=bool(getattr(store, "heartbeat_ownership_enabled", False)),
         )

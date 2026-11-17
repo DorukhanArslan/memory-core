@@ -20,25 +20,24 @@ pin 4c42815348):
   upstream's ``ingestDreamingPhaseSignals``; daily-only evidence uses its source days for
   phase freshness, not the ingestion timestamp.
 
-Known gaps (parity matrix rows "Light dreaming phase signals", "REM dreaming
-phase signals", "Deep dreaming application flow"): no REM narrative or
-evidence extraction or upstream phase ordering/dedupe/diary coverage, light freshness/staged-key
-selection, live-source checking or workspace publication lock. Python date parsing covers
-persisted ISO dates rather than every permissive JavaScript Date.parse input. Scheduling belongs
-to the host; these sweeps run only when called.
+The v2026.9.9 light sweep accepts resolved light options. It ingests evidence, checks
+source files, stages fresh groups under the workspace lock and publishes a phase report.
+Other manual sweep profiles use the lightweight ranking described above. REM narrative
+and evidence extraction are outside that ranking. Timestamp handling targets persisted
+ISO dates. The host controls scheduling and narrative execution.
 """
 
 from __future__ import annotations
 
 from collections.abc import Callable, Iterable, Sequence
-from dataclasses import dataclass
+from dataclasses import dataclass, replace
 from datetime import UTC, datetime
 from pathlib import Path
 from typing import Any
 
 from memory_core.bootstrap._js import js_to_well_formed
 from memory_core.config import MemoryConfig
-from memory_core.consolidation._util import DAY_MS, parse_day_ms, parse_ms, to_int
+from memory_core.consolidation._util import DAY_MS, iso_ms, parse_day_ms, parse_ms, to_int
 from memory_core.consolidation.artifact_provenance import MemoryArtifactProvenanceStore
 from memory_core.consolidation.artifacts import read_dreams_file, resolve_dreams_path
 from memory_core.consolidation.daily_ingestion import (
@@ -46,6 +45,7 @@ from memory_core.consolidation.daily_ingestion import (
     daily_ingestion_lookback_days,
     ingest_daily_memory_signals,
 )
+from memory_core.consolidation.light_phase import LightDreamingOptions, prepare_light_phase
 from memory_core.consolidation.llm_consolidation import DeepConsolidation
 from memory_core.consolidation.origins import MemoryEntryOriginLedger
 from memory_core.consolidation.policy import DeepDreamingPolicy
@@ -138,58 +138,19 @@ class DreamingSweepResult:
     # The daily and session ingestion of a light or REM sweep given ``ingestion``.
     daily_ingestion: DailyIngestionCollection | None = None
     session_ingestion: SessionIngestionCollection | None = None
+    light_entries: tuple[dict[str, Any], ...] = ()
 
 
-def run_dreaming_sweep(
-    *,
-    config: MemoryConfig,
-    store: ReindexableStore,
-    phase: str,
-    now_ms: int,
-    timezone: str,
-    limit: int = 5,
-    identity: RuntimeIdentity = MEMORY_CORE_RUNTIME_IDENTITY,
-    policy: DeepDreamingPolicy | None = None,
-    consolidation: DeepConsolidation | None = None,
-    agent_id: str | None = None,
-    workspace_agent_ids: Sequence[str] = (),
-    origins: MemoryEntryOriginLedger | None = None,
-    state_dir: str | Path | None = None,
-    on_event: Callable[[dict[str, Any]], None] | None = None,
-    ingestion: DreamingIngestion | None = None,
-) -> DreamingSweepResult:
-    """Run one dreaming phase over the workspace's recall store.
-
-    ``phase`` is ``"light"``, ``"rem"`` or ``"deep"`` (anything else raises
-    ``ValueError``). Up to ``limit`` candidates are ranked without gates.
-    Without ``policy`` the deep phase promotes with the default gates, the same
-    ``limit`` and no age gate. With a resolved ``policy``
-    (:func:`resolve_deep_dreaming_policy`) it behaves like the pin's deep phase
-    (``dreaming.ts`` runShortTermDreamingPromotion): nothing is promoted when
-    ``policy.enabled`` is false (``skip_reason="disabled"``), otherwise the
-    policy's limit, gates, ``max_age_days``, ``recency_half_life_days`` and
-    ``max_promoted_snippet_tokens`` apply. ``files_changed`` lists
-    workspace-relative paths the sweep wrote; ``identity`` picks the promotion
-    marker prefix of the deep phase. ``consolidation`` (default ``None``, and off unless its
-    ``options.enabled`` is set and it carries a model) opts the deep phase into the host-injected
-    LLM consolidation; see :func:`run_short_term_promotion`, which also explains ``agent_id``,
-    ``workspace_agent_ids`` and ``origins`` (the memory-entry origins ledger), ``state_dir`` (the
-    sidecar lock's directory) and ``on_event`` (the host callback of the
-    ``memory.promotion.applied`` event; the light and REM sweeps pass it to the ``memory.recall.*``
-    events of their ingestion too). ``ingestion`` (default ``None``: none) makes a light or REM sweep
-    ingest the daily notes and the session transcripts first, like upstream's phases
-    (:class:`DreamingIngestion`).
-    """
-    if phase not in DREAMING_PHASES:
-        raise ValueError(f"unsupported dreaming phase: {phase}")
-
+def _ingest_phase_signals(
+    *, config: MemoryConfig, phase: str, now_ms: int, timezone: str, identity: RuntimeIdentity,
+    ingestion: DreamingIngestion | None, origins: MemoryEntryOriginLedger | None,
+    on_event: Callable[[dict[str, Any]], None] | None,
+) -> tuple[DailyIngestionCollection | None, SessionIngestionCollection | None, float]:
     daily_result = session_result = None
+    lookback = DEFAULT_PHASE_LOOKBACK_DAYS.get(phase, 0)
     if ingestion is not None and phase in {"light", "rem"}:
-        lookback = (
-            ingestion.lookback_days
-            if ingestion.lookback_days is not None
-            else DEFAULT_PHASE_LOOKBACK_DAYS[phase]
-        )
+        if ingestion.lookback_days is not None:
+            lookback = ingestion.lookback_days
         ingestion_limit = ingestion.limit if ingestion.limit is not None else DEFAULT_PHASE_INGESTION_LIMIT[phase]
         daily_result = ingest_daily_memory_signals(
             config=config,
@@ -216,19 +177,101 @@ def run_dreaming_sweep(
                 runtime_identity=identity,
                 on_event=on_event,
             )
+    return daily_result, session_result, lookback
+
+
+def run_dreaming_sweep(
+    *,
+    config: MemoryConfig,
+    store: ReindexableStore,
+    phase: str,
+    now_ms: int,
+    timezone: str,
+    limit: int | None = None,
+    identity: RuntimeIdentity = MEMORY_CORE_RUNTIME_IDENTITY,
+    policy: DeepDreamingPolicy | None = None,
+    consolidation: DeepConsolidation | None = None,
+    agent_id: str | None = None,
+    workspace_agent_ids: Sequence[str] = (),
+    origins: MemoryEntryOriginLedger | None = None,
+    state_dir: str | Path | None = None,
+    on_event: Callable[[dict[str, Any]], None] | None = None,
+    ingestion: DreamingIngestion | None = None,
+    light_options: LightDreamingOptions | None = None,
+) -> DreamingSweepResult:
+    """Run one dreaming phase over the workspace's recall store.
+
+    ``phase`` is ``"light"``, ``"rem"`` or ``"deep"`` (anything else raises
+    ``ValueError``). Up to ``limit`` candidates are ranked without gates.
+    Without ``policy`` the deep phase promotes with the default gates, the same
+    ``limit`` and no age gate. With a resolved ``policy``
+    (:func:`resolve_deep_dreaming_policy`) it behaves like the pin's deep phase
+    (``dreaming.ts`` runShortTermDreamingPromotion): nothing is promoted when
+    ``policy.enabled`` is false (``skip_reason="disabled"``), otherwise the
+    policy's limit, gates, ``max_age_days``, ``recency_half_life_days`` and
+    ``max_promoted_snippet_tokens`` apply. ``files_changed`` lists
+    workspace-relative paths the sweep wrote; ``identity`` picks the promotion
+    marker prefix of the deep phase. ``consolidation`` (default ``None``, and off unless its
+    ``options.enabled`` is set and it carries a model) opts the deep phase into the host-injected
+    LLM consolidation; see :func:`run_short_term_promotion`, which also explains ``agent_id``,
+    ``workspace_agent_ids`` and ``origins`` (the memory-entry origins ledger), ``state_dir`` (the
+    sidecar lock's directory) and ``on_event`` (the host callback of the
+    ``memory.promotion.applied`` event; the light and REM sweeps pass it to the ``memory.recall.*``
+    events of their ingestion too). ``ingestion`` (default ``None``: none) makes a light or REM sweep
+    ingest the daily notes and the session transcripts first, like upstream's phases
+    (:class:`DreamingIngestion`). Supply ``light_options`` to run the v2026.9.9 light
+    selection and publication pipeline with live source, staged-key freshness and diary
+    coverage checks. It ingests daily notes before publishing even without an explicit
+    ingestion source. It returns staged groups in ``light_entries`` with their contributing
+    source keys. ``candidates`` holds scored promotions for the other sweep profiles.
+    """
+    if phase not in DREAMING_PHASES:
+        raise ValueError(f"unsupported dreaming phase: {phase}")
+
+    if limit is None:
+        limit = DEFAULT_PHASE_INGESTION_LIMIT["light"] if light_options is not None else 5
+    if light_options is not None:
+        if phase != "light":
+            raise ValueError("light_options requires the light dreaming phase")
+        if not light_options.enabled or limit <= 0:
+            return DreamingSweepResult(phase=phase, candidates=(), phase_signals_recorded=0,
+                                       files_changed=(), skip_reason="disabled")
+        ingestion = replace(ingestion or DreamingIngestion(), limit=limit)
+
+    try:
+        daily_result, session_result, lookback = _ingest_phase_signals(
+            config=config, phase=phase, now_ms=now_ms, timezone=timezone, identity=identity,
+            ingestion=ingestion, origins=origins, on_event=on_event,
+        )
+        if light_options is not None:
+            entries, changed, recorded = prepare_light_phase(
+                config=config, now_ms=now_ms, timezone=timezone, limit=limit,
+                lookback_days=lookback, options=light_options, on_event=on_event,
+            )
+            return DreamingSweepResult(
+                phase=phase, candidates=(), light_entries=tuple(entries),
+                phase_signals_recorded=recorded, files_changed=tuple(changed),
+                daily_ingestion=daily_result, session_ingestion=session_result,
+            )
+    except Exception as error:
+        if light_options is not None and on_event is not None:
+            try:
+                on_event({
+                    "type": "memory.dream.completed", "timestamp": iso_ms(now_ms), "phase": phase,
+                    "outcome": "failed", "error": str(error), "lineCount": 0, "storageMode": light_options.storage_mode,
+                })
+            except Exception:
+                # The host's event sink can itself fail. Preserve the original phase failure.
+                pass
+        raise
 
     phase_entries = None
     fresh_keys = None
     if phase in {"light", "rem"}:
         phase_entries = read_recall_store(recall_store_path(config.workspace_dir), now_ms)["entries"]
-        phase_lookback = (
-            ingestion.lookback_days
-            if ingestion is not None and ingestion.lookback_days is not None
-            else DEFAULT_PHASE_LOOKBACK_DAYS[phase]
-        )
         fresh_keys = {
             str(entry.get("key") or "") for entry in filter_recall_entries_within_lookback(
-                entries=list(phase_entries.values()), now_ms=now_ms, lookback_days=phase_lookback,
+                entries=list(phase_entries.values()), now_ms=now_ms, lookback_days=lookback,
             )
         }
     candidates = rank_short_term_promotion_candidates(

@@ -49,6 +49,7 @@ from memory_core.consolidation.dreaming import (
     DREAMING_PHASES,
     DREAMS_FILE_NAME,
     DreamingIngestion,
+    LightDreamingOptions,
     DreamingSweepResult,
     run_dreaming_sweep,
 )
@@ -161,6 +162,7 @@ from memory_core.memory_budget import DEFAULT_MEMORY_FILE_MAX_CHARS
 
 __all__ = [
     "DreamingIngestion",
+    "LightDreamingOptions",
     "IndexRevisionFence",
     "MemoryForgetReport",
     "MemorySessionTarget",

@@ -18,7 +18,7 @@ import tempfile
 import traceback
 from typing import Any
 
-from equivalence.dream_phase_family import FAMILIES as DREAM_FAMILIES, evidence_family, report_key
+from equivalence.workspace_case_families import FAMILIES as WORKSPACE_FAMILIES, evidence_family, report_key, native_validator
 from equivalence.release_runtime import ReleaseRuntimeError, validate_release_sources
 from equivalence.entry_provenance_profile import ENTRY_PROVENANCE_PROFILES, validate_entry_provenance_profile
 from equivalence.atomic_publication_profile import (ATOMIC_PUBLICATION_PROFILES, validate_atomic_publication_profile,
@@ -90,6 +90,8 @@ _OPERATIONS = {
     "prompt-runtime-context-runtime": ("prompt-runtime-context-runtime.mjs", "dist/builtin-openclaw-D1Xfnzzr.mjs", False),
     **dict.fromkeys(("dream-light-runtime", "dream-rem-runtime"), ("dream-light-runtime.mjs", "dist/dreaming-phases-rmgXNBLP.mjs", False)),
     "dream-diary-publication-runtime": ("dream-diary-runtime.mjs", "dist/dreaming-dreams-file-BJzlZFlf.mjs", False),
+    "recovery-artifact-repair-runtime": ("recovery-artifact-repair-runtime.mjs", "dist/dreaming-state-VYUvbU-n.mjs", False),
+    "recovery-index-repair-runtime": ("recovery-index-repair-runtime.mjs", "dist/extensions/memory-core/manager-runtime.js", False),
     "dream-deep-runtime": ("dream-deep-runtime.mjs", "dist/extensions/memory-core/index.js", False),
     "prompt-history-repair-runtime": ("prompt-history-repair-runtime.mjs", "dist/builtin-openclaw-D1Xfnzzr.mjs", False),
     "flush-trigger-runtime": (
@@ -780,7 +782,7 @@ class ReleaseOracleExecution:
             if self.forget_boundaries_profile is not None:
                 self.forget_boundaries_profile = validate_forget_boundaries_profile(self.forget_boundaries_profile)
             if self.dream_phase_profile is not None:
-                family = DREAM_FAMILIES.get(self.dream_phase_profile.get("operation"))
+                family = WORKSPACE_FAMILIES.get(self.dream_phase_profile.get("operation"))
                 if family is None:
                     raise RuntimeOracleError("Unknown dreaming phase authority")
                 self.dream_phase_profile = family.validate_profile(self.dream_phase_profile)
@@ -1009,12 +1011,12 @@ class ReleaseOracleExecution:
         """Validate all observed threads and retain case raw state in the report."""
         if not self._entered:
             raise RuntimeOracleError("Release execution evidence requires an active owned context.")
-        if self.embedding_cache_profile is not None or self.session_reset_boundaries_profile is not None or self.prompt_runtime_context_profile is not None or self.prompt_history_repair_profile is not None:
+        if self.dream_phase_profile is not None or self.embedding_cache_profile is not None or self.session_reset_boundaries_profile is not None or self.prompt_runtime_context_profile is not None or self.prompt_history_repair_profile is not None:
             self._last_collection_error = None
         try:
             return self._collect(result, cases)
         except (OSError, KeyError, TypeError, ValueError, ReleaseRuntimeError) as error:
-            if self.embedding_cache_profile is not None or self.session_reset_boundaries_profile is not None or self.prompt_runtime_context_profile is not None or self.prompt_history_repair_profile is not None:
+            if self.dream_phase_profile is not None or self.embedding_cache_profile is not None or self.session_reset_boundaries_profile is not None or self.prompt_runtime_context_profile is not None or self.prompt_history_repair_profile is not None:
                 self._last_collection_error = {
                     "type": type(error).__module__ + "." + type(error).__qualname__,
                     "message": str(error), "traceback": traceback.format_exc(),
@@ -1093,7 +1095,7 @@ class ReleaseOracleExecution:
                    "kind": "rejected-release-runtime-diagnostics", "caseIds": [],
                    "oracleResult": None, "stdout": None, "stderr": None,
                    "caseDiagnostics": [], "processWorkerTraces": [], "omissions": []}
-        if (self.embedding_cache_profile is not None or self.session_reset_boundaries_profile is not None or self.prompt_runtime_context_profile is not None or self.prompt_history_repair_profile is not None) and getattr(
+        if (self.dream_phase_profile is not None or self.embedding_cache_profile is not None or self.session_reset_boundaries_profile is not None or self.prompt_runtime_context_profile is not None or self.prompt_history_repair_profile is not None) and getattr(
                 self, "_last_collection_error", None) is not None:
             capture["collectionError"] = deepcopy(self._last_collection_error)
 
@@ -1150,7 +1152,7 @@ class ReleaseOracleExecution:
                 if (self.prompt_runtime_context_profile is not None
                         and case.get("operation") == "prompt-runtime-context-runtime"):
                     record.update(self._retain_prompt_capture(identifier, raw))
-                if self.dream_phase_profile is not None and case.get("operation") in DREAM_FAMILIES:
+                if self.dream_phase_profile is not None and case.get("operation") in WORKSPACE_FAMILIES:
                     record.update(self._retain_dream_capture(identifier, raw))
                 if (self.prompt_history_repair_profile is not None
                         and case.get("operation") == "prompt-history-repair-runtime"):
@@ -1257,10 +1259,10 @@ class ReleaseOracleExecution:
             profile = validate_prompt_history_repair_profile(self.prompt_history_repair_profile)
             if profile["caseId"] != case.get("id") or profile["caseBindings"][profile["caseId"]] != _digest(history_case_wire(case)):
                 raise RuntimeOracleError("A prompt history repair case changed its frozen inputs")
-        if (self.dream_phase_profile is not None) != (operation in DREAM_FAMILIES):
+        if (self.dream_phase_profile is not None) != (operation in WORKSPACE_FAMILIES):
             raise RuntimeOracleError("Dreaming requires its exact frozen profile")
         if self.dream_phase_profile is not None:
-            DREAM_FAMILIES[operation].validate_case(case)
+            WORKSPACE_FAMILIES[operation].validate_case(case)
             if self.dream_phase_profile["caseId"] != case["id"] or self.dream_phase_profile["operation"] != operation:
                 raise RuntimeOracleError("Dreaming requires the same case in every process")
         if (self.recall_signals_profile is not None) is not (operation == "recall-signals-runtime"):
@@ -1365,12 +1367,12 @@ class ReleaseOracleExecution:
             raise RuntimeOracleError("The release oracle returned an unexpected case identity.")
         expected_provider = EMBEDDING_PROVIDER_MODE if self.embedding_cache_profile is not None else "none"
         if row["ok"] and (not isinstance(row["result"], dict)
-                or operation not in {*DREAM_FAMILIES, PROMOTION_RANKING_OPERATION, "recall-signals-runtime", "prompt-runtime-context-runtime", "prompt-history-repair-runtime"}
+                or operation not in {*WORKSPACE_FAMILIES, PROMOTION_RANKING_OPERATION, "recall-signals-runtime", "prompt-runtime-context-runtime", "prompt-history-repair-runtime"}
                 and row["result"].get("provider") != expected_provider):
             raise RuntimeOracleError(
                 "Embedding cache fixtures require their declared deterministic provider."
                 if self.embedding_cache_profile is not None else "Release memory fixtures require provider none.")
-        if operation in DREAM_FAMILIES and not row["ok"]:
+        if operation in WORKSPACE_FAMILIES and not row["ok"]:
             raise RuntimeOracleError(f"Original dreaming sweep failed: {row['error']}")
         if operation == "embed-cache-lifecycle-runtime" and not row["ok"]:
             raise RuntimeOracleError("The real embedding-cache manager did not complete its declared fixture flow.")
@@ -1763,14 +1765,7 @@ class ReleaseOracleExecution:
             history_capture = self._retain_history_capture(case["id"], raw)
         if not isinstance(diagnostic, list):
             raise RuntimeOracleError("Native lifecycle diagnostics must retain raw snapshot rows.")
-        if operation in DREAM_FAMILIES:
-            if operation == "dream-diary-publication-runtime":
-                from equivalence.dream_diary_evidence import validate_native
-            elif operation == "dream-deep-runtime":
-                from equivalence.dream_deep_evidence import validate_deep_native as validate_native
-            else:
-                from equivalence.dream_light_evidence import validate_dream_light_native as validate_native
-
+        if operation in WORKSPACE_FAMILIES:
             from equivalence.promotion_ranking_bindings import PROMOTION_WORKER_ROUTE
 
             paths_by_worker = {}
@@ -1780,7 +1775,7 @@ class ReleaseOracleExecution:
                 raise RuntimeOracleError("Missing real SQLite plugin state worker for dreaming")
             if operation == "dream-rem-runtime" and str((ROOT / "equivalence/dream-rem-runtime.mjs").resolve()) not in local_imports:
                 raise RuntimeOracleError("Missing the reviewed REM callback driver")
-            validate_native(case, row["result"], diagnostic, evidence.parent, loaded)
+            native_validator(operation)(case, row["result"], diagnostic, evidence.parent, loaded)
         if operation == "embed-cache-lifecycle-runtime":
             from equivalence.embedding_cache_lifecycle_bindings import REQUIRED_RUNTIME_ARTIFACTS
             from equivalence.embedding_cache_lifecycle_evidence import validate_native
@@ -2115,7 +2110,7 @@ class ReleaseOracleExecution:
                                   "nativeBinaryPolicy": "all artifact bytes authenticated before and after execution"}
         answer["runtimeDiagnostics"] = [{"id": case["id"], "sha256": _digest(raw),
                                           "rawSnapshots": _json(raw) if self.entry_profile is not None or self.memory_budget_profile is not None or self.promotion_profile is not None or self.promotion_apply_profile is not None else diagnostic}]
-        if operation in DREAM_FAMILIES:
+        if operation in WORKSPACE_FAMILIES:
             answer["runtimeDiagnostics"][0].update(self._retain_dream_capture(case["id"], raw))
             answer["runtimeDiagnostics"][0]["validationStatus"] = "verified"
             answer["releaseTrace"][report_key(operation, "Transport")] = {"profile": deepcopy(self.dream_phase_profile),

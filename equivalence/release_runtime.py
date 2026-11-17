@@ -338,6 +338,7 @@ def validate_release_sources(
         "dist/builtin-openclaw-D1Xfnzzr.mjs",
         "dist/dreaming-phases-rmgXNBLP.mjs",
         "dist/dreaming-dreams-file-BJzlZFlf.mjs",
+        "dist/dreaming-state-VYUvbU-n.mjs",
         "dist/extensions/memory-core/index.js",
     }:
         raise ReleaseRuntimeError("The compiled reference requires a reviewed runtime entry.")

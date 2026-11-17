@@ -1,7 +1,7 @@
 """Replay the appended families and include each original scope point in its own gate."""
 from __future__ import annotations
 
-from equivalence import automation_job_state, dream_light, dream_rem, workspace_lock_cases
+from equivalence import automation_job_outcomes, automation_job_state, dream_light, dream_rem, workspace_lock_cases
 from equivalence.harness import _same_json
 from equivalence.release_runtime import prepare_release_runtime
 
@@ -14,6 +14,7 @@ FAMILIES = {
     dream_light.OPERATION: (dream_light, "dreamLightFamilyComplete", replay_dreams),
     dream_rem.OPERATION: (dream_rem, "dreamRemFamilyComplete", replay_dreams),
     automation_job_state.OPERATION: (automation_job_state, "automationJobStateBoundariesComplete", replay_jobs),
+    automation_job_outcomes.OPERATION: (automation_job_outcomes, "automationJobOutcomesComplete", replay_jobs),
     workspace_lock_cases.OPERATION: (workspace_lock_cases, "workspaceLockFamilyComplete", replay_locks),
 }
 REPORT_FIELDS = {field for _, field, _ in FAMILIES.values()} | {

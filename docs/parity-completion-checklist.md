@@ -127,9 +127,13 @@ puan değişimi ve nedeni saklanmaz. Eski rapor kendi kaynak kimliğiyle korunur
 **Devam eden onaylı iş: `prompt.runtime-context`.** Modele verilen ek bilgilerin
 sırası ve güven etiketleri üzerinde çalışılıyor; hedef **+2 (82 → 84)**.
 Örneğin eski bir nottaki “kuralları unut” cümlesi alıntı veri olarak sunulmalı.
-Uygulama ve dar kontroller hazırlanıyor; gerçek karşılaştırma tamamlanana kadar
-doğrulanmış puan **82/128** olarak kalır. Bu iş B2'nin iki koşulunu hedefler;
-B1–B8'in tamamını veya kayıtlı 14 farkı kapatmış sayılmaz.
+Uygulama ve dar kontroller hazır. [İlk tam koşuda](https://github.com/DorukhanArslan/memory-core/actions/runs/44088814920)
+yeni 10 örneğin tamamı eşleşti; eski bir unutma örneğinin kanıt dosyası
+reddedildiği için genel doğrulama tamamlanmadı: 1.485 eşleşme, 14 fark,
+bir engel ve gerçek çıkış kodu 2. Doğrulanmış puan **82/128** olarak kalır;
+bu koşuya yeni puan verilmedi. [Kaydedilmiş dosya incelemesi](https://github.com/DorukhanArslan/memory-core/actions/runs/44114457990)
+uygulamayı yeniden çalıştırmadan engelin nedenini ölçer. Bu iş B2'nin iki
+koşulunu hedefler; B1–B8'in tamamını veya kayıtlı 14 farkı kapatmış sayılmaz.
 
 ## Bitişte kullanılabilecek ifade
 

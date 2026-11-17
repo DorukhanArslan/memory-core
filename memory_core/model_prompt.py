@@ -13,7 +13,8 @@ import re
 from typing import Any
 
 from memory_core._intl_zone_names import en_us_short_time_zone_name
-from memory_core.bootstrap._js import js_trim
+from memory_core.bootstrap._js import js_json_stringify, js_trim
+from memory_core.compaction_replay import _js_number_to_string
 from memory_core.current_time import resolve_cron_style_now, resolve_user_timezone, utc_and_local_instants
 from memory_core.prompt_section import build_prompt_section
 from memory_core.replay_history import normalize_assistant_replay_content
@@ -25,10 +26,41 @@ from memory_core.runtime_context_prompt import (
 from memory_core.runtime_identity import MEMORY_CORE_RUNTIME_IDENTITY
 from memory_core.session_context import convert_to_llm
 from memory_core.session_entry import strip_inbound_metadata
+from memory_core.tool_call_ids import sanitize_tool_call_ids
 
 MEMORY_PROMPT_TOOL_NAMES = ("memory_search", "memory_get", "sessions_search", "sessions_history", "session_status")
 _LEADING_ENVELOPE = re.compile(r"^\[[A-Za-z]{3} [0-9]{4}-[0-9]{2}-[0-9]{2} [0-9]{2}:[0-9]{2}[^\]]*\] *")
 _TIMESTAMP_ENVELOPE = re.compile(r"^\[.*[0-9]{4}-[0-9]{2}-[0-9]{2} [0-9]{2}:[0-9]{2}")
+
+
+def serialize_model_tool_json(value):
+    """Native JSON.stringify(value, null, 2) for JSON-compatible tool values.
+
+    Model transport numbers use the existing ECMAScript number owner; strings
+    keep the shared Unicode/escaping owner. Business objects stay untouched.
+    """
+    def render(item, depth):
+        if item is None:
+            return "null"
+        if isinstance(item, bool):
+            return "true" if item else "false"
+        if isinstance(item, str):
+            return js_json_stringify(item)
+        if isinstance(item, (int, float)):
+            return "null" if isinstance(item, float) and not math.isfinite(item) else _js_number_to_string(item)
+        padding, child_padding = "  " * depth, "  " * (depth + 1)
+        if isinstance(item, Mapping):
+            if any(not isinstance(key, str) for key in item):
+                raise TypeError("Model tool JSON object keys must be strings")
+            parts = [child_padding + js_json_stringify(key) + ": " + render(entry, depth + 1)
+                     for key, entry in item.items()]
+            return "{\n" + ",\n".join(parts) + "\n" + padding + "}" if parts else "{}"
+        if isinstance(item, (list, tuple)):
+            parts = [child_padding + render(entry, depth + 1) for entry in item]
+            return "[\n" + ",\n".join(parts) + "\n" + padding + "]" if parts else "[]"
+        raise TypeError(f"Unsupported model tool JSON value: {type(item).__name__}")
+
+    return render(value, 0)
 
 
 @dataclass(frozen=True)
@@ -46,6 +78,7 @@ class RuntimePromptInput:
     host_time_format: str | None = None
     include_clock: bool = False
     append_only_runtime_context: bool = False
+    tool_call_id_mode: str | None = None
 
     def __post_init__(self):
         copied = tuple(deepcopy(dict(fragment)) for fragment in self.fragments)
@@ -54,6 +87,8 @@ class RuntimePromptInput:
             raise ValueError("Runtime fragments require an explicit supported kind and string text")
         if self.transcript_prompt is not None and not isinstance(self.transcript_prompt, str):
             raise TypeError("transcript_prompt must be a string or None")
+        if self.tool_call_id_mode not in {None, "strict"}:
+            raise ValueError("tool_call_id_mode must be None or the supported strict policy")
         object.__setattr__(self, "fragments", copied)
         object.__setattr__(self, "current_inbound_context", deepcopy(self.current_inbound_context))
         if self.offered_tool_names is not None:
@@ -314,6 +349,8 @@ class ModelPrompt:
                 source[user_index] = {**user, "content": parts}
         if self.carrier is not None:
             source.insert(user_index if user_index >= 0 else len(source), self.carrier)
+        if self.options.tool_call_id_mode is not None:
+            source = sanitize_tool_call_ids(source, self.options.tool_call_id_mode)
         projected = normalize_model_messages(source, session_version=self.session_version,
             append_only_runtime_context=self.options.append_only_runtime_context,
             timezone=self.timezone, retained_carrier=self.carrier, identity=self.identity)

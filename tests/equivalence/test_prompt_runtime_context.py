@@ -112,7 +112,8 @@ def test_whole_tool_result_requires_real_before_after_receipts_and_source_custod
     business = {"status": "ok", "path": "memory/a.md", "from": 1, "lines": 1, "text": "owned source\n"}
     content = [{"type": "text", "text": json.dumps(business)}]
     result = {"content": content, "details": business}
-    response = {"role": "assistant", "content": [{"type": "toolCall", **script}]}
+    response = {"role": "assistant", "responseId": "actual-provider-get-response",
+                "content": [{"type": "toolCall", **script}]}
     tool_message = {"role": "toolResult", "toolCallId": "get", "toolName": "memory_get", "isError": False,
                     "content": deepcopy(content)}
     payload = b"owned source\n"
@@ -125,12 +126,22 @@ def test_whole_tool_result_requires_real_before_after_receipts_and_source_custod
                                                  "sha256": hashlib.sha256(payload).hexdigest()}}}}
     specification = {"scriptedTools": [script]}
     _tools(specification, operation, True)
-    for mutation in ("missing-hook", "forged-content", "forged-source"):
+    projected = deepcopy(operation)
+    projected_script = {**script, "id": "recall-get"}
+    projected["providerCalls"][0]["response"]["content"][0]["id"] = "recall-get"
+    projected["providerCalls"][1]["request"]["context"]["messages"][0]["content"][0]["id"] = "recallget"
+    projected["providerCalls"][1]["request"]["context"]["messages"][-1]["toolCallId"] = "recallget"
+    for receipt in projected["toolCalls"]:
+        receipt["event"]["toolCallId"] = "recall-get"
+    _tools({"scriptedTools": [projected_script]}, projected, True)
+    for mutation in ("missing-hook", "forged-content", "forged-source", "broken-projected-id"):
         altered = deepcopy(operation)
         if mutation == "missing-hook":
             altered["toolCalls"].pop()
         elif mutation == "forged-content":
             altered["providerCalls"][1]["request"]["context"]["messages"][-1]["content"][0]["text"] = "replacement"
+        elif mutation == "broken-projected-id":
+            altered["providerCalls"][1]["request"]["context"]["messages"][-1]["toolCallId"] = "unrelated-result"
         else:
             altered["toolCalls"][-1]["event"]["result"]["details"]["text"] = "invented source"
             altered["toolCalls"][-1]["event"]["result"]["content"][0]["text"] = json.dumps(

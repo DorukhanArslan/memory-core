@@ -76,8 +76,50 @@ def build_cases():
     return values
 
 
+def validate_case(case):
+    expected = next((value for value in build_cases() if value["id"] == case.get("id")), None)
+    if expected is None or canonical({key: case.get(key) for key in expected}) != canonical(expected):
+        raise ValueError("Diary publication requires the literal frozen case")
+
+
+def members(rows):
+    return [row for row in rows if row.get("operation") == OPERATION or row.get("requirement") == REQUIREMENT
+            or set(row.get("covers", ())).intersection(POINTS)]
+
+
 def validate_registration(rows):
-    family = [row for row in rows if row.get("operation") == OPERATION or row.get("requirement") == REQUIREMENT
-              or set(row.get("covers", ())).intersection(POINTS)]
-    if family and family != build_cases():
+    family = members(rows)
+    if not family:
+        return
+    if [row["id"] for row in family] != [row["id"] for row in build_cases()]:
         raise ValueError("Diary publication requires every frozen operation and both original conditions")
+    for row in family:
+        validate_case(row)
+
+
+def family_complete(rows):
+    try:
+        validate_registration(rows)
+    except (KeyError, TypeError, ValueError):
+        return False
+    family = members(rows)
+    return bool(family) and all(row.get("status") == "matched" and row.get("runtimeEvidenceValidated") is True
+                                for row in family)
+
+
+def profile_for(case, node):
+    from equivalence.model_runtime_authority import prepare_model_node_authority
+    validate_case(case)
+    return {"caseId": case["id"], "operation": OPERATION, "nodeRuntime": prepare_model_node_authority(node),
+            "inputSha256": hashlib.sha256(canonical(case["input"])).hexdigest()}
+
+
+def validate_profile(profile):
+    from equivalence.model_runtime_authority import validate_model_node_authority
+    cases = {row["id"]: hashlib.sha256(canonical(row["input"])).hexdigest() for row in build_cases()}
+    if (not isinstance(profile, dict) or set(profile) != {"caseId", "inputSha256", "operation", "nodeRuntime"}
+            or profile["operation"] != OPERATION or profile["caseId"] not in cases
+            or cases[profile["caseId"]] != profile["inputSha256"]):
+        raise ValueError("Missing or misbound diary input authority")
+    validate_model_node_authority(profile["nodeRuntime"])
+    return deepcopy(profile)

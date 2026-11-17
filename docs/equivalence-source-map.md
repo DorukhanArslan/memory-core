@@ -179,7 +179,7 @@ Its final complete catalog on clean `b27624d` validates the sessions-only
 source-coherence correction and confirms the same 70, with no additional point.
 Source inventory itself still awards no behavioral credit.
 
-The current inventory maps **238 upstream modules**, with 18 present and 46 partial
+The current inventory maps **239 upstream modules**, with 18 present and 46 partial
 Python counterparts. Durable catalog and session-runner owners now provide partial SDK
 counterparts for the three previously host-owned rows; this source classification adds no
 behavioral credit. Original Gateway host acceptance remains incomplete. The shared-deadline package maps the actual control,
@@ -192,6 +192,12 @@ skips the index constructor. Get uses an actual owned file and secure native rea
 no manager substitute. This grants no new index-worker, manager startup, live provider latency,
 transcript visibility, or OS scheduling credit. Source and official release provenance remain
 separate; the release build is not independently reproduced.
+
+The prompt inventory additionally maps the original `normalizeMessagesForLlmBoundary`
+owner and the SDK's `ModelPrompt`, `HostTurn.model_request` and complete clock result.
+The production model projection keeps transient carriers separate from durable history.
+Explicit host timezone/format facts support the compatible clock profile; legacy clock
+callers retain UTC fallback. Mapping these entry points grants no acceptance credit.
 
 The verified bounded index-identity boundary map now includes the original manager
 factory, constructor and published status, provider initialization, actual query

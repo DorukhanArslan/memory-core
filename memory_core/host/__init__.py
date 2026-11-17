@@ -27,6 +27,7 @@ from memory_core.host.lifecycle import (
 from memory_core.host.session import SessionState, TurnUsage
 from memory_core.host.tool_calls import ToolCallRepair
 from memory_core.host.turn import TurnState
+from memory_core.model_prompt import RuntimePromptInput
 
 __all__ = [
     "DEFAULT_CONTEXT_WINDOW_TOKENS",
@@ -49,4 +50,5 @@ __all__ = [
     "TurnRecord",
     "TurnState",
     "TurnUsage",
+    "RuntimePromptInput",
 ]

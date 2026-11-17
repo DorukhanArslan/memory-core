@@ -32,6 +32,7 @@ from memory_core.host.managed_index import ManagedSQLiteMemoryStore
 from memory_core.host.session import SessionState, apply_turn_usage
 from memory_core.host.session_publication import Scheduler, SessionPublicationController
 from memory_core.index.sqlite_store import read_index_source
+from memory_core.model_prompt import RuntimePromptInput
 from memory_core.runtime_identity import MEMORY_CORE_RUNTIME_IDENTITY, RuntimeIdentity
 from memory_core.session_catalog import MemorySessionCatalog, normalize_session_agent_id
 from memory_core.session_visibility import SessionVisibilityContext
@@ -538,6 +539,7 @@ class ManagedHostSessionRunner(HostSessionRunner):
                        execute_flush: Callable[[HostTurn], Awaitable[HostModelResult | None]] | None = None,
                        request_id: str | None = None, sender_is_owner: bool | None = True,
                        context_window_tokens: int | None = None,
+                       prompt_context: RuntimePromptInput | None = None,
                        deliver: Callable[[ManagedHostTurnOutcome], Awaitable[None]] | None = None) -> ManagedHostTurnOutcome:
         token = self._admit_owner()
         reservation = None
@@ -554,7 +556,8 @@ class ManagedHostSessionRunner(HostSessionRunner):
             reservation = self._reserve_foreground()
             await reservation.join_predecessors()
             outcome = await super().run_turn(user_message, execute=execute, execute_flush=execute_flush,
-                request_id=request_id, sender_is_owner=sender_is_owner, context_window_tokens=context_window_tokens)
+                request_id=request_id, sender_is_owner=sender_is_owner, context_window_tokens=context_window_tokens,
+                prompt_context=prompt_context)
             return outcome
         finally:
             if self._cancel_requested.is_set():

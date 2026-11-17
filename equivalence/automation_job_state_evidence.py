@@ -46,12 +46,13 @@ def validate_observation(case, output):
                 _same(result["status"], "not_found", "the absent note was not read")
 
 
-def validate_sdk(case, raw, output, directory):
+def validate_sdk(case, raw, output, directory, *, recorded_directory=None):
     validate_observation(case, output)
     workspace = Path(directory).resolve() / "workspace"
-    _same(raw["workspace"], str(workspace), "SDK workspace ownership differs")
-    store = Path(raw["store"])
-    if store != workspace / ".memory-core" / "automation.json" or store.is_symlink():
+    recorded = Path(recorded_directory or directory).resolve() / "workspace"
+    _same(raw["workspace"], str(recorded), "SDK workspace ownership differs")
+    store = workspace / ".memory-core" / "automation.json"
+    if Path(raw["store"]) != recorded / ".memory-core" / "automation.json" or store.is_symlink():
         raise ValueError("SDK scheduled task must use its own durable file store")
     previous = None
     for step, saved in zip(output["steps"], raw["steps"], strict=True):

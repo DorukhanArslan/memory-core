@@ -2039,6 +2039,13 @@ def run_suite(*, checkout: Path, node: Path, smoke: bool = False,
                             validate_sdk(case, snapshots[0], python, directory)
                             row["sdkEvidenceDirectory"] = str(directory)
                             row.update(runtimeEvidenceValidated=True, openclaw=native_comparison, python=python)
+                            from equivalence.automation_job_state_replay import make_packet, replay
+
+                            trace = next(t for t in report["releaseTraces"] if t["id"] == case["id"])
+                            packet = make_packet(row, original, trace, hashlib.sha256(raw).hexdigest(),
+                                                 report["implementation"])
+                            (directory / "review.json").write_text(json.dumps(packet) + "\n", encoding="utf8")
+                            replay(packet, directory.parent)
                         if case in source_diagnostic_cases:
                             if len(snapshots) != 1:
                                 raise ValueError("Discovery requires one complete diagnostic record")

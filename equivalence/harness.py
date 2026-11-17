@@ -404,6 +404,9 @@ def _validate_scope(scope: Any, cases: Any) -> tuple[list[dict], dict[str, set[s
     try:
         from equivalence.deep_consolidation import validate_registration as validate_deep_consolidation
 
+        from equivalence.workspace_lock_cases import validate_registration as validate_workspace_locks
+
+        validate_workspace_locks(cases)
         validate_deep_consolidation(cases)
         validate_prompt_history_repair(cases)
     except ValueError as error:
@@ -649,6 +652,21 @@ def _oracle(node: Path, script: Path, checkout: Path, cases: list[dict], timeout
                     "evidenceDirectory": native["evidenceDirectory"]}
         except Exception as error:
             failure = HarnessError("query-sync-boundaries-evidence-invalid", "Whole query-sync boundary execution/authority failed; no retry was made.")
+            failure.rejected_evidence = {"caseIds": [cases[0]["id"]], "coverageCredit": False,
+                                         "retainedDirectory": str(attempt), "reason": str(error)}
+            raise failure from error
+    if len(cases) == 1 and cases[0]["operation"] == "workspace-lock-process-runtime":
+        from equivalence.workspace_lock_evidence import run_native_case as run_workspace_writers
+
+        if release_runtime is None:
+            raise HarnessError("release-runtime-unavailable", "Independent writers require the original lock owner.")
+        retained = ROOT / ".equivalence-results" / "workspace-locks"
+        retained.mkdir(parents=True, exist_ok=True)
+        attempt = Path(tempfile.mkdtemp(prefix="native-attempt-", dir=retained))
+        try:
+            return run_workspace_writers(cases[0], attempt, node, release_runtime)
+        except Exception as error:
+            failure = HarnessError("workspace-writer-error", "Independent OpenClaw writers could not complete.")
             failure.rejected_evidence = {"caseIds": [cases[0]["id"]], "coverageCredit": False,
                                          "retainedDirectory": str(attempt), "reason": str(error)}
             raise failure from error
@@ -1262,6 +1280,7 @@ def run_suite(*, checkout: Path, node: Path, smoke: bool = False,
             "atomic-commit-runtime", "atomic-append-runtime", "atomic-bootstrap-runtime",
             "bootstrap-discovery-runtime",
             "memory-budget-runtime", "memory-budget-apply-runtime",
+            "workspace-lock-process-runtime",
             "promotion-ranking-runtime", "promotion-apply-reconcile-runtime", "promotion-apply-family-runtime", "deep-consolidation-runtime",
             "host-restart-session-runtime",
             "host-update-isolation-runtime",
@@ -1696,6 +1715,10 @@ def run_suite(*, checkout: Path, node: Path, smoke: bool = False,
                 report["embeddingCacheBindings"] = prepare_embedding_cache_lifecycle_bindings(
                     checkout, Path(runtime_config["runtimeRoot"]))
                 report["embeddingCacheNode"] = prepare_model_node_authority(node)
+            if any(case["operation"] == "workspace-lock-process-runtime" for case in runtime_cases):
+                from equivalence.workspace_lock_evidence import source_bindings as lock_source_bindings
+
+                report["workspaceLockBindings"] = lock_source_bindings(checkout)
             observed_release = {}
             for case in runtime_cases:
                 # The real manager retains global state owners. Each distinct
@@ -1719,6 +1742,8 @@ def run_suite(*, checkout: Path, node: Path, smoke: bool = False,
                 report["runtimeDiagnostics"].extend(
                     {"side": "native", **diagnostic} for diagnostic in native["runtimeDiagnostics"])
             try:
+                if "workspaceLockBindings" in report and lock_source_bindings(checkout) != report["workspaceLockBindings"]:
+                    raise ValueError("The original workspace lock source changed.")
                 if prepare_release_runtime(checkout, release_runtime_root) != runtime_config:
                     raise ValueError("Runtime artifacts changed.")
                 if "embeddingCacheBindings" in report and (
@@ -1964,10 +1989,11 @@ def run_suite(*, checkout: Path, node: Path, smoke: bool = False,
                     native_comparison = native["result"]
                     python_case = deepcopy(case)
                     if case in python_diagnostic_cases:
-                        if case["operation"] in {"index-identity-boundaries-runtime", "query-sync-outcomes-runtime", "query-sync-boundaries-runtime", "forget-lineage-runtime", "forget-boundaries-runtime", "recall-signals-runtime", "embed-cache-lifecycle-runtime", "session-reset-boundaries-runtime", "prompt-runtime-context-runtime", "prompt-history-repair-runtime", "deep-consolidation-runtime"}:
+                        if case["operation"] in {"workspace-lock-process-runtime", "index-identity-boundaries-runtime", "query-sync-outcomes-runtime", "query-sync-boundaries-runtime", "forget-lineage-runtime", "forget-boundaries-runtime", "recall-signals-runtime", "embed-cache-lifecycle-runtime", "session-reset-boundaries-runtime", "prompt-runtime-context-runtime", "prompt-history-repair-runtime", "deep-consolidation-runtime"}:
                             # Keep the original child paths and bytes for the post-run
                             # semantic replay, including failed SDK captures.
-                            family = ("deep-consolidation" if case["operation"] == "deep-consolidation-runtime" else
+                            family = ("workspace-locks" if case["operation"] == "workspace-lock-process-runtime" else
+                                      "deep-consolidation" if case["operation"] == "deep-consolidation-runtime" else
                                       "prompt-history-repair" if case["operation"] == "prompt-history-repair-runtime" else
                                       "prompt-runtime-context" if case["operation"] == "prompt-runtime-context-runtime" else
                                       "session-reset-boundaries" if case["operation"] == "session-reset-boundaries-runtime" else
@@ -2249,8 +2275,22 @@ def run_suite(*, checkout: Path, node: Path, smoke: bool = False,
                             cache_diagnostic["validationStatus"] = "verified"
                             row["runtimeEvidenceValidated"] = True
                             row.update(openclaw=native_comparison, python=python)
+                        if case["operation"] == "workspace-lock-process-runtime":
+                            from equivalence.workspace_lock_evidence import observe_drive
+
+                            original = next(d for d in report["runtimeDiagnostics"]
+                                            if d["side"] == "native" and d["id"] == case["id"])
+                            if (len(snapshots) != 1 or len(original["rawSnapshots"]) != 1
+                                    or not _same_json(observe_drive(case, snapshots[0], replay_disk=True), python)
+                                    or not _same_json(observe_drive(case, original["rawSnapshots"][0], replay_disk=True),
+                                                      native_comparison)):
+                                raise ValueError("Independent writers did not return their original durable observations")
+                            report["runtimeDiagnostics"].append({"id": case["id"], "side": "python",
+                                "sha256": hashlib.sha256(raw).hexdigest(), "rawSnapshots": snapshots,
+                                "validationStatus": "verified", "rawPath": str(evidence)})
+                            row.update(workspaceLockEvidenceValidated=True, openclaw=native_comparison, python=python)
                         diagnostic_key = "sourceDiagnostics" if case in source_diagnostic_cases else "runtimeDiagnostics"
-                        if case["operation"] not in {"promotion-apply-family-runtime", "deep-consolidation-runtime", "host-restart-session-runtime",
+                        if case["operation"] not in {"workspace-lock-process-runtime", "promotion-apply-family-runtime", "deep-consolidation-runtime", "host-restart-session-runtime",
                                                      "host-update-isolation-runtime", "host-turn-barrier-runtime",
                                                      "host-turn-barrier-boundaries-runtime", "index-identity-boundaries-runtime", "query-sync-outcomes-runtime", "query-sync-boundaries-runtime", "forget-lineage-runtime", "forget-boundaries-runtime", "recall-signals-runtime", "embed-cache-lifecycle-runtime", "session-reset-boundaries-runtime", "prompt-runtime-context-runtime", "prompt-history-repair-runtime"}:
                             report[diagnostic_key].append({
@@ -2274,7 +2314,7 @@ def run_suite(*, checkout: Path, node: Path, smoke: bool = False,
                     if case["requirement"] == "engine.numeric-boundaries":
                         row["numericError"] = {"type": type(error).__name__, "message": str(error)}
                     row.update(status="blocked", code="python-case-failed")
-                    if case["operation"] in {"promotion-apply-family-runtime", "deep-consolidation-runtime", "host-restart-session-runtime",
+                    if case["operation"] in {"workspace-lock-process-runtime", "promotion-apply-family-runtime", "deep-consolidation-runtime", "host-restart-session-runtime",
                                              "host-update-isolation-runtime", "host-turn-barrier-runtime",
                                              "host-turn-barrier-boundaries-runtime", "index-identity-boundaries-runtime", "query-sync-outcomes-runtime", "query-sync-boundaries-runtime", "forget-lineage-runtime", "forget-boundaries-runtime", "recall-signals-runtime", "embed-cache-lifecycle-runtime", "session-reset-boundaries-runtime", "prompt-runtime-context-runtime", "prompt-history-repair-runtime"}:
                         row["evidenceError"] = {"name": type(error).__name__, "message": str(error)}
@@ -2339,6 +2379,10 @@ def run_suite(*, checkout: Path, node: Path, smoke: bool = False,
 
         deep_complete = deep_family_complete(report["cases"])
         report["deepConsolidationFamilyComplete"] = deep_complete
+        from equivalence.workspace_lock_cases import family_complete as lock_family_complete, POINTS as lock_points
+
+        locks_complete = lock_family_complete(report["cases"])
+        report["workspaceLockFamilyComplete"] = locks_complete
         from equivalence.query_sync_boundaries import POINTS as query_sync_boundary_points
         from equivalence.query_sync_outcomes import POINTS as query_sync_points
         from equivalence.index_identity_boundaries import POINTS as identity_boundary_points
@@ -2380,7 +2424,8 @@ def run_suite(*, checkout: Path, node: Path, smoke: bool = False,
                                                       and (point["id"] not in history_points
                                                            or history_complete)
                                                       and (point["id"] not in numeric_points or numeric_complete)
-                                                      and (point["id"] not in deep_points or deep_complete)]})
+                                                      and (point["id"] not in deep_points or deep_complete)
+                                                      and (point["id"] not in lock_points or locks_complete)]})
             report["requirements"].append({"id": requirement["id"], "required": requirement["required"],
                                             "acceptance": acceptance, "registeredCases": len(rows)})
         uncovered = [point["id"] for requirement in report["requirements"] if requirement["required"]

@@ -329,6 +329,9 @@ def build_cases(*, include_prospective: bool = False) -> list[dict[str, Any]]:
     from equivalence.deep_consolidation import build_cases as build_deep_consolidation
 
     cases.extend(build_deep_consolidation())
+    from equivalence.workspace_lock_cases import build_cases as build_workspace_locks
+
+    cases.extend(build_workspace_locks())
     if include_prospective:
         from equivalence.flush_contract import build_prospective_flush_contract_cases
         from equivalence.session_projection import build_prospective_session_projection_cases
@@ -344,6 +347,10 @@ def build_cases(*, include_prospective: bool = False) -> list[dict[str, Any]]:
 def run_python(case: dict[str, Any]) -> Any:
     """Execute the installed Python implementation; never manufacture a match."""
     operation, arguments = case["operation"], case["input"]
+    if operation == "workspace-lock-process-runtime":
+        from equivalence.workspace_lock_evidence import run_sdk_case
+
+        return run_sdk_case(case)
     if operation == "engine-numeric-boundaries":
         from equivalence.engine_numeric_boundaries import run_engine_numeric_boundaries
 

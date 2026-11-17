@@ -50,6 +50,8 @@ const operations = {
   "session-reset-boundaries-runtime": ["session-reset-boundaries-runtime.mjs", "runSessionResetBoundariesRuntime"],
   "prompt-runtime-context-runtime": ["prompt-runtime-context-runtime.mjs", "runPromptRuntimeContextRuntime"],
   "prompt-history-repair-runtime": ["prompt-history-repair-runtime.mjs", "runPromptHistoryRepairRuntime"],
+  "dream-light-runtime": ["dream-light-runtime.mjs", "runDreamLightRuntime"],
+  "dream-rem-runtime": ["dream-light-runtime.mjs", "runDreamRemRuntime"],
   "embed-cache-lifecycle-runtime": ["embedding-cache-lifecycle-runtime.mjs", "runEmbeddingCacheLifecycleRuntime"],
   "promotion-apply-reconcile-runtime": ["promotion-apply-runtime.mjs", "runPromotionApplyRuntime"],
 };
@@ -108,7 +110,7 @@ for (const testCase of request.cases) {
       context.forgetLineageProfile === undefined && context.forgetBoundariesProfile === undefined &&
       context.recallSignalsProfile === undefined && context.embeddingCacheProfile === undefined &&
       context.sessionResetBoundariesProfile === undefined && context.promptRuntimeContextProfile === undefined &&
-      context.promptHistoryRepairProfile === undefined;
+      context.promptHistoryRepairProfile === undefined && context.dreamPhaseProfile === undefined;
     if (modelAuthority !== Object.hasOwn(modelKinds, testCase.operation) ||
         modelAuthority && modelKinds[testCase.operation] !== null && testCase.input?.kind !== modelKinds[testCase.operation]) {
       throw Error("The model binary capability cannot execute another operation or input contract before import");
@@ -184,6 +186,18 @@ for (const testCase of request.cases) {
           boundaryProfile.inputKind !== testCase.input?.kind ||
           crypto.createHash("sha256").update(wire).digest("hex") !== boundaryProfile.caseBindings[testCase.id]) {
         throw Error("The boundary caller received changed or substituted literal inputs");
+      }
+    }
+    const dreamPhase = context.dreamPhaseProfile;
+    if ((dreamPhase !== undefined) !== (["dream-light-runtime", "dream-rem-runtime"].includes(testCase.operation))) {
+      throw Error("Only the frozen dreaming profile may execute its native sweep");
+    }
+    if (dreamPhase !== undefined) {
+      const stable = x => Array.isArray(x) ? x.map(stable) : x && typeof x === "object"
+        ? Object.fromEntries(Object.keys(x).sort().map(k => [k, stable(x[k])])) : x;
+      if (dreamPhase.caseId !== testCase.id || dreamPhase.operation !== testCase.operation ||
+          crypto.createHash("sha256").update(JSON.stringify(stable(testCase.input))).digest("hex") !== dreamPhase.inputSha256) {
+        throw Error("Dreaming received a different case from the one approved at startup");
       }
     }
     const recallProfile = context.recallSignalsProfile;

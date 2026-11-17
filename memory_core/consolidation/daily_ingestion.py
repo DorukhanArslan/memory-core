@@ -84,7 +84,7 @@ _HEADING_RE = re.compile(rf"^#{{1,6}}[{_S}]+({_NOT_LINE_END}+)\Z")
 _SPACE_RUN_RE = re.compile(f"[{_S}]+")
 _LIST_NUMBER_PREFIX_RE = re.compile(f"^[0-9]+\\.[{_S}]+")
 _LIST_BULLET_PREFIX_RE = re.compile(f"^[-*+][{_S}]+")
-_HEADING_START_RE = re.compile(f"^#{{1,6}}[{_S}]+")
+_HEADING_START_RE = re.compile(f"^#{{1,6}}(?=[{_S}])")
 _LINE_SPLIT_RE = re.compile(r"\r?\n")
 
 MANAGED_DAILY_DREAMING_BLOCKS = (
@@ -366,7 +366,8 @@ def strip_managed_daily_dreaming_lines(lines: Sequence[str]) -> list[str]:
             if trimmed == end_marker:
                 strip_until = cursor
                 break
-            if line and (_HEADING_START_RE.match(trimmed) or trimmed in by_start):
+            heading_start = _HEADING_START_RE.match(trimmed)
+            if trimmed in by_start or (heading_start and heading_start.end() <= heading.index(" ")):
                 strip_until = cursor - 1
                 break
         if strip_until < index:

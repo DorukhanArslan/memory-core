@@ -1,5 +1,7 @@
 """Closed prompt authority and evidence forgery checks; no business engine runs."""
 from copy import deepcopy
+import base64
+import gzip
 import hashlib
 import json
 
@@ -9,7 +11,9 @@ from equivalence.model_runtime_authority import APPROVED_NODE_RUNTIME
 from equivalence.prompt_runtime_context import (
     CASE_HASHES, POINTS, build_cases, canonical, family_complete, validate_registration,
 )
-from equivalence.prompt_runtime_context_evidence import _history, _ordered_tokens, _tools
+from equivalence.prompt_runtime_context_evidence import (
+    MAX_NATIVE_CAPTURE_BYTES, _history, _ordered_tokens, _tools, decode_native_capture,
+)
 from equivalence.prompt_runtime_context_profile import case_bindings, validate_prompt_runtime_context_profile
 from equivalence.runtime_oracle import ReleaseOracleExecution, RuntimeOracleError
 
@@ -135,3 +139,66 @@ def test_whole_tool_result_requires_real_before_after_receipts_and_source_custod
                 altered["toolCalls"][-1]["event"]["result"]["content"])
         with pytest.raises(ValueError):
             _tools(specification, altered, True)
+
+
+def _transport(raw):
+    data = json.dumps(raw, ensure_ascii=False, separators=(",", ":")).encode("utf8")
+    return {"kind": "prompt-runtime-context-lossless-raw", "encoding": "gzip-json-base64",
+            "uncompressedBytes": len(data), "sha256": hashlib.sha256(data).hexdigest(),
+            "data": base64.b64encode(gzip.compress(data)).decode("ascii")}
+
+
+def test_lossless_native_capture_retains_whole_raw_and_rejects_corruption():
+    raw = [{"kind": "prompt-runtime-context-native-raw", "unknownFields": {
+        "messages": [{"role": "user", "content": "İstanbul\n\u0085\ufeff"}],
+        "complete": [None, True, False, {"physicalBytes": "00ff"}]}}]
+    transport = _transport(raw)
+    assert decode_native_capture(transport) == raw
+    for mutation in ("base64", "truncated", "extra-frame", "hash", "length", "duplicate-key", "overflow"):
+        altered = deepcopy(transport)
+        compressed = base64.b64decode(altered["data"])
+        if mutation == "base64":
+            altered["data"] += "!"
+        elif mutation == "truncated":
+            altered["data"] = base64.b64encode(compressed[:-1]).decode("ascii")
+        elif mutation == "extra-frame":
+            altered["data"] = base64.b64encode(compressed + gzip.compress(b"[]")).decode("ascii")
+        elif mutation == "hash":
+            altered["sha256"] = "0" * 64
+        elif mutation == "length":
+            altered["uncompressedBytes"] -= 1
+        else:
+            data = (b'[{"kind":"prompt-runtime-context-native-raw","kind":"prompt-runtime-context-native-raw"}]'
+                    if mutation == "duplicate-key" else b'[{"kind":"prompt-runtime-context-native-raw","number":1e400}]')
+            altered.update(data=base64.b64encode(gzip.compress(data)).decode("ascii"),
+                           sha256=hashlib.sha256(data).hexdigest(), uncompressedBytes=len(data))
+        with pytest.raises(ValueError):
+            decode_native_capture(altered)
+
+
+def test_native_raw_size_and_family_authority_fail_closed_before_decompression(monkeypatch):
+    from equivalence import prompt_runtime_context_evidence as evidence
+
+    assert MAX_NATIVE_CAPTURE_BYTES == 128 * 1024**2
+    transport = _transport([{"kind": "prompt-runtime-context-native-raw"}])
+
+    def forbidden_decompression(*_args, **_kwargs):
+        raise AssertionError("Rejected authority reached decompression")
+
+    monkeypatch.setattr(evidence.zlib, "decompressobj", forbidden_decompression)
+    for mutation in ("size", "boolean-size", "kind", "encoding", "extra-field", "plain-singleton"):
+        altered = deepcopy(transport)
+        if mutation == "size":
+            altered["uncompressedBytes"] = MAX_NATIVE_CAPTURE_BYTES + 1
+        elif mutation == "boolean-size":
+            altered["uncompressedBytes"] = True
+        elif mutation == "kind":
+            altered["kind"] = "another-family-lossless-raw"
+        elif mutation == "encoding":
+            altered["encoding"] = "identity"
+        elif mutation == "extra-field":
+            altered["covers"] = list(POINTS)
+        else:
+            altered = [{"kind": "prompt-runtime-context-native-raw"}]
+        with pytest.raises(ValueError):
+            decode_native_capture(altered)

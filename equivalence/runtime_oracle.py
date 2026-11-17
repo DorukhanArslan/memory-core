@@ -721,6 +721,7 @@ class ReleaseOracleExecution:
         self.embedding_cache_profile = deepcopy(embedding_cache_profile)
         self.session_reset_boundaries_profile = deepcopy(session_reset_boundaries_profile)
         self.prompt_runtime_context_profile = deepcopy(prompt_runtime_context_profile)
+        self._retained_prompt_captures: dict[str, dict] = {}
         self.env: dict[str, str] = {}
         self._temporary = None
         self._entered = False
@@ -979,6 +980,30 @@ class ReleaseOracleExecution:
                 raise
             raise RuntimeOracleError("The release oracle returned invalid execution evidence.") from None
 
+    def _retain_prompt_capture(self, identifier: str, raw: bytes) -> dict:
+        """Retain exact new-profile wire bytes for replay after owned temp cleanup."""
+        if self.prompt_runtime_context_profile is None or len(raw) > MAX_DIAGNOSTIC_BYTES:
+            raise RuntimeOracleError("Only the bounded prompt profile can retain its raw wire file.")
+        previous = self._retained_prompt_captures.get(identifier)
+        if previous is not None:
+            if _owned_regular(ROOT, Path(previous["retainedNativeRawPath"]), MAX_DIAGNOSTIC_BYTES) != raw:
+                raise RuntimeOracleError("The actual retained prompt wire bytes changed.")
+            return deepcopy(previous)
+        parent = ROOT / ".equivalence-results" / "prompt-runtime-context"
+        parent.mkdir(parents=True, exist_ok=True)
+        if parent.is_symlink() or parent.resolve(strict=True) != parent or not parent.is_dir():
+            raise RuntimeOracleError("Prompt wire retention requires its canonical owned directory.")
+        directory = Path(tempfile.mkdtemp(prefix="native-attempt-", dir=parent))
+        filename = directory / "native-raw.json"
+        descriptor = os.open(filename, os.O_WRONLY | os.O_CREAT | os.O_EXCL, 0o600)
+        with os.fdopen(descriptor, "wb") as stream:
+            stream.write(raw)
+        if _owned_regular(ROOT, filename, MAX_DIAGNOSTIC_BYTES) != raw:
+            raise RuntimeOracleError("The retained prompt capture differs from its actual raw file.")
+        value = {"retainedNativeRawPath": str(filename), "nativeRawBytes": len(raw)}
+        self._retained_prompt_captures[identifier] = value
+        return deepcopy(value)
+
     def capture_rejected(
         self, result: object, cases: list[dict], *, stdout: str, stderr: str,
     ) -> dict:
@@ -1046,10 +1071,31 @@ class ReleaseOracleExecution:
                 raw = _owned_regular(self.root, self.evidence_directory / name, remaining_diagnostics)
                 remaining_diagnostics -= len(raw)
                 record.update(artifact(raw))
+                if (self.prompt_runtime_context_profile is not None
+                        and case.get("operation") == "prompt-runtime-context-runtime"):
+                    record.update(self._retain_prompt_capture(identifier, raw))
                 try:
-                    record["rawSnapshots"] = _json(raw)
-                except (ValueError, UnicodeError):
-                    record["parseStatus"] = "invalid-json"
+                    parsed = _json(raw)
+                    if (self.prompt_runtime_context_profile is not None
+                            and case.get("operation") == "prompt-runtime-context-runtime"):
+                        from equivalence.prompt_runtime_context_evidence import decode_native_capture
+
+                        # The original compressed file text/hash above remains
+                        # untouched. Successful decoding grants no authentication
+                        # or coverage to a rejected execution.
+                        record["rawSnapshots"] = decode_native_capture(parsed)
+                        record["decodedCaptureValidationStatus"] = "unverified"
+                        record["decodedCaptureAuthenticationStatus"] = "unverified"
+                    else:
+                        record["rawSnapshots"] = parsed
+                except (ValueError, UnicodeError) as error:
+                    record["parseStatus"] = (
+                        "invalid-lossless-prompt-capture"
+                        if self.prompt_runtime_context_profile is not None
+                        and case.get("operation") == "prompt-runtime-context-runtime"
+                        else "invalid-json")
+                    if record["parseStatus"] == "invalid-lossless-prompt-capture":
+                        record["decodeError"] = {"type": type(error).__name__, "message": str(error)}
             except (OSError, ValueError, UnicodeError):
                 record["captureStatus"] = "unavailable-or-unsafe"
             capture["caseDiagnostics"].append(record)
@@ -1575,6 +1621,12 @@ class ReleaseOracleExecution:
         evidence = self.evidence_directory / case_hash / "native-raw.json"
         raw = _regular(evidence, MAX_DIAGNOSTIC_BYTES)
         diagnostic = _json(raw)
+        prompt_capture = None
+        if operation == "prompt-runtime-context-runtime":
+            from equivalence.prompt_runtime_context_evidence import decode_native_capture
+
+            diagnostic = decode_native_capture(diagnostic)
+            prompt_capture = self._retain_prompt_capture(case["id"], raw)
         if not isinstance(diagnostic, list):
             raise RuntimeOracleError("Native lifecycle diagnostics must retain raw snapshot rows.")
         if operation == "embed-cache-lifecycle-runtime":
@@ -1930,7 +1982,8 @@ class ReleaseOracleExecution:
             answer["releaseTrace"]["sessionResetBoundariesTransport"] = {
                 "profile": deepcopy(self.session_reset_boundaries_profile), "traceFiles": entry_trace_files}
         if self.prompt_runtime_context_profile is not None:
-            answer["runtimeDiagnostics"][0]["rawSnapshots"] = _json(raw)
+            answer["runtimeDiagnostics"][0]["rawSnapshots"] = diagnostic
+            answer["runtimeDiagnostics"][0].update(prompt_capture)
             answer["runtimeDiagnostics"][0]["validationStatus"] = "verified"
             answer["releaseTrace"]["promptRuntimeContextTransport"] = {
                 "profile": deepcopy(self.prompt_runtime_context_profile), "traceFiles": entry_trace_files,

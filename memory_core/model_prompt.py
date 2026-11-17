@@ -226,6 +226,9 @@ class ModelPrompt:
                  identity, now_ms, session_version, user_key):
         self.options, self.identity, self.session_version = options, identity, session_version
         self.user_key, self.closed = user_key, False
+        self.now_ms = now_ms
+        self.canonical_user = self.runtime_user = None
+        self.bound_user_index = -1
         registry = {tool["name"]: deepcopy(dict(tool)) for tool in tools}
         offered = options.offered_tool_names if options.offered_tool_names is not None else tuple(registry)
         if len(set(offered)) != len(offered) or set(offered) - registry.keys():
@@ -270,14 +273,31 @@ class ModelPrompt:
                                                            identity=identity, now_ms=now_ms)
         self.skip_submission = not js_trim(self.session_prompt)
 
+    def bind_current_user(self, canonical_user, position):
+        """Own the live user separately from this turn's admitted transcript row."""
+        if self.closed or self.canonical_user is not None:
+            raise RuntimeError("The model prompt cannot bind another current user")
+        if canonical_user.get("role") != "user" or position < 0:
+            raise ValueError("The current runtime user requires its admitted transcript position")
+        self.canonical_user = deepcopy(dict(canonical_user))
+        self.bound_user_index = position
+        self.runtime_user = {"role": "user", "content": [{"type": "text", "text": self.session_prompt}],
+                             "timestamp": self.now_ms}
+
     def request(self, messages):
         if self.closed:
             raise RuntimeError("The model prompt owner is closed")
         source = deepcopy(list(messages))
-        user_index = next((index for index, message in enumerate(source)
-                           if message.get("role") == "user" and message.get("idempotencyKey") == self.user_key), -1)
-        if user_index < 0:
-            user_index = _active_user(source)
+        if self.runtime_user is not None:
+            user_index = self.bound_user_index
+            if user_index >= len(source) or source[user_index] != self.canonical_user:
+                raise RuntimeError("The bound current transcript user changed before model assembly")
+            source[user_index] = deepcopy(self.runtime_user)
+        else:
+            user_index = next((index for index, message in enumerate(source)
+                               if message.get("role") == "user" and message.get("idempotencyKey") == self.user_key), -1)
+            if user_index < 0:
+                user_index = _active_user(source)
         if user_index >= 0 and self.model_prompt != self.session_prompt and js_trim(self.model_prompt):
             user = source[user_index]
             content = user.get("content")
@@ -302,3 +322,4 @@ class ModelPrompt:
     def close(self):
         self.closed = True
         self.carrier = None
+        self.canonical_user = self.runtime_user = None

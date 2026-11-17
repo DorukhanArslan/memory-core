@@ -210,6 +210,8 @@ _EXTRA_SOURCE_HASHES.update({
     "src/sessions/user-turn-transcript.message.ts": "1170716e5498aa455963adbf76bbf010339f33e582544d449b1280290415bd57",
     "src/sessions/user-turn-transcript.metadata.ts": "d008f43b68b6696bf27c3804f7a547b817a9fd3738960259e943271d5560681b",
     "src/sessions/user-turn-transcript.types.ts": "4ef301d73448712876a7c6f8a7de34813e70da6065cfff4e258f95f3bb082362",
+    "src/sessions/transcript-events.ts": "d30ec2f89cd11b8df52adf3bb4078ddd38ce322deea3fd2cdfabb0344b497373",
+    "src/agents/session-tool-result-guard.ts": "174aa005b10c2b55dcbe36152843e8da31cdcc9d8bfe4e4e38efbc34a3b74e90",
     "src/plugins/plugin-api.types.ts": "c6515e735827ea2f0b8a69d9eb9073a5e45ce819c09bf0a99d89e6b5aed3de6d",
     "src/plugins/hook-types.ts": "ab35f763d4258089fb055e8fa1ff5f30aa9592bb63b6d2a31aee854c7679732d",
     "src/plugins/hooks.ts": "3ce3f5ca3810be4a48d6934c38b1a34bfdec9cb5d36ccbdec1dab12406494b86"
@@ -229,6 +231,12 @@ _EXTRA_SOURCE_ANCHORS.update({
     "src/sessions/user-turn-transcript.types.ts": [
         "export type CreateUserTurnTranscriptRecorderParams = {",
         "export type UserTurnTranscriptRecorder = {"
+    ],
+    "src/sessions/transcript-events.ts": [
+        "export function attachSessionTranscriptRunId<T>("
+    ],
+    "src/agents/session-tool-result-guard.ts": [
+        "    const runOwnedMessage = attachSessionTranscriptRunId(message, transcriptRunId);"
     ],
     "src/plugins/plugin-api.types.ts": [
         "export type OpenClawPluginApi = {",
@@ -375,6 +383,7 @@ _EXTRA_COMPILED_HASHES.update({
     "dist/user-turn-transcript-Dig8rv9R.mjs": "652a1b122293b705b6548f015e8abc3383dba5b307d9129a696c390b42a2ce63",
     "dist/user-turn-transcript.message-Bb1TX1Le.mjs": "fedb377ec1e751125ef784dc0c20ab1e7350e85d2f8157e714315a212fc4cd20",
     "dist/user-turn-transcript.metadata-C4MejEIQ.mjs": "33b3ac629c74aa598f590c33d0eebccecb74c447ffcdb8dc1fac7bf71bc1b791",
+    "dist/transcript-events-Ce9wKss8.mjs": "3c002577a318257953fa5b1ba10cd16b83c99fca869e4058469a4f274a897c51",
     "dist/hooks-3uEO1KNL.mjs": "90606030c454dba75918959c8717f99ca29fb91ce0430d9765ac515fd8b6e045"
 })
 _EXTRA_COMPILED_ANCHORS.update({
@@ -389,6 +398,9 @@ _EXTRA_COMPILED_ANCHORS.update({
     "dist/user-turn-transcript.metadata-C4MejEIQ.mjs": [
         "function buildRunUserTurnIdempotencyKey(",
         "function preparePersistedUserTurnMessageForTranscriptWrite("
+    ],
+    "dist/transcript-events-Ce9wKss8.mjs": [
+        "function attachSessionTranscriptRunId(", "attachSessionTranscriptRunId as t"
     ],
     "dist/hooks-3uEO1KNL.mjs": [
         "function createHookRunner(",
@@ -408,6 +420,11 @@ COMPILED_ANCHORS = {
     **_select(_SETUP_COMPILED, reset.COMPILED_ANCHORS),
     **_EXTRA_COMPILED_ANCHORS,
 }
+COMPILED_ANCHORS["dist/resource-loader-DhipPm1N.mjs"] = (
+    *COMPILED_ANCHORS["dist/resource-loader-DhipPm1N.mjs"],
+    'import { c as resolveTerminalAssistantTranscriptRunId, t as attachSessionTranscriptRunId } from "./transcript-events-Ce9wKss8.mjs";',
+    "const runOwnedMessage = attachSessionTranscriptRunId(message, transcriptRunId);",
+)
 
 # These are semantic owners loaded by the genuine embedded prelude. The official
 # release manifest independently authenticates every other transitive module.
@@ -445,6 +462,7 @@ GENUINE_HELPER_EXPORTS = {
     "dist/gateway-scheduler-TywODsdc.mjs": ("t",),
     "dist/agent-bundle-mcp-manager-api--Y4zt2wo.mjs": ("p", "i"),
     "dist/user-turn-transcript-Dig8rv9R.mjs": ("t",),
+    "dist/transcript-events-Ce9wKss8.mjs": ("t",),
     "dist/dreaming-dreams-file-BJzlZFlf.mjs": ("_",),
 }
 # Distinct driver observations: returned methods share their genuine factory
@@ -515,6 +533,8 @@ def prepare_prompt_runtime_context_bindings(checkout: Path, runtime_root: Path) 
          ("buildLateResolvedMediaMessage", "isUserMessage", "resolvePersistedUserTurnMessage")),
         ("src/sessions/user-turn-transcript.ts", "./user-turn-transcript.metadata.js",
          ("buildRunUserTurnIdempotencyKey", "preparePersistedUserTurnMessageForTranscriptWrite")),
+        ("src/agents/session-tool-result-guard.ts", "../sessions/transcript-events.js",
+         ("attachSessionTranscriptRunId",)),
     )
     return {
         "kind": "official-release-prompt-runtime-context-owners", "operation": OPERATION,

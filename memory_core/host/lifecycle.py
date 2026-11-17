@@ -18,7 +18,7 @@ import threading
 from typing import Any, Literal
 from uuid import uuid4
 
-from memory_core.bootstrap._js import js_json_stringify
+from memory_core.bootstrap._js import js_json_stringify, js_trim
 from memory_core.config import MemoryConfig
 from memory_core.consolidation.artifact_provenance import MemoryArtifactProvenanceStore
 from memory_core.curation import APPEND_DAILY_NOTE, CURATION_OPERATIONS
@@ -296,6 +296,13 @@ class HostTurn:
             return saved
 
     def _record(self, message: dict[str, Any]) -> dict[str, Any]:
+        # Like the native transcript guard, stamp the actual run owner after
+        # trust metadata is established and before its message is persisted.
+        run_id = js_trim(self.turn_id)
+        if self._model_prompt is not None and run_id and message.get("role") in {"assistant", "toolResult"}:
+            metadata = message.get("__openclaw")
+            message = {**message, "__openclaw": {
+                **(dict(metadata) if isinstance(metadata, Mapping) else {}), "runId": run_id}}
         if self.flush_request is None:
             result = self._runner.catalog.append_message(
                 self.session.session_id, message, session_key=self.session.session_key,
@@ -1073,6 +1080,8 @@ class HostSessionRunner:
             if suppress and not skip:
                 model_messages = [*model_messages, deepcopy(user)]
                 projection_messages = [*projection_messages, deepcopy(user)]
+            if prompt_owner is not None and not skip:
+                prompt_owner.bind_current_user(projection_messages[-1], len(projection_messages) - 1)
             turn = HostTurn(self, turn_id, state, context, model_messages, trust,
                 projection_messages=projection_messages, model_prompt=prompt_owner)
             self._active_turn = turn

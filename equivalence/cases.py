@@ -325,6 +325,10 @@ def build_cases(*, include_prospective: bool = False) -> list[dict[str, Any]]:
     from equivalence.engine_numeric_family import build_cases as build_engine_numeric_cases
 
     cases.extend(build_engine_numeric_cases())
+
+    from equivalence.deep_consolidation import build_cases as build_deep_consolidation
+
+    cases.extend(build_deep_consolidation())
     if include_prospective:
         from equivalence.flush_contract import build_prospective_flush_contract_cases
         from equivalence.session_projection import build_prospective_session_projection_cases
@@ -356,7 +360,7 @@ def run_python(case: dict[str, Any]) -> Any:
         from equivalence.promotion_apply_runtime import run_promotion_apply_reconcile
 
         return run_promotion_apply_reconcile(arguments, evidence_directory=case.get("_diagnosticDirectory"))
-    if operation == "promotion-apply-family-runtime":
+    if operation in {"promotion-apply-family-runtime", "deep-consolidation-runtime"}:
         from equivalence.promotion_apply_family_sdk import run_family_sdk
 
         return run_family_sdk(case, evidence_directory=case.get("_diagnosticDirectory"))

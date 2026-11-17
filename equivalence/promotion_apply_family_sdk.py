@@ -24,7 +24,7 @@ def run_family_sdk(case, evidence_directory: Path | None):
     from memory_core.config import MemoryConfig
     from memory_core.consolidation.artifact_provenance import MemoryArtifactProvenanceStore
     from memory_core.consolidation.llm_consolidation import DeepConsolidation, LlmConsolidationOptions
-    from memory_core.consolidation.origins import MemoryEntryOriginLedger
+    from memory_core.consolidation.origins import MemoryEntryOrigin, MemoryEntryOriginLedger
     from memory_core.consolidation.promotion import PromotionCandidate, run_short_term_promotion
     from memory_core.consolidation.store import read_canonical_recall_store, recall_store_path, write_recall_store
     from memory_core.flags import FeatureFlags
@@ -124,6 +124,11 @@ def run_family_sdk(case, evidence_directory: Path | None):
                 return entry["result"]
             kwargs["consolidation"] = DeepConsolidation(model=complete, options=LlmConsolidationOptions(enabled=True))
         kwargs["origins"] = MemoryEntryOriginLedger(lambda agent: root / "agents" / agent / "memory.sqlite")
+        if "originSeeds" in value:
+            origins = [MemoryEntryOrigin(row["entryKey"], row["agentId"], row["sessionId"],
+                row["sessionKey"], row["originClass"], row["observedAt"]) for row in value["originSeeds"]]
+            inserted = kwargs["origins"].record(kwargs["agent_id"], origins)
+            receipt("recordMemoryEntryOrigins", request=value["originSeeds"], result=inserted)
         before = observe("before")
         snapshot("before-invocation")
 

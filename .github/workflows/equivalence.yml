@@ -156,6 +156,8 @@ jobs:
           path: |
             .equivalence-results/*.json
             .equivalence-results/compaction-context-assembly/**
+            .equivalence-results/recovery-artifact/*/*-raw.json
+            .equivalence-results/recovery-index/*/*-raw.json
             .equivalence-results/host-update-isolation/*/case/stdout.json
             .equivalence-results/host-update-isolation/*/case/stderr.log
             .equivalence-results/host-update-isolation/*/case/evidence/native-raw.json

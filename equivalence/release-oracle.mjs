@@ -51,6 +51,8 @@ const operations = {
   "prompt-runtime-context-runtime": ["prompt-runtime-context-runtime.mjs", "runPromptRuntimeContextRuntime"],
   "prompt-history-repair-runtime": ["prompt-history-repair-runtime.mjs", "runPromptHistoryRepairRuntime"],
   "dream-diary-publication-runtime": ["dream-diary-runtime.mjs", "runDreamDiaryRuntime"],
+  "recovery-artifact-repair-runtime": ["recovery-artifact-repair-runtime.mjs", "runRecoveryArtifactRepairRuntime"],
+  "recovery-index-repair-runtime": ["recovery-index-repair-runtime.mjs", "runRecoveryIndexRepairRuntime"],
   "dream-light-runtime": ["dream-light-runtime.mjs", "runDreamLightRuntime"],
   "dream-rem-runtime": ["dream-light-runtime.mjs", "runDreamRemRuntime"],
   "dream-deep-runtime": ["dream-deep-runtime.mjs", "runDreamDeepRuntime"],
@@ -191,7 +193,7 @@ for (const testCase of request.cases) {
       }
     }
     const dreamPhase = context.dreamPhaseProfile;
-    if ((dreamPhase !== undefined) !== (["dream-light-runtime", "dream-rem-runtime", "dream-diary-publication-runtime", "dream-deep-runtime"].includes(testCase.operation))) {
+    if ((dreamPhase !== undefined) !== (["dream-light-runtime", "dream-rem-runtime", "dream-diary-publication-runtime", "dream-deep-runtime", "recovery-artifact-repair-runtime", "recovery-index-repair-runtime"].includes(testCase.operation))) {
       throw Error("Only the frozen dreaming profile may execute its native sweep");
     }
     if (dreamPhase !== undefined) {

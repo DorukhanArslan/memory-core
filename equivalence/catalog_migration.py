@@ -24,7 +24,9 @@ NUMERIC_REGISTERED_CASES = 1512
 NUMERIC_CATALOG_SHA256 = "e9673faf7122adb19f59b1284d779a63a6bda20620e7c210854cce1da9cc257e"
 DEEP_REGISTERED_CASES = 1519
 DEEP_CATALOG_SHA256 = "d6a6e64b7c48efa35fe09ddd542e1e82f2329725bc5245bc138bb5b304c6024d"
-REGISTERED_CASES = 1566
+PRE_RECOVERY_CASES = 1566
+PRE_RECOVERY_CATALOG_SHA256 = "031f5033d3aac48b77a39748311fe550d954451ec249fa4973caf7675bd14c4d"
+REGISTERED_CASES = 1575
 
 # PR22 changes these three policy texts, not the thirteen cases' business inputs,
 # order, coverage or other fields. Reversing only the exact reviewed fragments
@@ -115,7 +117,7 @@ def definition_authority(cases, *, fif_version):
             or len(cases) not in {HISTORICAL_REGISTERED_CASES, OUTCOME_REGISTERED_CASES,
                                   BOUNDARY_REGISTERED_CASES, RECALL_REGISTERED_CASES,
                                   CACHE_REGISTERED_CASES, RESET_REGISTERED_CASES, PROMPT_REGISTERED_CASES,
-                                  HISTORY_REGISTERED_CASES, NUMERIC_REGISTERED_CASES, DEEP_REGISTERED_CASES, REGISTERED_CASES}
+                                  HISTORY_REGISTERED_CASES, NUMERIC_REGISTERED_CASES, DEEP_REGISTERED_CASES, PRE_RECOVERY_CASES, REGISTERED_CASES}
             or fif_version == "v5" and len(cases) != HISTORICAL_REGISTERED_CASES):
         raise ValueError("Catalog migration requires one complete exact registered definition set")
     frozen = families[fif_version]
@@ -197,6 +199,11 @@ def definition_authority(cases, *, fif_version):
 
         expected = [case for family in (*dream_families.values(), automation_job_state, workspace_lock_cases, automation_job_outcomes, heartbeat_turn_boundaries, compaction_assembly)
                     for case in family.build_cases()]
+        if len(cases) >= PRE_RECOVERY_CASES and _sha(cases[:PRE_RECOVERY_CASES]) != PRE_RECOVERY_CATALOG_SHA256:
+            raise ValueError("The first 1566 staged definitions changed")
+        if len(cases) > PRE_RECOVERY_CASES:
+            from equivalence.recovery_repair import build_cases as build_recovery_cases
+            expected.extend(build_recovery_cases())
         if _sha(cases[:DEEP_REGISTERED_CASES]) != DEEP_CATALOG_SHA256 or _sha(maintenance) != _sha(expected):
             raise ValueError("Maintenance cases must follow the exact prior 1519 definitions")
     frozen.validate_registration(cases)

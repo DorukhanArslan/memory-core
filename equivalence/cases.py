@@ -358,6 +358,10 @@ def build_cases(*, include_prospective: bool = False) -> list[dict[str, Any]]:
     from equivalence.compaction_assembly import build_cases as build_compaction_restarts
 
     cases.extend(build_compaction_restarts())
+
+    from equivalence.recovery_repair import build_cases as build_repair_cases
+
+    cases.extend(build_repair_cases())
     if include_prospective:
         from equivalence.flush_contract import build_prospective_flush_contract_cases
         from equivalence.session_projection import build_prospective_session_projection_cases
@@ -492,6 +496,14 @@ def run_python(case: dict[str, Any]) -> Any:
     if operation == "dream-diary-publication-runtime":
         from equivalence.dream_diary_sdk import run_sdk
         return run_sdk({k: v for k, v in case.items() if k != "_diagnosticDirectory"}, case.get("_diagnosticDirectory"))
+    if operation in {"recovery-artifact-repair-runtime", "recovery-index-repair-runtime"}:
+        from equivalence.recovery_repair import ARTIFACT, validate_case
+        validate_case(case)
+        if operation == ARTIFACT:
+            from equivalence.recovery_artifact_sdk import run_sdk
+        else:
+            from equivalence.recovery_index_repair import run_recovery_index_repair as run_sdk
+        return run_sdk(arguments, evidence_directory=case["_diagnosticDirectory"])
     if operation == "dream-deep-runtime":
         from equivalence.dream_deep_sdk import run_sdk
 

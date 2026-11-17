@@ -31,7 +31,7 @@ function physical(db) {
         value instanceof Uint8Array ? { type: "bytes", hex: Buffer.from(value).toString("hex") } : value]))) })) };
 }
 
-function logical(db, decode) {
+export function logical(db, decode) {
   const chunks = db.prepare("SELECT id,path,source,start_line AS startLine,end_line AS endLine,text,hash,model,updated_at AS updatedAt,embedding FROM memory_index_chunks ORDER BY id").all();
   const provenance = db.prepare("SELECT chunk_id AS chunkId,origin_class AS originClass,session_kind AS sessionKind,observed_at AS observedAt,supersedes_key AS supersedesKey FROM memory_index_chunk_provenance ORDER BY chunk_id").all();
   const recall = db.prepare("SELECT chunk_id AS chunkId,importance,triggers,project_key AS projectKey FROM memory_index_chunk_recall_metadata ORDER BY chunk_id").all();

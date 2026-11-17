@@ -5421,7 +5421,7 @@
           "path": "memory_core/consolidation/dreaming_repair.py",
           "symbol": "repair_dreaming_recall",
           "anchor": "def repair_dreaming_recall(",
-          "line": 16
+          "line": 116
         },
         {
           "path": "memory_core/consolidation/promotion.py",
@@ -6354,6 +6354,12 @@
           "symbol": "repairDreamingArtifacts",
           "anchor": "export async function repairDreamingArtifacts(params: {",
           "line": 244
+        },
+        {
+          "path": "extensions/memory-core/src/memory/manager.ts",
+          "symbol": "MemoryIndexManager.sync",
+          "anchor": "  async sync(params?: MemorySyncParams): Promise<void> {",
+          "line": 323
         }
       ],
       "python": [
@@ -6361,19 +6367,43 @@
           "path": "memory_core/consolidation/audit.py",
           "symbol": "audit_short_term_promotion_artifacts",
           "anchor": "def audit_short_term_promotion_artifacts(",
-          "line": 79
+          "line": 85
         },
         {
           "path": "memory_core/consolidation/audit.py",
           "symbol": "repair_short_term_promotion_artifacts",
           "anchor": "def repair_short_term_promotion_artifacts(",
-          "line": 158
+          "line": 167
+        },
+        {
+          "path": "memory_core/consolidation/dreaming_repair.py",
+          "symbol": "repair_workspace_recall",
+          "anchor": "def repair_workspace_recall(",
+          "line": 75
+        },
+        {
+          "path": "memory_core/consolidation/session_repair.py",
+          "symbol": "audit_dreaming_artifacts",
+          "anchor": "def audit_dreaming_artifacts(",
+          "line": 30
+        },
+        {
+          "path": "memory_core/consolidation/session_repair.py",
+          "symbol": "repair_dreaming_artifacts",
+          "anchor": "def repair_dreaming_artifacts(",
+          "line": 64
+        },
+        {
+          "path": "memory_core/index/sqlite_store.py",
+          "symbol": "reindex",
+          "anchor": "    def reindex(",
+          "line": 639
         }
       ],
       "implementation": "partial",
       "notes": [
-        "Python audit/repair covers the JSON recall file and stale lock only; native dangling/live-source checks, overflow repair, diary/session-corpus diagnostics and archive-based dreaming repair are absent.",
-        "Python repairs unreadable or malformed recall state by replacing it with an empty store; this reset differs from retaining and diagnosing valid recoverable state and must not be counted as successful parity."
+        "The compatibility audit distinguishes invalid, dangling and overflow recall rows and stale workspace locks. Whole unreadable SDK store bytes remain intact. The legacy SDK interface retains its own diagnostics.",
+        "Recovery drives independently damage full-text and provenance rows before forced reindex, as well as invalid recall rows, dangling sources, retention limits and lock state. The session corpus and its ingestion checkpoint can be archived with the diary. The original and SDK use different physical store locations."
       ]
     },
     {

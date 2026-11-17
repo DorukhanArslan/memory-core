@@ -8,6 +8,7 @@ side imports the pinned upstream TypeScript implementations at execution time.
 from __future__ import annotations
 
 from dataclasses import asdict, dataclass
+from pathlib import Path
 import math
 import random
 from typing import Any
@@ -325,6 +326,9 @@ def build_cases(*, include_prospective: bool = False) -> list[dict[str, Any]]:
     from equivalence.engine_numeric_family import build_cases as build_engine_numeric_cases
 
     cases.extend(build_engine_numeric_cases())
+    from equivalence.automation_job_state import build_cases as build_automation_jobs
+
+    cases.extend(build_automation_jobs())
     if include_prospective:
         from equivalence.flush_contract import build_prospective_flush_contract_cases
         from equivalence.session_projection import build_prospective_session_projection_cases
@@ -340,6 +344,16 @@ def build_cases(*, include_prospective: bool = False) -> list[dict[str, Any]]:
 def run_python(case: dict[str, Any]) -> Any:
     """Execute the installed Python implementation; never manufacture a match."""
     operation, arguments = case["operation"], case["input"]
+    if operation == "automation-job-state-runtime":
+        from equivalence.automation_job_state_sdk import run_sdk
+
+        case = dict(case)
+        diagnostic = case.pop("_diagnosticDirectory", None)
+        if diagnostic is None:
+            from tempfile import TemporaryDirectory
+            with TemporaryDirectory() as directory:
+                return run_sdk(case, Path(directory))
+        return run_sdk(case, diagnostic)
     if operation == "engine-numeric-boundaries":
         from equivalence.engine_numeric_boundaries import run_engine_numeric_boundaries
 

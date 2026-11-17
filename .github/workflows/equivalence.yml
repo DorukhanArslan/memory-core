@@ -57,6 +57,10 @@ jobs:
         run: >-
           uv run --frozen python -m equivalence.release_runtime
           --reference .reference/openclaw --destination .reference/release-runtime --install
+      - name: Prepare the pinned scheduled-task dependency
+        run: >-
+          uv run --frozen python -m equivalence.heartbeat_dependency
+          --reference .reference/openclaw --destination .reference/heartbeat-dependencies/archives
       - name: Compare the registered cases with actual OpenClaw
         run: >-
           uv run --frozen python scripts/check_equivalence.py

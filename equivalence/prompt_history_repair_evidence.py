@@ -310,7 +310,8 @@ def _operations(case, raw, public, native):
             _same(after_missing, before_missing, "prepared historical synthetic results changed across live callbacks")
             results = [message for message in expected[1]["messages"] if message.get("role") == "toolResult"
                        and message.get("toolCallId") == scripts[0]["id"]]
-            _require(len(results) == 1 and "details" in results[0], "current genuine tool-result details were stripped as history")
+            _require(len(results) == 1 and "details" not in results[0],
+                     "model boundary lost the live result or exposed private tool details")
             if native:
                 hook = [row for row in operation["toolCalls"] if row["hook"] == "after_tool_call"
                         and row["event"].get("toolCallId") == scripts[0]["id"]][0]
@@ -319,7 +320,12 @@ def _operations(case, raw, public, native):
                 details = operation["toolCalls"][0]["apiOutcome"]["returnValue"]["value"]
                 if isinstance(details, dict) and "details" in details and "content" in details:
                     details = details["details"]
-            _same(results[0]["details"], details, "current genuine tool result lost actual business details")
+            durable = [event["message"] for event in operation["afterTranscript"]
+                       if event.get("message", {}).get("role") == "toolResult"
+                       and event["message"].get("toolCallId") == scripts[0]["id"]]
+            _require(len(durable) == 1, "actual durable tool result missing or duplicated")
+            _same(durable[0]["details"], details, "durable tool result lost actual business details")
+            _same(results[0]["content"], durable[0]["content"], "model boundary changed the live tool result content")
         if native:
             params = operation["callArguments"][0]
             _require(params["runId"] == f"prompt-history-{ordinal}" and params["prompt"] == specification["prompt"]

@@ -186,7 +186,14 @@ COMPILED_ANCHORS["dist/embedded-agent-helpers-CNzM9z5K.mjs"] = (
     "function downgradeOpenAIFunctionCallReasoningPairs(",
     "function dropStaleOpenAIReasoning(",
 )
-REQUIRED_RUNTIME_ARTIFACTS = tuple(COMPILED_HASHES)
+# The prompt-context driver separately imports the short-term recall writer to
+# drain recall jobs. History projection does not record or drain search hits.
+# Keep its two chunks authenticated on disk without claiming they executed.
+RECALL_WRITER_ARTIFACTS = (
+    "dist/short-term-promotion-record-CEpBdgKW.mjs",
+    "dist/short-term-promotion-record-DrLa1fiO.mjs",
+)
+REQUIRED_RUNTIME_ARTIFACTS = tuple(owner for owner in COMPILED_HASHES if owner not in RECALL_WRITER_ARTIFACTS)
 GENUINE_HELPER_EXPORTS = {
     "dist/helpers-DnieXpdv.mjs": ("m",),
     "dist/builtin-openclaw-D1Xfnzzr.mjs": ("t", "Y"),
@@ -252,6 +259,7 @@ def prepare_prompt_history_repair_bindings(checkout: Path, runtime_root: Path) -
             _named_link(sources, module, specifier, names, kind="import")
             for module, specifier, names in links]],
         "requiredLoadedArtifacts": list(REQUIRED_RUNTIME_ARTIFACTS),
+        "staticRecallWriterArtifacts": list(RECALL_WRITER_ARTIFACTS),
         "genuineHelperExports": {name: list(exports) for name, exports in GENUINE_HELPER_EXPORTS.items()},
         "requiredObservedOwners": [list(item) for item in REQUIRED_OBSERVED_OWNERS],
         "diagnosticObservedOwners": [

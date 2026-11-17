@@ -60,7 +60,7 @@ class _Owners:
         self.source_policy = resolve_memory_search_source_policy(configured_sources=["memory"],
             remember_across_conversations=False, configured_session_memory=False)
         config = MemoryConfig(workspace_dir=self.workspace, store_path=self.paths["index"],
-            session_search=False, flags=FeatureFlags(vector_search=False))
+            session_search=False, flags=FeatureFlags(vector_search=False, curated_memory_writes=False))
         self.memory = Memory.from_workspace(self.workspace, config=config, embedding_provider=None,
             initialize=False, reindex=False, artifact_provenance=self.trust, session_catalog=self.catalog,
             source_policy=self.source_policy)
@@ -88,7 +88,8 @@ class _Owners:
 
     async def invoke(self, operation, ordinal, actual):
         if operation["op"] == "reopen":
-            self.catalog.close()
+            # The disk catalog closes each operation's connection. Reconstruct
+            # all owners from the same files, without seeding the transcript.
             self.open()
             actual["apiOutcome"] = {"kind": "return", "returnValue": _returned(None)}
             return {"operation": deepcopy(operation), "modelCalls": []}
@@ -176,7 +177,7 @@ def _run(value, directory):
                HistoryReplay.request, resolve_history_replay_policy)],
            "operations": [], "states": [], "physical": [], "clock": {"readings": []}, "closed": False}
     observations = []
-    owners, business_error, catalog_closed = None, None, False
+    owners, business_error = None, None
     try:
         with patch.object(time, "time_ns", lambda: now[0] * 1_000_000), \
                 patch.object(time, "time", lambda: now[0] / 1000):
@@ -204,9 +205,8 @@ def _run(value, directory):
                     raw["physical"].append(_capture(root, directory, f"operation-{ordinal:03d}"))
 
             asyncio.run(drive())
-            owners.catalog.close()
-            catalog_closed = True
-            raw["closed"] = all(operation.get("modelPromptClosed", True) for operation in raw["operations"])
+            raw["closed"] = all(operation["modelPromptClosed"] for operation in raw["operations"]
+                                if operation["operation"]["op"] == "submit")
         raw["completionStatus"] = "completed-unverified"
     except BaseException as error:
         business_error = error
@@ -215,7 +215,7 @@ def _run(value, directory):
         raw["closed"] = False
         # Preserve independently observed failure facts without pretending that
         # an interrupted operation completed its normal after-state protocol.
-        if owners is not None and not catalog_closed:
+        if owners is not None:
             try:
                 raw["failureState"] = owners.state()
             except BaseException as capture_error:
@@ -227,11 +227,6 @@ def _run(value, directory):
                 raw.setdefault("captureErrors", []).append({"operation": "failure-physical", "error": _failure(capture_error)})
         raise
     finally:
-        if owners is not None and not catalog_closed:
-            try:
-                owners.catalog.close()
-            except BaseException as close_error:
-                raw.setdefault("closeErrors", []).append(_failure(close_error))
         raw["clock"]["restored"] = {"time": time.time is original_time, "timeNs": time.time_ns is original_ns,
                                      "monotonic": time.monotonic is monotonic, "sleep": time.sleep is sleep}
         raw["output"] = {"observations": observations}

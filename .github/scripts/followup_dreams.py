@@ -101,11 +101,20 @@ def loaded_sources(case, trace, raw, profile, runtime, adapters, global_sources)
                     worker_paths.add(key[1])
         if not is_main:
             require(set(PROMOTION_WORKER_ROUTE) <= worker_paths, "Missing original SQLite worker in dreaming trace")
+    entry_module = "dist/dreaming-phases-rmgXNBLP.mjs"
+    drivers = {"release-oracle.mjs", "dream-light-runtime.mjs"}
+    if operation == "dream-rem-runtime":
+        drivers.add("dream-rem-runtime.mjs")
+    elif operation == "dream-diary-publication-runtime":
+        drivers = {"release-oracle.mjs", "dream-diary-runtime.mjs"}
+        entry_module = "dist/dreaming-dreams-file-BJzlZFlf.mjs"
+    elif operation == "dream-deep-runtime":
+        drivers.add("dream-deep-runtime.mjs")
+        entry_module = "dist/extensions/memory-core/index.js"
     require(0 in seen_threads and len(observed_contexts) == 1 and _same_json(bootstraps, trace["threads"])
-            and len(files) == trace["loadedReleaseFiles"] and {"dream-light-runtime.mjs", "release-oracle.mjs"} <= locals_loaded
-            and (operation != "dream-rem-runtime" or "dream-rem-runtime.mjs" in locals_loaded),
+            and len(files) == trace["loadedReleaseFiles"] and drivers <= locals_loaded,
             "Dreaming traces disagree with their case receipt")
-    validate_release_sources(runtime, list(files.values()), required_entry="dist/dreaming-phases-rmgXNBLP.mjs")
+    validate_release_sources(runtime, list(files.values()), required_entry=entry_module)
     return files
 
 

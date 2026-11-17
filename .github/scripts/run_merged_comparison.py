@@ -16,14 +16,9 @@ from equivalence.cases import build_cases  # noqa: E402
 from equivalence.catalog_migration import definition_authority  # noqa: E402
 from equivalence.harness import _adapter_identity, _implementation_identity  # noqa: E402
 
-PRODUCT = "065280258f8194b87c06f605b0b0819574fed049"
-SDK_SHA = "ac4672c96a76cfb448730a96d2ce55820f9fb11bf909f1141aa4b7ff4a76084b"
-SDK_FILES = 168
-PREVIOUS_CASES = 1500
-PREVIOUS_CATALOG_SHA = "96bf1edb8fe29618d1b62792d1ffbf58423cd16f804eb490ba3f0a7c6c187ebb"
-CATALOG_SHA = "d6a6e64b7c48efa35fe09ddd542e1e82f2329725bc5245bc138bb5b304c6024d"
-REGISTERED_CASES = 1519
-SCOPE_SHA = "a8e066e63970dd0be734485d62a5932640894b8c0a42f47ac3eb67f784cbc7b9"
+from followup_seal import (CATALOG_SHA, PREVIOUS_CASES, PREVIOUS_CATALOG_SHA, PRODUCT,
+                           REGISTERED_CASES, SCOPE_SHA, SDK_FILES, SDK_SHA, check_seal)
+
 OUT = ROOT / ".equivalence-results"
 SUMMARY = OUT / "summary"
 
@@ -48,8 +43,7 @@ def inventory():
 
 
 def main():
-    assert len(PRODUCT) == 40 and all(char in "0123456789abcdef" for char in PRODUCT), "Product commit is not frozen"
-    assert len(SDK_SHA) == 64 and all(char in "0123456789abcdef" for char in SDK_SHA), "SDK source is not frozen"
+    check_seal()
     SUMMARY.mkdir(parents=True, exist_ok=False)
     product_root = ROOT / ".reference/product-source"
     assert git("rev-parse", "HEAD", cwd=product_root) == PRODUCT

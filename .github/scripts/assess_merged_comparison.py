@@ -18,11 +18,11 @@ from equivalence.catalog_migration import definition_authority  # noqa: E402
 from equivalence.harness import _adapter_identity, _implementation_identity, _same_json  # noqa: E402
 from equivalence.strict_report_reader import Reader, _constant, _finite, _object  # noqa: E402
 
-PRODUCT = "065280258f8194b87c06f605b0b0819574fed049"
-SCOPE = "a8e066e63970dd0be734485d62a5932640894b8c0a42f47ac3eb67f784cbc7b9"
-SDK = {"sourceSha256": "ac4672c96a76cfb448730a96d2ce55820f9fb11bf909f1141aa4b7ff4a76084b", "sourceFiles": 168}
-CATALOG_SHA = "d6a6e64b7c48efa35fe09ddd542e1e82f2329725bc5245bc138bb5b304c6024d"
-REGISTERED_CASES = 1519
+from followup_families import FAMILIES, REPORT_FIELDS, replay_followup
+from followup_seal import (CATALOG_SHA, PREVIOUS_CASES, PREVIOUS_CATALOG_SHA, PREVIOUS_COMPARISON,
+                           PRODUCT, REGISTERED_CASES, SCOPE_SHA as SCOPE, SDK_FILES, SDK_SHA, check_seal)
+
+SDK = {"sourceSha256": SDK_SHA, "sourceFiles": SDK_FILES}
 OPERATIONS = ("host-restart-session-runtime", "host-update-isolation-runtime",
               "host-turn-barrier-boundaries-runtime", "index-identity-boundaries-runtime",
               "query-sync-outcomes-runtime", "query-sync-boundaries-runtime",
@@ -31,7 +31,6 @@ OPERATIONS = ("host-restart-session-runtime", "host-update-isolation-runtime",
               "session-reset-boundaries-runtime", "prompt-runtime-context-runtime", "prompt-history-repair-runtime")
 
 
-PREVIOUS_COMPARISON = {'runId': 44137396647, 'reportSha256': '080d8a69437fcc44db824583b5a7fb3b834be1c575220a7a000a5a28455a2dd4', 'assessmentSha256': '20af968622ab7a29339d6a11bd9cf4c363099f1bba87d3907328b64b1f9cd701', 'verified': 84}
 PREVIOUS_MISMATCH_PUBLIC_SHA256 = {
     "bootstrap-discovery-legacy-state-gate": {
         "openclaw": "0c17c9620066864fed5e7643e4cb638e91b6691dfa3f4a4156d37abc2890dcb1",
@@ -113,7 +112,7 @@ def load(path):
 
 
 def project(path, host_ids, lineage_ids, boundary_ids, recall_ids, cache_ids, reset_ids, prompt_ids, history_ids,
-            numeric_ids=frozenset(), deep_ids=frozenset()):
+            numeric_ids=frozenset(), deep_ids=frozenset(), followup_ids=frozenset()):
     from equivalence.engine_numeric_family import SOURCE_OWNERS
     from equivalence.promotion_ranking_bindings import COMPILED_HASHES as rank_compiled
 
@@ -130,7 +129,8 @@ def project(path, host_ids, lineage_ids, boundary_ids, recall_ids, cache_ids, re
             "promptHistoryRepairFamilyComplete", "promptHistoryRepairBindings", "promptHistoryRepairNode",
             "engineNumericFamilyComplete", "numericSourceImports", "promotionRankingRuntimeBindings", "promotionRankingProfile",
             "deepConsolidationFamilyComplete", "deepConsolidationBindings", "promotionApplyFamilyBindings", "promotionApplyFamilyNode"}
-    result = {"cases": [], "hostPairs": {}, "hostDiagnostics": {}, "mismatchPairs": {},
+    kept.update(REPORT_FIELDS)
+    result = {"followupRows": {}, "followupReleaseSources": [], "cases": [], "hostPairs": {}, "hostDiagnostics": {},
               "lineagePairs": {}, "lineageDiagnostics": {}, "lineageTraces": {},
               "boundaryPairs": {}, "boundaryDiagnostics": {}, "boundaryTraces": {},
               "recallPairs": {}, "recallDiagnostics": {}, "recallTraces": {},
@@ -147,6 +147,16 @@ def project(path, host_ids, lineage_ids, boundary_ids, recall_ids, cache_ids, re
             if key in kept:
                 result.setdefault(key, [])
             return
+        if key == "releaseSources":
+            result["followupReleaseSources"].append(value)
+        if key in {"cases", "releaseTraces", "runtimeDiagnostics"} and value.get("id") in followup_ids:
+            name = {"cases": "case", "releaseTraces": "trace"}.get(key)
+            if key == "runtimeDiagnostics":
+                name = value.get("side")
+                require(name in {"native", "python"}, "Unknown appended diagnostic side")
+            row = result["followupRows"].setdefault(value["id"], {})
+            require(name not in row, "Duplicate appended case, diagnostic or trace")
+            row[name] = value
         if key == "cases":
             row = {k: v for k, v in value.items() if k not in {"openclaw", "python"}}
             if {"openclaw", "python"} & set(value):
@@ -177,8 +187,6 @@ def project(path, host_ids, lineage_ids, boundary_ids, recall_ids, cache_ids, re
                     result["historyPairs"][value["id"]] = pair
                 if value["id"] in prompt_ids:
                     result["promptPairs"][value["id"]] = pair
-                if value["status"] == "mismatched":
-                    result["mismatchPairs"][value["id"]] = pair
             require(value["status"] != "mismatched" or "python" in value, "Mismatch omitted whole public values")
             result["cases"].append(row)
         elif key == "sources" and value["path"] in SOURCE_OWNERS:
@@ -276,6 +284,9 @@ def project(path, host_ids, lineage_ids, boundary_ids, recall_ids, cache_ids, re
 
     Reader(path).top(accept)
     require(digest(path) == before, "Full report changed during complete EOF parsing")
+    entries = result["followupReleaseSources"]
+    require(len({(entry["package"], entry["path"]) for entry in entries}) == len(entries),
+            "Duplicate release source in the complete report")
     result["report"] = {"path": str(path.resolve()), "bytes": path.stat().st_size, "sha256": before}
     return result
 
@@ -1423,6 +1434,12 @@ def recompute(data, definitions, scope):
                                                   for row in deep)
         for point in {point for row in deep for point in row["covers"]}:
             gates.setdefault(point, []).append("deep-consolidation-runtime")
+    for operation, (family, _, _) in FAMILIES.items():
+        family_rows = [row for row in rows if row["operation"] == operation]
+        require(family_rows, "An appended family is missing")
+        states[operation] = family.family_complete(rows)
+        for point in {p for row in family_rows for p in row["covers"]}:
+            gates.setdefault(point, []).append(operation)
     requirements = data["requirements"]
     require(len(scope) == len(requirements) == 64, "Fixed requirement count changed")
     counts, contracts, points = Counter(row["status"] for row in rows), Counter(), []
@@ -1461,15 +1478,42 @@ def recompute(data, definitions, scope):
             "families": states, "points": points}
 
 
+def verify_process_exit(args, data):
+    summary = args.seal.parent
+    launch = load(summary / "launch.json")
+    exited = load(summary / "os-exit.json")
+    output = load(summary / "run-summary.json")
+    stdout = digest(summary / "run-summary.json")
+    stderr = digest(summary / "comparison.stderr.log")
+    require(launch["automaticRetry"] is False and type(launch["pid"]) is int and launch["pid"] > 0
+            and launch["kind"] == "single-full-comparison-launch" and launch["cwd"] == str(ROOT)
+            and launch["argv"][1:] == ["scripts/check_equivalence.py", "--reference", ".reference/openclaw",
+                "--node", str(args.node.resolve()), "--release-runtime", ".reference/release-runtime",
+                "--report", ".equivalence-results/full.json"]
+            and all(_same_json(exited[k], v) for k, v in launch.items() if k != "pid")
+            and exited["sourceSealSha256"] == digest(args.seal) and exited["fullReportSha256"] == data["report"]["sha256"]
+            and exited["stdoutSha256"] == stdout and exited["stderrSha256"] == stderr,
+            "The collector process or its original report/streams changed")
+    require(output["reportSha256"] == data["report"]["sha256"]
+            and all(_same_json(output[k], data[k]) for k in ("mode", "status", "summary", "errors", "fullScopePassed"))
+            and all(output[label] == [row["id"] for row in data["cases"] if row["status"] == status]
+                    for label, status in (("mismatchedCaseIds", "mismatched"), ("blockedCaseIds", "blocked")))
+            and type(exited["actualReturnCode"]) is int
+            and exited["actualReturnCode"] == {"passed": 0, "mismatched": 1, "incomplete": 1, "blocked": 2}[data["status"]],
+            "The real comparison exit or stdout contradicts the report")
+    return {"actualReturnCode": exited["actualReturnCode"], "pid": launch["pid"], "stdoutSha256": stdout,
+            "stderrSha256": stderr, "reportBytes": data["report"]["bytes"], "reportSha256": data["report"]["sha256"]}
+
+
 def assess(args, result):
+    check_seal()
     seal = load(args.seal)
     source_unchanged(seal)
     definitions = build_cases()
     migration = definition_authority(definitions, fif_version="v6")
     require(len(definitions) == seal["registeredCases"]
             and hashlib.sha256(canonical(definitions)).hexdigest() == seal["catalogSha256"], "Sealed catalog changed")
-    previous = {"registeredCases": 1500,
-                "sha256": "96bf1edb8fe29618d1b62792d1ffbf58423cd16f804eb490ba3f0a7c6c187ebb",
+    previous = {"registeredCases": PREVIOUS_CASES, "sha256": PREVIOUS_CATALOG_SHA,
                 "completePrefixUnchanged": True}
     require(len(definitions) == REGISTERED_CASES and REGISTERED_CASES > previous["registeredCases"]
             and seal["catalogSha256"] == CATALOG_SHA
@@ -1490,15 +1534,11 @@ def assess(args, result):
                    {case["id"] for case in boundary_cases}, {case["id"] for case in recall_cases},
                    {case["id"] for case in cache_cases}, {case["id"] for case in reset_cases},
                    {case["id"] for case in prompt_cases}, {case["id"] for case in history_cases},
-                   {case["id"] for case in numeric_cases}, {case["id"] for case in deep_cases})
+                   {case["id"] for case in numeric_cases}, {case["id"] for case in deep_cases},
+                   {case["id"] for case in definitions if case["operation"] in FAMILIES})
     result.update(completeReportParsed=True, report=data["report"], projection={
-        key: value for key, value in data.items() if key not in {
-            "lineagePairs", "lineageDiagnostics", "lineageTraces", "boundaryPairs", "boundaryDiagnostics", "boundaryTraces",
-            "recallPairs", "recallDiagnostics", "recallTraces", "cachePairs", "cacheDiagnostics", "cacheTraces",
-            "resetPairs", "resetDiagnostics", "resetTraces", "promptPairs", "promptDiagnostics", "promptTraces",
-            "historyPairs", "historyDiagnostics", "historyTraces",
-            "numericPairs", "numericDiagnostics", "numericTraces", "numericReleaseSources", "numericSources",
-            "deepPairs", "deepDiagnostics", "deepTraces"}})
+        key: data[key] for key in ("reference", "mode", "status", "fullScopePassed", "summary", "manifestSha256",
+                                   "paidProviderCalls", "providerCredentialsForwarded", "startedAt", "finishedAt")})
     require(data["errors"] == [] and data["mode"] == "full" and data["kind"] == "pinned-differential-acceptance",
             "Global collector error or non-full report; no candidate score")
     require(_same_json(data["implementation"], seal["implementation"])
@@ -1507,6 +1547,10 @@ def assess(args, result):
             and _same_json(seal["definitionMigration"], migration), "Report source or definition authority differs")
     for key, name in (("scope", "scope.json"), ("reference", "reference.json"), ("sourceMap", "source-map.json")):
         require(data["manifestSha256"][key] == digest(ROOT / "equivalence" / name), "Report manifest changed")
+    from equivalence.harness import _validate_reference
+
+    require(_same_json(data["reference"], _validate_reference(args.reference.resolve(), args.node.resolve(),
+                       load(ROOT / "equivalence/reference.json"))), "The pinned release, executable or source tree changed")
     require(data["paidProviderCalls"] == 0 and data["providerCredentialsForwarded"] is False, "Unexpected provider access")
     metrics = recompute(data, definitions, load(ROOT / "equivalence/scope.json")["requirements"])
     replay_sha = digest(args.fif_replay)
@@ -1573,16 +1617,29 @@ def assess(args, result):
             is metrics["families"]["deep-consolidation-runtime"]
             is all(row["publicMatch"] for row in result["deepConsolidationReplays"]),
             "Consolidation replay contradicts the complete point calculation")
+    result["appendedFamilyReplays"] = replay_followup(data, definitions, args, metrics)
+    process = verify_process_exit(args, data)
+    result["comparisonProcess"] = process
     public = {row["id"]: row.get("publicValueSha256") for row in data["cases"]}
     require(set(PREVIOUS_MISMATCH_PUBLIC_SHA256) <= set(public), "A previous mismatch case disappeared")
+    prior_gates = {name: value for name, value in metrics["families"].items() if name not in FAMILIES}
+    require(len(prior_gates) == 17 and _same_json(prior_gates, PREVIOUS_COMPARISON["familyGates"]),
+            "The earlier seventeen family gates differ from their retained assessment")
+    previous_hashes = dict(PREVIOUS_MISMATCH_PUBLIC_SHA256)
+    previous_hashes["flush-execution-warm-index-first-recall"] = {
+        **previous_hashes["flush-execution-warm-index-first-recall"],
+        "openclaw": PREVIOUS_COMPARISON["warmFlushNativeSha256"]}
     result["previousComparison"] = PREVIOUS_COMPARISON
+    mismatches = [r for r in data["cases"] if r["status"] == "mismatched"]
+    result["mismatchMetadata"] = [{k: r[k] for k in ("id", "operation", "requirement", "covers", "publicValueSha256")}
+                                  for r in mismatches]
     result["previousMismatchPublicHashChanges"] = {
         cid: {"before": before, "after": public[cid]}
-        for cid, before in PREVIOUS_MISMATCH_PUBLIC_SHA256.items() if not _same_json(before, public[cid])}
+        for cid, before in previous_hashes.items() if not _same_json(before, public[cid])}
     rows_by_id = {row["id"]: row for row in data["cases"]}
-    sdk_changes = [cid for cid, before in PREVIOUS_MISMATCH_PUBLIC_SHA256.items()
+    sdk_changes = [cid for cid, before in previous_hashes.items()
                    if before["python"] != (public[cid] or {}).get("python")]
-    native_changes = [cid for cid, before in PREVIOUS_MISMATCH_PUBLIC_SHA256.items()
+    native_changes = [cid for cid, before in previous_hashes.items()
                       if before["openclaw"] != (public[cid] or {}).get("openclaw")]
     allowed_warm_changes = [cid for cid in native_changes
                             if cid == "flush-execution-warm-index-first-recall" and cid not in sdk_changes
@@ -1592,6 +1649,9 @@ def assess(args, result):
         "allSdkWholePublicHashesUnchanged": not sdk_changes,
         "allowedUncreditedNativeWarmFlushChanges": allowed_warm_changes,
         "otherChangedCaseIds": sorted((set(sdk_changes) | set(native_changes)) - set(allowed_warm_changes))}
+    require(len(mismatches) == 14 and {row["id"] for row in mismatches} == set(previous_hashes)
+            and not result["previousMismatchPublicHashReview"]["otherChangedCaseIds"],
+            "Mismatch identities or previous whole-public digests changed beyond the uncredited warm native field")
     expected_status = ("blocked" if metrics["cases"].get("blocked") else "mismatched"
                        if metrics["cases"].get("mismatched") else "incomplete" if metrics["uncovered"] else "passed")
     require(data["status"] == expected_status and data["fullScopePassed"] is (expected_status == "passed"),
@@ -1605,6 +1665,7 @@ def assess(args, result):
                   deltaFromHistorical81=metrics["verified"] - 81,
                   deltaFromHistorical82=metrics["verified"] - 82,
                   deltaFromHistorical84=metrics["verified"] - 84,
+                  deltaFromPreviousHosted=metrics["verified"] - PREVIOUS_COMPARISON["verified"],
                   fifReplaySha256=replay_sha, fullScopePassed=data["fullScopePassed"])
 
 
@@ -1615,7 +1676,7 @@ def main():
     args = parser.parse_args()
     result = {"kind": "approved-product-complete-eof-candidate-assessment", "status": "blocked",
               "metadataOnlyAssessment": True, "completeRootAudit": False, "acceptancePointsAwarded": 0,
-              "originalEnginesExecuted": False, "historicalVerifiedConditions": 84,
+              "originalEnginesExecuted": False, "historicalVerifiedConditions": (PREVIOUS_COMPARISON or {}).get("verified"),
               "completeReportParsed": False, "candidateAssessment": None, "errors": []}
     try:
         assess(args, result)

@@ -1,10 +1,10 @@
-name: Compare history repair, numeric boundaries and deep consolidation
+name: Compare dreaming, scheduled memory tasks and workspace locks
 # One frozen full measurement; retain the first result without retrying.
-# The previous 1,500 definitions stay intact; the complete history repair family is appended.
+# The retained 1,519 definitions and previous complete-family gates are included.
 
 on:
   push:
-    branches: [verify/prompt-history-repair-once]
+    branches: [verify/maintenance-workspace-once]
     paths: [.github/workflows/verify-merged-forget-once.yml]
 
 permissions:
@@ -34,9 +34,20 @@ jobs:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
         with:
           persist-credentials: false
+      - name: Read the approved product seal
+        id: product
+        run: |
+          python - <<'PYTHON'
+          import os, sys
+          sys.path.insert(0, ".github/scripts")
+          from followup_seal import PRODUCT, check_seal
+          check_seal()
+          with open(os.environ["GITHUB_OUTPUT"], "a") as output:
+              print(f"sha={PRODUCT}", file=output)
+          PYTHON
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
         with:
-          ref: 065280258f8194b87c06f605b0b0819574fed049
+          ref: ${{ steps.product.outputs.sha }}
           path: .reference/product-source
           persist-credentials: false
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
@@ -78,7 +89,7 @@ jobs:
           --reference .reference/openclaw --node "$(command -v node)"
           --sdk-source-root . --adapter-root .
           --output .equivalence-results/summary/forget-family-replay.json
-      - name: Assess the complete report and retained captures for history repair, numeric boundaries and deep consolidation
+      - name: Assess the complete report and retained schedules, dreaming sweeps and workspace writers
         if: always() && steps.comparison.outcome != 'skipped'
         id: assessment
         continue-on-error: true
@@ -95,7 +106,7 @@ jobs:
         if: always()
         uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
         with:
-          name: prompt-history-repair-summary
+          name: maintenance-workspace-summary
           path: .equivalence-results/summary/
           include-hidden-files: true
           if-no-files-found: warn
@@ -103,7 +114,7 @@ jobs:
         if: always()
         uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
         with:
-          name: prompt-history-repair-raw-evidence
+          name: maintenance-workspace-raw-evidence
           path: |
             .equivalence-results/
             /var/tmp/memory-host-v4-*/

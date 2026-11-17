@@ -207,6 +207,7 @@ class FlushRequest:
         target: str,
         reason: str,
         messages: tuple[dict[str, str], ...],
+        model: str | None = None,
         provenance: MemoryArtifactProvenanceStore | None = None,
         untrusted: bool | Callable[[], bool] = False,
         session_key: str | None = None,
@@ -220,6 +221,7 @@ class FlushRequest:
     ) -> None:
         self.target = target
         self.reason = reason
+        self.model = model
         self.messages = messages
         if (read_tool is None) != (read_dispatch is None):
             raise ValueError("read_tool and read_dispatch must be supplied together")

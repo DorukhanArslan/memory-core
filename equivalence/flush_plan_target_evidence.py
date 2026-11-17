@@ -47,15 +47,31 @@ def check_raw(case, snapshots, directory, kind):
     return raw
 
 
-def check_prompts(request, plan, tree):
+RECOVERY_PROMPT = (
+    "Continue the current task from the existing transcript, preserving completed work. "
+    "If an action was interrupted, inspect its state before deciding whether to retry it. "
+    "Do not restart the task or repeat completed actions."
+)
+
+
+def check_prompts(request, plan, tree, *, retry=False):
     require(tree.get(plan["relativePath"], {}).get("kind") == "file",
             "A model ran before the daily target was a real regular file")
     messages = request["messages"]
     system = request.get("systemPrompt") or next(
         (m["content"] for m in messages if m.get("role") == "system"), "")
-    require(plan["systemPrompt"] in system and any(m.get("role") == "user" and
-            isinstance(m.get("content"), str) and plan["prompt"] in m["content"] for m in messages),
-            "The model did not receive both complete plan prompts")
+    require(plan["systemPrompt"] in system, "The model lost the complete system plan prompt")
+    if retry:
+        previous = messages[0]["content"]
+        if isinstance(previous, list):
+            previous = "\n".join(part["text"] for part in previous if part.get("type") == "text")
+        require(len(messages) >= 2 and "Remember my field note." in previous and
+                messages[-1].get("role") == "user" and messages[-1]["content"].endswith(RECOVERY_PROMPT),
+                "The same-candidate retry lost its real transcript or embedded-runner recovery prompt")
+    else:
+        require(any(m.get("role") == "user" and isinstance(m.get("content"), str)
+                    and plan["prompt"] in m["content"] for m in messages),
+                "The admitted model candidate lost the complete user plan prompt")
     require(isinstance(request["tools"], (list, tuple)) and
             any(t.get("name") == "write" for t in request["tools"]), "Missing actual maintenance tool context")
 
@@ -123,8 +139,14 @@ def validate_native(case, public, snapshots, evidence_directory, loaded):
     observed = [(call["model"]["provider"], call["model"]["id"]) for call in calls]
     same([{"provider": k[0], "model": k[1]} for k, _ in groupby(observed)], routes,
          "The original transport did not execute its selected model candidates")
-    for call in calls:
-        check_prompts(call["context"], plans[-1], call["files"])
+    for index, call in enumerate(calls):
+        retry = index > 0 and observed[index] == observed[index - 1]
+        if retry:
+            require(calls[index - 1]["reply"].get("error") and
+                    loaded.get(("node_modules/openclaw", "dist/embedded-agent-gxn-c3nS.mjs"), {}).get("sha256") ==
+                    "5241e89998d2798f0621418c04438adb07b798a0b92537e91718bf116246d808",
+                    "Retry did not come from the pinned embedded runner after an actual provider failure")
+        check_prompts(call["context"], plans[-1], call["files"], retry=retry)
         require(call["runContexts"], "Missing original maintenance execution")
         answer = value["responses"][call["model"]["id"]]
         same(call["reply"], {"error": "429 rate limit for selected fixture model"} if

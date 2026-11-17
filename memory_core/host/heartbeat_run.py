@@ -10,7 +10,7 @@ decide a memory flush (upstream skips session maintenance for heartbeats).
 from __future__ import annotations
 
 from dataclasses import dataclass
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, Any
 
 from memory_core.automation import AutomationJob, AutomationStore, record_automation_job_run
 from memory_core.heartbeat import HeartbeatReplyDecision, HeartbeatTurn, decide_heartbeat_reply
@@ -19,6 +19,26 @@ from memory_core.host.session import SessionState, TurnUsage, apply_turn_usage
 
 if TYPE_CHECKING:
     from memory_core.host.kit import TurnContext
+
+
+@dataclass(frozen=True)
+class ScheduledHeartbeatWake:
+    """The input a recurring heartbeat task hands to its host's runner."""
+
+    job: AutomationJob
+
+    @property
+    def reason(self) -> str:
+        return f"heartbeat-task:{self.job.id}"
+
+    def to_json(self) -> dict[str, Any]:
+        return {
+            "source": "interval",
+            "intent": "task",
+            "reason": self.reason,
+            "agentId": self.job.agent_id,
+            "tasks": [{"jobId": self.job.id, "name": self.job.name, "prompt": self.job.text}],
+        }
 
 
 @dataclass(frozen=True)
@@ -54,6 +74,7 @@ class HeartbeatRun:
         scratch_owner: HeartbeatMonitorOwner | None = None,
         scratch_revision: int = 0,
         owned_scratch: bool = False,
+        scheduled_wake: ScheduledHeartbeatWake | None = None,
     ) -> None:
         self.session = session
         self.turn = turn
@@ -68,6 +89,7 @@ class HeartbeatRun:
         self.scratch_owner = scratch_owner
         self._scratch_revision = scratch_revision
         self._owned_scratch = owned_scratch
+        self.scheduled_wake = scheduled_wake
 
     def write_scratch(self, content: str | None, *, now_ms: int | None = None) -> HeartbeatScratchWrite:
         """Write through the exact monitor captured when this run was prepared.

@@ -73,6 +73,7 @@ from memory_core.heartbeat_scratch import (
 )
 from memory_core import heartbeat_ownership as _owners
 from memory_core.project_name import STATE_DIRNAME
+from memory_core.tools.common import parse_strict_finite_number
 
 __all__ = [
     "AutomationJob",
@@ -99,7 +100,7 @@ def _as_date_timestamp_ms(value: object) -> float | None:
     # asDateTimestampMs: a finite number inside Date's range.
     if isinstance(value, bool) or not isinstance(value, (int, float)):
         return None
-    if not math.isfinite(value) or abs(value) > _MAX_DATE_TIMESTAMP_MS:
+    if abs(value) > _MAX_DATE_TIMESTAMP_MS or not math.isfinite(value):
         return None
     return value
 
@@ -128,6 +129,8 @@ class AutomationJob:
     next_run_at_ms: int | None = None
     session_target: str = "main"
     wake_mode: str = "next-heartbeat"
+    queued_at_ms: int | None = None
+    running_at_ms: int | None = None
 
     def to_json(self) -> dict[str, Any]:
         schedule: dict[str, Any] = {"kind": "every", "everyMs": self.every_ms}
@@ -138,6 +141,10 @@ class AutomationJob:
             state["lastRunAtMs"] = self.last_run_at_ms
         if self.next_run_at_ms is not None:
             state["nextRunAtMs"] = self.next_run_at_ms
+        if self.queued_at_ms is not None:
+            state["queuedAtMs"] = self.queued_at_ms
+        if self.running_at_ms is not None:
+            state["runningAtMs"] = self.running_at_ms
         out: dict[str, Any] = {"id": self.id}
         if self.declaration_key is not None:
             out["declarationKey"] = self.declaration_key
@@ -195,6 +202,8 @@ class AutomationJob:
             updated_at_ms=data.get("updatedAtMs"),
             last_run_at_ms=state.get("lastRunAtMs"),
             next_run_at_ms=state.get("nextRunAtMs"),
+            queued_at_ms=state.get("queuedAtMs"),
+            running_at_ms=state.get("runningAtMs"),
             session_target=str(data.get("sessionTarget", "main")),
             wake_mode=str(data.get("wakeMode", "next-heartbeat")),
         )
@@ -212,7 +221,7 @@ def _as_safe_integer_in_range(value: object, minimum: int, maximum: int) -> bool
 def _floor_schedule_number(value: object, minimum: int) -> object:
     # src/cron/normalize.ts coerceSchedule: a finite, Date-range everyMs >= 1 or anchorMs >= 0 is
     # floored (coerceFiniteScheduleNumber); anything else is left as it is.
-    coerced = _as_date_timestamp_ms(value)
+    coerced = _as_date_timestamp_ms(parse_strict_finite_number(value))
     if coerced is not None and coerced >= minimum:
         return math.floor(coerced)
     return value
@@ -223,13 +232,13 @@ def _persisted_job(job: AutomationJob, *, normalize: bool = True) -> AutomationJ
 
     ``normalizeCronJobInput`` floors the schedule numbers (``normalize``; the read path of
     ``rowToCronJob`` checks the stored values as they are), then
-    ``getInvalidPersistedCronJobReason`` checks the id, the state timestamps memory-core models
-    (``lastRunAtMs``, ``nextRunAtMs``) and the schedule (the payload text is always a string
+    ``getInvalidPersistedCronJobReason`` checks the id, the last/next run and active-run
+    timestamps and the schedule (the payload text is always a string
     here).
     """
     if not js_trim(job.id):
         return None
-    for value in (job.next_run_at_ms, job.last_run_at_ms):
+    for value in (job.next_run_at_ms, job.last_run_at_ms, job.queued_at_ms, job.running_at_ms):
         if value is not None and not _as_safe_integer_in_range(value, 0, _MAX_DATE_TIMESTAMP_MS):
             return None
     every = _floor_schedule_number(job.every_ms, 1) if normalize else job.every_ms
@@ -282,12 +291,10 @@ def compute_job_next_run_at_ms(job: AutomationJob, now_ms: float) -> int | None:
     """Port of ``computeJobNextRunAtMs`` for an ``every`` schedule (``None``: never)."""
     if not job.enabled:
         return None
-    anchor_explicit = job.anchor_ms
-    if anchor_explicit is not None:
-        coerced = _as_date_timestamp_ms(anchor_explicit)
-        if coerced is None or coerced < 0:
-            return None
-    every_raw = _as_date_timestamp_ms(job.every_ms)
+    anchor_ms = _as_date_timestamp_ms(parse_strict_finite_number(job.anchor_ms))
+    if job.anchor_ms is not None and (anchor_ms is None or anchor_ms < 0):
+        return None
+    every_raw = _as_date_timestamp_ms(parse_strict_finite_number(job.every_ms))
     if every_raw is None:
         return None
     every = math.floor(every_raw)
@@ -295,8 +302,8 @@ def compute_job_next_run_at_ms(job: AutomationJob, now_ms: float) -> int | None:
         return None
     created = _as_date_timestamp_ms(job.created_at_ms)
     fallback = created if created is not None else now_ms
-    if anchor_explicit is not None:
-        anchor = max(0, math.floor(anchor_explicit))
+    if anchor_ms is not None:
+        anchor = max(0, math.floor(anchor_ms))
     else:
         anchor = max(0, math.floor(fallback)) if _as_date_timestamp_ms(fallback) is not None else 0
     last = _as_date_timestamp_ms(job.last_run_at_ms)
@@ -310,9 +317,13 @@ def compute_job_next_run_at_ms(job: AutomationJob, now_ms: float) -> int | None:
 
 
 def is_job_due(job: AutomationJob, now_ms: float) -> bool:
-    """Port of ``isJobDue`` (not forced, no active run): enabled, scheduled and reached."""
+    """Whether a recurring job can be admitted at the due boundary."""
     next_run = _as_date_timestamp_ms(job.next_run_at_ms)
-    return job.enabled and next_run is not None and next_run > 0 and now_ms >= next_run
+    active = any(type(marker) in (float, int) for marker in (job.queued_at_ms, job.running_at_ms))
+    return (
+        job.enabled and not active
+        and next_run is not None and next_run > 0 and now_ms >= next_run
+    )
 
 
 def is_heartbeat_task_job(job: AutomationJob) -> bool:

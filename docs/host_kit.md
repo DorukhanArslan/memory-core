@@ -940,6 +940,13 @@ class HeartbeatOutcome:
     transcript: tuple[dict[str, str], ...]      # user transcript_prompt, assistant reply
 ```
 
+A scheduler delivering one named task can call
+`kit.heartbeat_task_prompt(session, job_id, schedule_now_ms=now)`. A due heartbeat task
+returns one prepared run with its original wake fields in `run.scheduled_wake.to_json()`.
+Use `kit.dispatch` with `run.session` for model tool calls and `run.complete` to record
+that job. A missing, paused, already queued, running or early task returns `None`.
+The calling scheduler serializes admission for the same job.
+
 - Composes: `memory_core/automation.py:due_automation_jobs(store.list_jobs(agent_id), schedule_now_ms)`,
   `heartbeat_scheduled_tasks`, `memory_core/heartbeat.py:prepare_heartbeat_turn(now_ms, scratch=
   store.read_scratch(agent_id), scheduled_tasks, source, reason, timezone, time_format)`, and,

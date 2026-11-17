@@ -70,6 +70,8 @@ def test_host_request_keeps_transient_data_out_of_durable_and_later_turn(tmp_pat
             prompt_context=RuntimePromptInput())
         assert "private-runtime-token" not in _text(requests[1]["messages"])
         assert any(message.get("idempotencyKey") == "first" for message in requests[1]["messages"])
+        assert any(message.get("__openclaw", {}).get("runId") == "first"
+                   for message in requests[1]["messages"] if message.get("role") == "assistant")
         assert runner.catalog.read_transcript(SESSION).events[:len(before)] == before
 
     asyncio.run(scenario())
@@ -223,14 +225,18 @@ def test_real_memory_get_loop_keeps_business_return_and_source_owned_model_json(
             with pytest.raises(ValueError, match="trusted turn metadata"):
                 turn.record_message({"role": "assistant", "content": [], "__openclaw": {"runId": "spoofed"}})
             saved = turn.record_message({"role": "assistant", "content": [{"type": "toolCall", "id": "read",
-                "name": "memory_get", "arguments": deepcopy(arguments)}]})
+                "name": "memory_get", "arguments": deepcopy(arguments)}], "responseId": "owned-provider-response"})
             assert saved["__openclaw"]["runId"] == "owned-get-loop"
+            assert saved["responseId"] == "owned-provider-response"
             returned = turn.dispatch("read", "memory_get", arguments)
             assert returned == actual_factory["details"]
-            message = next(message for message in turn.model_request()["messages"]
-                           if message.get("role") == "toolResult")
+            messages = turn.model_request()["messages"]
+            assistant = next(message for message in messages if message.get("role") == "assistant")
+            assert assistant["responseId"] == "owned-provider-response"
+            assert "runId" not in assistant.get("__openclaw", {})
+            message = next(message for message in messages if message.get("role") == "toolResult")
             assert message["content"] == actual_factory["content"] and "details" not in message
-            assert message["__openclaw"]["runId"] == "owned-get-loop"
+            assert "runId" not in message.get("__openclaw", {})
             assert "\n  " in message["content"][0]["text"]
             return _reply(turn)
 
@@ -243,5 +249,8 @@ def test_real_memory_get_loop_keeps_business_return_and_source_owned_model_json(
         assert recorded["details"] == actual_factory["details"]
         assert recorded["content"] == actual_factory["content"]
         assert recorded["__openclaw"]["runId"] == "owned-get-loop"
+        assistant = next(event["message"] for event in runner.catalog.read_transcript(SESSION).events
+                         if event.get("message", {}).get("responseId") == "owned-provider-response")
+        assert assistant["__openclaw"]["runId"] == "owned-get-loop"
 
     asyncio.run(scenario())

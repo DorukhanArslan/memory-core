@@ -57,6 +57,7 @@ _HOST_SOURCES = [
     "src/plugins/plugin-package-metadata-capture.ts"
 ]
 _EXTRA_SOURCE_HASHES = {
+    "packages/agent-core/src/agent-stream-response.ts": "51a45aa652f8a7cb6325e2a520c5c7e7668962f9d865ea1ca9404edca6332bea",
     "src/agents/harness/builtin-openclaw.ts": "250eacd91f5dd7073cdc1229534f1d638f7579fa8ade8315d7481fe84179ad1e",
     "src/agents/harness/builtin-openclaw-metadata.ts": "420f1c5b200ccd229eac21505a7913321a0f323421d88b83c1cc68ba8b719104",
     "src/agents/admitted-run-context.ts": "3c773ae41741661e2354ce18e47c4fd0f8c31d553d3a92524f5988bbf4aa4a04",
@@ -75,6 +76,7 @@ _EXTRA_SOURCE_HASHES = {
     "src/agents/system-prompt-params.ts": "75ae5d5c17409685dcf6758bdbdabe87b29cb60217d972af1a613fa5b387615e",
     "src/agents/memory-prompt-prepare.ts": "28cb57428f44f97bf5eb0c10e2faeb48dd576021f7aa98e7c7ce7de9355ab5d3",
     "src/plugins/memory-state.ts": "b334c9eed9bbb43c54560515a62511b6ff5ea77a044c584d0ea029670ad37229",
+    "src/plugins/memory-runtime.ts": "da358078fa03863c13493eab3cc4f2d1010cbb2f93d0f6faaab30c55930a797e",
     "extensions/memory-core/index.ts": "407649ff3005ec692a1c3d15e7e599692e693bf3e6ccbdc7e4aa18755deddd89",
     "extensions/memory-core/src/memory-tool-contract.ts": "6d1649776d4a73729b36facd8ef5cdc6d77e443b719c736ecedd9c9ea6f48191",
     "src/agents/current-time.ts": "189cfac9eced3467df51b8cc683736723c1b7dad60505b95b66fd0db1272978f",
@@ -85,6 +87,11 @@ _EXTRA_SOURCE_HASHES = {
     "src/plugins/provider-runtime.ts": "b209db16ccf0845faa417e8bca7da4c7afbbf1d4b6a66919d246e2c458d62ffd"
 }
 _EXTRA_SOURCE_ANCHORS = {
+    "packages/agent-core/src/agent-stream-response.ts": [
+        "function ensureToolTurnIdentity(",
+        "if (!executable || message.responseId?.trim() || message.turnId?.trim()) {",
+        "const finalMessage = prepareAssistantMessage(\n            ensureToolTurnIdentity("
+    ],
     "src/agents/harness/builtin-openclaw.ts": [
         "export function createOpenClawAgentHarness("
     ],
@@ -146,6 +153,11 @@ _EXTRA_SOURCE_ANCHORS = {
         "export async function prepareMemoryPromptSection(",
         "export function buildMemoryPromptSection(",
         "function buildSynchronousMemoryPromptSection("
+    ],
+    "src/plugins/memory-runtime.ts": [
+        "export async function closeActiveMemorySearchManagersCore(",
+        "function listCurrentMemoryRuntimes(",
+        "runPluginCleanup(runtime, () => runtime.closeAllMemorySearchManagers?.())"
     ],
     "extensions/memory-core/index.ts": [
         "    api.registerMemoryCapability({"
@@ -290,12 +302,14 @@ _HOST_COMPILED = [
     "dist/registry-empty-BTjzcMW2.mjs"
 ]
 _EXTRA_COMPILED_HASHES = {
+    "dist/agent-core-DrCkPXML.mjs": "44500635166e55c16d9a66f9ddc277cd6cee17b764184b82118b445ac82732eb",
     "dist/builtin-openclaw-D1Xfnzzr.mjs": "cde1b380d227ffe432d5597e0a7422df5241b459df7150a9564bb0b7cec84953",
     "dist/admitted-run-context-hIkojwNE.mjs": "83fd79543af64e8e69570f8c4891420e9e6e7f0d420820db65d6467f09593cb7",
     "dist/runtime-context-prompt-K3ClPtvW.mjs": "b84d2d7f2fa322e98e6178f4ca28b2361d236dc4334957f1fd9fcac16980c814",
     "dist/internal-runtime-context-CLIwiurx.mjs": "a6e7da42e62adc06a94df4b27ae8365a358502faa32c4d649d1e288b0c42cc29",
     "dist/system-prompt-params-BxQn8CFS.mjs": "a2b7636601bddbacc9056a027c67a978a3773c1444c43cdc0a5c16906b457b41",
     "dist/memory-state-BmtUbXjH.mjs": "ed71931d904089353576180357a71c99a6a976b6e300b381b0be943298c9bc4f",
+    "dist/memory-runtime-BzdCLKPx.mjs": "bcfdf870307c0ea827682a6bef89e5c3170d09a2b818c9cbae7f3ce17920fd18",
     "dist/extensions/memory-core/index.js": "ead9aeb06b76504ba8ab9cb50a03c1425d18cbb936285c47f5ae7cf25e2877f8",
     "dist/memory-tool-contract-DOz26L8b.mjs": "caa1cf11748ff19c561d94a321ffff564fdfbd357bc8954e09f50ed6844bb063",
     "dist/current-time-CgCswWtv.mjs": "a393fe167a107166d4add3868bc8f90dc44d1859364bf99f9115d7b42fa2fdca",
@@ -303,6 +317,11 @@ _EXTRA_COMPILED_HASHES = {
     "dist/provider-runtime-BHqCdO9o.mjs": "c546dc4f068c84a318fb13fff99a15f0b0871065ded276ca7d81c3efd11d751c"
 }
 _EXTRA_COMPILED_ANCHORS = {
+    "dist/agent-core-DrCkPXML.mjs": [
+        "function ensureToolTurnIdentity(",
+        "message.responseId?.trim() || message.turnId?.trim()) return message;",
+        "const finalMessage = prepareAssistantMessage(ensureToolTurnIdentity(removeNonExecutableToolCalls({"
+    ],
     "dist/builtin-openclaw-D1Xfnzzr.mjs": [
         "function createOpenClawAgentHarness(",
         "async function runEmbeddedAttempt(",
@@ -332,6 +351,11 @@ _EXTRA_COMPILED_ANCHORS = {
         "async function prepareMemoryPromptSection(",
         "function buildMemoryPromptSection(",
         "function buildSynchronousMemoryPromptSection("
+    ],
+    "dist/memory-runtime-BzdCLKPx.mjs": [
+        "async function closeActiveMemorySearchManagersCore(",
+        "closeActiveMemorySearchManagersCore as i",
+        "runPluginCleanup(runtime, () => runtime.closeAllMemorySearchManagers?.())"
     ],
     "dist/extensions/memory-core/index.js": [
         "api.registerMemoryCapability({",
@@ -422,6 +446,7 @@ COMPILED_ANCHORS = {
 }
 COMPILED_ANCHORS["dist/resource-loader-DhipPm1N.mjs"] = (
     *COMPILED_ANCHORS["dist/resource-loader-DhipPm1N.mjs"],
+    'import { t as Agent } from "./agent-core-DrCkPXML.mjs";',
     'import { c as resolveTerminalAssistantTranscriptRunId, t as attachSessionTranscriptRunId } from "./transcript-events-Ce9wKss8.mjs";',
     "const runOwnedMessage = attachSessionTranscriptRunId(message, transcriptRunId);",
 )
@@ -436,6 +461,7 @@ GENUINE_HELPER_EXPORTS = {
     "dist/internal-runtime-context-CLIwiurx.mjs": ("a", "f", "r", "t", "n"),
     "dist/memory-tool-contract-DOz26L8b.mjs": ("r",),
     "dist/memory-state-BmtUbXjH.mjs": ("f", "n"),
+    "dist/memory-runtime-BzdCLKPx.mjs": ("i",),
     "dist/current-time-CgCswWtv.mjs": ("n", "t"),
     "dist/date-time-B8B56dzx.mjs": ("a", "n", "o", "r", "t"),
     "dist/system-prompt-params-BxQn8CFS.mjs": ("t",),
@@ -482,6 +508,7 @@ REQUIRED_OBSERVED_OWNERS = (
     ("dist/model-registry-CyECwbEb.mjs", "t", "ModelRegistry.inMemory"),
     ("dist/model-registry-CyECwbEb.mjs", "t", "ModelRegistry.registerProvider"),
     ("dist/openclaw-state-db-Dh2awMJ8.mjs", "r", "openOpenClawStateDatabase"),
+    ("dist/memory-runtime-BzdCLKPx.mjs", "i", "closeActiveMemorySearchManagersCore"),
     ("dist/extensions/memory-core/manager-runtime.js", "closeAllMemoryIndexManagers", "closeAllMemoryIndexManagers"),
     ("dist/openclaw-agent-db-lifecycle-B8sSLgPo.mjs", "s", "closeOpenClawAgentDatabasesAsync"),
     ("dist/plugin-state-store-BPUaLoVD.mjs", "u", "closePluginStateDatabaseAsync"),
@@ -524,6 +551,8 @@ def prepare_prompt_runtime_context_bindings(checkout: Path, runtime_root: Path) 
         ("src/agents/memory-prompt-prepare.ts", "../plugins/memory-state.js",
          ("prepareMemoryPromptSection",)),
         ("src/agents/system-prompt.ts", "../plugins/memory-state.js", ("buildMemoryPromptSection",)),
+        ("src/plugins/memory-runtime.ts", "./memory-state.js",
+         ("getMemoryRuntime", "resolveMemoryCapabilityRegistration", "setStandaloneMemoryManagerActive")),
         ("extensions/memory-core/index.ts", "./src/memory-tool-contract.js",
          ("resolveMemoryToolContext", "buildMemoryPromptSection")),
         ("src/agents/sessions/sdk.ts", "./model-registry.js", ("ModelRegistry",)),

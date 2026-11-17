@@ -25,7 +25,7 @@ from memory_core.bootstrap._js import js_trim
 
 ROOT = Path(__file__).resolve().parents[1]
 SESSION = "prompt-runtime-session"
-CLOSE_OWNERS = ("closeAllMemoryIndexManagers", "disposeSessionMcpRuntime", "GatewayScheduler.stop",
+CLOSE_OWNERS = ("closeActiveMemorySearchManagersCore", "closeAllMemoryIndexManagers", "disposeSessionMcpRuntime", "GatewayScheduler.stop",
                 "closeOpenClawAgentDatabasesAsync", "closePluginStateDatabaseAsync")
 MAX_NATIVE_CAPTURE_BYTES = 128 * 1024**2
 

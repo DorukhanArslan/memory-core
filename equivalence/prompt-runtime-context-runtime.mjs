@@ -120,7 +120,7 @@ export async function runPromptRuntimeContextRuntime(input, runtimeConfig) {
     calls: [], codeOwners: [], transcriptSeeds: [], operations: [], states: [], physical: [], providerEvents: [], toolCalls: [], closeReceipts: [], closed: false };
   const imp = relative => import(pathToFileURL(path.join(runtimeConfig.runtimeRoot, relative)).href);
   let operationIndex = -1, active, clearConfig, sessions, scope, agentPath, statePath, flushLogs,
-    closeManagers, closeAgents, closeState, closeMcp, scheduler, capability, descriptor, observedBuilder, memoryRegistration;
+    closeActiveManagers, closeManagers, closeAgents, closeState, closeMcp, scheduler, capability, descriptor, observedBuilder, memoryRegistration;
   let cfg;
   async function owner(modulePath, exportName, name, fn) {
     if (typeof fn !== "function") throw Error("A pinned prompt owner is unavailable: " + name);
@@ -186,6 +186,7 @@ export async function runPromptRuntimeContextRuntime(input, runtimeConfig) {
         model: actualModel.id, stopReason: item ? "toolUse" : "stop", timestamp: Date.now(),
         usage: { input: 0, output: 0, cacheRead: 0, cacheWrite: 0, totalTokens: 0,
           cost: { input: 0, output: 0, cacheRead: 0, cacheWrite: 0, total: 0 } } };
+      if (item) response.responseId = `prompt-tool-response-${operationIndex}-${index}`;
       active.providerCalls.push({ request: { model: clone(actualModel), context: clone(context), options: wire(options) }, response: clone(response) });
       const result = createAssistantMessageEventStream();
       queueMicrotask(() => { result.push({ type: "done", reason: response.stopReason, message: response }); result.end(response); });
@@ -252,6 +253,7 @@ export async function runPromptRuntimeContextRuntime(input, runtimeConfig) {
     statePath = stateHandle.path;
     raw.stateDatabasePath = statePath;
     const managerRuntime = await imp("dist/extensions/memory-core/manager-runtime.js"); closeManagers = managerRuntime.closeAllMemoryIndexManagers;
+    closeActiveManagers = (await imp("dist/memory-runtime-BzdCLKPx.mjs")).i;
     closeAgents = (await imp("dist/openclaw-agent-db-lifecycle-B8sSLgPo.mjs")).s;
     closeState = (await imp("dist/plugin-state-store-BPUaLoVD.mjs")).u;
     flushLogs = (await imp("dist/logger-Cn5hoa7J.mjs")).n;
@@ -272,6 +274,7 @@ export async function runPromptRuntimeContextRuntime(input, runtimeConfig) {
       ["dist/model-registry-CyECwbEb.mjs", "t", "ModelRegistry.inMemory", authModule.t.inMemory],
       ["dist/model-registry-CyECwbEb.mjs", "t", "ModelRegistry.registerProvider", models.registerProvider],
       ["dist/openclaw-state-db-Dh2awMJ8.mjs", "r", "openOpenClawStateDatabase", shared.r],
+      ["dist/memory-runtime-BzdCLKPx.mjs", "i", "closeActiveMemorySearchManagersCore", closeActiveManagers],
       ["dist/extensions/memory-core/manager-runtime.js", "closeAllMemoryIndexManagers", "closeAllMemoryIndexManagers", closeManagers],
       ["dist/openclaw-agent-db-lifecycle-B8sSLgPo.mjs", "s", "closeOpenClawAgentDatabasesAsync", closeAgents],
       ["dist/plugin-state-store-BPUaLoVD.mjs", "u", "closePluginStateDatabaseAsync", closeState],
@@ -383,11 +386,12 @@ export async function runPromptRuntimeContextRuntime(input, runtimeConfig) {
           && capability.promptBuilder === descriptor.value;
       } catch (error) { completed = false; raw.memoryPromptObserver.restoreError = wire(error); }
     }
-    for (const [operation, fn] of [["closeAllMemoryIndexManagers", closeManagers], ["disposeSessionMcpRuntime", closeMcp],
+    for (const [operation, fn, args = []] of [["closeActiveMemorySearchManagersCore", closeActiveManagers, [cfg]],
+      ["closeAllMemoryIndexManagers", closeManagers], ["disposeSessionMcpRuntime", closeMcp],
       ["GatewayScheduler.stop", scheduler ? () => scheduler.stop() : undefined],
       ["closeOpenClawAgentDatabasesAsync", closeAgents], ["closePluginStateDatabaseAsync", closeState]]) {
       if (!fn) continue;
-      try { raw.closeReceipts.push({ operation, returnValue: returned(await call(operation, fn, [])) }); }
+      try { raw.closeReceipts.push({ operation, returnValue: returned(await call(operation, fn, args)) }); }
       catch (error) { completed = false; raw.closeReceipts.push({ operation, error: wire(error) }); }
     }
     try { await capture("closed"); } catch (error) { completed = false; raw.closeCaptureError = wire(error); }

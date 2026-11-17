@@ -1,26 +1,14 @@
-"""Audit and repair of the short-term promotion artifacts.
+"""Audit and repair short-term promotion state for the selected runtime identity."""
 
-Subset of ``auditShortTermPromotionArtifacts`` and
-``repairShortTermPromotionArtifacts`` (``extensions/memory-core/src/
-short-term-promotion.ts:2566-2807`` at OpenClaw pin 4c42815348): the audit
-counts valid, promoted, spaced (recalled on more than one day), concept-tagged
-and invalid recall entries; repair rewrites an unreadable store, drops invalid
-entries and removes a stale lock.
-
-Known gaps (parity matrix row "Audit and repair"): the only issue code is the
-memory-core-defined ``recall-store-unreadable``; upstream's ``recall-store-invalid``,
-``recall-store-over-limit``, ``recall-lock-stale`` and ``qmd-*`` diagnostics,
-concept-script coverage, overflow-entry removal and the lock owner liveness
-check are not ported, and there is no oracle operation for these functions.
-"""
 
 from __future__ import annotations
 
 import json
-from dataclasses import dataclass
+from dataclasses import asdict, dataclass
 from typing import Any
 
 from memory_core.config import MemoryConfig
+from memory_core.runtime_identity import MEMORY_CORE_RUNTIME_IDENTITY, OPENCLAW_COMPAT_RUNTIME_IDENTITY, RuntimeIdentity
 from memory_core.consolidation._util import iso_ms
 from memory_core.consolidation.store import (
     empty_recall_store,
@@ -55,6 +43,21 @@ class ShortTermAuditSummary:
     concept_tagged_entry_count: int
     invalid_entry_count: int
     issues: tuple[ShortTermAuditIssue, ...]
+    store_path: str | None = None
+    lock_path: str | None = None
+    updated_at: str | None = None
+    concept_tag_scripts: dict[str, int] | None = None
+    dangling_entry_count: int = 0
+
+    def as_dict(self) -> dict[str, Any]:
+        return {
+            "exists": self.exists, "entryCount": self.entry_count, "promotedCount": self.promoted_entry_count,
+            "spacedEntryCount": self.spaced_entry_count, "conceptTaggedEntryCount": self.concept_tagged_entry_count,
+            "invalidEntryCount": self.invalid_entry_count, "danglingEntryCount": self.dangling_entry_count,
+            "issues": [asdict(issue) for issue in self.issues],
+            **{key: value for key, value in (("storePath", self.store_path), ("lockPath", self.lock_path),
+                ("updatedAt", self.updated_at), ("conceptTagScripts", self.concept_tag_scripts)) if value is not None},
+        }
 
 
 @dataclass(frozen=True)
@@ -65,10 +68,14 @@ class ShortTermRepairResult:
     removed_invalid_entries: int
     rewrote_store: bool
     removed_stale_lock: bool
+    removed_dangling_entries: int | None = None
+    removed_overflow_entries: int | None = None
 
     def as_dict(self) -> dict[str, Any]:
         """Return the result with upstream camelCase keys."""
         return {
+            **{key: value for key, value in (("removedDanglingEntries", self.removed_dangling_entries),
+                ("removedOverflowEntries", self.removed_overflow_entries)) if value is not None},
             "changed": self.changed,
             "removedInvalidEntries": self.removed_invalid_entries,
             "rewroteStore": self.rewrote_store,
@@ -77,13 +84,16 @@ class ShortTermRepairResult:
 
 
 def audit_short_term_promotion_artifacts(
-    config: MemoryConfig, now_ms: int
+    config: MemoryConfig, now_ms: int, *, identity: RuntimeIdentity = MEMORY_CORE_RUNTIME_IDENTITY
 ) -> ShortTermAuditSummary:
     """Summarize the recall store under ``config.workspace_dir`` (read-only).
 
     An entry is valid when it is an object with ``key``, ``path`` and
     ``snippet``. ``now_ms`` is accepted for signature parity and unused.
     """
+    if identity == OPENCLAW_COMPAT_RUNTIME_IDENTITY:
+        from memory_core.consolidation.dreaming_repair import audit_workspace_recall
+        return audit_workspace_recall(config.workspace_dir, now_ms)
     del now_ms
     store_path = recall_store_path(config.workspace_dir)
     if not store_path.exists():
@@ -156,7 +166,7 @@ def audit_short_term_promotion_artifacts(
 
 
 def repair_short_term_promotion_artifacts(
-    config: MemoryConfig, now_ms: int
+    config: MemoryConfig, now_ms: int, *, identity: RuntimeIdentity = MEMORY_CORE_RUNTIME_IDENTITY
 ) -> ShortTermRepairResult:
     """Repair the recall store and lock under ``config.workspace_dir``.
 
@@ -164,6 +174,9 @@ def repair_short_term_promotion_artifacts(
     entries are dropped (store ``updatedAt`` becomes ``now_ms``); a lock older
     than the stale window is removed if it did not change meanwhile.
     """
+    if identity == OPENCLAW_COMPAT_RUNTIME_IDENTITY:
+        from memory_core.consolidation.dreaming_repair import repair_workspace_recall
+        return repair_workspace_recall(config.workspace_dir, now_ms)
     store_path = recall_store_path(config.workspace_dir)
     lock_path = promotion_lock_path(config.workspace_dir)
     removed_invalid_entries = 0

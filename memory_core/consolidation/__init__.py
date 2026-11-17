@@ -26,6 +26,7 @@ module knows no web framework, UI or LLM client; the opt-in LLM consolidation st
 docs/parity_matrix.md.
 """
 
+from memory_core.consolidation.session_repair import audit_dreaming_artifacts, repair_dreaming_artifacts
 from memory_core.consolidation.audit import (
     ShortTermAuditIssue,
     ShortTermAuditSummary,
@@ -255,6 +256,8 @@ __all__ = [
     "ShortTermLockResult",
     "ShortTermRepairResult",
     "acquire_short_term_promotion_lock",
+    "audit_dreaming_artifacts",
+    "repair_dreaming_artifacts",
     "audit_short_term_promotion_artifacts",
     "derive_concept_tags",
     "evaluate_short_term_promotion_candidates",

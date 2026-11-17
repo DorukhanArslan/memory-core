@@ -157,12 +157,12 @@ class SubjectConsolidation:
     def audit(self, *, now_ms: int) -> ShortTermAuditSummary:
         """Audit the subject's recall store (read-only)."""
         self._require_enabled()
-        return audit_short_term_promotion_artifacts(self.subject.memory.config, now_ms)
+        return audit_short_term_promotion_artifacts(self.subject.memory.config, now_ms, identity=self.identity)
 
     def repair(self, *, now_ms: int) -> ShortTermRepairResult:
         """Repair the subject's recall store and promotion lock."""
         self._require_enabled()
-        return repair_short_term_promotion_artifacts(self.subject.memory.config, now_ms)
+        return repair_short_term_promotion_artifacts(self.subject.memory.config, now_ms, identity=self.identity)
 
     def _require_enabled(self) -> None:
         if not self.enabled:

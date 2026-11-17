@@ -4308,7 +4308,7 @@
           "path": "memory_core/host/lifecycle.py",
           "symbol": "HostTurn.model_request",
           "anchor": "    def model_request(self) -> dict[str, Any]:",
-          "line": 257
+          "line": 259
         },
         {
           "path": "memory_core/current_time.py",
@@ -4499,25 +4499,25 @@
           "path": "memory_core/history_replay.py",
           "symbol": "HistoryReplayContext",
           "anchor": "class HistoryReplayContext:",
-          "line": 48
+          "line": 51
         },
         {
           "path": "memory_core/history_replay.py",
           "symbol": "resolve_history_replay_policy",
           "anchor": "def resolve_history_replay_policy(model: ReplayModel) -> HistoryReplayPolicy:",
-          "line": 92
+          "line": 98
         },
         {
           "path": "memory_core/history_replay.py",
           "symbol": "HistoryReplay.prepare",
           "anchor": "    def prepare(self, messages):",
-          "line": 281
+          "line": 289
         },
         {
           "path": "memory_core/history_replay.py",
           "symbol": "HistoryReplay.request",
           "anchor": "    def request(self, messages):",
-          "line": 313
+          "line": 322
         },
         {
           "path": "memory_core/model_prompt.py",
@@ -4541,25 +4541,25 @@
           "path": "memory_core/host/lifecycle.py",
           "symbol": "HostSessionRunner._prepare_model_prompt",
           "anchor": "    def _prepare_model_prompt(self, effective_prompt, options, context, user_key):",
-          "line": 1004
+          "line": 1035
         },
         {
           "path": "memory_core/host/lifecycle.py",
           "symbol": "HostSessionRunner.run_turn",
           "anchor": "    async def run_turn(self, user_message: str | Mapping[str, Any], *,",
-          "line": 785
+          "line": 816
         },
         {
           "path": "memory_core/host/lifecycle.py",
           "symbol": "HostTurn.model_request",
           "anchor": "    def model_request(self) -> dict[str, Any]:",
-          "line": 257
+          "line": 259
         },
         {
           "path": "memory_core/host/lifecycle.py",
           "symbol": "HostTurn.record_message",
           "anchor": "    def record_message(self, message: Mapping[str, Any]) -> dict[str, Any]:",
-          "line": 273
+          "line": 304
         },
         {
           "path": "memory_core/history.py",
@@ -4926,7 +4926,7 @@
           "path": "memory_core/context_engine_lifecycle.py",
           "symbol": "build_context_engine_conversation_snapshot",
           "anchor": "def build_context_engine_conversation_snapshot(",
-          "line": 34
+          "line": 37
         },
         {
           "path": "memory_core/compaction_replay.py",
@@ -4945,12 +4945,30 @@
           "symbol": "restore_cache_ttl_tool_result_projections",
           "anchor": "def restore_cache_ttl_tool_result_projections(",
           "line": 323
+        },
+        {
+          "path": "memory_core/host/lifecycle.py",
+          "symbol": "HostTurn.responses_input",
+          "anchor": "    def responses_input(self) -> list[Any]:",
+          "line": 283
+        },
+        {
+          "path": "memory_core/host/lifecycle.py",
+          "symbol": "HostTurn.responses_compaction_tracker",
+          "anchor": "    def responses_compaction_tracker(self, assistant:",
+          "line": 290
+        },
+        {
+          "path": "memory_core/history_replay.py",
+          "symbol": "HistoryReplay.prepare",
+          "anchor": "    def prepare(self, messages):",
+          "line": 289
         }
       ],
       "implementation": "partial",
       "notes": [
-        "Native assembleHarnessContextEngine preserves persisted runtime carriers when appendOnlyRuntimeContext is true, protecting signed replay prefixes. Python assemble_context_engine_messages always strips those carriers and exposes no append-only policy option.",
-        "Replay checkpoint and tool-result projection helpers exist, including restoration; the host still owns persistent active transcript revisions, actual summary/model compaction and restart restoration."
+        "Append-only context assembly preserves stored runtime carriers. The public SDK session runner binds Responses checkpoints and retained tool results to the actual session and forwarded authentication profile.",
+        "The restart comparison exercises the published embedded agent and SDK provider input after three real database reopens. Active summary creation, the provider overflow policy and complete compaction replay outcomes still require independent observations."
       ]
     },
     {
@@ -5305,7 +5323,7 @@
           "path": "memory_core/consolidation/light_phase.py",
           "symbol": "prepare_light_phase",
           "anchor": "def prepare_light_phase(",
-          "line": 233
+          "line": 203
         }
       ],
       "implementation": "partial",
@@ -5357,7 +5375,7 @@
           "path": "memory_core/consolidation/dream_narrative.py",
           "symbol": "run_rem_narrative",
           "anchor": "def run_rem_narrative(",
-          "line": 108
+          "line": 113
         }
       ],
       "implementation": "partial",
@@ -5449,13 +5467,13 @@
           "path": "memory_core/consolidation/artifacts.py",
           "symbol": "update_dreams_file",
           "anchor": "def update_dreams_file(",
-          "line": 156
+          "line": 195
         },
         {
           "path": "memory_core/consolidation/artifacts.py",
           "symbol": "append_consolidation_summary",
           "anchor": "def append_consolidation_summary(",
-          "line": 179
+          "line": 219
         }
       ],
       "implementation": "partial",
@@ -6322,7 +6340,7 @@
           "path": "memory_core/consolidation/artifacts.py",
           "symbol": "write_dreams_file_atomic",
           "anchor": "def write_dreams_file_atomic(",
-          "line": 128
+          "line": 167
         },
         {
           "path": "memory_core/consolidation/forget.py",
@@ -6631,7 +6649,7 @@
           "path": "memory_core/host/lifecycle.py",
           "symbol": "HostSessionRunner.run_turn",
           "anchor": "    async def run_turn(",
-          "line": 785
+          "line": 816
         },
         {
           "path": "memory_core/host/managed_session.py",
@@ -6724,7 +6742,7 @@
           "path": "memory_core/host/lifecycle.py",
           "symbol": "HostSessionRunner._load",
           "anchor": "    def _load(",
-          "line": 649
+          "line": 680
         },
         {
           "path": "memory_core/host/managed_index.py",

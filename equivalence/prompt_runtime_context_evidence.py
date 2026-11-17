@@ -6,11 +6,14 @@ composition remain production owners; no expected message packet is built here.
 from __future__ import annotations
 
 import hashlib
+import base64
 import json
+import math
 from pathlib import Path
 import re
 import stat
 from datetime import datetime
+import zlib
 
 from equivalence.embedding_cache_lifecycle_evidence import HOST_LINK
 from equivalence.forget_lineage_evidence import _bytes, physical_snapshot
@@ -24,6 +27,63 @@ ROOT = Path(__file__).resolve().parents[1]
 SESSION = "prompt-runtime-session"
 CLOSE_OWNERS = ("closeAllMemoryIndexManagers", "disposeSessionMcpRuntime", "GatewayScheduler.stop",
                 "closeOpenClawAgentDatabasesAsync", "closePluginStateDatabaseAsync")
+MAX_NATIVE_CAPTURE_BYTES = 128 * 1024**2
+
+
+def decode_native_capture(envelope):
+    """Decode only this family's bounded, complete lossless raw transport.
+
+    Decoding does not authenticate execution or award points. The caller must
+    still run validate_native against the exact case and runtime authority.
+    """
+    _require(isinstance(envelope, dict)
+             and set(envelope) == {"kind", "encoding", "uncompressedBytes", "sha256", "data"}
+             and envelope["kind"] == "prompt-runtime-context-lossless-raw"
+             and envelope["encoding"] == "gzip-json-base64", "an undeclared Native raw transport was supplied")
+    size = envelope["uncompressedBytes"]
+    _require(type(size) is int and 0 < size <= MAX_NATIVE_CAPTURE_BYTES,
+             "the Native raw decoded size exceeds its distinct bounded authority")
+    _require(isinstance(envelope["sha256"], str) and re.fullmatch(r"[0-9a-f]{64}", envelope["sha256"])
+             and isinstance(envelope["data"], str) and len(envelope["data"]) <= 16 * 1024**2,
+             "Native raw transport metadata exceeds the existing outer-file bound")
+    try:
+        compressed = base64.b64decode(envelope["data"].encode("ascii"), validate=True)
+        _require(base64.b64encode(compressed).decode("ascii") == envelope["data"], "Native raw base64 is not canonical")
+        decoder = zlib.decompressobj(16 + zlib.MAX_WBITS)
+        decoded = decoder.decompress(compressed, size + 1)
+        _require(decoder.eof and not decoder.unused_data and not decoder.unconsumed_tail
+                 and len(decoded) == size and hashlib.sha256(decoded).hexdigest() == envelope["sha256"],
+                 "Native raw gzip framing, full decoded size or SHA-256 changed")
+
+        def object_pairs(pairs):
+            result = {}
+            for key, value in pairs:
+                _require(key not in result, "a duplicate key entered the complete Native raw JSON")
+                result[key] = value
+            return result
+
+        def invalid_constant(_value):
+            raise ValueError("prompt runtime context: Native raw JSON contains a non-finite number")
+
+        raw = json.loads(decoded.decode("utf8"), object_pairs_hook=object_pairs, parse_constant=invalid_constant)
+
+        def finite(value):
+            if isinstance(value, float):
+                _require(math.isfinite(value), "Native raw JSON contains an overflowing number")
+            elif isinstance(value, dict):
+                for item in value.values():
+                    finite(item)
+            elif isinstance(value, list):
+                for item in value:
+                    finite(item)
+
+        finite(raw)
+    except (ValueError, zlib.error) as error:
+        raise ValueError("prompt runtime context: invalid complete Native raw transport") from error
+    _require(isinstance(raw, list) and len(raw) == 1 and isinstance(raw[0], dict)
+             and raw[0].get("kind") == "prompt-runtime-context-native-raw",
+             "the complete Native raw singleton or family identity changed")
+    return raw
 
 
 def _require(value, message):

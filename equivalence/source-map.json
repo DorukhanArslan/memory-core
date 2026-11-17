@@ -6421,7 +6421,7 @@
           "path": "memory_core/host/lifecycle.py",
           "symbol": "HostSessionRunner.run_turn",
           "anchor": "    async def run_turn(",
-          "line": 775
+          "line": 782
         },
         {
           "path": "memory_core/host/managed_session.py",
@@ -6514,7 +6514,7 @@
           "path": "memory_core/host/lifecycle.py",
           "symbol": "HostSessionRunner._load",
           "anchor": "    def _load(",
-          "line": 639
+          "line": 646
         },
         {
           "path": "memory_core/host/managed_index.py",

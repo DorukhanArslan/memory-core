@@ -11,6 +11,7 @@ const BRIDGE = Symbol.for("memory-core.equivalence.prompt-runtime-provider");
 const PROVIDER = "fixture-prompt-runtime-model", MODEL = "fixture-model";
 const TOOL_NAMES = ["memory_search", "memory_get", "sessions_search", "sessions_history", "session_status"];
 const HARNESS = "dist/builtin-openclaw-D1Xfnzzr.mjs";
+const MAX_RAW_UNCOMPRESSED_BYTES = 128 * 1024 * 1024;
 const sha = value => createHash("sha256").update(value).digest("hex");
 const clone = value => JSON.parse(JSON.stringify(value));
 const bytes = value => ({ hex: value.toString("hex"), sha256: sha(value), size: value.length });
@@ -399,6 +400,11 @@ export async function runPromptRuntimeContextRuntime(input, runtimeConfig) {
     for (const [key, value] of Object.entries(previousEnvironment)) {
       if (value === undefined) delete process.env[key]; else process.env[key] = value;
     }
-    await fs.writeFile(path.join(runtimeConfig.evidenceDirectory, "native-raw.json"), JSON.stringify([raw]));
+    const payload = JSON.stringify([raw]), uncompressedBytes = Buffer.byteLength(payload);
+    if (uncompressedBytes > MAX_RAW_UNCOMPRESSED_BYTES)
+      throw Error(`Prompt runtime raw payload exceeds its 128 MiB limit: ${uncompressedBytes} bytes`);
+    const envelope = { kind: "prompt-runtime-context-lossless-raw", encoding: "gzip-json-base64",
+      uncompressedBytes, sha256: sha(payload), data: gzipSync(Buffer.from(payload)).toString("base64") };
+    await fs.writeFile(path.join(runtimeConfig.evidenceDirectory, "native-raw.json"), JSON.stringify(envelope));
   }
 }

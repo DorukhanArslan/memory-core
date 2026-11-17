@@ -172,6 +172,10 @@ def run_session_projection(arguments: dict[str, Any]) -> dict[str, Any]:
         resolve_session_reset_recall_cutoff,
     )
 
+    if arguments.get("reopenHeartbeatCorpus"):
+        from equivalence.heartbeat_turn_boundaries import read_corpus
+
+        return read_corpus(arguments)
     if arguments.get("resetOnly"):
         return {"resolvedResetCutoff": resolve_session_reset_recall_cutoff(arguments["resetEvents"])}
 

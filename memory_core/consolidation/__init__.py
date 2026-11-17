@@ -37,6 +37,7 @@ from memory_core.consolidation.artifacts import (
     append_consolidation_skipped_summary,
     append_consolidation_summary,
     read_memory_preimages,
+    read_recent_dream_diary_entries,
     store_memory_preimage,
 )
 from memory_core.consolidation.concepts import MAX_CONCEPT_TAGS, derive_concept_tags
@@ -45,6 +46,7 @@ from memory_core.consolidation.daily_ingestion import (
     ingest_daily_memory_signals,
     seed_historical_daily_memory_signals,
 )
+from memory_core.consolidation.dream_narrative import append_narrative_entry
 from memory_core.consolidation.dreaming import (
     DREAMING_PHASES,
     DREAMS_FILE_NAME,
@@ -204,6 +206,8 @@ __all__ = [
     "DeepConsolidation",
     "append_consolidation_skipped_summary",
     "append_consolidation_summary",
+    "append_narrative_entry",
+    "read_recent_dream_diary_entries",
     "read_memory_preimages",
     "store_memory_preimage",
     "CONSOLIDATION_SYSTEM_PROMPT",

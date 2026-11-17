@@ -13,10 +13,10 @@ import stat
 from typing import Any, Literal
 
 from memory_core.atomic_publication import commit_memory_content
-from memory_core.bootstrap._js import JS_SPACE, js_trim, js_trim_end, truncate_utf16_safe, utf16_len
+from memory_core.bootstrap._js import JS_SPACE, js_trim, js_trim_end
 from memory_core.config import MemoryConfig
 from memory_core.consolidation._util import iso_ms, js_to_fixed, parse_ms, write_json_atomic
-from memory_core.consolidation.artifacts import read_dreams_file, resolve_dreams_path
+from memory_core.consolidation.artifacts import read_recent_dream_diary_entries
 from memory_core.consolidation.promotion import (
     _resolve_short_term_source_path_candidates,
     format_memory_dreaming_day,
@@ -55,36 +55,6 @@ def _similarity(left, right):
     if not a and not b:
         return float(js_trim(left).lower() == js_trim(right).lower())
     return jaccard_similarity(a, b)
-
-
-def _recent_diary(workspace):
-    try:
-        content = read_dreams_file(resolve_dreams_path(workspace))
-    except PermissionError:
-        return []
-    start = "<!-- openclaw:dreaming:diary:start -->"
-    end = "<!-- openclaw:dreaming:diary:end -->"
-    if start not in content or content.find(end) < content.index(start):
-        return []
-    blocks = content.partition(start)[2].partition(end)[0].split("\n---\n")
-    entries = []
-    for block in blocks:
-        lines = [js_trim(line) for line in block.split("\n")]
-        body = " ".join(
-            line
-            for line in lines
-            if line
-            and not line.startswith(("#", "<!--"))
-            and not (len(line) > 2 and line.startswith("*") and line.endswith("*"))
-        )
-        body = js_trim(re.sub(JS_SPACE + "+", " ", body))
-        if body:
-            entries.append(
-                js_trim_end(truncate_utf16_safe(body, 360)) + "..."
-                if utf16_len(body) > 360
-                else body
-            )
-    return entries[-4:][::-1]
 
 
 def _fresh(entry, signal):
@@ -267,7 +237,7 @@ def prepare_light_phase(
             key=lambda e: (parse_ms(e["lastRecalledAt"], -math.inf), e["recallCount"]), reverse=True
         )
         groups = dedupe_dreaming_entries(entries, options.dedupe_similarity)
-        diary = _recent_diary(root)
+        diary = read_recent_dream_diary_entries(root, limit=4)
 
         def covered(entry):
             snippet = js_trim(re.sub(JS_SPACE + "+", " ", entry["snippet"].lower()))

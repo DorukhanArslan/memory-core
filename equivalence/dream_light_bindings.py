@@ -134,10 +134,14 @@ def prepare_dream_light_bindings(checkout: Path, runtime_root: Path, phase="ligh
     if _git(checkout, "rev-parse", "HEAD").decode().strip() != REFERENCE_COMMIT:
         raise ValueError("The light sweep requires the pinned OpenClaw source commit")
 
-    if phase not in ("light", "rem"):
+    if phase not in ("light", "rem", "diary"):
         raise ValueError("Unknown dreaming phase")
     source = {**SOURCE, **REM_SOURCE} if phase == "rem" else SOURCE
     compiled = {**COMPILED, **REM_COMPILED} if phase == "rem" else COMPILED
+    entry = {"artifact": "dist/dreaming-phases-rmgXNBLP.mjs", "export": "r", "name": "runDreamingSweepPhases"}
+    if phase == "diary":
+        from equivalence.dream_diary_bindings import SOURCE as source, COMPILED as compiled
+        entry = {"artifact": "dist/dreaming-dreams-file-BJzlZFlf.mjs", "export": "n", "name": "appendNarrativeEntry"}
 
     def verify(root, table, committed):
         hashes = {name: row[0] for name, row in table.items()}
@@ -149,5 +153,4 @@ def prepare_dream_light_bindings(checkout: Path, runtime_root: Path, phase="ligh
             "compiledBindings": verify(runtime_root, compiled, False),
             "requiredLoadedArtifacts": list(compiled),
             "sourceBuildReproduced": False, "sourceFallbackAllowed": False,
-            "entryPoint": {"artifact": "dist/dreaming-phases-rmgXNBLP.mjs", "export": "r",
-                           "name": "runDreamingSweepPhases"}}
+            "entryPoint": entry}

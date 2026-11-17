@@ -37,6 +37,7 @@ from memory_core.consolidation._util import (
     to_int,
     write_json_atomic,
 )
+from memory_core.consolidation.file_lock import pid_definitely_dead, process_start_time
 from memory_core.workspace import workspace_file_lock
 
 SHORT_TERM_STORE_RELATIVE_PATH = Path("memory") / ".dreams" / "short-term-recall.json"
@@ -47,6 +48,7 @@ _SHORT_TERM_LOCK_GUARD_RELATIVE_PATH = (
     Path("memory") / ".dreams" / "short-term-promotion.lock.guard"
 )
 SHORT_TERM_LOCK_STALE_MS = 60_000
+_ACTIVE_LOCK_OWNERS: dict[Path, str] = {}
 SHORT_TERM_RECALL_MAX_ENTRIES = 512
 SHORT_TERM_RECALL_MAX_SNIPPET_CHARS = 800
 PHASE_SIGNAL_DECAY_MS = 30 * DAY_MS
@@ -64,6 +66,7 @@ class ShortTermLockResult:
     path: Path
     reason: str | None = None
     stole_stale: bool = False
+    holder: dict[str, Any] | None = None
 
 
 @dataclass(frozen=True)
@@ -113,15 +116,16 @@ def _acquire_workspace_lock(workspace_dir: Path, now_ms: int) -> Iterator[ShortT
     """Hold the workspace promotion lock for the duration of the ``with`` block.
 
     Port of upstream ``withShortTermLock``: the lock file carries ``pid``,
-    ``createdAt`` and an owner token; a lock older than
-    ``SHORT_TERM_LOCK_STALE_MS`` is stolen, a fresh one yields
-    ``acquired=False``. Only the owner that created the file removes it.
+    ``createdAt`` and an owner token. A lock can be reclaimed after the
+    stale interval when its owner is gone. Only the owner releases its lease.
     """
     lock_path = promotion_lock_path(workspace_dir)
     lock_path.parent.mkdir(parents=True, exist_ok=True)
     stole_stale = False
+    owner_pid = os.getpid()
     owner_token = secrets.token_hex(16)
     acquired = False
+    holder = None
     with _short_term_promotion_guard(lock_path):
         while True:
             try:
@@ -131,6 +135,7 @@ def _acquire_workspace_lock(workspace_dir: Path, now_ms: int) -> Iterator[ShortT
                 if stale_snapshot is None:
                     continue
                 if not _lock_is_stale(lock_path, now_ms):
+                    holder = _holder_from_snapshot(stale_snapshot)
                     break
                 if not _unlink_matching_short_term_lock(lock_path, stale_snapshot):
                     break
@@ -140,25 +145,38 @@ def _acquire_workspace_lock(workspace_dir: Path, now_ms: int) -> Iterator[ShortT
             break
 
         if acquired:
-            payload = {"pid": os.getpid(), "createdAt": iso_ms(now_ms), "ownerToken": owner_token}
+            payload = {"pid": owner_pid, "createdAt": iso_ms(now_ms), "ownerToken": owner_token}
+            start_time = process_start_time(owner_pid)
+            if start_time is not None:
+                payload["ownerStartTime"] = start_time
             with os.fdopen(fd, "w", encoding="utf-8") as handle:
                 json.dump(payload, handle, ensure_ascii=False)
                 handle.write("\n")
+            _ACTIVE_LOCK_OWNERS[lock_path.resolve()] = owner_token
 
     if not acquired:
-        yield ShortTermLockResult(acquired=False, path=lock_path, reason="locked")
+        yield ShortTermLockResult(acquired=False, path=lock_path, reason="locked", holder=holder)
         return
 
     try:
         yield ShortTermLockResult(acquired=True, path=lock_path, stole_stale=stole_stale)
     finally:
-        _release_short_term_promotion_lock(lock_path, owner_token)
+        if os.getpid() == owner_pid:
+            _release_short_term_promotion_lock(lock_path, owner_token)
 
 
 # Upstream's ``withMemoryWorkspaceLock`` is reentrant within one async call chain (an AsyncLocalStorage
 # of owned workspaces): the DREAMS.md writers re-enter the lock the deep phase already holds.
-_HELD_WORKSPACES: contextvars.ContextVar[frozenset[str]] = contextvars.ContextVar(
-    f"{PACKAGE_NAME}_held_workspace_locks", default=frozenset()
+@dataclass
+class _WorkspaceScope:
+    workspace: str
+    pid: int
+    thread: int
+    active: bool = True
+
+
+_HELD_WORKSPACES: contextvars.ContextVar[tuple[_WorkspaceScope, ...]] = contextvars.ContextVar(
+    f"{PACKAGE_NAME}_held_workspace_locks", default=()
 )
 MEMORY_WORKSPACE_LOCK_WAIT_TIMEOUT_MS = 10_000
 MEMORY_WORKSPACE_LOCK_RETRY_DELAY_MS = 40
@@ -169,6 +187,11 @@ class MemoryWorkspaceLockHeldError(OSError):
 
     code = "MEMORY_WORKSPACE_LOCK_HELD"
 
+    def __init__(self, path: Path, holder: dict[str, Any] | None) -> None:
+        detail = f" (held by {holder['owner']})" if holder is not None else ""
+        super().__init__(f"Timed out waiting for memory workspace lock at {path}{detail}")
+        self.outcome = {"kind": "held", "holder": holder}
+
 
 def _workspace_key(workspace_dir: Path) -> str:
     return os.path.realpath(workspace_dir)
@@ -177,17 +200,20 @@ def _workspace_key(workspace_dir: Path) -> str:
 @contextmanager
 def hold_workspace_lock_marker(workspace_dir: Path) -> Iterator[None]:
     """Record that this call chain owns the workspace lock (so :func:`memory_workspace_lock` re-enters)."""
-    held = _HELD_WORKSPACES.get()
-    token = _HELD_WORKSPACES.set(held | {_workspace_key(workspace_dir)})
+    scope = _WorkspaceScope(_workspace_key(workspace_dir), os.getpid(), threading.get_ident())
+    token = _HELD_WORKSPACES.set((*_HELD_WORKSPACES.get(), scope))
     try:
         yield
     finally:
+        scope.active = False
         _HELD_WORKSPACES.reset(token)
 
 
 def workspace_lock_held(workspace_dir: Path) -> bool:
     """True inside a block that owns the workspace lock (the current call chain)."""
-    return _workspace_key(workspace_dir) in _HELD_WORKSPACES.get()
+    key = _workspace_key(workspace_dir)
+    return any(scope.active and scope.workspace == key and scope.pid == os.getpid()
+               and scope.thread == threading.get_ident() for scope in _HELD_WORKSPACES.get())
 
 
 @contextmanager
@@ -217,9 +243,7 @@ def memory_workspace_lock(
                     yield
                 return
         if time.monotonic() >= deadline:
-            raise MemoryWorkspaceLockHeldError(
-                f"Timed out waiting for memory workspace lock at {lock.path}"
-            )
+            raise MemoryWorkspaceLockHeldError(lock.path, lock.holder)
         time.sleep(retry_delay_ms / 1000)
 
 
@@ -341,7 +365,7 @@ def is_valid_short_term_recall_entry(entry: Any) -> bool:
 
 
 def lock_is_stale(lock_path: Path, now_ms: int) -> bool:
-    """True when the lock's ``createdAt`` (or mtime) is older than the stale window."""
+    """Inspect the lease age and the process identity recorded by its owner."""
     return _lock_is_stale(lock_path, now_ms)
 
 
@@ -373,17 +397,42 @@ def _lock_is_stale(lock_path: Path, now_ms: int) -> bool:
         raw = json.loads(lock_path.read_text(encoding="utf-8"))
     except (FileNotFoundError, json.JSONDecodeError, OSError, UnicodeDecodeError):
         raw = None
-    if isinstance(raw, dict):
-        created_at = raw.get("createdAt")
-        if isinstance(created_at, str):
-            created_at_ms = parse_ms(created_at, -1)
-            if created_at_ms >= 0:
-                return now_ms - created_at_ms > SHORT_TERM_LOCK_STALE_MS
-    try:
-        lock_mtime_ms = int(lock_path.stat().st_mtime * 1000)
-    except FileNotFoundError:
+    record = raw if isinstance(raw, dict) else {}
+    created = record.get("createdAt")
+    stamp = parse_ms(created, -1) if isinstance(created, str) else -1
+    if stamp < 0:
+        try:
+            stamp = lock_path.stat().st_mtime_ns // 1_000_000
+        except FileNotFoundError:
+            return False
+    if now_ms - stamp <= SHORT_TERM_LOCK_STALE_MS:
         return False
-    return now_ms - lock_mtime_ms > SHORT_TERM_LOCK_STALE_MS
+    pid = record.get("pid")
+    if type(pid) is not int or pid <= 0:
+        return True
+    if pid == os.getpid():
+        return (_ACTIVE_LOCK_OWNERS.get(lock_path.resolve()) != record.get("ownerToken")
+                or not record.get("ownerToken"))
+    if pid_definitely_dead(pid):
+        return True
+    recorded = record.get("ownerStartTime")
+    current = process_start_time(pid) if type(recorded) is int else None
+    return current is not None and current != recorded
+
+
+def _holder_from_snapshot(snapshot: _ShortTermLockSnapshot) -> dict[str, Any] | None:
+    try:
+        record = json.loads(snapshot.payload)
+    except (ValueError, UnicodeDecodeError):
+        return None
+    if not isinstance(record, dict):
+        return None
+    epoch = snapshot.mtime_ns // 1_000_000
+    created = record.get("createdAt")
+    if isinstance(created, str):
+        epoch = parse_ms(created, epoch)
+    owner = f"{record.get('pid', '')}:{snapshot.owner_token or ''}"
+    return {"owner": owner, "epoch": epoch}
 
 
 def _read_short_term_lock_snapshot(lock_path: Path) -> _ShortTermLockSnapshot | None:
@@ -467,6 +516,9 @@ def _unlink_matching_short_term_lock(lock_path: Path, snapshot: _ShortTermLockSn
 
 def _release_short_term_promotion_lock(lock_path: Path, owner_token: str) -> None:
     with _short_term_promotion_guard(lock_path):
+        key = lock_path.resolve()
+        if _ACTIVE_LOCK_OWNERS.get(key) == owner_token:
+            del _ACTIVE_LOCK_OWNERS[key]
         try:
             raw = json.loads(lock_path.read_text(encoding="utf-8"))
         except (FileNotFoundError, json.JSONDecodeError, OSError, UnicodeDecodeError):

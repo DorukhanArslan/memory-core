@@ -22,7 +22,9 @@ HISTORY_REGISTERED_CASES = 1508
 HISTORY_CATALOG_SHA256 = "f40567a91042cb6e46bca64d94e83a3619fe5d2353192730c6e6838998822493"
 NUMERIC_REGISTERED_CASES = 1512
 NUMERIC_CATALOG_SHA256 = "e9673faf7122adb19f59b1284d779a63a6bda20620e7c210854cce1da9cc257e"
-REGISTERED_CASES = 1519
+DEEP_REGISTERED_CASES = 1519
+DEEP_CATALOG_SHA256 = "d6a6e64b7c48efa35fe09ddd542e1e82f2329725bc5245bc138bb5b304c6024d"
+REGISTERED_CASES = 1542
 
 # PR22 changes these three policy texts, not the thirteen cases' business inputs,
 # order, coverage or other fields. Reversing only the exact reviewed fragments
@@ -113,7 +115,7 @@ def definition_authority(cases, *, fif_version):
             or len(cases) not in {HISTORICAL_REGISTERED_CASES, OUTCOME_REGISTERED_CASES,
                                   BOUNDARY_REGISTERED_CASES, RECALL_REGISTERED_CASES,
                                   CACHE_REGISTERED_CASES, RESET_REGISTERED_CASES, PROMPT_REGISTERED_CASES,
-                                  HISTORY_REGISTERED_CASES, NUMERIC_REGISTERED_CASES, REGISTERED_CASES}
+                                  HISTORY_REGISTERED_CASES, NUMERIC_REGISTERED_CASES, DEEP_REGISTERED_CASES, REGISTERED_CASES}
             or fif_version == "v5" and len(cases) != HISTORICAL_REGISTERED_CASES):
         raise ValueError("Catalog migration requires one complete exact registered definition set")
     frozen = families[fif_version]
@@ -181,13 +183,21 @@ def definition_authority(cases, *, fif_version):
         if _sha(cases[:HISTORY_REGISTERED_CASES]) != HISTORY_CATALOG_SHA256 or _sha(numbers) != _sha(build_cases()):
             raise ValueError("The numeric cases must follow the complete history repair family")
         validate_registration(cases)
-    deep = cases[NUMERIC_REGISTERED_CASES:]
+    deep = cases[NUMERIC_REGISTERED_CASES:DEEP_REGISTERED_CASES]
     if deep:
         from equivalence.deep_consolidation import build_cases, validate_registration
 
         if _sha(cases[:NUMERIC_REGISTERED_CASES]) != NUMERIC_CATALOG_SHA256 or _sha(deep) != _sha(build_cases()):
             raise ValueError("The deep consolidation cases must follow the complete numeric family")
         validate_registration(cases)
+    maintenance = cases[DEEP_REGISTERED_CASES:]
+    if maintenance:
+        from equivalence import automation_job_state, dream_light, dream_rem, workspace_lock_cases
+
+        expected = [case for family in (dream_light, dream_rem, automation_job_state, workspace_lock_cases)
+                    for case in family.build_cases()]
+        if _sha(cases[:DEEP_REGISTERED_CASES]) != DEEP_CATALOG_SHA256 or _sha(maintenance) != _sha(expected):
+            raise ValueError("Maintenance cases must follow the exact prior 1519 definitions")
     frozen.validate_registration(cases)
     prefix = deepcopy(cases[:ORIGINAL_PREFIX_CASES])
     policy_replacements = _restore_reviewed_policies(prefix)
@@ -265,4 +275,8 @@ def definition_authority(cases, *, fif_version):
         result["deepConsolidationAppend"] = [
             {"index": index, "id": case["id"], "definitionSha256": _sha(case)}
             for index, case in enumerate(deep, NUMERIC_REGISTERED_CASES)]
+    if maintenance:
+        result["maintenanceAndLockAppend"] = [
+            {"index": index, "id": case["id"], "definitionSha256": _sha(case)}
+            for index, case in enumerate(maintenance, DEEP_REGISTERED_CASES)]
     return result

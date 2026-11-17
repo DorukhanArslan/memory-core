@@ -8,6 +8,7 @@ side imports the pinned upstream TypeScript implementations at execution time.
 from __future__ import annotations
 
 from dataclasses import asdict, dataclass
+from pathlib import Path
 import math
 import random
 from typing import Any
@@ -332,6 +333,19 @@ def build_cases(*, include_prospective: bool = False) -> list[dict[str, Any]]:
     from equivalence.deep_consolidation import build_cases as build_deep_consolidation
 
     cases.extend(build_deep_consolidation())
+
+    from equivalence.dream_phase_family import FAMILIES
+
+    for family in FAMILIES.values():
+        cases.extend(family.build_cases())
+
+    from equivalence.automation_job_state import build_cases as build_automation_jobs
+
+    cases.extend(build_automation_jobs())
+
+    from equivalence.workspace_lock_cases import build_cases as build_workspace_locks
+
+    cases.extend(build_workspace_locks())
     if include_prospective:
         from equivalence.flush_contract import build_prospective_flush_contract_cases
         from equivalence.session_projection import build_prospective_session_projection_cases
@@ -351,6 +365,21 @@ def build_cases(*, include_prospective: bool = False) -> list[dict[str, Any]]:
 def run_python(case: dict[str, Any]) -> Any:
     """Execute the installed Python implementation; never manufacture a match."""
     operation, arguments = case["operation"], case["input"]
+    if operation == "automation-job-state-runtime":
+        from equivalence.automation_job_state_sdk import run_sdk
+
+        case = dict(case)
+        diagnostic = case.pop("_diagnosticDirectory", None)
+        if diagnostic is None:
+            from tempfile import TemporaryDirectory
+            with TemporaryDirectory() as directory:
+                return run_sdk(case, Path(directory))
+        return run_sdk(case, diagnostic)
+
+    if operation == "workspace-lock-process-runtime":
+        from equivalence.workspace_lock_evidence import run_sdk_case
+
+        return run_sdk_case(case)
     if operation == "engine-numeric-boundaries":
         from equivalence.engine_numeric_boundaries import run_engine_numeric_boundaries
 
@@ -434,6 +463,10 @@ def run_python(case: dict[str, Any]) -> Any:
 
         validate_prompt_context_case({key: value for key, value in case.items() if key != "_diagnosticDirectory"})
         return run_prompt_runtime_context(arguments, evidence_directory=case.get("_diagnosticDirectory"))
+    if operation in {"dream-light-runtime", "dream-rem-runtime"}:
+        from equivalence.dream_light_sdk import run_sdk
+
+        return run_sdk(case, case.get("_diagnosticDirectory"))
     if operation == "prompt-history-repair-runtime":
         from equivalence.prompt_history_repair import validate_case as validate_history_repair_case
         from equivalence.prompt_history_repair_sdk import run_prompt_history_repair

@@ -34,3 +34,33 @@ def prepare_heartbeat_dependency(checkout: Path, runtime_cache: Path, archive: P
     return {**CRONER, "directory": str(target), "fileCount": len(verified),
             "filesSha256": hashlib.sha256(json.dumps(verified, sort_keys=True, separators=(",", ":")).encode()).hexdigest(),
             "files": verified, "archiveSha256": hashlib.sha256(raw).hexdigest(), "archive": str(archive)}
+
+
+def main():
+    """Stage only the source-locked archive; each job run verifies its own installation."""
+    import argparse
+    import tempfile
+    from equivalence.dependencies import _assert_safe_directory, _download
+
+    parser = argparse.ArgumentParser(description=main.__doc__)
+    parser.add_argument("--reference", type=Path, required=True)
+    parser.add_argument("--destination", type=Path, required=True)
+    args = parser.parse_args()
+    dest = args.destination.absolute()
+    _assert_safe_directory(dest)
+    dest.mkdir(parents=True, exist_ok=True)
+    archive = dest / "croner-10.0.1.tgz"
+    with tempfile.TemporaryDirectory(dir=dest) as scratch:
+        base = Path(scratch)
+        candidate = archive
+        if not archive.exists():
+            candidate = base / archive.name
+            candidate.write_bytes(_download(CRONER["name"], CRONER["version"]))
+        proof = prepare_heartbeat_dependency(args.reference, base, candidate, install=True)
+        if candidate != archive:
+            candidate.replace(archive)
+    print(f"Verified {CRONER['name']}@{CRONER['version']} ({proof['fileCount']} files)")
+
+
+if __name__ == "__main__":
+    main()

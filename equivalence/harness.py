@@ -22,6 +22,8 @@ import tempfile
 import time
 from typing import Any, Callable
 
+from equivalence.dream_phase_family import FAMILIES as DREAM_FAMILIES, PHASES as DREAM_PHASES, evidence_family, report_key
+
 
 ROOT = Path(__file__).resolve().parents[1]
 _MAX_OUTPUT_BYTES = 4 * 1024 * 1024
@@ -305,9 +307,11 @@ def _validate_scope(scope: Any, cases: Any) -> tuple[list[dict], dict[str, set[s
         validate_storage_path_acceptance_registration(cases)
     except (TypeError, ValueError) as error:
         raise HarnessError("cases-invalid", "Path-safety acceptance requires its complete reviewed whole-tool family set.") from error
+    from equivalence.automation_job_state import validate_registration as validate_jobs_registration
     from equivalence.engine_numeric_family import validate_registration as validate_numeric_registration
     try:
         validate_numeric_registration(cases)
+        validate_jobs_registration(cases)
     except (ValueError, KeyError, TypeError) as error:
         raise HarnessError("cases-invalid", str(error)) from None
     from equivalence.promotion_ranking_acceptance import validate_promotion_ranking_acceptance
@@ -413,8 +417,13 @@ def _validate_scope(scope: Any, cases: Any) -> tuple[list[dict], dict[str, set[s
     try:
         from equivalence.deep_consolidation import validate_registration as validate_deep_consolidation
 
+        from equivalence.workspace_lock_cases import validate_registration as validate_workspace_locks
+
+        validate_workspace_locks(cases)
         validate_deep_consolidation(cases)
         validate_prompt_history_repair(cases)
+        for family in DREAM_FAMILIES.values():
+            family.validate_registration(cases)
     except ValueError as error:
         raise HarnessError("cases-invalid", str(error)) from None
     return requirements, points
@@ -446,6 +455,31 @@ def _oracle(node: Path, script: Path, checkout: Path, cases: list[dict], timeout
     timeout_limit = 180 if boundary_case or query_sync_boundary_case or forget_index_fence_case else 120
     if not isinstance(timeout, (int, float)) or isinstance(timeout, bool) or not 0 < timeout <= timeout_limit:
         raise HarnessError("timeout-invalid", f"The oracle requires a finite timeout of at most {timeout_limit} seconds.")
+    if len(cases) == 1 and cases[0]["operation"] == "automation-job-state-runtime":
+        from equivalence.automation_job_state_evidence import validate_native
+        from equivalence.automation_job_state_native import run_native
+
+        if release_runtime is None:
+            raise HarnessError("release-runtime-unavailable", "Scheduled memory tasks require the pinned release.")
+        retained = ROOT / ".equivalence-results" / "automation-job-state"
+        retained.mkdir(parents=True, exist_ok=True)
+        attempt = Path(tempfile.mkdtemp(prefix="native-attempt-", dir=retained))
+        case = cases[0]
+        try:
+            observed = run_native(case, node=node, checkout=checkout, runtime=release_runtime,
+                                  runtime_root=Path(release_runtime["runtimeRoot"]), evidence_directory=attempt)
+            validate_native(case, observed["raw"], observed["actual"])
+            return {"kind": "official-release-runtime-comparison", "sources": [],
+                    "results": [{"id": case["id"], "ok": True, "result": observed["actual"]}],
+                    "releaseSources": observed["releaseSources"], "releaseTrace": observed["releaseTrace"],
+                    "runtimeDiagnostics": [{"id": case["id"], "rawSnapshots": [observed["raw"]],
+                                            "sha256": hashlib.sha256((attempt / "scheduled-task-original/stdout.json").read_bytes()).hexdigest(),
+                                            "validationStatus": "verified", "evidenceDirectory": str(attempt)}]}
+        except Exception as error:
+            failure = HarnessError("automation-job-state-evidence-invalid", "Scheduled memory task execution failed.")
+            failure.rejected_evidence = {"caseIds": [case["id"]], "coverageCredit": False,
+                                         "retainedDirectory": str(attempt), "reason": str(error)}
+            raise failure from error
     if len(cases) == 1 and cases[0]["operation"] == "host-restart-session-runtime":
         from equivalence.host_restart_native import run_native_session_case
 
@@ -741,6 +775,21 @@ def _oracle(node: Path, script: Path, checkout: Path, cases: list[dict], timeout
             failure.rejected_evidence = {"caseIds": [cases[0]["id"]], "coverageCredit": False,
                                          "retainedDirectory": str(attempt), "reason": str(error)}
             raise failure from error
+    if len(cases) == 1 and cases[0]["operation"] == "workspace-lock-process-runtime":
+        from equivalence.workspace_lock_evidence import run_native_case as run_workspace_writers
+
+        if release_runtime is None:
+            raise HarnessError("release-runtime-unavailable", "Independent writers require the original lock owner.")
+        retained = ROOT / ".equivalence-results" / "workspace-locks"
+        retained.mkdir(parents=True, exist_ok=True)
+        attempt = Path(tempfile.mkdtemp(prefix="native-attempt-", dir=retained))
+        try:
+            return run_workspace_writers(cases[0], attempt, node, release_runtime)
+        except Exception as error:
+            failure = HarnessError("workspace-writer-error", "Independent OpenClaw writers could not complete.")
+            failure.rejected_evidence = {"caseIds": [cases[0]["id"]], "coverageCredit": False,
+                                         "retainedDirectory": str(attempt), "reason": str(error)}
+            raise failure from error
     if len(cases) == 1 and cases[0]["operation"] in {"promotion-apply-family-runtime", "deep-consolidation-runtime"}:
         from equivalence.promotion_apply_family_native import run_native_case
 
@@ -790,6 +839,9 @@ def _oracle(node: Path, script: Path, checkout: Path, cases: list[dict], timeout
                     from equivalence.forget_boundaries_profile import prepare_forget_boundaries_profile
 
                     context_options["forget_boundaries_profile"] = prepare_forget_boundaries_profile(cases[0], node)
+                if len(cases) == 1 and cases[0]["operation"] in DREAM_FAMILIES:
+                    family = DREAM_FAMILIES[cases[0]["operation"]]
+                    context_options["dream_phase_profile"] = family.profile_for(cases[0], node)
                 if len(cases) == 1 and cases[0]["operation"] == "recall-signals-runtime":
                     from equivalence.recall_signals_profile import prepare_recall_signals_profile
 
@@ -936,6 +988,10 @@ def _oracle(node: Path, script: Path, checkout: Path, cases: list[dict], timeout
                         name: {"text": value, "bytes": len(value.encode("utf8")),
                                "sha256": hashlib.sha256(value.encode("utf8")).hexdigest()}
                         for name, value in (("stdout", stdout), ("stderr", stderr))}
+                if len(cases) == 1 and cases[0]["operation"] in DREAM_FAMILIES:
+                    result["releaseTrace"][report_key(cases[0]["operation"], "Transport")]["originalProcessStreams"] = {
+                        name: {"text": value, "bytes": len(value.encode("utf8")), "sha256": hashlib.sha256(value.encode("utf8")).hexdigest()}
+                        for name, value in (("stdout", stdout), ("stderr", stderr))}
                 if len(cases) == 1 and cases[0]["operation"] in {"forget-lineage-runtime", "forget-boundaries-runtime"}:
                     transport = ("forgetBoundariesTransport" if cases[0]["operation"] == "forget-boundaries-runtime"
                                  else "forgetLineageTransport")
@@ -963,7 +1019,7 @@ def _oracle(node: Path, script: Path, checkout: Path, cases: list[dict], timeout
                 raise failure from None
     except HarnessError as error:
         if len(cases) == 1 and cases[0]["operation"] in {
-                "embed-cache-lifecycle-runtime", "session-reset-boundaries-runtime", "prompt-runtime-context-runtime", "prompt-history-repair-runtime"}:
+                "embed-cache-lifecycle-runtime", "session-reset-boundaries-runtime", "prompt-runtime-context-runtime", "prompt-history-repair-runtime", *DREAM_FAMILIES}:
             if error.rejected_evidence is None:
                 try:
                     rejected_result = _json(stdout) if len(stdout.encode("utf8")) <= _MAX_OUTPUT_BYTES else None
@@ -1021,7 +1077,7 @@ def _oracle(node: Path, script: Path, checkout: Path, cases: list[dict], timeout
                 process.kill()
             interrupted_stdout, interrupted_stderr = process.communicate()
             if len(cases) == 1 and cases[0]["operation"] in {
-                    "session-reset-boundaries-runtime", "prompt-runtime-context-runtime", "prompt-history-repair-runtime"}:
+                    "session-reset-boundaries-runtime", "prompt-runtime-context-runtime", "prompt-history-repair-runtime", *DREAM_FAMILIES}:
                 stdout, stderr = interrupted_stdout, interrupted_stderr
         raise HarnessError("oracle-timeout", "The TypeScript oracle timed out; no retry was made.") from None
     except OSError:
@@ -1031,7 +1087,7 @@ def _oracle(node: Path, script: Path, checkout: Path, cases: list[dict], timeout
     finally:
         pending = sys.exc_info()[1]
         if (len(cases) == 1 and cases[0]["operation"] in {
-                "session-reset-boundaries-runtime", "prompt-runtime-context-runtime", "prompt-history-repair-runtime"}
+                "session-reset-boundaries-runtime", "prompt-runtime-context-runtime", "prompt-history-repair-runtime", *DREAM_FAMILIES}
                 and isinstance(pending, HarnessError) and pending.rejected_evidence is None):
             # Abort handlers above still retain their actual failure, exit and
             # bounded raw evidence before the owned execution tree closes.
@@ -1496,16 +1552,17 @@ def _validate_python_runtime_diagnostic_file(info: Any, operation: str) -> None:
         raise ValueError("Invalid runtime diagnostic file.")
 
 
-def _retain_failed_prompt_history_repair_capture(report: dict, case: dict, directory: Path | None) -> None:
+def _retain_failed_sdk_capture(report: dict, case: dict, directory: Path | None) -> None:
     """Attach the new SDK's eager failure record without authenticating it."""
-    if case.get("operation") != "prompt-history-repair-runtime" or any(
+    families = {"prompt-history-repair-runtime": "prompt-history-repair", **{op: evidence_family(op) for op in DREAM_FAMILIES}}
+    if case.get("operation") not in families or any(
             item.get("side") == "python" and item.get("id") == case["id"]
             for item in report["runtimeDiagnostics"]):
         return
     record = {"id": case["id"], "side": "python", "evidenceDirectory": str(directory),
               "validationStatus": "unverified", "authenticationStatus": "unverified", "coverageCredit": False}
     try:
-        parent = ROOT / ".equivalence-results" / "prompt-history-repair"
+        parent = ROOT / ".equivalence-results" / families[case["operation"]]
         if (directory is None or directory.resolve(strict=True) != directory or not directory.is_relative_to(parent)
                 or not directory.is_dir()):
             raise ValueError("History SDK diagnostics escaped their retained owner")
@@ -1619,6 +1676,7 @@ def run_suite(*, checkout: Path, node: Path, smoke: bool = False,
             "atomic-commit-runtime", "atomic-append-runtime", "atomic-bootstrap-runtime",
             "bootstrap-discovery-runtime",
             "memory-budget-runtime", "memory-budget-apply-runtime",
+            "workspace-lock-process-runtime",
             "promotion-ranking-runtime", "promotion-apply-reconcile-runtime", "promotion-apply-family-runtime", "deep-consolidation-runtime",
             "host-restart-session-runtime",
             "host-update-isolation-runtime",
@@ -1635,7 +1693,8 @@ def run_suite(*, checkout: Path, node: Path, smoke: bool = False,
             "session-reset-boundaries-runtime",
             "prompt-runtime-context-runtime",
             "prompt-history-repair-runtime",
-            "embed-cache-lifecycle-runtime",
+            *DREAM_FAMILIES,
+            "embed-cache-lifecycle-runtime", "automation-job-state-runtime",
         }
         runtime_cases = [case for case in cases if case["operation"] in runtime_operations]
         source_cases = [case for case in cases if case["operation"] not in runtime_operations]
@@ -2062,6 +2121,19 @@ def run_suite(*, checkout: Path, node: Path, smoke: bool = False,
                 report["embeddingCacheBindings"] = prepare_embedding_cache_lifecycle_bindings(
                     checkout, Path(runtime_config["runtimeRoot"]))
                 report["embeddingCacheNode"] = prepare_model_node_authority(node)
+            dreaming_operations = sorted({case["operation"] for case in runtime_cases}.intersection(DREAM_FAMILIES))
+            for op in dreaming_operations:
+                from equivalence.dream_light_bindings import prepare_dream_light_bindings
+                from equivalence.model_runtime_authority import prepare_model_node_authority
+
+                report[report_key(op, "Bindings")] = prepare_dream_light_bindings(
+                    checkout, Path(runtime_config["runtimeRoot"]), phase=DREAM_PHASES[op])
+                report[report_key(op, "Node")] = prepare_model_node_authority(node)
+
+            if any(case["operation"] == "workspace-lock-process-runtime" for case in runtime_cases):
+                from equivalence.workspace_lock_evidence import source_bindings as lock_source_bindings
+
+                report["workspaceLockBindings"] = lock_source_bindings(checkout)
             observed_release = {}
             for case in runtime_cases:
                 # The real manager retains global state owners. Each distinct
@@ -2069,7 +2141,7 @@ def run_suite(*, checkout: Path, node: Path, smoke: bool = False,
                 try:
                     native = _oracle(node, ROOT / "equivalence/release-oracle.mjs", checkout, [case],
                                      max(timeout_seconds, 180 if case["operation"] in {"host-turn-barrier-boundaries-runtime", "query-sync-boundaries-runtime", "forget-index-fence-v6-runtime"} else
-                                         120 if case["operation"] in {"host-turn-barrier-runtime", "host-turn-barrier-v4-runtime", "index-identity-boundaries-runtime", "query-sync-outcomes-runtime", "prompt-runtime-context-runtime", "prompt-history-repair-runtime"} else 60),
+                                         120 if case["operation"] in {"host-turn-barrier-runtime", "index-identity-boundaries-runtime", "query-sync-outcomes-runtime", "prompt-runtime-context-runtime", "prompt-history-repair-runtime", *DREAM_FAMILIES} else 60),
                                      release_runtime=runtime_config)
                 except HarnessError:
                     report["failedReferenceCaseId"] = case["id"]
@@ -2092,8 +2164,14 @@ def run_suite(*, checkout: Path, node: Path, smoke: bool = False,
                     for diagnostic in native["runtimeDiagnostics"]:
                         forget_reference_seals[case["id"], "native"] = dict(diagnostic["rawSnapshotReference"])
             try:
+                if "workspaceLockBindings" in report and lock_source_bindings(checkout) != report["workspaceLockBindings"]:
+                    raise ValueError("The original workspace lock source changed.")
                 if prepare_release_runtime(checkout, release_runtime_root) != runtime_config:
                     raise ValueError("Runtime artifacts changed.")
+                for op in dreaming_operations:
+                    checked_dream_bindings = prepare_dream_light_bindings(checkout, Path(runtime_config["runtimeRoot"]), phase=DREAM_PHASES[op])
+                    if checked_dream_bindings != report[report_key(op, "Bindings")] or prepare_model_node_authority(node) != report[report_key(op, "Node")]:
+                        raise ValueError("Original dreaming source, artifact or executable changed")
                 if "embeddingCacheBindings" in report and (
                         prepare_embedding_cache_lifecycle_bindings(checkout, Path(runtime_config["runtimeRoot"]))
                         != report["embeddingCacheBindings"]
@@ -2342,10 +2420,13 @@ def run_suite(*, checkout: Path, node: Path, smoke: bool = False,
                     native_comparison = native["result"]
                     python_case = deepcopy(case)
                     if case in python_diagnostic_cases:
-                        if case["operation"] in {"deep-consolidation-runtime", "index-identity-boundaries-runtime", "query-sync-outcomes-runtime", "query-sync-boundaries-runtime", "forget-index-fence-v6-runtime", "host-turn-barrier-v4-runtime", "forget-lineage-runtime", "forget-boundaries-runtime", "recall-signals-runtime", "embed-cache-lifecycle-runtime", "session-reset-boundaries-runtime", "prompt-runtime-context-runtime", "prompt-history-repair-runtime"}:
+                        if case["operation"] in {"forget-index-fence-v6-runtime", "host-turn-barrier-v4-runtime", "workspace-lock-process-runtime", "automation-job-state-runtime", "index-identity-boundaries-runtime", "query-sync-outcomes-runtime", "query-sync-boundaries-runtime", "forget-lineage-runtime", "forget-boundaries-runtime", "recall-signals-runtime", "embed-cache-lifecycle-runtime", "session-reset-boundaries-runtime", "prompt-runtime-context-runtime", "prompt-history-repair-runtime", "deep-consolidation-runtime", *DREAM_FAMILIES}:
                             # Keep the original child paths and bytes for the post-run
                             # semantic replay, including failed SDK captures.
                             family = ("deep-consolidation" if case["operation"] == "deep-consolidation-runtime" else
+                                      evidence_family(case["operation"]) if case["operation"] in DREAM_FAMILIES else
+                                      "automation-job-state" if case["operation"] == "automation-job-state-runtime" else
+                                      "workspace-locks" if case["operation"] == "workspace-lock-process-runtime" else
                                       "prompt-history-repair" if case["operation"] == "prompt-history-repair-runtime" else
                                       "prompt-runtime-context" if case["operation"] == "prompt-runtime-context-runtime" else
                                       "session-reset-boundaries" if case["operation"] == "session-reset-boundaries-runtime" else
@@ -2360,7 +2441,7 @@ def run_suite(*, checkout: Path, node: Path, smoke: bool = False,
                                       else "index-identity-boundaries")
                             retained = ROOT / ".equivalence-results" / family
                             retained.mkdir(parents=True, exist_ok=True)
-                            if case["operation"] == "prompt-history-repair-runtime" and (
+                            if case["operation"] in {"prompt-history-repair-runtime", *DREAM_FAMILIES} and (
                                     retained.is_symlink() or retained.resolve(strict=True) != retained or not retained.is_dir()):
                                 raise ValueError("History SDK retention requires its canonical owned directory")
                             directory = Path(tempfile.mkdtemp(prefix="sdk-attempt-", dir=retained))
@@ -2399,6 +2480,23 @@ def run_suite(*, checkout: Path, node: Path, smoke: bool = False,
                             snapshots = [snapshots]
                         if not isinstance(snapshots, list):
                             raise ValueError("Runtime diagnostics must retain raw snapshot rows.")
+                        if case["operation"] == "automation-job-state-runtime":
+                            from equivalence.automation_job_state_evidence import validate_sdk
+
+                            original = next(d for d in report["runtimeDiagnostics"]
+                                            if d["side"] == "native" and d["id"] == case["id"])
+                            if original.get("validationStatus") != "verified" or len(snapshots) != 1:
+                                raise ValueError("Missing authentic scheduled task receipts")
+                            validate_sdk(case, snapshots[0], python, directory)
+                            row["sdkEvidenceDirectory"] = str(directory)
+                            row.update(runtimeEvidenceValidated=True, openclaw=native_comparison, python=python)
+                            from equivalence.automation_job_state_replay import make_packet, replay
+
+                            trace = next(t for t in report["releaseTraces"] if t["id"] == case["id"])
+                            packet = make_packet(row, original, trace, hashlib.sha256(raw).hexdigest(),
+                                                 report["implementation"])
+                            (directory / "review.json").write_text(json.dumps(packet) + "\n", encoding="utf8")
+                            replay(packet, directory.parent)
                         if case in source_diagnostic_cases:
                             if len(snapshots) != 1:
                                 raise ValueError("Discovery requires one complete diagnostic record")
@@ -2581,6 +2679,20 @@ def run_suite(*, checkout: Path, node: Path, smoke: bool = False,
                             lineage_diagnostic["validationStatus"] = "verified"
                             row["runtimeEvidenceValidated"] = True
                             row.update(openclaw=native_comparison, python=python)
+                        if case["operation"] in DREAM_FAMILIES:
+                            from equivalence.dream_light_sdk_evidence import validate_sdk
+
+                            original = next(d for d in report["runtimeDiagnostics"]
+                                            if d["side"] == "native" and d["id"] == case["id"])
+                            diagnostic = {"id": case["id"], "side": "python", "sha256": hashlib.sha256(raw).hexdigest(),
+                                          "rawSnapshots": snapshots, "evidenceDirectory": str(directory),
+                                          "validationStatus": "unverified"}
+                            report["runtimeDiagnostics"].append(diagnostic)
+                            validate_sdk(case, python, snapshots, directory)
+                            if original.get("validationStatus") != "verified":
+                                raise ValueError("Missing authenticated dreaming sweep")
+                            row.update(openclaw=native_comparison, python=python, runtimeEvidenceValidated=True)
+                            diagnostic["validationStatus"] = "verified"
                         if case["operation"] == "recall-signals-runtime":
                             from equivalence.recall_signals_evidence import validate_pair
 
@@ -2666,10 +2778,24 @@ def run_suite(*, checkout: Path, node: Path, smoke: bool = False,
                             cache_diagnostic["validationStatus"] = "verified"
                             row["runtimeEvidenceValidated"] = True
                             row.update(openclaw=native_comparison, python=python)
+                        if case["operation"] == "workspace-lock-process-runtime":
+                            from equivalence.workspace_lock_evidence import observe_drive
+
+                            original = next(d for d in report["runtimeDiagnostics"]
+                                            if d["side"] == "native" and d["id"] == case["id"])
+                            if (len(snapshots) != 1 or len(original["rawSnapshots"]) != 1
+                                    or not _same_json(observe_drive(case, snapshots[0], replay_disk=True), python)
+                                    or not _same_json(observe_drive(case, original["rawSnapshots"][0], replay_disk=True),
+                                                      native_comparison)):
+                                raise ValueError("Independent writers did not return their original durable observations")
+                            report["runtimeDiagnostics"].append({"id": case["id"], "side": "python",
+                                "sha256": hashlib.sha256(raw).hexdigest(), "rawSnapshots": snapshots,
+                                "validationStatus": "verified", "rawPath": str(evidence)})
+                            row.update(workspaceLockEvidenceValidated=True, openclaw=native_comparison, python=python)
                         diagnostic_key = "sourceDiagnostics" if case in source_diagnostic_cases else "runtimeDiagnostics"
-                        if case["operation"] not in {"promotion-apply-family-runtime", "deep-consolidation-runtime", "host-restart-session-runtime",
-                                                     "host-update-isolation-runtime", "host-turn-barrier-runtime", "host-turn-barrier-v4-runtime",
-                                                     "host-turn-barrier-boundaries-runtime", "index-identity-boundaries-runtime", "query-sync-outcomes-runtime", "query-sync-boundaries-runtime", "forget-index-fence-v6-runtime", "forget-lineage-runtime", "forget-boundaries-runtime", "recall-signals-runtime", "embed-cache-lifecycle-runtime", "session-reset-boundaries-runtime", "prompt-runtime-context-runtime", "prompt-history-repair-runtime"}:
+                        if case["operation"] not in {"host-turn-barrier-v4-runtime", "forget-index-fence-v6-runtime", "workspace-lock-process-runtime", "promotion-apply-family-runtime", "deep-consolidation-runtime", "host-restart-session-runtime",
+                                                     "host-update-isolation-runtime", "host-turn-barrier-runtime",
+                                                     "host-turn-barrier-boundaries-runtime", "index-identity-boundaries-runtime", "query-sync-outcomes-runtime", "query-sync-boundaries-runtime", "forget-lineage-runtime", "forget-boundaries-runtime", "recall-signals-runtime", "embed-cache-lifecycle-runtime", "session-reset-boundaries-runtime", "prompt-runtime-context-runtime", "prompt-history-repair-runtime", *DREAM_FAMILIES}:
                             report[diagnostic_key].append({
                                 "id": case["id"], "side": "python", "sha256": hashlib.sha256(raw).hexdigest(),
                                 "rawSnapshots": snapshots,
@@ -2695,12 +2821,12 @@ def run_suite(*, checkout: Path, node: Path, smoke: bool = False,
                     if case["requirement"] == "engine.numeric-boundaries":
                         row["numericError"] = {"type": type(error).__name__, "message": str(error)}
                     row.update(status="blocked", code="python-case-failed")
-                    if case["operation"] in {"promotion-apply-family-runtime", "deep-consolidation-runtime", "host-restart-session-runtime",
-                                             "host-update-isolation-runtime", "host-turn-barrier-runtime", "host-turn-barrier-v4-runtime",
-                                             "host-turn-barrier-boundaries-runtime", "index-identity-boundaries-runtime", "query-sync-outcomes-runtime", "query-sync-boundaries-runtime", "forget-index-fence-v6-runtime", "forget-lineage-runtime", "forget-boundaries-runtime", "recall-signals-runtime", "embed-cache-lifecycle-runtime", "session-reset-boundaries-runtime", "prompt-runtime-context-runtime", "prompt-history-repair-runtime"}:
+                    if case["operation"] in {"host-turn-barrier-v4-runtime", "forget-index-fence-v6-runtime", "workspace-lock-process-runtime", "promotion-apply-family-runtime", "deep-consolidation-runtime", "host-restart-session-runtime",
+                                             "host-update-isolation-runtime", "host-turn-barrier-runtime",
+                                             "host-turn-barrier-boundaries-runtime", "index-identity-boundaries-runtime", "query-sync-outcomes-runtime", "query-sync-boundaries-runtime", "forget-lineage-runtime", "forget-boundaries-runtime", "recall-signals-runtime", "embed-cache-lifecycle-runtime", "session-reset-boundaries-runtime", "prompt-runtime-context-runtime", "prompt-history-repair-runtime", *DREAM_FAMILIES}:
                         row["evidenceError"] = {"name": type(error).__name__, "message": str(error)}
-                    if case["operation"] == "prompt-history-repair-runtime" and python_diagnostics is not None:
-                        _retain_failed_prompt_history_repair_capture(report, case, python_case.get("_diagnosticDirectory"))
+                    if case["operation"] in {"prompt-history-repair-runtime", *DREAM_FAMILIES} and python_diagnostics is not None:
+                        _retain_failed_sdk_capture(report, case, python_case.get("_diagnosticDirectory"))
                     if case["operation"] == "host-update-isolation-runtime" and python_diagnostics is not None:
                         _retain_failed_host_update_capture(
                             report, case, python_diagnostics / hashlib.sha256(case["id"].encode()).hexdigest())
@@ -2763,6 +2889,11 @@ def run_suite(*, checkout: Path, node: Path, smoke: bool = False,
 
         history_complete = history_family_complete(report["cases"])
         report["promptHistoryRepairFamilyComplete"] = history_complete
+        dream_points = {}
+        for op, family in DREAM_FAMILIES.items():
+            complete = family.family_complete(report["cases"])
+            report[report_key(op, "FamilyComplete")] = complete
+            dream_points.update(dict.fromkeys(family.POINTS, complete))
         from equivalence.engine_numeric_family import family_complete as numeric_family_complete, POINTS as numeric_points
 
         numeric_complete = numeric_family_complete(report["cases"])
@@ -2772,6 +2903,16 @@ def run_suite(*, checkout: Path, node: Path, smoke: bool = False,
 
         deep_complete = deep_family_complete(report["cases"])
         report["deepConsolidationFamilyComplete"] = deep_complete
+
+        from equivalence.automation_job_state import family_complete as jobs_family_complete, POINT as jobs_point
+
+        jobs_complete = jobs_family_complete(report["cases"])
+        report["automationJobStateBoundariesComplete"] = jobs_complete
+
+        from equivalence.workspace_lock_cases import family_complete as lock_family_complete, POINTS as lock_points
+
+        locks_complete = lock_family_complete(report["cases"])
+        report["workspaceLockFamilyComplete"] = locks_complete
         from equivalence.query_sync_boundaries import POINTS as query_sync_boundary_points
         from equivalence.query_sync_outcomes import POINTS as query_sync_points
         from equivalence.index_identity_boundaries import POINTS as identity_boundary_points
@@ -2814,8 +2955,11 @@ def run_suite(*, checkout: Path, node: Path, smoke: bool = False,
                                                            or prompt_complete)
                                                       and (point["id"] not in history_points
                                                            or history_complete)
+                                                      and (point["id"] != jobs_point or jobs_complete)
+                                                      and dream_points.get(point["id"], True)
                                                       and (point["id"] not in numeric_points or numeric_complete)
-                                                      and (point["id"] not in deep_points or deep_complete)]})
+                                                      and (point["id"] not in deep_points or deep_complete)
+                                                      and (point["id"] not in lock_points or locks_complete)]})
             report["requirements"].append({"id": requirement["id"], "required": requirement["required"],
                                             "acceptance": acceptance, "registeredCases": len(rows)})
         uncovered = [point["id"] for requirement in report["requirements"] if requirement["required"]

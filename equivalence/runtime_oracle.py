@@ -1094,7 +1094,7 @@ class ReleaseOracleExecution:
                    "kind": "rejected-release-runtime-diagnostics", "caseIds": [],
                    "oracleResult": None, "stdout": None, "stderr": None,
                    "caseDiagnostics": [], "processWorkerTraces": [], "omissions": []}
-        if (self.embedding_cache_profile is not None or self.session_reset_boundaries_profile is not None or self.prompt_runtime_context_profile is not None or self.prompt_history_repair_profile is not None) and getattr(
+        if (self.dream_phase_profile is not None or self.embedding_cache_profile is not None or self.session_reset_boundaries_profile is not None or self.prompt_runtime_context_profile is not None or self.prompt_history_repair_profile is not None) and getattr(
                 self, "_last_collection_error", None) is not None:
             capture["collectionError"] = deepcopy(self._last_collection_error)
 

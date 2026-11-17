@@ -4,6 +4,7 @@ from __future__ import annotations
 from concurrent.futures import ThreadPoolExecutor
 from copy import deepcopy
 import hashlib
+import inspect
 import json
 import os
 from pathlib import Path
@@ -97,6 +98,11 @@ SDK_OWNERS = (append_narrative_entry, update_dreams_file, read_recent_dream_diar
               publish_daily_dreaming_phase_block, classify_workspace_memory_paths, memory_workspace_lock)
 
 
+def owner_receipts():
+    # The workspace lock uses @contextmanager. Bind its implementation before decoration.
+    return [_owner(inspect.unwrap(fn)) for fn in SDK_OWNERS]
+
+
 def run_sdk(case, directory):
     if case not in build_cases():
         raise ValueError("Unknown diary fixture")
@@ -115,7 +121,7 @@ def run_sdk(case, directory):
     write_json_atomic(store, {"version": 1, "updatedAt": iso_ms(NOW), "entries": {source["key"]: source}})
     stream = directory / "sdk-callbacks.jsonl"
     stream.touch(exist_ok=False)
-    raw = {"case": deepcopy(case), "workspace": str(workspace), "owners": [_owner(fn) for fn in SDK_OWNERS],
+    raw = {"case": deepcopy(case), "workspace": str(workspace), "owners": owner_receipts(),
            "initial": capture(workspace), "rows": [], "race": []}
     observations = []
 

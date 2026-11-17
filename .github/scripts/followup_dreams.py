@@ -171,7 +171,7 @@ def replay_dreams(data, cases, args, runtime):
                         "nativeRawSha256": native["sha256"], "sdkRawSha256": sdk["sha256"],
                         "nativeRawFileBytes": native_size, "sdkRawFileBytes": sdk_size,
                         "originalStdoutSha256": digest(stdout), "originalStderrSha256": digest(stderr),
-                        "physicalBoundaries": len(case["input"]["operations"]), "protectedWorkerThreads": 1,
+                        "physicalBoundaries": len(case["input"]["turns" if operation == "dream-deep-runtime" else "operations"]), "protectedWorkerThreads": 1,
                         "nativeOnDiskRawReopened": True, "sdkOnDiskRawReopened": True, "physicalStateRebuilt": True})
     require(_same_json(adapters, _adapter_identity()) and _same_json(authority, prepare_model_node_authority(args.node))
             and _same_json(bindings, prepare_dream_light_bindings(args.reference, Path(runtime["runtimeRoot"]), phase=PHASES[operation])),

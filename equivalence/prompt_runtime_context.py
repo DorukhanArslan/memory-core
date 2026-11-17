@@ -98,7 +98,7 @@ EVIDENCE = {
         "requiredModelTokens": {"0": ["recallcedar", "recallinstructioncedar"]},
         "toolOnlyToken": "recallpayloadcedar",
         "transientTokens": ["recallinstructioncedar"]},
-    "prompt-runtime-context-whitespace-resume": {"allSubmitsRequireModel": True,
+    "prompt-runtime-context-whitespace-resume": {"requiredModelOperations": [1, 2, 4], "forbiddenModelOperations": [0],
         "requiredModelTokens": {"1": ["fragmentresumecedar"], "2": ["forgedcedar", "modelonlycedar"]},
         "excludedModelTokens": {"4": ["fragmentresumecedar", "forgedcedar", "modelonlycedar"]},
         "transientTokens": ["fragmentresumecedar", "forgedcedar", "modelonlycedar"],

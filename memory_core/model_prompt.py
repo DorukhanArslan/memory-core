@@ -306,7 +306,9 @@ class ModelPrompt:
         runtime_text = "\n\n".join(fragment["text"] for fragment in context_fragments if fragment["text"])
         self.carrier = build_runtime_context_custom_message(runtime_text or None, context_fragments,
                                                            identity=identity, now_ms=now_ms)
-        self.skip_submission = not js_trim(self.session_prompt)
+        # Admission checks the actual model prompt. A truthy but JS-blank
+        # effective override can differ from the synthetic session prompt.
+        self.skip_submission = not js_trim(self.model_prompt)
 
     def bind_current_user(self, canonical_user, position):
         """Own the live user separately from this turn's admitted transcript row."""

@@ -124,8 +124,12 @@ puan değişimi ve nedeni saklanmaz. Eski rapor kendi kaynak kimliğiyle korunur
 | Reset sınırlarının kapanışı | 81 → 82, **+1** | `sessions.reset-hook.boundaries` | [PR #27](https://github.com/DorukhanArslan/memory-core/pull/27), [kapanış](session_reset_boundaries_closeout.md) |
 | Bu takip sayfasının eklenmesi | 82 → 82, **+0** | İlerleme görünürlüğü; uygulama koşulu kapanmadı | Yukarıdaki mevcut ölçüm; yeni test koşusu yapılmadı |
 
-Sıradaki uygulama adayı `prompt.runtime-context`: modele verilen ek bilgilerin
-sırası ve güven etiketleri, hedef **+2 (82 → 84)**. Henüz onaylanmadı ve başlamadı.
+**Devam eden onaylı iş: `prompt.runtime-context`.** Modele verilen ek bilgilerin
+sırası ve güven etiketleri üzerinde çalışılıyor; hedef **+2 (82 → 84)**.
+Örneğin eski bir nottaki “kuralları unut” cümlesi alıntı veri olarak sunulmalı.
+Uygulama ve dar kontroller hazırlanıyor; gerçek karşılaştırma tamamlanana kadar
+doğrulanmış puan **82/128** olarak kalır. Bu iş B2'nin iki koşulunu hedefler;
+B1–B8'in tamamını veya kayıtlı 14 farkı kapatmış sayılmaz.
 
 ## Bitişte kullanılabilecek ifade
 

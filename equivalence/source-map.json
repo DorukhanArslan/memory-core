@@ -4265,6 +4265,12 @@
           "symbol": "resolveCronStyleNow",
           "anchor": "export function resolveCronStyleNow(cfg: TimeConfigLike, nowMs: number): CronStyleNow {",
           "line": 23
+        },
+        {
+          "path": "src/agents/embedded-agent-runner/run/attempt-llm-boundary.ts",
+          "symbol": "normalizeMessagesForLlmBoundary",
+          "anchor": "export function normalizeMessagesForLlmBoundary(",
+          "line": 108
         }
       ],
       "python": [
@@ -4278,25 +4284,44 @@
           "path": "memory_core/runtime_context_prompt.py",
           "symbol": "resolve_runtime_context_prompt_parts",
           "anchor": "def resolve_runtime_context_prompt_parts(",
-          "line": 80
+          "line": 82
         },
         {
           "path": "memory_core/runtime_context_prompt.py",
           "symbol": "prepend_runtime_context_for_model",
           "anchor": "def prepend_runtime_context_for_model(",
-          "line": 160
+          "line": 163
         },
         {
           "path": "memory_core/current_time.py",
           "symbol": "format_current_time_line",
           "anchor": "def format_current_time_line(",
-          "line": 198
+          "line": 202
+        },
+        {
+          "path": "memory_core/model_prompt.py",
+          "symbol": "ModelPrompt",
+          "anchor": "class ModelPrompt:",
+          "line": 222
+        },
+        {
+          "path": "memory_core/host/lifecycle.py",
+          "symbol": "HostTurn.model_request",
+          "anchor": "    def model_request(self) -> dict[str, Any]:",
+          "line": 255
+        },
+        {
+          "path": "memory_core/current_time.py",
+          "symbol": "resolve_cron_style_now",
+          "anchor": "def resolve_cron_style_now(",
+          "line": 216
         }
       ],
       "implementation": "partial",
       "notes": [
         "Runtime markers default to Memory Core identity; native marker behavior requires the explicit OpenClaw compatibility identity.",
-        "Current-time formatting takes an explicit host 12/24-hour format and uses UTC for blank or unknown zones; native code detects host format and falls back to the host zone. Python dates also stop at years 1–9999."
+        "Current-time formatting accepts an explicit host 12/24-hour format; supplying host_timezone enables the native host fallback, while existing callers keep their UTC fallback. Python dates remain limited to years 1–9999.",
+        "HostTurn.model_request applies production v3/v4 carrier projection before conversion, preserving the durable continuation API. Complete memory/runtime components and all actual model messages are compared; unrelated full-agent persona and tool definitions remain raw and are not a full-agent port claim."
       ]
     },
     {
@@ -5639,7 +5664,7 @@
           "path": "memory_core/turn_tool_dispatch.py",
           "symbol": "TurnToolDispatcher.dispatch",
           "anchor": "    def dispatch(",
-          "line": 55
+          "line": 60
         },
         {
           "path": "memory_core/unicode_letter_property.py",
@@ -6188,7 +6213,7 @@
           "path": "memory_core/current_time.py",
           "symbol": "format_current_time_line",
           "anchor": "def format_current_time_line(",
-          "line": 198
+          "line": 202
         },
         {
           "path": "memory_core/consolidation/_util.py",
@@ -6317,13 +6342,13 @@
           "path": "memory_core/host/lifecycle.py",
           "symbol": "HostSessionRunner.run_turn",
           "anchor": "    async def run_turn(",
-          "line": 743
+          "line": 775
         },
         {
           "path": "memory_core/host/managed_session.py",
           "symbol": "ManagedHostSession",
           "anchor": "class ManagedHostSession:",
-          "line": 53
+          "line": 54
         },
         {
           "path": "memory_core/host/managed_index.py",
@@ -6347,13 +6372,13 @@
           "path": "memory_core/host/managed_session.py",
           "symbol": "ManagedHostSession.maintenance_status",
           "anchor": "    def maintenance_status(",
-          "line": 137
+          "line": 138
         },
         {
           "path": "memory_core/host/managed_session.py",
           "symbol": "ManagedHostSessionRunner.run_turn",
           "anchor": "    async def run_turn(",
-          "line": 536
+          "line": 537
         }
       ],
       "implementation": "present",
@@ -6410,7 +6435,7 @@
           "path": "memory_core/host/lifecycle.py",
           "symbol": "HostSessionRunner._load",
           "anchor": "    def _load(",
-          "line": 607
+          "line": 639
         },
         {
           "path": "memory_core/host/managed_index.py",
@@ -6440,7 +6465,7 @@
           "path": "memory_core/host/managed_session.py",
           "symbol": "ManagedHostSession",
           "anchor": "class ManagedHostSession:",
-          "line": 53
+          "line": 54
         },
         {
           "path": "memory_core/session_catalog.py",
@@ -6509,7 +6534,7 @@
           "path": "memory_core/host/managed_session.py",
           "symbol": "ManagedHostSession",
           "anchor": "class ManagedHostSession:",
-          "line": 53
+          "line": 54
         },
         {
           "path": "memory_core/host/managed_index.py",
@@ -12110,6 +12135,34 @@
       "exportedDeclarations": [
         "MemoryReindexLockHandle",
         "waitForMemoryReindexLock"
+      ]
+    },
+    {
+      "path": "src/agents/embedded-agent-runner/run/attempt-llm-boundary.ts",
+      "sha256": "6da9c2597018b27b496d14d22a70e6cfff91a4a9dd398f781b83748ecbe0f041",
+      "sourceImports": [
+        "../../../auto-reply/reply/strip-inbound-meta.js",
+        "../../../gateway/server-methods/agent-timestamp.js",
+        "../../../llm/types.js",
+        "../../../sessions/input-provenance.js",
+        "../../../sessions/user-turn-media.js",
+        "../../../sessions/user-turn-transcript.js",
+        "../../internal-runtime-context.js",
+        "../../runtime/index.js",
+        "../../session-transcript-repair.js",
+        "../replay-history.js",
+        "../tool-result-context-guard.js",
+        "./attempt-history.js",
+        "./runtime-context-prompt.js",
+        "zod"
+      ],
+      "exportedDeclarations": [
+        "installModelPromptTransform",
+        "installRuntimeContextMessageForPrompt",
+        "normalizeCurrentPromptTextForLlmBoundary",
+        "normalizeMessagesForCurrentPromptBoundary",
+        "normalizeMessagesForLlmBoundary",
+        "usesEscapedRuntimeContext"
       ]
     }
   ]

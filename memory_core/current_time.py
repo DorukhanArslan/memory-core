@@ -28,8 +28,9 @@ memory-core cannot know the host's setting. The oracle ops ``flushPlan`` and
 ``heartbeatRunPrompt`` report the tag's detected format (``hostTimeFormat``) and the Python
 side passes it on, so both compare the full line.
 
-Other deviations: a blank or ``Intl``-invalid zone falls back to UTC, where upstream takes
-the host zone; zones resolve through ``zoneinfo`` (IANA names) or as ECMA-402 offsets
+Other deviations: a blank or ``Intl``-invalid zone falls back to UTC unless the caller
+supplies the explicit ``host_timezone`` seam; upstream detects that host zone. Zones
+resolve through ``zoneinfo`` (IANA names) or as ECMA-402 offsets
 (``+03:00``), not through ICU; a ``Date``-valid instant outside the years 1-9999 raises
 ``ValueError`` (Python dates stop there).
 """
@@ -53,6 +54,7 @@ __all__ = [
     "format_current_time_line",
     "format_user_time",
     "resolve_date_timestamp_ms",
+    "resolve_cron_style_now",
     "resolve_time_format",
     "resolve_user_timezone",
     "utc_and_local_instants",
@@ -92,12 +94,12 @@ def _offset_time_zone(name: str) -> tzinfo | None:
     return fixed_offset_zone(sign * timedelta(minutes=minutes))
 
 
-def resolve_user_timezone(timezone: str) -> tuple[str, tzinfo]:
+def resolve_user_timezone(timezone: str, *, host_timezone: str | None = None) -> tuple[str, tzinfo]:
     """``resolveUserTimezone`` (src/agents/date-time.ts:27-39): (label, zone).
 
     The trimmed configured zone when ``Intl`` accepts it, an IANA name or an ECMA-402 offset
     such as ``+03:00`` (the label keeps the configured spelling, as upstream prints it).
-    Deviation: a blank or unknown zone falls back to UTC, where upstream takes the host zone.
+    A blank or unknown zone uses an explicit host fallback when supplied, otherwise UTC.
     """
     trimmed = js_trim(timezone) if isinstance(timezone, str) else ""
     if trimmed:
@@ -108,6 +110,8 @@ def resolve_user_timezone(timezone: str) -> tuple[str, tzinfo]:
             return trimmed, ZoneInfo(trimmed)
         except (ZoneInfoNotFoundError, ValueError):
             pass
+    if host_timezone is not None:
+        return resolve_user_timezone(host_timezone)
     return "UTC", ZoneInfo("UTC")
 
 
@@ -196,7 +200,8 @@ def format_user_time(local: datetime, time_format: str = DEFAULT_TIME_FORMAT) ->
 
 
 def format_current_time_line(
-    now_ms: int | float, timezone: str = "UTC", time_format: str = DEFAULT_TIME_FORMAT
+    now_ms: int | float, timezone: str = "UTC", time_format: str = DEFAULT_TIME_FORMAT,
+    *, host_timezone: str | None = None,
 ) -> str:
     """The two-line ``timeLine`` of ``resolveCronStyleNow`` (current-time.ts:23-32).
 
@@ -205,15 +210,29 @@ def format_current_time_line(
     ``now_ms`` means the current time, and ``time_format`` is the host's 12/24-hour format
     (the deviation in the module docstring).
     """
+    return resolve_cron_style_now(now_ms, timezone, time_format, host_timezone=host_timezone)["timeLine"]
+
+
+def resolve_cron_style_now(
+    now_ms: int | float, timezone: str = "", time_format: str = DEFAULT_TIME_FORMAT,
+    *, host_timezone: str | None = None,
+) -> dict[str, str]:
+    """The complete native clock component, with an optional explicit host fallback.
+
+    Hosts that know their timezone can supply it; existing callers retain UTC
+    fallback and their explicit 12/24-hour preference.
+    """
     resolved_format = resolve_time_format(time_format)
-    label, zone = resolve_user_timezone(timezone)
+    label, zone = resolve_user_timezone(timezone, host_timezone=host_timezone)
     instant, local = utc_and_local_instants(resolve_date_timestamp_ms(now_ms), zone)
     # Date.prototype.toISOString sliced to minutes: a 4-digit zero-padded year.
     utc_time = (
         f"{instant.year:04d}-{instant.month:02d}-{instant.day:02d} "
         f"{instant.hour:02d}:{instant.minute:02d} UTC"
     )
-    return f"Current time: {format_user_time(local, resolved_format)} ({label})\nReference UTC: {utc_time}"
+    formatted = format_user_time(local, resolved_format)
+    return {"userTimezone": label, "formattedTime": formatted,
+            "timeLine": f"Current time: {formatted} ({label})\nReference UTC: {utc_time}"}
 
 
 # current-time.ts:52-53 CURRENT_TIME_LINE_RE (JS \d is ASCII; `.` excludes line breaks).

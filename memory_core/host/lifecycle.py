@@ -18,6 +18,7 @@ import threading
 from typing import Any, Literal
 from uuid import uuid4
 
+from memory_core.bootstrap._js import js_json_stringify
 from memory_core.config import MemoryConfig
 from memory_core.consolidation.artifact_provenance import MemoryArtifactProvenanceStore
 from memory_core.curation import APPEND_DAILY_NOTE, CURATION_OPERATIONS
@@ -25,6 +26,7 @@ from memory_core.host.flush import FlushOutcome, FlushRequest
 from memory_core.host.kit import HostKit, TurnContext
 from memory_core.host.session import SessionState, TurnUsage, apply_turn_usage
 from memory_core.memory_write_provenance import _observe_memory_write_entry
+from memory_core.model_prompt import ModelPrompt, RuntimePromptInput
 from memory_core.session_catalog import MemorySessionCatalog, normalize_session_agent_id
 from memory_core.session_visibility import is_incognito_session_key, resolve_session_agent_id
 from memory_core.tools.common import format_error_message
@@ -165,7 +167,7 @@ def _model_result(value: HostModelResult | None) -> HostModelResult:
     return value
 
 
-def _result_message_payload(result: Any) -> dict[str, Any]:
+def _result_message_payload(result: Any, *, model_json: bool = False) -> dict[str, Any]:
     """Adapt the SDK's mapping receipts to the ordinary agent-result owner.
 
     Native-shaped content/details pass unchanged. The SDK curation extension
@@ -176,8 +178,9 @@ def _result_message_payload(result: Any) -> dict[str, Any]:
         raise TypeError("Registered host tools must return a mapping receipt")
     if "content" in result:
         return dict(result)
-    return {"content": [{"type": "text", "text": json.dumps(
-        result, ensure_ascii=False, allow_nan=False, separators=(",", ":"))}], "details": deepcopy(dict(result))}
+    text = (js_json_stringify(dict(result), indent=2) if model_json else json.dumps(
+        result, ensure_ascii=False, allow_nan=False, separators=(",", ":")))
+    return {"content": [{"type": "text", "text": text}], "details": deepcopy(dict(result))}
 
 
 class HostTurn:
@@ -193,7 +196,9 @@ class HostTurn:
     def __init__(self, runner: HostSessionRunner, turn_id: str, session: SessionState,
                  context: TurnContext | None, messages: Sequence[Mapping[str, Any]],
                  trust: TurnTrust, *, flush: FlushRequest | None = None,
-                 publication_turn_id: str | None = None) -> None:
+                 publication_turn_id: str | None = None,
+                 projection_messages: Sequence[Mapping[str, Any]] | None = None,
+                 model_prompt: ModelPrompt | None = None) -> None:
         self._runner = runner
         self.turn_id = turn_id
         self._publication_turn_id = publication_turn_id or turn_id
@@ -203,6 +208,8 @@ class HostTurn:
         self.trust = trust
         self.cancel_requested = runner._cancel_requested
         self._messages = list(deepcopy(messages))
+        self._projection_messages = list(deepcopy(projection_messages if projection_messages is not None else messages))
+        self._model_prompt = model_prompt
         self._appends: list[dict[str, Any]] = []
         self._receipts: list[dict[str, Any]] = []
         self._guard = threading.RLock()
@@ -239,6 +246,27 @@ class HostTurn:
     @property
     def cancelled(self) -> bool:
         return self.cancel_requested.is_set()
+
+    @property
+    def model_prompt(self) -> ModelPrompt | None:
+        """The admitted prompt's assembly receipts, separate from durable history."""
+        return self._model_prompt
+
+    def model_request(self) -> dict[str, Any]:
+        """Return the actual system/tools/messages request for the host's provider.
+
+        Runtime projection is transient. The established ``messages`` property
+        and the catalog's continuation projection retain their existing APIs.
+        """
+        with self._guard:
+            if not self._open:
+                raise RuntimeError("The host turn is closed")
+            if self._model_prompt is None:
+                if self.context is None:
+                    raise RuntimeError("A maintenance callback has no ordinary model prompt")
+                self._model_prompt = self._runner._prepare_model_prompt(
+                    "", RuntimePromptInput(), self.context, self.turn_id)
+            return self._model_prompt.request(self._projection_messages)
 
     def record_message(self, message: Mapping[str, Any]) -> dict[str, Any]:
         """Persist one actual model-produced assistant record with owned trust."""
@@ -280,6 +308,7 @@ class HostTurn:
             # A flush is private maintenance context, never a user transcript append.
             saved = deepcopy(message)
         self._messages.append(deepcopy(saved))
+        self._projection_messages.append(deepcopy(saved))
         return deepcopy(saved)
 
     def _reserve(self, tool_call_id: str, name: str, arguments: Mapping[str, Any]) -> _DispatchReservation:
@@ -355,7 +384,7 @@ class HostTurn:
                 with _observe_memory_write_entry(before_memory_producer if receipt["memoryMutationOwner"] else None):
                     result = self._dispatcher.dispatch(call["name"], call["arguments"], tool_call_id=call["id"])
                 receipt["result"] = deepcopy(result)
-                payload = _result_message_payload(result)
+                payload = _result_message_payload(result, model_json=self._model_prompt is not None)
                 failed = result.get("isError") is True or result.get("status") == "error"
             except Exception as error:
                 caught = error
@@ -394,6 +423,8 @@ class HostTurn:
         loop = asyncio.get_running_loop()
         with self._guard:
             self._open = False
+            if self._model_prompt is not None:
+                self._model_prompt.close()
             if not self._active:
                 return
             settled = loop.create_future()
@@ -456,6 +487,7 @@ class HostSessionRunner:
             raise ValueError("A host tool name must select exactly one registration")
         self._lane_key = (str(catalog.path), catalog.agent_id, key)
         self.last_outcome: HostTurnOutcome | None = None
+        self.last_model_prompt: ModelPrompt | None = None
         self._active_turn: HostTurn | None = None
         self._cancel_requested = asyncio.Event()
         self._blocking_guard = threading.Lock()
@@ -744,7 +776,8 @@ class HostSessionRunner:
                        execute: Callable[[HostTurn], Awaitable[HostModelResult | None]],
                        execute_flush: Callable[[HostTurn], Awaitable[HostModelResult | None]] | None = None,
                        request_id: str | None = None, sender_is_owner: bool | None = True,
-                       context_window_tokens: int | None = None) -> HostTurnOutcome:
+                       context_window_tokens: int | None = None,
+                       prompt_context: RuntimePromptInput | None = None) -> HostTurnOutcome:
         """Run the real host callback and hold admission until its accepted work settles.
 
         Caller cancellation remains cancellation, but is delivered only after
@@ -756,6 +789,8 @@ class HostSessionRunner:
             raise TypeError("Host execution callbacks must be callable")
         if request_id is not None and (not isinstance(request_id, str) or not request_id):
             raise ValueError("request_id must be a nonempty string")
+        if prompt_context is not None and not isinstance(prompt_context, RuntimePromptInput):
+            raise TypeError("prompt_context must be RuntimePromptInput or None")
         ancestors = tuple(owner for owner in _current_lanes.get() if owner.active)
         if any(owner.key == self._lane_key for owner in ancestors):
             raise RuntimeError("A model callback cannot reenter its own session turn")
@@ -769,7 +804,7 @@ class HostSessionRunner:
             self._intent_turn_id = None
             capture = _RunCapture(self.session, [], [], [])
             producer = asyncio.create_task(self._produce(user_message, execute, execute_flush, turn_id,
-                sender_is_owner, context_window_tokens, capture))
+                sender_is_owner, context_window_tokens, capture, prompt_context))
             while True:
                 try:
                     outcome = await asyncio.shield(producer)
@@ -956,8 +991,23 @@ class HostSessionRunner:
             failures.append(_failure("publication", error, committed=True))
         return index_status
 
+    def _prepare_model_prompt(self, effective_prompt, options, context, user_key):
+        options = replace(options,
+            host_timezone=options.host_timezone if options.host_timezone is not None else self.kit._timezone,
+            host_time_format=options.host_time_format if options.host_time_format is not None else self.kit._time_format)
+        snapshot = self.catalog.read_transcript(self.session.session_id)
+        header = next((event for event in snapshot.events if event.get("type") == "session"), {}) if snapshot else {}
+        version = header.get("version", 4)
+        registry = [*context.tools, *(tool.definition for tool in self.extra_tools if tool.definition is not None)]
+        prompt = ModelPrompt(effective_prompt, options, tools=registry,
+            workspace_prompt=context.workspace.prompt_text, citations_mode=self.kit.memory.config.citation_mode,
+            identity=self.kit._identity, now_ms=self._clock(), session_version=version, user_key=user_key)
+        self.last_model_prompt = prompt
+        return prompt
+
     async def _produce(self, user_message, execute, execute_flush, turn_id, sender_is_owner,
-                       context_window_tokens, capture: _RunCapture) -> HostTurnOutcome:
+                       context_window_tokens, capture: _RunCapture,
+                       prompt_context: RuntimePromptInput | None = None) -> HostTurnOutcome:
         state = self.session
         failures: list[HostTurnFailure] = []
         appends = capture.appends
@@ -996,21 +1046,39 @@ class HostSessionRunner:
                 raise ValueError("The host admission requires an ordinary user message")
             user.setdefault("timestamp", self._clock())
             user.setdefault("idempotencyKey", turn_id)
-            saved = self.catalog.append_message(state.session_id, user, session_key=state.session_key,
-                event_id=f"{turn_id}:user", now_ms=self._clock(), cwd=str(self.kit.memory.workspace.root))
-            appends.append(saved)
+            prompt_owner = None
+            if prompt_context is not None:
+                if not isinstance(user.get("content"), str):
+                    raise TypeError("RuntimePromptInput requires the current prompt as string text")
+                prompt_owner = self._prepare_model_prompt(user["content"], prompt_context, context, turn_id)
+                if prompt_owner.prompt_submission.get("runtimeOnly"):
+                    # A runtime-only event has no persisted source user whose
+                    # idempotency identity could be carried to the model.
+                    user.pop("idempotencyKey", None)
+                user = {**user, "content": prompt_owner.session_prompt}
+            skip = prompt_owner is not None and prompt_owner.skip_submission
+            suppress = prompt_context is not None and prompt_context.suppress_next_user_message_persistence
+            if not skip and not suppress:
+                saved = self.catalog.append_message(state.session_id, user, session_key=state.session_key,
+                    event_id=f"{turn_id}:user", now_ms=self._clock(), cwd=str(self.kit.memory.workspace.root))
+                appends.append(saved)
+                if not saved["appended"]:
+                    raise RuntimeError("This request was already admitted; no model turn was repeated")
             accepted = True
             capture.accepted = True
-            if not saved["appended"]:
-                raise RuntimeError("This request was already admitted; no model turn was repeated")
             self._persist(state, needs_index=True, turn_id=turn_id, index_scope="transcript")
             continuation = self.catalog.read_continuation(state.session_id, session_key=state.session_key)
             model_messages = continuation["llmMessages"]
-            turn = HostTurn(self, turn_id, state, context, model_messages, trust)
+            projection_messages = continuation["context"]["messages"]
+            if suppress and not skip:
+                model_messages = [*model_messages, deepcopy(user)]
+                projection_messages = [*projection_messages, deepcopy(user)]
+            turn = HostTurn(self, turn_id, state, context, model_messages, trust,
+                projection_messages=projection_messages, model_prompt=prompt_owner)
             self._active_turn = turn
             phase = "model"
             try:
-                result = _model_result(await execute(turn))
+                result = _model_result(None if skip else await execute(turn))
                 capture.payloads = result.payloads
             finally:
                 await turn._close_and_join()

@@ -33,6 +33,11 @@ from equivalence.recall_signals_profile import validate_recall_signals_profile
 from equivalence.recall_signals import case_wire as recall_case_wire
 from equivalence.session_reset_boundaries_profile import validate_session_reset_boundaries_profile
 from equivalence.session_reset_boundaries import case_wire as reset_case_wire
+from equivalence.prompt_runtime_context_profile import (
+    validate_prompt_runtime_context_profile, PROVIDER_ADAPTER_FILES as PROMPT_PROVIDER_ADAPTER_FILES,
+    PROVIDER_SOURCE_HASHES as PROMPT_PROVIDER_SOURCE_HASHES,
+)
+from equivalence.prompt_runtime_context import case_wire as prompt_case_wire, HOST_TIMEZONE
 from equivalence.embedding_cache_lifecycle_profile import (
     PROVIDER_ADAPTER_FILES, PROVIDER_SOURCE_HASHES, PROVIDER_MODE as EMBEDDING_PROVIDER_MODE,
     validate_embedding_cache_lifecycle_profile,
@@ -57,6 +62,10 @@ _EMBEDDING_FIXTURE_CAPTURE = re.compile(
     r"tmp/plugin-captures/[0-9a-f-]{36}/captures/openclaw-plugin-build-[A-Za-z0-9]{6}"
     r"/package-0/node_modules/embedding-cache-provider/index\.mjs\Z"
 )
+_PROMPT_FIXTURE_CAPTURE = re.compile(
+    r"tmp/plugin-captures/[0-9a-f-]{36}/captures/openclaw-plugin-build-[A-Za-z0-9]{6}"
+    r"/package-0/node_modules/prompt-runtime-provider/index\.mjs\Z"
+)
 _OPERATIONS = {
     "embed-cache-lifecycle-runtime": (
         "embedding-cache-lifecycle-runtime.mjs", "dist/extensions/memory-core/manager-runtime.js", True,
@@ -72,6 +81,7 @@ _OPERATIONS = {
     "forget-boundaries-runtime": ("forget-lineage-runtime.mjs", "dist/cli.runtime-CVRN4xUp.mjs", False),
     "recall-signals-runtime": ("recall-signals-runtime.mjs", "dist/short-term-promotion-record-DrLa1fiO.mjs", False),
     "session-reset-boundaries-runtime": ("session-reset-boundaries-runtime.mjs", "dist/bundled/session-memory/handler.js", False),
+    "prompt-runtime-context-runtime": ("prompt-runtime-context-runtime.mjs", "dist/builtin-openclaw-D1Xfnzzr.mjs", False),
     "flush-trigger-runtime": (
         "flush-runtime.mjs", "dist/agent-runner-memory-Cc4lCZcs.mjs", False,
     ),
@@ -690,7 +700,8 @@ class ReleaseOracleExecution:
                  promotion_profile: dict | None = None, promotion_apply_profile: dict | None = None,
                  forget_lineage_profile: dict | None = None, forget_boundaries_profile: dict | None = None,
                  recall_signals_profile: dict | None = None, embedding_cache_profile: dict | None = None,
-                 session_reset_boundaries_profile: dict | None = None):
+                 session_reset_boundaries_profile: dict | None = None,
+                 prompt_runtime_context_profile: dict | None = None):
         self.config = deepcopy(config)
         self.adapter_hashes = dict(adapter_hashes)
         self.fixture_captures = fixture_captures
@@ -709,6 +720,7 @@ class ReleaseOracleExecution:
         self.recall_signals_profile = deepcopy(recall_signals_profile)
         self.embedding_cache_profile = deepcopy(embedding_cache_profile)
         self.session_reset_boundaries_profile = deepcopy(session_reset_boundaries_profile)
+        self.prompt_runtime_context_profile = deepcopy(prompt_runtime_context_profile)
         self.env: dict[str, str] = {}
         self._temporary = None
         self._entered = False
@@ -719,7 +731,8 @@ class ReleaseOracleExecution:
                 self.bootstrap_profile, self.memory_budget_profile, self.promotion_profile,
                 self.promotion_apply_profile, self.get_read_race_profile, self.turn_taint_source,
                 self.forget_lineage_profile, self.forget_boundaries_profile, self.recall_signals_profile,
-                self.embedding_cache_profile, self.session_reset_boundaries_profile)
+                self.embedding_cache_profile, self.session_reset_boundaries_profile,
+                self.prompt_runtime_context_profile)
             if sum(value is not None for value in capabilities) + bool(self.fixture_captures) > 1:
                 raise RuntimeOracleError("Independent native profiles cannot borrow one another's executable, source, backend or hook capabilities.")
             if self.get_read_race_profile is not None:
@@ -756,6 +769,8 @@ class ReleaseOracleExecution:
                 self.embedding_cache_profile = validate_embedding_cache_lifecycle_profile(self.embedding_cache_profile)
             if self.session_reset_boundaries_profile is not None:
                 self.session_reset_boundaries_profile = validate_session_reset_boundaries_profile(self.session_reset_boundaries_profile)
+            if self.prompt_runtime_context_profile is not None:
+                self.prompt_runtime_context_profile = validate_prompt_runtime_context_profile(self.prompt_runtime_context_profile)
             if self.entry_profile is not None:
                 self.entry_profile = validate_entry_provenance_profile(self.entry_profile)
                 if self.model_node_runtime is not None or self.turn_taint_source is not None or self.fixture_captures or self.atomic_profile is not None or self.bootstrap_profile is not None or self.memory_budget_profile is not None or self.get_read_race_profile is not None or self.promotion_profile is not None:
@@ -809,11 +824,14 @@ class ReleaseOracleExecution:
             self._locals = {}
             for name, digest in self.adapter_hashes.items():
                 embedding_source = self.embedding_cache_profile is not None and name in PROVIDER_ADAPTER_FILES
+                prompt_source = self.prompt_runtime_context_profile is not None and name in PROMPT_PROVIDER_ADAPTER_FILES
+                if prompt_source and digest != PROMPT_PROVIDER_SOURCE_HASHES[name]:
+                    raise RuntimeOracleError("A prompt model provider source differs from its independently frozen bytes.")
                 if embedding_source and digest != PROVIDER_SOURCE_HASHES[name]:
                     raise RuntimeOracleError("An embedding provider source differs from its independently frozen bytes.")
-                if Path(name).name != name and not embedding_source:
+                if Path(name).name != name and not embedding_source and not prompt_source:
                     raise RuntimeOracleError("Oracle adapter identities must use plain filenames.")
-                if not name.endswith(".mjs") and not embedding_source:
+                if not name.endswith(".mjs") and not embedding_source and not prompt_source:
                     continue
                 path = ROOT / "equivalence" / name
                 if not isinstance(digest, str) or not _HASH.fullmatch(digest):
@@ -879,6 +897,10 @@ class ReleaseOracleExecution:
             if self.session_reset_boundaries_profile is not None:
                 self._context["approvedNodeRuntime"] = self.session_reset_boundaries_profile["nodeRuntime"]
                 self._context["sessionResetBoundariesProfile"] = self.session_reset_boundaries_profile
+            if self.prompt_runtime_context_profile is not None:
+                self._context["approvedNodeRuntime"] = self.prompt_runtime_context_profile["nodeRuntime"]
+                self._context["promptRuntimeContextProfile"] = self.prompt_runtime_context_profile
+                self._context["promptRuntimeContextHostTimezone"] = HOST_TIMEZONE
             if self.recall_signals_profile is not None:
                 self._context["approvedNodeRuntime"] = self.recall_signals_profile["nodeRuntime"]
                 self._context["recallSignalsProfile"] = self.recall_signals_profile
@@ -893,6 +915,15 @@ class ReleaseOracleExecution:
                     "sourcePath": source, "sha256": self._locals[source],
                     "manifestPath": manifest, "manifestSha256": self._locals[manifest],
                     "capturePackage": "embedding-cache-provider",
+                }]
+            if self.prompt_runtime_context_profile is not None:
+                source, manifest = [str((ROOT / "equivalence" / name).resolve()) for name in PROMPT_PROVIDER_ADAPTER_FILES]
+                if source not in self._locals or manifest not in self._locals:
+                    raise RuntimeOracleError("The prompt composition capability requires both exact reviewed provider source files.")
+                self._context["promptFixtureSourceCaptures"] = [{
+                    "sourcePath": source, "sha256": self._locals[source],
+                    "manifestPath": manifest, "manifestSha256": self._locals[manifest],
+                    "capturePackage": "prompt-runtime-provider",
                 }]
             if self.fixture_captures:
                 fixture = str((ROOT / "equivalence/flush-execution.mjs").resolve())
@@ -914,6 +945,8 @@ class ReleaseOracleExecution:
                 "OPENCLAW_STATE_DIR": str(self.state_directory),
                 "OPENCLAW_CONFIG_PATH": str(self.config_path),
             }
+            if self.prompt_runtime_context_profile is not None:
+                self.env["TZ"] = HOST_TIMEZONE
             self._entered = True
             return self
         except (OSError, KeyError, TypeError, ValueError) as error:
@@ -932,12 +965,12 @@ class ReleaseOracleExecution:
         """Validate all observed threads and retain case raw state in the report."""
         if not self._entered:
             raise RuntimeOracleError("Release execution evidence requires an active owned context.")
-        if self.embedding_cache_profile is not None or self.session_reset_boundaries_profile is not None:
+        if self.embedding_cache_profile is not None or self.session_reset_boundaries_profile is not None or self.prompt_runtime_context_profile is not None:
             self._last_collection_error = None
         try:
             return self._collect(result, cases)
         except (OSError, KeyError, TypeError, ValueError, ReleaseRuntimeError) as error:
-            if self.embedding_cache_profile is not None or self.session_reset_boundaries_profile is not None:
+            if self.embedding_cache_profile is not None or self.session_reset_boundaries_profile is not None or self.prompt_runtime_context_profile is not None:
                 self._last_collection_error = {
                     "type": type(error).__module__ + "." + type(error).__qualname__,
                     "message": str(error), "traceback": traceback.format_exc(),
@@ -959,7 +992,7 @@ class ReleaseOracleExecution:
                    "kind": "rejected-release-runtime-diagnostics", "caseIds": [],
                    "oracleResult": None, "stdout": None, "stderr": None,
                    "caseDiagnostics": [], "processWorkerTraces": [], "omissions": []}
-        if (self.embedding_cache_profile is not None or self.session_reset_boundaries_profile is not None) and getattr(
+        if (self.embedding_cache_profile is not None or self.session_reset_boundaries_profile is not None or self.prompt_runtime_context_profile is not None) and getattr(
                 self, "_last_collection_error", None) is not None:
             capture["collectionError"] = deepcopy(self._last_collection_error)
 
@@ -1072,6 +1105,12 @@ class ReleaseOracleExecution:
             profile = validate_session_reset_boundaries_profile(self.session_reset_boundaries_profile)
             if profile["caseId"] != case.get("id") or profile["caseBindings"][profile["caseId"]] != _digest(reset_case_wire(case)):
                 raise RuntimeOracleError("A session reset boundaries case changed its frozen inputs")
+        if (self.prompt_runtime_context_profile is not None) is not (operation == "prompt-runtime-context-runtime"):
+            raise RuntimeOracleError("Prompt runtime context authority cannot execute another operation")
+        if self.prompt_runtime_context_profile is not None:
+            profile = validate_prompt_runtime_context_profile(self.prompt_runtime_context_profile)
+            if profile["caseId"] != case.get("id") or profile["caseBindings"][profile["caseId"]] != _digest(prompt_case_wire(case)):
+                raise RuntimeOracleError("A prompt runtime context case changed its frozen inputs")
         if (self.recall_signals_profile is not None) is not (operation == "recall-signals-runtime"):
             raise RuntimeOracleError("Recall signals authority cannot execute another operation")
         if self.recall_signals_profile is not None:
@@ -1174,7 +1213,7 @@ class ReleaseOracleExecution:
             raise RuntimeOracleError("The release oracle returned an unexpected case identity.")
         expected_provider = EMBEDDING_PROVIDER_MODE if self.embedding_cache_profile is not None else "none"
         if row["ok"] and (not isinstance(row["result"], dict)
-                or operation not in {PROMOTION_RANKING_OPERATION, "recall-signals-runtime"}
+                or operation not in {PROMOTION_RANKING_OPERATION, "recall-signals-runtime", "prompt-runtime-context-runtime"}
                 and row["result"].get("provider") != expected_provider):
             raise RuntimeOracleError(
                 "Embedding cache fixtures require their declared deterministic provider."
@@ -1183,6 +1222,8 @@ class ReleaseOracleExecution:
             raise RuntimeOracleError("The real embedding-cache manager did not complete its declared fixture flow.")
         if operation == "session-reset-boundaries-runtime" and not row["ok"]:
             raise RuntimeOracleError("The real session reset caller did not complete its declared capture and recall flow.")
+        if operation == "prompt-runtime-context-runtime" and not row["ok"]:
+            raise RuntimeOracleError("The real prompt runtime context caller did not complete its declared capture and recall flow.")
         if operation == "turn-trust-runtime" and not row["ok"]:
             raise RuntimeOracleError("The real turn-trust caller did not complete its registered execution and persistence flow.")
         if operation in {*MODEL_RUNTIME_OPERATIONS, *ENTRY_PROVENANCE_PROFILES, *ATOMIC_PUBLICATION_PROFILES, *MEMORY_BUDGET_PROFILES, PROMOTION_RANKING_OPERATION, PROMOTION_APPLY_OPERATION} and not row["ok"]:
@@ -1200,6 +1241,7 @@ class ReleaseOracleExecution:
         total = 0
         loaded, bootstrap, worker_imports, local_imports, captures = {}, [], [], set(), {}
         embedding_captures = {}
+        prompt_captures = {}
         release_by_pid, local_by_pid, process_parents = {}, {}, {}
         atomic_loaded_by_pid, atomic_native_by_pid = {}, {}
         atomic_lifecycle_events = []
@@ -1211,7 +1253,7 @@ class ReleaseOracleExecution:
             if filename is None:
                 raise RuntimeOracleError("A release thread trace has an invalid identity.")
             raw = _regular(trace, MAX_SINGLE_TRACE_BYTES)
-            if self.entry_profile is not None or self.memory_budget_profile is not None or self.promotion_profile is not None or self.promotion_apply_profile is not None or self.forget_lineage_profile is not None or self.forget_boundaries_profile is not None or self.recall_signals_profile is not None or self.embedding_cache_profile is not None or self.session_reset_boundaries_profile is not None:
+            if self.entry_profile is not None or self.memory_budget_profile is not None or self.promotion_profile is not None or self.promotion_apply_profile is not None or self.forget_lineage_profile is not None or self.forget_boundaries_profile is not None or self.recall_signals_profile is not None or self.embedding_cache_profile is not None or self.session_reset_boundaries_profile is not None or self.prompt_runtime_context_profile is not None:
                 entry_trace_files.append({"name": trace.name, "bytes": len(raw), "sha256": _digest(raw),
                                           "text": raw.decode("utf-8")})
             if self.bootstrap_profile is not None:
@@ -1241,6 +1283,7 @@ class ReleaseOracleExecution:
                               or (self.forget_boundaries_profile["nodeRuntime"] if self.forget_boundaries_profile is not None else None)
                               or (self.recall_signals_profile["nodeRuntime"] if self.recall_signals_profile is not None else None)
                               or (self.session_reset_boundaries_profile["nodeRuntime"] if self.session_reset_boundaries_profile is not None else None)
+                              or (self.prompt_runtime_context_profile["nodeRuntime"] if self.prompt_runtime_context_profile is not None else None)
                               or (self.embedding_cache_profile["nodeRuntime"] if self.embedding_cache_profile is not None else None))
             if node_authority is not None and first.get("runtime") != node_authority:
                 raise RuntimeOracleError("The actual native process or worker omitted its approved model binary authority.")
@@ -1287,6 +1330,12 @@ class ReleaseOracleExecution:
                 if first.get("sessionResetBoundariesProfile") != self.session_reset_boundaries_profile:
                     raise RuntimeOracleError("The actual session reset process omitted its distinct frozen authority")
                 bootstrap[-1]["sessionResetBoundariesProfile"] = deepcopy(first["sessionResetBoundariesProfile"])
+            if self.prompt_runtime_context_profile is not None:
+                if (first.get("promptRuntimeContextProfile") != self.prompt_runtime_context_profile
+                        or first.get("promptRuntimeContextHostTimezone") != HOST_TIMEZONE):
+                    raise RuntimeOracleError("The actual prompt runtime context process omitted its distinct frozen authority")
+                bootstrap[-1]["promptRuntimeContextProfile"] = deepcopy(first["promptRuntimeContextProfile"])
+                bootstrap[-1]["promptRuntimeContextHostTimezone"] = first["promptRuntimeContextHostTimezone"]
             if self.recall_signals_profile is not None:
                 if first.get("recallSignalsProfile") != self.recall_signals_profile:
                     raise RuntimeOracleError("The actual recall process omitted its distinct frozen authority")
@@ -1349,6 +1398,32 @@ class ReleaseOracleExecution:
                         raise RuntimeOracleError("The complete retained embedding provider source changed.")
                     if event["event"] == "load":
                         embedding_captures[capture] = {
+                            "sourcePath": source, "capturePath": capture, "sha256": digest,
+                            "proofPath": proof, "proofSha256": _digest(proof_bytes),
+                            "bytes": len(proof_bytes), "text": proof_bytes.decode("utf8"),
+                        }
+                elif kind == "prompt-fixture-capture":
+                    source, capture, proof = event.get("sourcePath"), event.get("capturePath"), event.get("proofPath")
+                    authority = self._context.get("promptFixtureSourceCaptures", [])
+                    if (self.prompt_runtime_context_profile is None or operation != "prompt-runtime-context-runtime"
+                            or len(authority) != 1 or source != authority[0]["sourcePath"]
+                            or path != source or self._locals.get(source) != digest
+                            or digest != authority[0]["sha256"]
+                            or not isinstance(capture, str) or not _PROMPT_FIXTURE_CAPTURE.fullmatch(capture)):
+                        raise RuntimeOracleError("A prompt model provider source capture escaped its exact independent authority.")
+                    expected_proof = "prompt-fixture-source-captures/" + _digest(
+                        (capture + "\0" + digest).encode()) + ".mjs"
+                    if proof != expected_proof:
+                        raise RuntimeOracleError("A prompt model provider capture has invalid retained proof.")
+                    proof_directory = self.evidence_directory / "prompt-fixture-source-captures"
+                    if (proof_directory.is_symlink() or not proof_directory.is_dir()
+                            or proof_directory.resolve() != proof_directory):
+                        raise RuntimeOracleError("Prompt model provider capture proof escaped its owned directory.")
+                    proof_bytes = _regular(self.evidence_directory / proof, MAX_DIAGNOSTIC_BYTES)
+                    if _digest(proof_bytes) != digest:
+                        raise RuntimeOracleError("The complete retained prompt model provider source changed.")
+                    if event["event"] == "load":
+                        prompt_captures[capture] = {
                             "sourcePath": source, "capturePath": capture, "sha256": digest,
                             "proofPath": proof, "proofSha256": _digest(proof_bytes),
                             "bytes": len(proof_bytes), "text": proof_bytes.decode("utf8"),
@@ -1481,6 +1556,8 @@ class ReleaseOracleExecution:
             raise RuntimeOracleError("The native provider loader did not execute a reviewed fixture source capture.")
         if operation == "embed-cache-lifecycle-runtime" and not embedding_captures:
             raise RuntimeOracleError("The original plugin loader did not execute the exact embedding provider capture.")
+        if operation == "prompt-runtime-context-runtime" and not prompt_captures:
+            raise RuntimeOracleError("The original plugin loader did not execute the exact prompt model provider capture.")
         if operation == "flush-execution-runtime" and (
             "node_modules/openclaw", "dist/extensions/memory-core/manager-runtime.js"
         ) not in loaded:
@@ -1513,6 +1590,13 @@ class ReleaseOracleExecution:
 
             if any(("node_modules/openclaw", owner) not in loaded for owner in REQUIRED_RUNTIME_ARTIFACTS):
                 raise RuntimeOracleError("The original session reset/capture/provenance owners did not all execute")
+            validate_native(case, row["result"], diagnostic, evidence.parent)
+        if operation == "prompt-runtime-context-runtime":
+            from equivalence.prompt_runtime_context_bindings import REQUIRED_RUNTIME_ARTIFACTS
+            from equivalence.prompt_runtime_context_evidence import validate_native
+
+            if any(("node_modules/openclaw", owner) not in loaded for owner in REQUIRED_RUNTIME_ARTIFACTS):
+                raise RuntimeOracleError("The original prompt composition/model-boundary owners did not all execute")
             validate_native(case, row["result"], diagnostic, evidence.parent)
         if operation == "recall-signals-runtime":
             from equivalence.recall_signals_bindings import REQUIRED_RUNTIME_ARTIFACTS
@@ -1845,6 +1929,12 @@ class ReleaseOracleExecution:
             answer["runtimeDiagnostics"][0]["validationStatus"] = "verified"
             answer["releaseTrace"]["sessionResetBoundariesTransport"] = {
                 "profile": deepcopy(self.session_reset_boundaries_profile), "traceFiles": entry_trace_files}
+        if self.prompt_runtime_context_profile is not None:
+            answer["runtimeDiagnostics"][0]["rawSnapshots"] = _json(raw)
+            answer["runtimeDiagnostics"][0]["validationStatus"] = "verified"
+            answer["releaseTrace"]["promptRuntimeContextTransport"] = {
+                "profile": deepcopy(self.prompt_runtime_context_profile), "traceFiles": entry_trace_files,
+                "fixtureSourceCaptures": [prompt_captures[key] for key in sorted(prompt_captures)]}
         if self.recall_signals_profile is not None:
             answer["runtimeDiagnostics"][0]["rawSnapshots"] = _json(raw)
             answer["runtimeDiagnostics"][0]["validationStatus"] = "verified"

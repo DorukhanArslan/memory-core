@@ -1,0 +1,5 @@
+{
+  "id": "fixture-prompt-runtime-model",
+  "providers": ["fixture-prompt-runtime-model"],
+  "configSchema": {"type": "object", "properties": {}, "additionalProperties": false}
+}

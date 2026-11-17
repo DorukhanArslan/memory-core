@@ -20,13 +20,14 @@ from __future__ import annotations
 import hashlib
 import json
 import os
+import re
 import secrets
 import stat
 from collections.abc import Callable, Collection, Iterable, Sequence
 from pathlib import Path
 from typing import Any, TypeVar
 
-from memory_core.bootstrap._js import js_trim, js_trim_end
+from memory_core.bootstrap._js import JS_SPACE, js_trim, js_trim_end, truncate_utf16_safe, utf16_len
 from memory_core.consolidation._util import iso_ms, write_json_atomic
 from memory_core.consolidation.markers import extract_promotion_markers
 from memory_core.consolidation.origins import (
@@ -118,11 +119,49 @@ def read_dreams_file(path: Path) -> str:
     """``readDreamsFile``: a missing file, a symlink or a non-file reads as empty."""
     try:
         mode = os.lstat(path).st_mode
-    except OSError:
+    except (FileNotFoundError, NotADirectoryError):
         return ""
     if not stat.S_ISREG(mode):
         return ""
-    return path.read_text(encoding="utf-8")
+    return path.read_bytes().decode("utf-8", errors="replace")
+
+
+def diary_context_entries(content: str) -> list[str]:
+    """Return normalized, bounded diary quotes in file order."""
+    start = "<!-- openclaw:dreaming:diary:start -->"
+    end = "<!-- openclaw:dreaming:diary:end -->"
+    if start not in content or content.find(end) < content.index(start):
+        return []
+    blocks = content.partition(start)[2].partition(end)[0].split("\n---\n")
+    entries = []
+    for block in blocks:
+        lines = [js_trim(line) for line in block.split("\n")]
+        body = " ".join(
+            line
+            for line in lines
+            if line
+            and not line.startswith(("#", "<!--"))
+            and not (len(line) > 2 and line.startswith("*") and line.endswith("*"))
+        )
+        body = js_trim(re.sub(JS_SPACE + "+", " ", body))
+        if body:
+            entries.append(
+                js_trim_end(truncate_utf16_safe(body, 360)) + "..."
+                if utf16_len(body) > 360
+                else body
+            )
+    return entries
+
+
+def read_recent_dream_diary_entries(workspace: str | Path, limit: int = 3) -> list[str]:
+    """Return the newest diary quotes first, omitting unavailable optional context."""
+    if limit <= 0:
+        return []
+    try:
+        content = read_dreams_file(resolve_dreams_path(workspace))
+    except PermissionError:
+        return []
+    return diary_context_entries(content)[-limit:][::-1]
 
 
 def write_dreams_file_atomic(path: Path, content: str) -> None:
@@ -153,8 +192,8 @@ def write_dreams_file_atomic(path: Path, content: str) -> None:
         raise
 
 
-def update_dreams_file(workspace: str | Path, updater: Callable[[str, Path], tuple[str, T]]) -> T:
-    """``updateDreamsFile``: read, let ``updater`` return ``(content, result)``, write with a final newline.
+def update_dreams_file(workspace: str | Path, updater: Callable[[str, Path], tuple[str | None, T]]) -> T:
+    """``updateDreamsFile``: read, let ``updater`` return ``(content, result)``, write with a final newline. A content value of None skips publication.
 
     Takes the workspace lock (``withMemoryWorkspaceLock``), re-entering it when the caller, such
     as the deep phase, already holds it; waits up to 10 s for another holder.
@@ -162,7 +201,8 @@ def update_dreams_file(workspace: str | Path, updater: Callable[[str, Path], tup
     with memory_workspace_lock(workspace):
         path = resolve_dreams_path(workspace)
         content, result = updater(read_dreams_file(path), path)
-        write_dreams_file_atomic(path, content if content.endswith("\n") else f"{content}\n")
+        if content is not None:
+            write_dreams_file_atomic(path, content if content.endswith("\n") else f"{content}\n")
         return result
 
 

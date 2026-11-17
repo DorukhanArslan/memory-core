@@ -28,6 +28,8 @@ from memory_core.host.session import SessionState, TurnUsage, apply_turn_usage
 from memory_core.memory_write_provenance import _observe_memory_write_entry
 from memory_core.model_prompt import ModelPrompt, RuntimePromptInput, serialize_model_tool_json
 from memory_core.session_catalog import MemorySessionCatalog, normalize_session_agent_id
+from memory_core.session_transcript_append import resolve_message_append_parent, timestamp_ms_to_iso
+from memory_core.transcript_tree import select_visible_transcript_events
 from memory_core.session_visibility import is_incognito_session_key, resolve_session_agent_id
 from memory_core.tools.common import format_error_message
 from memory_core.turn_tool_dispatch import TurnTool, TurnToolDispatcher
@@ -1009,9 +1011,33 @@ class HostSessionRunner:
         registry = [*context.tools, *(tool.definition for tool in self.extra_tools if tool.definition is not None)]
         prompt = ModelPrompt(effective_prompt, options, tools=registry,
             workspace_prompt=context.workspace.prompt_text, citations_mode=self.kit.memory.config.citation_mode,
-            identity=self.kit._identity, now_ms=self._clock(), session_version=version, user_key=user_key)
+            identity=self.kit._identity, now_ms=self._clock(), session_version=version, user_key=user_key,
+            session_key=self.session.session_key,
+            history_events=select_visible_transcript_events(list(snapshot.events)) if snapshot else ())
         self.last_model_prompt = prompt
         return prompt
+
+    def _append_model_snapshot(self, prompt):
+        """Append the history owner's genuine model-snapshot control, once."""
+        owner = prompt.history_replay
+        if owner is None or owner.snapshot_to_append is None:
+            return
+        snapshot = self.catalog.read_transcript(self.session.session_id)
+        events = list(snapshot.events) if snapshot else []
+        appended = []
+        timestamp = timestamp_ms_to_iso(prompt.now_ms)
+        if not events:
+            header = {"type": "session", "version": 4, "id": self.session.session_id,
+                      "timestamp": timestamp, "cwd": str(self.kit.memory.workspace.root)}
+            appended.append(header)
+            events.append(header)
+        appended.append({"type": "custom", "id": str(uuid4()),
+                         "parentId": resolve_message_append_parent(events),
+                         "timestamp": timestamp, "customType": "model-snapshot",
+                         "data": deepcopy(owner.snapshot_to_append)})
+        self.catalog.append_events(self.session.session_id, appended,
+            updated_at_ms=prompt.now_ms, session_key=self.session.session_key)
+        owner.snapshot_to_append = None
 
     async def _produce(self, user_message, execute, execute_flush, turn_id, sender_is_owner,
                        context_window_tokens, capture: _RunCapture,
@@ -1082,7 +1108,12 @@ class HostSessionRunner:
                 model_messages = [*model_messages, deepcopy(user)]
                 projection_messages = [*projection_messages, deepcopy(user)]
             if prompt_owner is not None and not skip:
-                prompt_owner.bind_current_user(projection_messages[-1], len(projection_messages) - 1)
+                prompt_owner.bind_current_user(projection_messages[-1], len(projection_messages) - 1,
+                    prior_messages=projection_messages[:-1])
+                self._append_model_snapshot(prompt_owner)
+            elif prompt_owner is not None and prompt_owner.history_replay is not None:
+                prompt_owner.history_replay.prepare(projection_messages)
+                self._append_model_snapshot(prompt_owner)
             turn = HostTurn(self, turn_id, state, context, model_messages, trust,
                 projection_messages=projection_messages, model_prompt=prompt_owner)
             self._active_turn = turn

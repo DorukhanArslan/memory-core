@@ -1,10 +1,10 @@
-name: Recheck prompt runtime context once
+name: Verify prompt history repair once
 # One frozen full measurement; retain the first result without retrying.
-# The previous 1,490 definitions stay intact; the complete prompt family is appended.
+# The previous 1,500 definitions stay intact; the complete history repair family is appended.
 
 on:
   push:
-    branches: [verify/prompt-runtime-context-recheck-once]
+    branches: [verify/prompt-history-repair-once]
     paths: [.github/workflows/verify-merged-forget-once.yml]
 
 permissions:
@@ -36,7 +36,7 @@ jobs:
           persist-credentials: false
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
         with:
-          ref: 907944efb61245208812e81b5555560051ae11cc
+          ref: 4463154b8b9f9323d70400e1ce82c581c3823ced
           path: .reference/product-source
           persist-credentials: false
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
@@ -78,7 +78,7 @@ jobs:
           --reference .reference/openclaw --node "$(command -v node)"
           --sdk-source-root . --adapter-root .
           --output .equivalence-results/summary/forget-family-replay.json
-      - name: Assess the complete report and retained Host, recall, cache, reset and prompt captures
+      - name: Assess the complete report and retained captures including prompt history repair
         if: always() && steps.comparison.outcome != 'skipped'
         id: assessment
         continue-on-error: true
@@ -95,7 +95,7 @@ jobs:
         if: always()
         uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
         with:
-          name: prompt-runtime-context-recheck-summary
+          name: prompt-history-repair-summary
           path: .equivalence-results/summary/
           include-hidden-files: true
           if-no-files-found: warn
@@ -103,7 +103,7 @@ jobs:
         if: always()
         uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
         with:
-          name: prompt-runtime-context-recheck-raw-evidence
+          name: prompt-history-repair-raw-evidence
           path: |
             .equivalence-results/
             /var/tmp/memory-host-v4-*/

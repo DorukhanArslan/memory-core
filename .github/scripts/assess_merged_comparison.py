@@ -18,20 +18,20 @@ from equivalence.catalog_migration import definition_authority  # noqa: E402
 from equivalence.harness import _adapter_identity, _implementation_identity, _same_json  # noqa: E402
 from equivalence.strict_report_reader import Reader, _constant, _finite, _object  # noqa: E402
 
-PRODUCT = "907944efb61245208812e81b5555560051ae11cc"
+PRODUCT = "4463154b8b9f9323d70400e1ce82c581c3823ced"
 SCOPE = "a8e066e63970dd0be734485d62a5932640894b8c0a42f47ac3eb67f784cbc7b9"
-SDK = {"sourceSha256": "375890b10db63088c9fb1d2e6ce7ddafed363acfd6aa020da52dfd46de0d0517", "sourceFiles": 164}
-CATALOG_SHA = "96bf1edb8fe29618d1b62792d1ffbf58423cd16f804eb490ba3f0a7c6c187ebb"
-REGISTERED_CASES = 1500
+SDK = {"sourceSha256": "84b53816c2c6a5c3625d3a9d0fca774c6d7f1ff064da707cb94f619cebbc6c87", "sourceFiles": 168}
+CATALOG_SHA = "f40567a91042cb6e46bca64d94e83a3619fe5d2353192730c6e6838998822493"
+REGISTERED_CASES = 1508
 OPERATIONS = ("host-restart-session-runtime", "host-update-isolation-runtime",
               "host-turn-barrier-boundaries-runtime", "index-identity-boundaries-runtime",
               "query-sync-outcomes-runtime", "query-sync-boundaries-runtime",
               "host-turn-barrier-v4-runtime", "forget-index-fence-v6-runtime", "forget-lineage-runtime",
               "forget-boundaries-runtime", "recall-signals-runtime", "embed-cache-lifecycle-runtime",
-              "session-reset-boundaries-runtime", "prompt-runtime-context-runtime")
+              "session-reset-boundaries-runtime", "prompt-runtime-context-runtime", "prompt-history-repair-runtime")
 
 
-PREVIOUS_COMPARISON = {'runId': 43961408161, 'reportSha256': 'f972a33cafa280c0a58098f3b3e5616185a33bd23df769ecb4d221a6b5f9544f', 'assessmentSha256': 'a7a710ef0d2be6d9cce3111cd05f27160fec0cc756a245ff8aa88b4c77f17853', 'verified': 82}
+PREVIOUS_COMPARISON = {'runId': 44137396647, 'reportSha256': '080d8a69437fcc44db824583b5a7fb3b834be1c575220a7a000a5a28455a2dd4', 'assessmentSha256': '20af968622ab7a29339d6a11bd9cf4c363099f1bba87d3907328b64b1f9cd701', 'verified': 84}
 PREVIOUS_MISMATCH_PUBLIC_SHA256 = {
     "bootstrap-discovery-legacy-state-gate": {
         "openclaw": "0c17c9620066864fed5e7643e4cb638e91b6691dfa3f4a4156d37abc2890dcb1",
@@ -42,7 +42,7 @@ PREVIOUS_MISMATCH_PUBLIC_SHA256 = {
         "python": "4426dc0e10fee7057e3d2f819367cd7954fee262858c8c3f5bcfc2abb0f8d4a2"
     },
     "flush-execution-warm-index-first-recall": {
-        "openclaw": "cb844e6214b8fd7526c42e6e3dd968c97ea9963230260e4c29ce178f0fb94ec5",
+        "openclaw": "4cdb2aa71ea06ed46a094e47e3739276fae9238c4480d82a6eee896d6451b569",
         "python": "f5f748474b212ead4420d77fe1a6c3ba3425db777e1f15c318be567057925802"
     },
     "hybrid-unicode-path-collation-diagnostic": {
@@ -112,7 +112,7 @@ def load(path):
     return value
 
 
-def project(path, host_ids, lineage_ids, boundary_ids, recall_ids, cache_ids, reset_ids, prompt_ids):
+def project(path, host_ids, lineage_ids, boundary_ids, recall_ids, cache_ids, reset_ids, prompt_ids, history_ids):
     kept = {"schemaVersion", "kind", "mode", "status", "fullScopePassed", "implementation",
             "reference", "manifestSha256", "adapterSha256", "casesSha256", "definitionMigration",
             "summary", "requirements", "errors", "startedAt", "finishedAt", "durationSeconds",
@@ -122,14 +122,16 @@ def project(path, host_ids, lineage_ids, boundary_ids, recall_ids, cache_ids, re
             "recallSignalsBindings", "recallSignalsNode", "embeddingCacheFamilyComplete",
             "embeddingCacheBindings", "embeddingCacheNode", "sessionResetBoundariesFamilyComplete",
             "sessionResetBoundariesBindings", "sessionResetBoundariesNode",
-            "promptRuntimeContextFamilyComplete", "promptRuntimeContextBindings", "promptRuntimeContextNode"}
+            "promptRuntimeContextFamilyComplete", "promptRuntimeContextBindings", "promptRuntimeContextNode",
+            "promptHistoryRepairFamilyComplete", "promptHistoryRepairBindings", "promptHistoryRepairNode"}
     result = {"cases": [], "hostPairs": {}, "hostDiagnostics": {}, "mismatchPairs": {},
               "lineagePairs": {}, "lineageDiagnostics": {}, "lineageTraces": {},
               "boundaryPairs": {}, "boundaryDiagnostics": {}, "boundaryTraces": {},
               "recallPairs": {}, "recallDiagnostics": {}, "recallTraces": {},
               "cachePairs": {}, "cacheDiagnostics": {}, "cacheTraces": {},
               "resetPairs": {}, "resetDiagnostics": {}, "resetTraces": {},
-              "promptPairs": {}, "promptDiagnostics": {}, "promptTraces": {}}
+              "promptPairs": {}, "promptDiagnostics": {}, "promptTraces": {},
+              "historyPairs": {}, "historyDiagnostics": {}, "historyTraces": {}}
     before = digest(path)
 
     def accept(key, value, array):
@@ -159,23 +161,27 @@ def project(path, host_ids, lineage_ids, boundary_ids, recall_ids, cache_ids, re
                     result["cachePairs"][value["id"]] = pair
                 if value["id"] in reset_ids:
                     result["resetPairs"][value["id"]] = pair
+                if value["id"] in history_ids:
+                    result["historyPairs"][value["id"]] = pair
                 if value["id"] in prompt_ids:
                     result["promptPairs"][value["id"]] = pair
                 if value["status"] == "mismatched":
                     result["mismatchPairs"][value["id"]] = pair
             require(value["status"] != "mismatched" or "python" in value, "Mismatch omitted whole public values")
             result["cases"].append(row)
-        elif key == "runtimeDiagnostics" and value.get("id") in prompt_ids:
+        elif key == "runtimeDiagnostics" and (value.get("id") in prompt_ids or value.get("id") in history_ids):
+            diagnostics = result["historyDiagnostics"] if value["id"] in history_ids else result["promptDiagnostics"]
             require(value.get("side") in {"native", "python"}, "Unknown prompt diagnostic side")
             identity = value["id"] + "--" + value["side"]
-            require(identity not in result["promptDiagnostics"], "Duplicate prompt diagnostic")
+            require(identity not in diagnostics, "Duplicate prompt diagnostic")
             require(isinstance(value.get("rawSnapshots"), list) and len(value["rawSnapshots"]) == 1
                     and isinstance(value["rawSnapshots"][0], dict),
                     "Prompt diagnostic is not a complete singleton packet")
-            result["promptDiagnostics"][identity] = value
-        elif key == "releaseTraces" and value.get("id") in prompt_ids:
-            require(value["id"] not in result["promptTraces"], "Duplicate prompt process trace")
-            result["promptTraces"][value["id"]] = value
+            diagnostics[identity] = value
+        elif key == "releaseTraces" and (value.get("id") in prompt_ids or value.get("id") in history_ids):
+            traces = result["historyTraces"] if value["id"] in history_ids else result["promptTraces"]
+            require(value["id"] not in traces, "Duplicate prompt process trace")
+            traces[value["id"]] = value
         elif key == "runtimeDiagnostics" and value.get("id") in reset_ids:
             require(value.get("side") in {"native", "python"}, "Unknown reset boundary diagnostic side")
             identity = value["id"] + "--" + value["side"]
@@ -823,29 +829,42 @@ def replay_reset(data, cases, args):
     return results
 
 
-def replay_prompt(data, cases, args):
+def replay_prompt(data, cases, args, *, history=False):
     from equivalence.model_runtime_authority import prepare_model_node_authority
     from equivalence.release_runtime import prepare_release_runtime
-    from equivalence.prompt_runtime_context import CASE_HASHES, HOST_TIMEZONE, validate_registration
-    from equivalence.prompt_runtime_context_bindings import (
-        COMPILED_HASHES, REQUIRED_RUNTIME_ARTIFACTS, prepare_prompt_runtime_context_bindings,
-    )
-    from equivalence.prompt_runtime_context_evidence import decode_native_capture, validate_pair
-    from equivalence.prompt_runtime_context_profile import (
-        PROVIDER_SOURCE_HASHES, prepare_prompt_runtime_context_profile,
-    )
+    if history:
+        from equivalence.prompt_history_repair import CASE_HASHES, validate_registration
+        from equivalence.prompt_history_repair_bindings import (
+            COMPILED_HASHES, REQUIRED_RUNTIME_ARTIFACTS, prepare_prompt_history_repair_bindings as prepare_bindings,
+        )
+        from equivalence.prompt_history_repair_evidence import decode_native_capture, validate_pair
+        from equivalence.prompt_history_repair_profile import (
+            PROVIDER_SOURCE_HASHES, prepare_prompt_history_repair_profile as prepare_profile,
+        )
+        family_name, authority, collection, timezone = "prompt-history-repair", "promptHistoryRepair", "history", "UTC"
+    else:
+        from equivalence.prompt_runtime_context import CASE_HASHES, HOST_TIMEZONE, validate_registration
+        from equivalence.prompt_runtime_context_bindings import (
+            COMPILED_HASHES, REQUIRED_RUNTIME_ARTIFACTS, prepare_prompt_runtime_context_bindings as prepare_bindings,
+        )
+        from equivalence.prompt_runtime_context_evidence import decode_native_capture, validate_pair
+        from equivalence.prompt_runtime_context_profile import (
+            PROVIDER_SOURCE_HASHES, prepare_prompt_runtime_context_profile as prepare_profile,
+        )
+        family_name = "prompt-runtime-context"
+        authority, collection, timezone = "promptRuntimeContext", "prompt", HOST_TIMEZONE
 
     validate_registration(cases)
     require(cases and [case["id"] for case in cases] == list(CASE_HASHES),
             "Prompt replay requires the complete frozen prompt family")
-    require(set(data["promptPairs"]) == set(data["promptTraces"]) == set(CASE_HASHES)
-            and set(data["promptDiagnostics"]) == {
+    require(set(data[collection + "Pairs"]) == set(data[collection + "Traces"]) == set(CASE_HASHES)
+            and set(data[collection + "Diagnostics"]) == {
                 cid + "--" + side for cid in CASE_HASHES for side in ("native", "python")},
             "Prompt replay omitted a complete public pair, raw packet or process trace")
     runtime = prepare_release_runtime(args.reference, args.release_runtime, download=False)
     node = prepare_model_node_authority(args.node)
-    require(_same_json(data["promptRuntimeContextBindings"], prepare_prompt_runtime_context_bindings(
-        args.reference, Path(runtime["runtimeRoot"]))) and _same_json(data["promptRuntimeContextNode"], node),
+    require(_same_json(data[authority + "Bindings"], prepare_bindings(
+        args.reference, Path(runtime["runtimeRoot"]))) and _same_json(data[authority + "Node"], node),
         "Prompt source/artifact/executable authority changed")
     authenticated = {(package["location"], item["path"]): item["sha256"]
                      for package in runtime["packages"] for item in package["files"]}
@@ -859,13 +878,13 @@ def replay_prompt(data, cases, args):
         r"/package-0/node_modules/prompt-runtime-provider/index\.mjs\Z")
     provider_source = ROOT / "equivalence/prompt-runtime-provider/index.mjs"
     provider_sha = PROVIDER_SOURCE_HASHES["prompt-runtime-provider/index.mjs"]
-    family = ROOT / ".equivalence-results/prompt-runtime-context"
+    family = ROOT / ".equivalence-results" / family_name
     require(family.resolve(strict=True) == family and not family.is_symlink(),
             "Prompt evidence family is not its canonical owned directory")
     results = []
     for case in cases:
         cid = case["id"]
-        native, sdk = (data["promptDiagnostics"][cid + "--" + side] for side in ("native", "python"))
+        native, sdk = (data[collection + "Diagnostics"][cid + "--" + side] for side in ("native", "python"))
         require(native["validationStatus"] == sdk["validationStatus"] == "verified"
                 and isinstance(native["sha256"], str) and re.fullmatch(r"[0-9a-f]{64}", native["sha256"]),
                 "Prompt original singleton raw packet was not affirmatively validated")
@@ -903,9 +922,9 @@ def replay_prompt(data, cases, args):
         require(_same_json(native_records, native["rawSnapshots"]),
                 "Losslessly decoded prompt envelope differs from the whole original collector packet")
         sdk_raw, native_raw = records[0], native_records[0]
-        trace = data["promptTraces"][cid]
-        transport = trace["promptRuntimeContextTransport"]
-        profile = prepare_prompt_runtime_context_profile(case, args.node)
+        trace = data[collection + "Traces"][cid]
+        transport = trace[authority + "Transport"]
+        profile = prepare_profile(case, args.node)
         require(trace["kind"] == "authenticated-process-thread-trace"
                 and trace["provider"] == "none" and trace["networkFetchDenied"] is True
                 and set(transport) == {"profile", "traceFiles", "fixtureSourceCaptures", "originalProcessStreams"}
@@ -941,13 +960,13 @@ def replay_prompt(data, cases, args):
                     and isinstance(first.get("contextSha256"), str)
                     and re.fullmatch(r"[0-9a-f]{64}", first["contextSha256"])
                     and _same_json(first.get("runtime"), node)
-                    and _same_json(first.get("promptRuntimeContextProfile"), profile)
-                    and first.get("promptRuntimeContextHostTimezone") == HOST_TIMEZONE,
+                    and _same_json(first.get(authority + "Profile"), profile)
+                    and first.get(authority + "HostTimezone") == timezone,
                     "Prompt thread bypassed its declared protected runtime")
             contexts.add(first["contextSha256"])
             threads.append({"pid": pid, "threadId": thread, "isMainThread": thread == 0,
-                            "runtime": node, "promptRuntimeContextProfile": profile,
-                            "promptRuntimeContextHostTimezone": HOST_TIMEZONE})
+                            "runtime": node, authority + "Profile": profile,
+                            authority + "HostTimezone": timezone})
             for event in events[1:]:
                 require(event.get("event") in {"load", "resolve-native"}
                         and event.get("pid") == pid and event.get("threadId") == thread,
@@ -978,7 +997,7 @@ def replay_prompt(data, cases, args):
                 and type(trace["protectedWorkerThreads"]) is int
                 and trace["protectedWorkerThreads"] == sum(not row["isMainThread"] for row in threads),
                 "Prompt protected process/worker inventory changed")
-        require({"release-oracle.mjs", "prompt-runtime-context-runtime.mjs"} <= locals_loaded
+        require({"release-oracle.mjs", family_name + "-runtime.mjs"} <= locals_loaded
                 and all(("node_modules/openclaw", relative, COMPILED_HASHES[relative]) in loaded
                         for relative in REQUIRED_RUNTIME_ARTIFACTS)
                 and trace["loadedReleaseFiles"] == len(loaded),
@@ -1024,7 +1043,7 @@ def replay_prompt(data, cases, args):
         native_public = original["results"][0]["result"]
         sdk_public = sdk_raw["output"]
         actual_native, actual_sdk = validate_pair(case, native_raw, sdk_raw, native_public, sdk_public, directory)
-        pair = data["promptPairs"][cid]
+        pair = data[collection + "Pairs"][cid]
         require(_same_json(actual_native, pair["openclaw"]) and _same_json(actual_sdk, pair["python"])
                 and digest(raw_path) == raw_sha and digest(native_path) == native_sha,
                 "Prompt whole public projection or actual original/SDK raw bytes changed during replay")
@@ -1099,13 +1118,13 @@ def assess(args, result):
     migration = definition_authority(definitions, fif_version="v6")
     require(len(definitions) == seal["registeredCases"]
             and hashlib.sha256(canonical(definitions)).hexdigest() == seal["catalogSha256"], "Sealed catalog changed")
-    previous = {"registeredCases": 1490,
-                "sha256": "a6b6d9d2fee122e0759d421d0d170ab171fecc58e86bbb3f322dc0154742d7b8",
+    previous = {"registeredCases": 1500,
+                "sha256": "96bf1edb8fe29618d1b62792d1ffbf58423cd16f804eb490ba3f0a7c6c187ebb",
                 "completePrefixUnchanged": True}
     require(len(definitions) == REGISTERED_CASES and REGISTERED_CASES > previous["registeredCases"]
             and seal["catalogSha256"] == CATALOG_SHA
             and _same_json(seal["previousCatalog"], previous)
-            and hashlib.sha256(canonical(definitions[:1490])).hexdigest() == previous["sha256"],
+            and hashlib.sha256(canonical(definitions[:previous["registeredCases"]])).hexdigest() == previous["sha256"],
             "The complete prior comparison catalog changed or the frozen prompt append is incomplete")
     host_cases = [case for case in definitions if case["operation"] == "host-turn-barrier-v4-runtime"]
     lineage_cases = [case for case in definitions if case["operation"] == "forget-lineage-runtime"]
@@ -1114,15 +1133,17 @@ def assess(args, result):
     cache_cases = [case for case in definitions if case["operation"] == "embed-cache-lifecycle-runtime"]
     reset_cases = [case for case in definitions if case["operation"] == "session-reset-boundaries-runtime"]
     prompt_cases = [case for case in definitions if case["operation"] == "prompt-runtime-context-runtime"]
+    history_cases = [case for case in definitions if case["operation"] == "prompt-history-repair-runtime"]
     data = project(args.report, {case["id"] for case in host_cases}, {case["id"] for case in lineage_cases},
                    {case["id"] for case in boundary_cases}, {case["id"] for case in recall_cases},
                    {case["id"] for case in cache_cases}, {case["id"] for case in reset_cases},
-                   {case["id"] for case in prompt_cases})
+                   {case["id"] for case in prompt_cases}, {case["id"] for case in history_cases})
     result.update(completeReportParsed=True, report=data["report"], projection={
         key: value for key, value in data.items() if key not in {
             "lineagePairs", "lineageDiagnostics", "lineageTraces", "boundaryPairs", "boundaryDiagnostics", "boundaryTraces",
             "recallPairs", "recallDiagnostics", "recallTraces", "cachePairs", "cacheDiagnostics", "cacheTraces",
-            "resetPairs", "resetDiagnostics", "resetTraces", "promptPairs", "promptDiagnostics", "promptTraces"}})
+            "resetPairs", "resetDiagnostics", "resetTraces", "promptPairs", "promptDiagnostics", "promptTraces",
+            "historyPairs", "historyDiagnostics", "historyTraces"}})
     require(data["errors"] == [] and data["mode"] == "full" and data["kind"] == "pinned-differential-acceptance",
             "Global collector error or non-full report; no candidate score")
     require(_same_json(data["implementation"], seal["implementation"])
@@ -1151,12 +1172,14 @@ def assess(args, result):
     result["embeddingCacheReplays"] = replay_cache(data, cache_cases, args)
     result["sessionResetBoundariesReplays"] = replay_reset(data, reset_cases, args)
     result["promptRuntimeContextReplays"] = replay_prompt(data, prompt_cases, args)
+    result["promptHistoryRepairReplays"] = replay_prompt(data, history_cases, args, history=True)
     from equivalence.embedding_cache_lifecycle import family_complete as cache_complete
     from equivalence.forget_boundaries import family_complete as boundaries_complete
     from equivalence.forget_lineage_outcomes import family_complete
     from equivalence.recall_signals import family_complete as recall_complete
     from equivalence.session_reset_boundaries import family_complete as reset_complete
     from equivalence.prompt_runtime_context import family_complete as prompt_complete
+    from equivalence.prompt_history_repair import family_complete as history_complete
 
     require(data["forgetLineageOutcomesFamilyComplete"] is family_complete(data["cases"])
             is metrics["families"]["forget-lineage-runtime"], "Lineage complete-family gate differs")
@@ -1177,6 +1200,10 @@ def assess(args, result):
             is metrics["families"]["prompt-runtime-context-runtime"]
             is all(row["publicMatch"] for row in result["promptRuntimeContextReplays"]),
             "Prompt runtime-context complete-family gate differs")
+    require(data["promptHistoryRepairFamilyComplete"] is history_complete(data["cases"])
+            is metrics["families"]["prompt-history-repair-runtime"]
+            is all(row["publicMatch"] for row in result["promptHistoryRepairReplays"]),
+            "Prompt history repair complete-family gate differs")
     public = {row["id"]: row.get("publicValueSha256") for row in data["cases"]}
     require(set(PREVIOUS_MISMATCH_PUBLIC_SHA256) <= set(public), "A previous mismatch case disappeared")
     result["previousComparison"] = PREVIOUS_COMPARISON
@@ -1208,6 +1235,7 @@ def assess(args, result):
                   deltaFromHistorical79=metrics["verified"] - 79,
                   deltaFromHistorical81=metrics["verified"] - 81,
                   deltaFromHistorical82=metrics["verified"] - 82,
+                  deltaFromHistorical84=metrics["verified"] - 84,
                   fifReplaySha256=replay_sha, fullScopePassed=data["fullScopePassed"])
 
 
@@ -1218,7 +1246,7 @@ def main():
     args = parser.parse_args()
     result = {"kind": "approved-product-complete-eof-candidate-assessment", "status": "blocked",
               "metadataOnlyAssessment": True, "completeRootAudit": False, "acceptancePointsAwarded": 0,
-              "originalEnginesExecuted": False, "historicalVerifiedConditions": 82,
+              "originalEnginesExecuted": False, "historicalVerifiedConditions": 84,
               "completeReportParsed": False, "candidateAssessment": None, "errors": []}
     try:
         assess(args, result)

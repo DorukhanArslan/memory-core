@@ -16,13 +16,13 @@ from equivalence.cases import build_cases  # noqa: E402
 from equivalence.catalog_migration import definition_authority  # noqa: E402
 from equivalence.harness import _adapter_identity, _implementation_identity  # noqa: E402
 
-PRODUCT = "907944efb61245208812e81b5555560051ae11cc"
-SDK_SHA = "375890b10db63088c9fb1d2e6ce7ddafed363acfd6aa020da52dfd46de0d0517"
-SDK_FILES = 164
-PREVIOUS_CASES = 1490
-PREVIOUS_CATALOG_SHA = "a6b6d9d2fee122e0759d421d0d170ab171fecc58e86bbb3f322dc0154742d7b8"
-CATALOG_SHA = "96bf1edb8fe29618d1b62792d1ffbf58423cd16f804eb490ba3f0a7c6c187ebb"
-REGISTERED_CASES = 1500
+PRODUCT = "4463154b8b9f9323d70400e1ce82c581c3823ced"
+SDK_SHA = "84b53816c2c6a5c3625d3a9d0fca774c6d7f1ff064da707cb94f619cebbc6c87"
+SDK_FILES = 168
+PREVIOUS_CASES = 1500
+PREVIOUS_CATALOG_SHA = "96bf1edb8fe29618d1b62792d1ffbf58423cd16f804eb490ba3f0a7c6c187ebb"
+CATALOG_SHA = "f40567a91042cb6e46bca64d94e83a3619fe5d2353192730c6e6838998822493"
+REGISTERED_CASES = 1508
 SCOPE_SHA = "a8e066e63970dd0be734485d62a5932640894b8c0a42f47ac3eb67f784cbc7b9"
 OUT = ROOT / ".equivalence-results"
 SUMMARY = OUT / "summary"

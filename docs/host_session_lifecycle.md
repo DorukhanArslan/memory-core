@@ -129,6 +129,45 @@ configured timezones then fall back to the supplied host timezone. Existing cloc
 retain their UTC fallback. Optional `TurnTool.definition` associates the provider schema
 with its actual registered tool; `offered_tool_names` selects from that registry.
 
+Set `tool_call_id_mode="strict"` when the host selects the strict provider replay
+policy. It pairs model-facing call/result IDs while preserving execution and
+durable IDs; the default `None` leaves provider policy to the host. A live
+model-only text replacement retains its original transcript text in
+`__openclawTranscriptPromptText`; the saved conversation and later turns keep
+their original text without that temporary marker. The assembled model text
+controls blank admission; a synthetic session prompt does not override a blank
+model-text replacement.
+
+For an unowned OpenAI completions or Responses transport, enable the integrated
+history preparation with trusted model and routing facts:
+
+```python
+from memory_core import HistoryReplayContext, RuntimePromptInput
+from memory_core.compaction_replay import ReplayModel
+
+prompt_context = RuntimePromptInput(
+    history_replay=HistoryReplayContext(
+        model=ReplayModel("your-provider", "openai-responses", "your-model"),
+        config={"channels": {"telegram": {"dmHistoryLimit": 20}}},
+        route={"accountId": "default", "peerId": "123", "chatType": "direct"},
+    ),
+)
+```
+
+Pass this context to `runner.run_turn`. The runner derives replay policy from the
+model and the history limit from its actual session key, configuration and route.
+It repairs call/result pairs and provider replay metadata, prepares the prior
+history window before admitting the current question, and applies the callback
+guards on each `model_request`. Repeated tool rounds reuse that prepared prior
+window. The original transcript remains the durable record; synthetic missing
+results and trimmed history belong only to model requests. Model changes are
+recorded as separate `model-snapshot` control events.
+
+This option covers unowned completions and Responses fallbacks. It does not
+select bundled provider hooks, transform signed Anthropic/Google history or
+perform the provider's downstream wire conversion. Without `history_replay`,
+the existing host-selected policy remains in effect.
+
 A flush callback receives the actual `FlushRequest` through `turn.flush_request`, with its
 private `messages` and restricted `tools`. Its `context` is `None`. It uses the same
 `record_message` and dispatch methods; those maintenance messages stay outside the visible

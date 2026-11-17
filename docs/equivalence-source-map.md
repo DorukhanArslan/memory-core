@@ -179,7 +179,7 @@ Its final complete catalog on clean `b27624d` validates the sessions-only
 source-coherence correction and confirms the same 70, with no additional point.
 Source inventory itself still awards no behavioral credit.
 
-The current inventory maps **239 upstream modules**, with 18 present and 46 partial
+The current inventory maps **249 upstream modules**, with 18 present and 46 partial
 Python counterparts. Durable catalog and session-runner owners now provide partial SDK
 counterparts for the three previously host-owned rows; this source classification adds no
 behavioral credit. Original Gateway host acceptance remains incomplete. The shared-deadline package maps the actual control,
@@ -198,6 +198,12 @@ owner and the SDK's `ModelPrompt`, `HostTurn.model_request` and complete clock r
 The production model projection keeps transient carriers separate from durable history.
 Explicit host timezone/format facts support the compatible clock profile; legacy clock
 callers retain UTC fallback. Mapping these entry points grants no acceptance credit.
+
+HostSessionRunner prepares the prior session history before admitting the current question.
+For unowned completions and Responses transports, it repairs call/result pairs for the
+model while preserving the original durable messages. The eight comparison cases specify
+UTC and a 24-hour clock and compare the complete ordered messages at each provider callback.
+The mapped boundary ends before provider wire encoding.
 
 The verified bounded index-identity boundary map now includes the original manager
 factory, constructor and published status, provider initialization, actual query
@@ -360,7 +366,7 @@ current limitations and retained first failures.
 | `prompt.bootstrap-discovery` | [ensureAgentWorkspace](https://github.com/openclaw/openclaw/blob/bcfc88812a35243893585dbeca87ca41b48272ca/src/agents/workspace.ts#L715) | [initialize_agent_workspace](../memory_core/bootstrap/lifecycle.py#L424) | partial |
 | `prompt.bootstrap-budget` | [buildBootstrapContextFiles](https://github.com/openclaw/openclaw/blob/bcfc88812a35243893585dbeca87ca41b48272ca/src/agents/embedded-agent-helpers/bootstrap.ts#L401) | [build_bootstrap_context_files](../memory_core/bootstrap/budget.py#L393) | present |
 | `prompt.runtime-context` | [buildMemoryPromptSection](https://github.com/openclaw/openclaw/blob/bcfc88812a35243893585dbeca87ca41b48272ca/extensions/memory-core/src/memory-tool-contract.ts#L131) | [build_prompt_section](../memory_core/prompt_section.py#L15) | partial |
-| `prompt.history-repair` | [limitHistoryTurns](https://github.com/openclaw/openclaw/blob/bcfc88812a35243893585dbeca87ca41b48272ca/src/agents/embedded-agent-runner/history.ts#L37) | [limit_history_turns](../memory_core/history.py#L19) | partial |
+| `prompt.history-repair` | [prepareEmbeddedAttemptHistory](https://github.com/openclaw/openclaw/blob/bcfc88812a35243893585dbeca87ca41b48272ca/src/agents/embedded-agent-runner/run/attempt-history-prepare.ts#L30) | [HistoryReplay.prepare](../memory_core/history_replay.py#L281) | partial |
 | `flush.plan-target` | [buildMemoryFlushPlan](https://github.com/openclaw/openclaw/blob/bcfc88812a35243893585dbeca87ca41b48272ca/extensions/memory-core/src/flush-plan.ts#L63) | [build_memory_flush_plan_from_config](../memory_core/memory_flush.py#L301) | partial |
 | `flush.trigger-usage` | [runMemoryFlushIfNeeded](https://github.com/openclaw/openclaw/blob/bcfc88812a35243893585dbeca87ca41b48272ca/src/auto-reply/reply/agent-runner-memory.ts#L1117) | [HostKit.prepare_flush](../memory_core/host/kit.py#L622) | present |
 | `flush.execute-finalize` | [runMemoryFlushIfNeeded](https://github.com/openclaw/openclaw/blob/bcfc88812a35243893585dbeca87ca41b48272ca/src/auto-reply/reply/agent-runner-memory.ts#L1117) | [FlushRequest](../memory_core/host/flush.py#L191) | partial |

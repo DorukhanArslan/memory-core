@@ -16,8 +16,9 @@ CACHE_REGISTERED_CASES = 1483
 CACHE_CATALOG_SHA256 = "33277abb724a6b89423085e735fc08b950b647b577db9879df8f2395e519a93d"
 RESET_REGISTERED_CASES = 1490
 RESET_CATALOG_SHA256 = "a6b6d9d2fee122e0759d421d0d170ab171fecc58e86bbb3f322dc0154742d7b8"
-# Must be frozen to 1490 + the complete prompt-family count before a run.
-REGISTERED_CASES = 1500
+PROMPT_REGISTERED_CASES = 1500
+PROMPT_CATALOG_SHA256 = "96bf1edb8fe29618d1b62792d1ffbf58423cd16f804eb490ba3f0a7c6c187ebb"
+REGISTERED_CASES = 1508
 
 # PR22 changes these three policy texts, not the thirteen cases' business inputs,
 # order, coverage or other fields. Reversing only the exact reviewed fragments
@@ -107,7 +108,8 @@ def definition_authority(cases, *, fif_version):
     if (fif_version not in families or not isinstance(cases, list)
             or len(cases) not in {HISTORICAL_REGISTERED_CASES, OUTCOME_REGISTERED_CASES,
                                   BOUNDARY_REGISTERED_CASES, RECALL_REGISTERED_CASES,
-                                  CACHE_REGISTERED_CASES, RESET_REGISTERED_CASES, REGISTERED_CASES}
+                                  CACHE_REGISTERED_CASES, RESET_REGISTERED_CASES, PROMPT_REGISTERED_CASES,
+                                  REGISTERED_CASES}
             or fif_version == "v5" and len(cases) != HISTORICAL_REGISTERED_CASES):
         raise ValueError("Catalog migration requires one complete exact registered definition set")
     frozen = families[fif_version]
@@ -152,13 +154,21 @@ def definition_authority(cases, *, fif_version):
                 or _sha(resets) != _sha(build_cases())):
             raise ValueError("Catalog migration changed the frozen cache catalog or exact reset boundary append")
         validate_registration(cases)
-    prompts = cases[RESET_REGISTERED_CASES:]
+    prompts = cases[RESET_REGISTERED_CASES:PROMPT_REGISTERED_CASES]
     if prompts:
         from equivalence.prompt_runtime_context import build_cases, validate_registration
 
         if (_sha(cases[:RESET_REGISTERED_CASES]) != RESET_CATALOG_SHA256
                 or _sha(prompts) != _sha(build_cases())):
             raise ValueError("Catalog migration changed the frozen reset catalog or exact prompt append")
+        validate_registration(cases)
+    histories = cases[PROMPT_REGISTERED_CASES:]
+    if histories:
+        from equivalence.prompt_history_repair import build_cases, validate_registration
+
+        if (_sha(cases[:PROMPT_REGISTERED_CASES]) != PROMPT_CATALOG_SHA256
+                or _sha(histories) != _sha(build_cases())):
+            raise ValueError("Catalog migration changed the frozen prompt catalog or exact history repair append")
         validate_registration(cases)
     frozen.validate_registration(cases)
     prefix = deepcopy(cases[:ORIGINAL_PREFIX_CASES])
@@ -225,4 +235,8 @@ def definition_authority(cases, *, fif_version):
         result["promptRuntimeContextAppend"] = [
             {"index": index, "id": case["id"], "definitionSha256": _sha(case)}
             for index, case in enumerate(prompts, RESET_REGISTERED_CASES)]
+    if histories:
+        result["promptHistoryRepairAppend"] = [
+            {"index": index, "id": case["id"], "definitionSha256": _sha(case)}
+            for index, case in enumerate(histories, PROMPT_REGISTERED_CASES)]
     return result

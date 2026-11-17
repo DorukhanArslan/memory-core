@@ -16,6 +16,7 @@ from memory_core._intl_zone_names import en_us_short_time_zone_name
 from memory_core.bootstrap._js import js_json_stringify, js_trim
 from memory_core.compaction_replay import _js_number_to_string
 from memory_core.current_time import resolve_cron_style_now, resolve_user_timezone, utc_and_local_instants
+from memory_core.history_replay import HistoryReplay, HistoryReplayContext
 from memory_core.prompt_section import build_prompt_section
 from memory_core.replay_history import normalize_assistant_replay_content
 from memory_core.runtime_context_prompt import (
@@ -79,6 +80,7 @@ class RuntimePromptInput:
     include_clock: bool = False
     append_only_runtime_context: bool = False
     tool_call_id_mode: str | None = None
+    history_replay: HistoryReplayContext | None = None
 
     def __post_init__(self):
         copied = tuple(deepcopy(dict(fragment)) for fragment in self.fragments)
@@ -89,8 +91,11 @@ class RuntimePromptInput:
             raise TypeError("transcript_prompt must be a string or None")
         if self.tool_call_id_mode not in {None, "strict"}:
             raise ValueError("tool_call_id_mode must be None or the supported strict policy")
+        if self.history_replay is not None and not isinstance(self.history_replay, HistoryReplayContext):
+            raise TypeError("history_replay must be HistoryReplayContext or None")
         object.__setattr__(self, "fragments", copied)
         object.__setattr__(self, "current_inbound_context", deepcopy(self.current_inbound_context))
+        object.__setattr__(self, "history_replay", deepcopy(self.history_replay))
         if self.offered_tool_names is not None:
             object.__setattr__(self, "offered_tool_names", tuple(self.offered_tool_names))
 
@@ -258,7 +263,7 @@ class ModelPrompt:
     """One admitted prompt's transient carrier and actual assembly receipts."""
 
     def __init__(self, effective_prompt, options, *, tools, workspace_prompt, citations_mode,
-                 identity, now_ms, session_version, user_key):
+                 identity, now_ms, session_version, user_key, session_key=None, history_events=()):
         self.options, self.identity, self.session_version = options, identity, session_version
         self.user_key, self.closed = user_key, False
         self.now_ms = now_ms
@@ -269,6 +274,9 @@ class ModelPrompt:
         if len(set(offered)) != len(offered) or set(offered) - registry.keys():
             raise ValueError("Model tools must select unique genuine host registrations")
         self.tools = [registry[name] for name in offered]
+        self.history_replay = (HistoryReplay(options.history_replay, session_key=session_key,
+            events=history_events, allowed_tool_names=offered, now_ms=now_ms)
+            if options.history_replay is not None else None)
         mode = options.citations_mode or citations_mode
         guidance = build_prompt_section(set(offered), citations_mode=mode)
         self.memory_guidance = {"toolAvailability": {name: name in offered for name in MEMORY_PROMPT_TOOL_NAMES}, "lines": guidance}
@@ -310,7 +318,7 @@ class ModelPrompt:
         # effective override can differ from the synthetic session prompt.
         self.skip_submission = not js_trim(self.model_prompt)
 
-    def bind_current_user(self, canonical_user, position):
+    def bind_current_user(self, canonical_user, position, *, prior_messages=()):
         """Own the live user separately from this turn's admitted transcript row."""
         if self.closed or self.canonical_user is not None:
             raise RuntimeError("The model prompt cannot bind another current user")
@@ -320,6 +328,8 @@ class ModelPrompt:
         self.bound_user_index = position
         self.runtime_user = {"role": "user", "content": [{"type": "text", "text": self.session_prompt}],
                              "timestamp": self.now_ms}
+        if self.history_replay is not None:
+            self.history_replay.prepare(prior_messages)
 
     def request(self, messages):
         if self.closed:
@@ -330,6 +340,10 @@ class ModelPrompt:
             if user_index >= len(source) or source[user_index] != self.canonical_user:
                 raise RuntimeError("The bound current transcript user changed before model assembly")
             source[user_index] = deepcopy(self.runtime_user)
+            if self.history_replay is not None:
+                prepared = deepcopy(self.history_replay.prepared)
+                source = [*prepared, *source[user_index:]]
+                user_index = len(prepared)
         else:
             user_index = next((index for index, message in enumerate(source)
                                if message.get("role") == "user" and message.get("idempotencyKey") == self.user_key), -1)
@@ -354,11 +368,13 @@ class ModelPrompt:
                                           "__openclawTranscriptPromptText": self.session_prompt}
         if self.carrier is not None:
             source.insert(user_index if user_index >= 0 else len(source), self.carrier)
-        if self.options.tool_call_id_mode is not None:
+        if self.options.tool_call_id_mode is not None and self.history_replay is None:
             source = sanitize_tool_call_ids(source, self.options.tool_call_id_mode)
         projected = normalize_model_messages(source, session_version=self.session_version,
             append_only_runtime_context=self.options.append_only_runtime_context,
             timezone=self.timezone, retained_carrier=self.carrier, identity=self.identity)
+        if self.history_replay is not None:
+            projected = self.history_replay.request(projected)
         return {"systemPrompt": self.system_prompt, "tools": deepcopy(self.tools), "messages": projected}
 
     def close(self):

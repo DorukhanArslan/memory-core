@@ -79,7 +79,7 @@ def _migration(spec, directory, stages):
     return {"name": spec["name"], "phases": phases_out}
 
 
-def _collect_traces(trace_dir, files, node, pid, root, kind, context_digest, loads):
+def _collect_traces(trace_dir, files, node, pid, root, kind, context_digest, loads, *, driver=DRIVER, main_owners=None):
     receipts, roles = [], set()
     for path in sorted(trace_dir.glob("load-*.jsonl")):
         data = path.read_bytes()
@@ -88,8 +88,8 @@ def _collect_traces(trace_dir, files, node, pid, root, kind, context_digest, loa
                 or path.name != f"load-{head['pid']}-{head['threadId']}.jsonl"):
             raise ValueError("Invalid original task-outcomes trace identity")
         if head["pid"] == pid and head["threadId"] == 0 and head["ppid"] == os.getpid():
-            role, entry = "main", DRIVER
-            required = MAIN | ({"dist/service-u8zoxec7.mjs"} if kind == "scheduling" else MIGRATION)
+            role, entry = "main", driver
+            required = main_owners or (MAIN | ({"dist/service-u8zoxec7.mjs"} if kind == "scheduling" else MIGRATION))
             required = required | {"driver", "dist/croner.js"}
         elif head["pid"] == pid and head["threadId"] > 0:
             owners = {WRITE_ENTRY: ("worker", {WRITE_ENTRY, WRITE_OWNER})}
@@ -97,6 +97,9 @@ def _collect_traces(trace_dir, files, node, pid, root, kind, context_digest, loa
                 for name in ("disk-budget.worker.js", "session-accessor.sqlite-archive.worker.js"):
                     relative = "dist/config/sessions/" + name
                     owners[relative] = ("session-maintenance", {relative})
+            if kind == "dreaming":
+                readonly = "dist/cron/store/read-only.worker.js"
+                owners[readonly] = ("cron-inspection", {readonly})
             relative = Path(head["entry"]).relative_to(root).as_posix()
             if relative not in owners:
                 raise ValueError("Unrecognized original task worker: " + relative)

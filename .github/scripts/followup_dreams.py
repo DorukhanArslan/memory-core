@@ -85,8 +85,20 @@ def loaded_sources(case, trace, raw, profile, runtime, adapters, global_sources)
         bootstraps.append({key: first[key] for key in ("pid", "threadId", "isMainThread", "runtime", "dreamPhaseProfile")})
         worker_paths = set()
         for event in events[1:]:
-            require(event["event"] == "load" and event["pid"] == raw["pid"] and event["threadId"] == thread,
-                    "Unexpected dreaming trace event")
+            require(event["pid"] == raw["pid"] and event["threadId"] == thread, "Foreign dreaming process or thread")
+            if event["event"] == "resolve-native":
+                from equivalence.promotion_apply_bindings import NATIVE_ARTIFACTS
+                key = event["package"], event["path"]
+                require(operation in {"dream-diary-publication-runtime", "dream-deep-runtime"} and is_main
+                        and event["kind"] == "release" and key == ("node_modules/@openclaw/fs-safe-linux-x64-gnu", "fs-safe-native.node")
+                        and NATIVE_ARTIFACTS.get(key) == event["sha256"], "Unofficial native dreaming file adapter")
+                package = next(pkg for pkg in runtime["packages"] if pkg["location"] == key[0])
+                binary = Path(package["directory"]) / key[1]
+                require(binary.resolve(strict=True) == binary and digest(binary.read_bytes()) == event["sha256"]
+                        and any(item["path"] == key[1] and item["sha256"] == event["sha256"] for item in package["files"]),
+                        "The authenticated native file adapter changed")
+                continue
+            require(event["event"] == "load", "Unexpected dreaming trace event")
             if event["kind"] == "oracle":
                 path = Path(event["path"])
                 require(is_main and path.parent == commit and adapters.get(path.name) == event["sha256"],

@@ -22,6 +22,7 @@ from equivalence.embedding_cache_lifecycle_sdk import _failure, _owner, _sources
 from equivalence.forget_lineage_sdk import _owned, _write
 from equivalence.recall_signals_sdk import _capture, _database
 from memory_core.client import Memory
+from memory_core.compaction_replay import _js_number_to_string
 from memory_core.config import MemoryConfig
 from memory_core.consolidation.artifact_provenance import MemoryArtifactProvenanceStore
 from memory_core.current_time import resolve_cron_style_now
@@ -29,12 +30,17 @@ from memory_core.flags import FeatureFlags
 from memory_core.host import HostKit, HostModelResult, HostSessionRunner, HostTurn, SessionState
 from memory_core.index import temporal_decay
 from memory_core.index.sqlite_store import SQLiteMemoryStore
-from memory_core.model_prompt import MEMORY_PROMPT_TOOL_NAMES, ModelPrompt, RuntimePromptInput, normalize_model_messages
+from memory_core.model_prompt import (
+    MEMORY_PROMPT_TOOL_NAMES, ModelPrompt, RuntimePromptInput, normalize_model_messages, serialize_model_tool_json,
+)
 from memory_core.prompt_section import build_prompt_section
 from memory_core.runtime_context_prompt import project_runtime_context_fragments, resolve_runtime_context_prompt_parts
 from memory_core.runtime_identity import OPENCLAW_COMPAT_RUNTIME_IDENTITY
 from memory_core.session_catalog import MemorySessionCatalog
+from memory_core.session_visibility import resolve_memory_search_source_policy
 from memory_core.turn_tool_dispatch import TurnTool, TurnToolDispatcher
+from memory_core.tool_call_ids import sanitize_tool_call_ids
+from memory_core.tools.memory_search import _search_debug
 
 SESSION_KEY = "agent:main:main"
 SESSION_ID = "prompt-runtime-session"
@@ -146,14 +152,18 @@ class _Owners:
             self.seed_events = deepcopy(events)
         self.trust = MemoryArtifactProvenanceStore(self.trust_path)
         self.trust.list(self.workspace)
+        self.source_policy_arguments = {"configured_sources": ["memory"],
+            "remember_across_conversations": False, "configured_session_memory": False}
+        self.source_policy = resolve_memory_search_source_policy(**self.source_policy_arguments)
         config = MemoryConfig(workspace_dir=self.workspace, store_path=self.index_path,
             session_search=False, flags=FeatureFlags(vector_search=False))
         self.memory = Memory.from_workspace(self.workspace, config=config, embedding_provider=None,
-            initialize=False, reindex=False, artifact_provenance=self.trust, session_catalog=self.catalog)
+            initialize=False, reindex=False, artifact_provenance=self.trust, session_catalog=self.catalog,
+            source_policy=self.source_policy)
         self.index_return = self.memory.store.reindex(self.memory.workspace)
         self.kit = HostKit(self.memory, seed_bootstrap=False, timezone=self.value["hostTimezone"],
             time_format=self.value["hostTimeFormat"], identity=OPENCLAW_COMPAT_RUNTIME_IDENTITY,
-            artifact_provenance=self.trust, now_ms=lambda: self.now[0])
+            artifact_provenance=self.trust, now_ms=lambda: self.now[0], source_policy=self.source_policy)
         extra = []
         for name in ("sessions_search", "sessions_history", "session_status"):
             definition = {"name": name, "description": "Bounded fixture host capability: " + name,
@@ -170,7 +180,8 @@ class _Owners:
     def state(self):
         return {"transcript": deepcopy(self.catalog.read_transcript(SESSION_ID).events),
                 "sql": {"catalog": _database(self.catalog_path), "index": _database(self.index_path),
-                        "trust": _database(self.trust_path)}, "sources": _sources(self.workspace)}
+                        "trust": _database(self.trust_path)}, "sources": _sources(self.workspace),
+                "workspaceIndexSources": list(self.memory.workspace.index_sources)}
 
     async def invoke(self, operation, ordinal, actual):
         if operation["op"] == "reopen":
@@ -178,13 +189,16 @@ class _Owners:
             actual["apiOutcome"] = {"kind": "return", "returnValue": _returned(None)}
             return {"operation": deepcopy(operation), "memoryGuidance": None, "clock": None, "modelCalls": []}
         actual["registeredTools"] = deepcopy(self.registrations)
+        actual["sourcePolicy"] = deepcopy(self.memory.source_policy)
+        actual["workspaceIndexSources"] = list(self.memory.workspace.index_sources)
         options = RuntimePromptInput(fragments=operation["fragments"],
             transcript_prompt=operation.get("transcriptPrompt"),
             current_inbound_context=operation.get("currentInboundContext"),
             suppress_next_user_message_persistence=operation.get("suppressNextUserMessagePersistence", False),
             offered_tool_names=operation["tools"], citations_mode=operation["citationsMode"],
             timezone=operation.get("timezone"), host_timezone=self.value["hostTimezone"],
-            host_time_format=self.value["hostTimeFormat"], include_clock=operation["includeClock"])
+            host_time_format=self.value["hostTimeFormat"], include_clock=operation["includeClock"],
+            tool_call_id_mode="strict")
         actual["callArguments"] = {"user_message": operation["effectivePrompt"], "prompt_context": _wire(options),
                                    "request_id": f"prompt-runtime-{ordinal}"}
         callback = _FixtureModel(operation, actual["providerCalls"], actual["toolCalls"], lambda: self.now[0], ordinal)
@@ -251,7 +265,9 @@ def _run(value, directory):
                MemorySessionCatalog.read_continuation, MemorySessionCatalog.read_transcript,
                MemorySessionCatalog.append_message, Memory.from_workspace, SQLiteMemoryStore.reindex, ModelPrompt,
                normalize_model_messages, build_prompt_section, resolve_cron_style_now,
-               project_runtime_context_fragments, resolve_runtime_context_prompt_parts, TurnToolDispatcher.dispatch)],
+               project_runtime_context_fragments, resolve_runtime_context_prompt_parts,
+               TurnToolDispatcher.dispatch, sanitize_tool_call_ids, resolve_memory_search_source_policy,
+               serialize_model_tool_json, _js_number_to_string, _search_debug)],
            "operations": [], "states": [], "physical": [], "clock": {"reads": []}, "closed": False}
     observations = []
     def clock_read(phase, ordinal=None):
@@ -267,6 +283,13 @@ def _run(value, directory):
         owners = _Owners(root, value, now)
         raw["transcriptSeeds"], raw["mtimeWrites"] = owners.seed_events, owners.file_writes
         raw["registeredTools"] = deepcopy(owners.registrations)
+        raw["sourcePolicy"] = {"configuredSources": owners.source_policy_arguments["configured_sources"],
+            "rememberAcrossConversations": owners.source_policy_arguments["remember_across_conversations"],
+            "configuredSessionMemory": owners.source_policy_arguments["configured_session_memory"],
+            "resolved": deepcopy(owners.source_policy)}
+        raw["sourcePolicyCall"] = {"arguments": deepcopy(owners.source_policy_arguments),
+                                   "returnValue": deepcopy(owners.source_policy)}
+        raw["workspaceIndexSources"] = list(owners.memory.workspace.index_sources)
         raw["initialIndexReturn"] = _returned(owners.index_return)
         raw["initialState"] = owners.state()
         raw["states"].append(deepcopy(raw["initialState"]))

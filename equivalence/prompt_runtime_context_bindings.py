@@ -58,6 +58,12 @@ _HOST_SOURCES = [
 ]
 _EXTRA_SOURCE_HASHES = {
     "packages/agent-core/src/agent-stream-response.ts": "51a45aa652f8a7cb6325e2a520c5c7e7668962f9d865ea1ca9404edca6332bea",
+    "src/agents/tool-call-id.ts": "5cad90a3ff7478c3ae39fe62cdf6f6c01c637989ad115c6990f9f8f461afa3fc",
+    "src/agents/transcript-policy.ts": "bf2bb906e44e8e8fc07b093456581021f0dc9baa22d593bbb1ba65e9fb31871c",
+    "src/agents/embedded-agent-helpers/images.ts": "a39cf919d7bdc8bbc8ce5dc697c71fec13b1c686f641301882938b48d0f5a24c",
+    "src/agents/embedded-agent-runner/run/attempt-stream.ts": "97a8459dbfe30f37767854bde6ce53ce280edbf3ffa8331fb6d31791f0bddd54",
+    "src/agents/embedded-agent-runner/run/attempt-tool-call-replay-sanitization.ts": "67c04274eea92dce61cf6986cdd65106a8ab37e2ac767bf344724d7161657109",
+    "src/agents/embedded-agent-runner/run/attempt-history.ts": "4f3237d29082e51e0289b2910e9378e861e30d92649754e6e4f1f8b0aa4eec8b",
     "src/agents/harness/builtin-openclaw.ts": "250eacd91f5dd7073cdc1229534f1d638f7579fa8ade8315d7481fe84179ad1e",
     "src/agents/harness/builtin-openclaw-metadata.ts": "420f1c5b200ccd229eac21505a7913321a0f323421d88b83c1cc68ba8b719104",
     "src/agents/admitted-run-context.ts": "3c773ae41741661e2354ce18e47c4fd0f8c31d553d3a92524f5988bbf4aa4a04",
@@ -87,6 +93,32 @@ _EXTRA_SOURCE_HASHES = {
     "src/plugins/provider-runtime.ts": "b209db16ccf0845faa417e8bca7da4c7afbbf1d4b6a66919d246e2c458d62ffd"
 }
 _EXTRA_SOURCE_ANCHORS = {
+    "src/agents/tool-call-id.ts": [
+        "function sanitizeToolCallId(", "export function sanitizeToolCallIdsForCloudCodeAssist(",
+        'return alphanumericOnly.length > 0 ? alphanumericOnly : "sanitizedtoolid";'
+    ],
+    "src/agents/transcript-policy.ts": [
+        "function buildUnownedProviderTransportReplayFallback(", "export function resolveTranscriptPolicy(",
+        'const isStrictOpenAiCompatible = params.modelApi === "openai-completions";',
+        'toolCallIdMode: "strict" as const,'
+    ],
+    "src/agents/embedded-agent-helpers/images.ts": [
+        "export async function sanitizeSessionMessagesImages(",
+        "? sanitizeToolCallIdsForCloudCodeAssist(messages, options.toolCallIdMode, {"
+    ],
+    "src/agents/embedded-agent-runner/run/attempt-stream.ts": [
+        "if (shouldApplyReplayToolCallIdSanitizer(replayToolCallIdSanitizerDecision)) {",
+        "sanitizeReplayToolCallIdsForStream({"
+    ],
+    "src/agents/embedded-agent-runner/run/attempt-tool-call-replay-sanitization.ts": [
+        "export function shouldApplyReplayToolCallIdSanitizer(",
+        "export function sanitizeReplayToolCallIdsForStream(",
+        "return sanitizeToolCallIdsForCloudCodeAssist(paired, params.mode, {"
+    ],
+    "src/agents/embedded-agent-runner/run/attempt-history.ts": [
+        "export function resolveAttemptTranscriptPolicy(",
+        "params.runtimePlan?.transcript.resolvePolicy(params.runtimePlanModelContext) ??"
+    ],
     "packages/agent-core/src/agent-stream-response.ts": [
         "function ensureToolTurnIdentity(",
         "if (!executable || message.responseId?.trim() || message.turnId?.trim()) {",
@@ -303,6 +335,10 @@ _HOST_COMPILED = [
 ]
 _EXTRA_COMPILED_HASHES = {
     "dist/agent-core-DrCkPXML.mjs": "44500635166e55c16d9a66f9ddc277cd6cee17b764184b82118b445ac82732eb",
+    "dist/tool-call-id-D6Bs5Pq7.mjs": "afb563a6b904e335b48c13849c01413e6de105f0b39697045dcc7c00ac02edd9",
+    "dist/helpers-DnieXpdv.mjs": "991682b731606542b7dbbac43b45f080b5e52e889b1e2a41bc0c29f9f721cacc",
+    "dist/embedded-agent-helpers-CNzM9z5K.mjs": "73d0194fa72a0d8b072130585a8e78f40a57fa92777d9371930d15dd3f8b6e59",
+    "dist/history-image-prune-VTygPOF7.mjs": "b81ffd42c4b3a0e6be199aa36260bd3833f2521f95190dd681a8efb77d98b0aa",
     "dist/builtin-openclaw-D1Xfnzzr.mjs": "cde1b380d227ffe432d5597e0a7422df5241b459df7150a9564bb0b7cec84953",
     "dist/admitted-run-context-hIkojwNE.mjs": "83fd79543af64e8e69570f8c4891420e9e6e7f0d420820db65d6467f09593cb7",
     "dist/runtime-context-prompt-K3ClPtvW.mjs": "b84d2d7f2fa322e98e6178f4ca28b2361d236dc4334957f1fd9fcac16980c814",
@@ -317,6 +353,25 @@ _EXTRA_COMPILED_HASHES = {
     "dist/provider-runtime-BHqCdO9o.mjs": "c546dc4f068c84a318fb13fff99a15f0b0871065ded276ca7d81c3efd11d751c"
 }
 _EXTRA_COMPILED_ANCHORS = {
+    "dist/tool-call-id-D6Bs5Pq7.mjs": [
+        "function sanitizeToolCallId(", "function sanitizeToolCallIdsForCloudCodeAssist(",
+        'return alphanumericOnly.length > 0 ? alphanumericOnly : "sanitizedtoolid";',
+        "sanitizeToolCallIdsForCloudCodeAssist as r"
+    ],
+    "dist/helpers-DnieXpdv.mjs": [
+        "function buildUnownedProviderTransportReplayFallback(", "function resolveTranscriptPolicy(",
+        'const isStrictOpenAiCompatible = params.modelApi === "openai-completions";',
+        'toolCallIdMode: "strict"', "resolveTranscriptPolicy as m"
+    ],
+    "dist/embedded-agent-helpers-CNzM9z5K.mjs": [
+        "async function sanitizeSessionMessagesImages(",
+        "const sanitizedIds = options?.sanitizeToolCallIds === true ? sanitizeToolCallIdsForCloudCodeAssist(",
+        "sanitizeSessionMessagesImages as c"
+    ],
+    "dist/history-image-prune-VTygPOF7.mjs": [
+        "function resolveAttemptTranscriptPolicy(", "resolveAttemptTranscriptPolicy as c",
+        'import { m as resolveTranscriptPolicy } from "./helpers-DnieXpdv.mjs";'
+    ],
     "dist/agent-core-DrCkPXML.mjs": [
         "function ensureToolTurnIdentity(",
         "message.responseId?.trim() || message.turnId?.trim()) return message;",
@@ -328,7 +383,10 @@ _EXTRA_COMPILED_ANCHORS = {
         "async function prepareEmbeddedAttemptSetup(",
         "async function prepareEmbeddedAttemptPromptContext(",
         "async function submitEmbeddedAttemptPrompt(",
-        "function normalizeMessagesForLlmBoundary("
+        "function normalizeMessagesForLlmBoundary(",
+        "function sanitizeReplayToolCallIdsForStream(",
+        "if (shouldApplyReplayToolCallIdSanitizer(replayToolCallIdSanitizerDecision)) {",
+        "session.agent.streamFn = wrapStreamFnWithMessageTransform(session.agent.streamFn, (messages, model) => sanitizeReplayToolCallIdsForStream({"
     ],
     "dist/admitted-run-context-hIkojwNE.mjs": [
         "function prepareSystemAgentRunAdmission(",
@@ -455,6 +513,10 @@ COMPILED_ANCHORS["dist/resource-loader-DhipPm1N.mjs"] = (
 # release manifest independently authenticates every other transitive module.
 REQUIRED_RUNTIME_ARTIFACTS = tuple(COMPILED_HASHES)
 GENUINE_HELPER_EXPORTS = {
+    "dist/tool-call-id-D6Bs5Pq7.mjs": ("r",),
+    "dist/helpers-DnieXpdv.mjs": ("m",),
+    "dist/embedded-agent-helpers-CNzM9z5K.mjs": ("c",),
+    "dist/history-image-prune-VTygPOF7.mjs": ("c",),
     "dist/builtin-openclaw-D1Xfnzzr.mjs": ("t",),
     "dist/admitted-run-context-hIkojwNE.mjs": ("d",),
     "dist/runtime-context-prompt-K3ClPtvW.mjs": ("c", "i", "o", "s"),
@@ -542,6 +604,14 @@ def prepare_prompt_runtime_context_bindings(checkout: Path, runtime_root: Path) 
         (prefix + "attempt.ts", "./attempt-setup.js", ("prepareEmbeddedAttemptSetup",)),
         (prefix + "attempt.ts", "./attempt-session-runtime-prepare.js",
          ("prepareEmbeddedAttemptSessionRuntime",)),
+        (prefix + "attempt-session-prepare.ts", "./attempt-history.js", ("resolveAttemptTranscriptPolicy",)),
+        (prefix + "attempt-history.ts", "../../transcript-policy.js", ("resolveTranscriptPolicy",)),
+        (prefix + "attempt-stream.ts", "./attempt-tool-call-replay-sanitization.js",
+         ("sanitizeReplayToolCallIdsForStream", "shouldApplyReplayToolCallIdSanitizer")),
+        (prefix + "attempt-tool-call-replay-sanitization.ts", "../../tool-call-id.js",
+         ("sanitizeToolCallIdsForCloudCodeAssist",)),
+        ("src/agents/embedded-agent-helpers/images.ts", "../tool-call-id.js",
+         ("sanitizeToolCallIdsForCloudCodeAssist",)),
         (prefix + "attempt-session-runtime-prepare.ts", "./attempt-session-prepare.js",
          ("prepareEmbeddedAttemptAgentSession", "prepareEmbeddedAttemptSessionManager")),
         (prefix + "attempt-prompt-build.ts", "./runtime-context-prompt.js",

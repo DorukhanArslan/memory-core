@@ -1,6 +1,8 @@
 """Production host model requests preserve durable and transient ownership."""
 import asyncio
+from contextlib import closing
 from copy import deepcopy
+import json
 
 import pytest
 
@@ -12,6 +14,7 @@ from memory_core.model_prompt import normalize_model_messages
 from memory_core.runtime_context_prompt import project_runtime_context_fragments, resolve_runtime_context_prompt_parts
 from memory_core.runtime_identity import OPENCLAW_COMPAT_RUNTIME_IDENTITY as IDENTITY
 from memory_core.session_catalog import MemorySessionCatalog
+from memory_core.session_visibility import resolve_memory_search_source_policy
 from memory_core.tools.get_factory import create_memory_get_tool
 from memory_core.turn_tool_dispatch import TurnTool
 
@@ -19,14 +22,14 @@ NOW = 1_767_225_600_000
 KEY, SESSION = "agent:main:main", "model-prompt-session"
 
 
-def _runner(tmp_path, *, tools=(), timezone="UTC", time_format="24"):
+def _runner(tmp_path, *, tools=(), timezone="UTC", time_format="24", source_policy=None):
     catalog = MemorySessionCatalog(tmp_path / "catalog.sqlite", clock_ms=lambda: NOW)
     config = MemoryConfig(workspace_dir=tmp_path / "workspace",
         flags=FeatureFlags(vector_search=False, temporal_decay=False))
     return HostSessionRunner.open(config.workspace_dir, catalog=catalog,
         session=SessionState.new(session_key=KEY, session_id=SESSION), config=config,
         extra_tools=tools, identity=IDENTITY, seed_bootstrap=False, now_ms=lambda: NOW,
-        timezone=timezone, time_format=time_format)
+        timezone=timezone, time_format=time_format, source_policy=source_policy)
 
 
 def _text(messages):
@@ -211,10 +214,13 @@ def test_explicit_host_clock_fallback_preserves_existing_default_utc(tmp_path):
 
 def test_real_memory_get_loop_keeps_business_return_and_source_owned_model_json(tmp_path):
     async def scenario():
-        runner = _runner(tmp_path)
+        policy = resolve_memory_search_source_policy(["memory"], remember_across_conversations=False,
+                                                      configured_session_memory=False)
+        runner = _runner(tmp_path, source_policy=policy)
         path = runner.kit.memory.workspace.root / "memory" / "format.md"
         path.parent.mkdir(parents=True, exist_ok=True)
         path.write_text('A saved fact with "quotes" and a second line.\nSecond line.\n', encoding="utf8")
+        runner.kit.memory.store.reindex(runner.kit.memory.workspace)
         arguments = {"path": "memory/format.md", "from": 1, "lines": 2}
         tool = create_memory_get_tool(runner.kit.memory.config, agent_session_key=KEY)
         assert tool is not None
@@ -224,33 +230,56 @@ def test_real_memory_get_loop_keeps_business_return_and_source_owned_model_json(
             turn.model_request()
             with pytest.raises(ValueError, match="trusted turn metadata"):
                 turn.record_message({"role": "assistant", "content": [], "__openclaw": {"runId": "spoofed"}})
-            saved = turn.record_message({"role": "assistant", "content": [{"type": "toolCall", "id": "read",
+            saved = turn.record_message({"role": "assistant", "content": [{"type": "toolCall", "id": "read-note",
                 "name": "memory_get", "arguments": deepcopy(arguments)}], "responseId": "owned-provider-response"})
             assert saved["__openclaw"]["runId"] == "owned-get-loop"
             assert saved["responseId"] == "owned-provider-response"
-            returned = turn.dispatch("read", "memory_get", arguments)
+            returned = turn.dispatch("read-note", "memory_get", arguments)
             assert returned == actual_factory["details"]
             messages = turn.model_request()["messages"]
             assistant = next(message for message in messages if message.get("role") == "assistant")
             assert assistant["responseId"] == "owned-provider-response"
+            assert assistant["content"][0]["id"] == "readnote"
             assert "runId" not in assistant.get("__openclaw", {})
             message = next(message for message in messages if message.get("role") == "toolResult")
             assert message["content"] == actual_factory["content"] and "details" not in message
+            assert message["toolCallId"] == "readnote"
             assert "runId" not in message.get("__openclaw", {})
             assert "\n  " in message["content"][0]["text"]
+            search_args = {"query": "saved", "minScore": 0, "maxResults": 6}
+            turn.record_message({"role": "assistant", "responseId": "owned-search-response", "content": [
+                {"type": "toolCall", "id": "search-note", "name": "memory_search", "arguments": search_args}]})
+            searched = turn.dispatch("search-note", "memory_search", search_args)
+            assert searched["results"][0]["path"] == "memory/format.md" and searched["citations"] == "auto"
+            assert list(searched["results"][0])[:7] == [
+                "path", "startLine", "endLine", "score", "textScore", "snippet", "source"]
+            search_message = next(message for message in turn.model_request()["messages"]
+                                  if message.get("role") == "toolResult" and message["toolCallId"] == "searchnote")
+            model_json = search_message["content"][0]["text"]
+            assert json.loads(model_json) == searched
+            assert '"textScore": 9.99999000001e-7' in model_json and "e-07" not in model_json
+            debug_keys = list(searched["debug"])
+            assert debug_keys[0] == "backend" and debug_keys.index("managerMs") < debug_keys.index("searchMs")
+            assert runner.kit.memory.workspace.index_sources == ("memory",)
             return _reply(turn)
 
         outcome = await runner.run_turn("Read the saved fact.", execute=model,
             request_id="owned-get-loop",
-            prompt_context=RuntimePromptInput(offered_tool_names=["memory_get"]))
+            prompt_context=RuntimePromptInput(offered_tool_names=["memory_get", "memory_search"], tool_call_id_mode="strict"))
         assert outcome.ready
         recorded = next(event["message"] for event in runner.catalog.read_transcript(SESSION).events
                         if event.get("message", {}).get("role") == "toolResult")
         assert recorded["details"] == actual_factory["details"]
         assert recorded["content"] == actual_factory["content"]
         assert recorded["__openclaw"]["runId"] == "owned-get-loop"
+        assert recorded["toolCallId"] == "read-note"
         assistant = next(event["message"] for event in runner.catalog.read_transcript(SESSION).events
                          if event.get("message", {}).get("responseId") == "owned-provider-response")
         assert assistant["__openclaw"]["runId"] == "owned-get-loop"
+        assert assistant["content"][0]["id"] == "read-note"
+        with closing(runner.kit.memory.store.connect()) as db:
+            assert db.execute("SELECT DISTINCT source FROM chunks").fetchall() == [("memory",)]
+        assert any(event.get("message", {}).get("role") == "user"
+                   for event in runner.catalog.read_transcript(SESSION).events)
 
     asyncio.run(scenario())

@@ -390,11 +390,29 @@ def _tools(specification, operation, native):
         response = calls[index]["response"]
         _same(response["content"], [{"type": "toolCall", **script}], "the real model requested a different tool call")
         later = calls[index + 1]["request"]["context"]["messages"]
-        _require(any(message.get("role") == "assistant" and all(message.get(key) == value
-                     for key, value in response.items()) for message in later),
-                 "the real assistant tool request did not reach the next model call")
+        _require(isinstance(response.get("responseId"), str) and response["responseId"],
+                 "the actual provider tool response lost its stable response identity")
+        assistants = [message for message in later if message.get("role") == "assistant"
+                      and message.get("responseId") == response["responseId"]]
+        _require(len(assistants) == 1, "the actual provider tool response lost its unique model-bound owner")
+        assistant = assistants[0]
+        for key, value in response.items():
+            if key != "content":
+                _same(assistant.get(key), value, "an unchanged provider response field changed before replay")
+        content = assistant.get("content")
+        _require(isinstance(content, list) and len(content) == 1 and isinstance(content[0], dict)
+                 and set(content[0]) == set(response["content"][0]),
+                 "the actual assistant tool request dropped or added a content field")
+        for key, value in response["content"][0].items():
+            if key != "id":
+                _same(content[0][key], value, "the actual tool request changed a name, argument or other content field")
+        observed_id = content[0]["id"]
+        _require(isinstance(observed_id, str) and observed_id, "the actual projected tool ID is absent")
+        # The original provider policy may sanitize IDs during model replay.
+        # Bind the observed ID to its real result; never reproduce a sanitizer
+        # or rewrite any ID in the complete public message comparison.
         results = [message for message in later if message.get("role") == "toolResult"
-                   and message.get("toolCallId") == script["id"]]
+                   and message.get("toolCallId") == observed_id]
         _require(len(results) == 1 and results[0].get("toolName") == script["name"]
                  and results[0].get("isError") is not True, "a genuine successful tool result is missing")
         if native:
@@ -650,7 +668,9 @@ def validate_pair(case, native_raw, sdk_raw, native_public, sdk_public, sdk_dire
                 "MemorySessionCatalog.read_continuation", "MemorySessionCatalog.read_transcript",
                 "MemorySessionCatalog.append_message", "Memory.from_workspace", "SQLiteMemoryStore.reindex",
                 "ModelPrompt", "normalize_model_messages", "build_prompt_section", "resolve_cron_style_now",
-                "project_runtime_context_fragments", "resolve_runtime_context_prompt_parts", "TurnToolDispatcher.dispatch"}
+                "project_runtime_context_fragments", "resolve_runtime_context_prompt_parts", "TurnToolDispatcher.dispatch",
+                "sanitize_tool_call_ids", "resolve_memory_search_source_policy",
+                "serialize_model_tool_json", "_js_number_to_string", "_search_debug"}
     _require({owner["name"] for owner in owners} == required and len(owners) == len(required),
              "an actual SDK production owner is absent or duplicated")
     for owner in owners:
@@ -667,6 +687,32 @@ def validate_pair(case, native_raw, sdk_raw, native_public, sdk_public, sdk_dire
         files = _files(capture)
         _tables(capture, files)
     _custody(case, sdk_raw, captures, False)
+    policy = sdk_raw["sourcePolicy"]
+    _require(set(policy) == {"configuredSources", "rememberAcrossConversations", "configuredSessionMemory", "resolved"},
+             "the complete actual SDK source-policy observation changed shape")
+    native_policy = native_raw["config"]["memory"]["search"]
+    _same(policy["configuredSources"], native_policy["sources"], "SDK source selection differs from actual Native host config")
+    _same(policy["rememberAcrossConversations"], native_policy["rememberAcrossConversations"],
+          "SDK cross-conversation policy differs from actual Native host config")
+    _same(policy["configuredSessionMemory"], native_policy["experimental"]["sessionMemory"],
+          "SDK session-memory policy differs from actual Native host config")
+    _same({key: value for key, value in policy.items() if key != "resolved"}, {
+        "configuredSources": ["memory"], "rememberAcrossConversations": False, "configuredSessionMemory": False},
+        "the predeclared real memory-only host source facts changed")
+    _same(policy["resolved"], {"sources": ["memory"], "searchSources": ["memory"], "sessionMemory": False},
+          "the complete actual SDK source policy does not reflect the literal Native host facts")
+    _same(sdk_raw["sourcePolicyCall"]["arguments"], {
+        "configured_sources": ["memory"], "remember_across_conversations": False, "configured_session_memory": False},
+        "the real public source-policy resolver received different host facts")
+    _same(sdk_raw["sourcePolicyCall"]["returnValue"], policy["resolved"],
+          "the actual public source-policy resolver return was rewritten")
+    _same(sdk_raw["workspaceIndexSources"], ["memory"], "the initial actual SDK workspace source scope changed")
+    for state, capture in zip(sdk_raw["states"], captures, strict=True):
+        _same(state["workspaceIndexSources"], ["memory"], "the actual SDK workspace index admitted session sources")
+        for database in (state["sql"]["index"], _physical_database(capture, sdk_raw["databasePaths"]["index"])):
+            rows = _sql(database).get("chunks")
+            _require(isinstance(rows, list) and all(row.get("source") == "memory" for row in rows),
+                     "the actual SDK index contains a source excluded by its real host policy")
     _require(len(sdk_raw["mtimeWrites"]) == len(case["input"]["files"]), "a real SDK source mtime write is missing")
     for receipt in sdk_raw["mtimeWrites"]:
         _require(receipt["owner"] == "os.utime" and receipt["arguments"]["ns"] == [case["input"]["fileMtimeMs"] * 1_000_000] * 2,
@@ -694,6 +740,8 @@ def validate_pair(case, native_raw, sdk_raw, native_public, sdk_public, sdk_dire
         specification = operation["operation"]
         if specification["op"] == "reopen":
             continue
+        _same(operation["sourcePolicy"], policy["resolved"], "the actual SDK memory client lost its complete source policy")
+        _same(operation["workspaceIndexSources"], ["memory"], "the submitted SDK workspace admitted session index sources")
         _require(operation["modelPromptClosed"] is True, "the actual SDK transient model owner was not closed")
         arguments = operation["callArguments"]
         _same(arguments["user_message"], specification["effectivePrompt"], "the actual SDK effective prompt changed")
@@ -705,7 +753,8 @@ def validate_pair(case, native_raw, sdk_raw, native_public, sdk_public, sdk_dire
             "offered_tool_names": specification["tools"], "citations_mode": specification["citationsMode"],
             "timezone": specification.get("timezone"), "host_timezone": HOST_TIMEZONE,
             "host_time_format": HOST_TIME_FORMAT, "include_clock": specification["includeClock"],
-            "append_only_runtime_context": False}, "an actual SDK prompt owner input was rewritten")
+            "append_only_runtime_context": False, "tool_call_id_mode": "strict"},
+              "an actual SDK prompt owner input was rewritten")
         registered = operation["registeredTools"]
         _same(registered, sdk_raw["registeredTools"], "an actual SDK registered tool definition changed")
         by_name = {tool["name"]: tool for tool in registered}

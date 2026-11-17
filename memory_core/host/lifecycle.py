@@ -18,7 +18,7 @@ import threading
 from typing import Any, Literal
 from uuid import uuid4
 
-from memory_core.bootstrap._js import js_json_stringify, js_trim
+from memory_core.bootstrap._js import js_trim
 from memory_core.config import MemoryConfig
 from memory_core.consolidation.artifact_provenance import MemoryArtifactProvenanceStore
 from memory_core.curation import APPEND_DAILY_NOTE, CURATION_OPERATIONS
@@ -26,7 +26,7 @@ from memory_core.host.flush import FlushOutcome, FlushRequest
 from memory_core.host.kit import HostKit, TurnContext
 from memory_core.host.session import SessionState, TurnUsage, apply_turn_usage
 from memory_core.memory_write_provenance import _observe_memory_write_entry
-from memory_core.model_prompt import ModelPrompt, RuntimePromptInput
+from memory_core.model_prompt import ModelPrompt, RuntimePromptInput, serialize_model_tool_json
 from memory_core.session_catalog import MemorySessionCatalog, normalize_session_agent_id
 from memory_core.session_visibility import is_incognito_session_key, resolve_session_agent_id
 from memory_core.tools.common import format_error_message
@@ -178,7 +178,7 @@ def _result_message_payload(result: Any, *, model_json: bool = False) -> dict[st
         raise TypeError("Registered host tools must return a mapping receipt")
     if "content" in result:
         return dict(result)
-    text = (js_json_stringify(dict(result), indent=2) if model_json else json.dumps(
+    text = (serialize_model_tool_json(result) if model_json else json.dumps(
         result, ensure_ascii=False, allow_nan=False, separators=(",", ":")))
     return {"content": [{"type": "text", "text": text}], "details": deepcopy(dict(result))}
 

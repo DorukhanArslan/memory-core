@@ -18,6 +18,7 @@ import tempfile
 import traceback
 from typing import Any
 
+from equivalence import flush_plan_target
 from equivalence.dream_phase_family import FAMILIES as DREAM_FAMILIES, evidence_family, report_key
 from equivalence.release_runtime import ReleaseRuntimeError, validate_release_sources
 from equivalence.entry_provenance_profile import ENTRY_PROVENANCE_PROFILES, validate_entry_provenance_profile
@@ -93,6 +94,7 @@ _OPERATIONS = {
     "flush-trigger-runtime": (
         "flush-runtime.mjs", "dist/agent-runner-memory-Cc4lCZcs.mjs", False,
     ),
+    flush_plan_target.OPERATION: ("flush-plan-target-runtime.mjs", "dist/agent-runner-memory-Cc4lCZcs.mjs", False),
     "flush-execution-runtime": (
         "flush-execution.mjs", "dist/agent-runner-memory-Cc4lCZcs.mjs", True,
     ),
@@ -710,7 +712,8 @@ class ReleaseOracleExecution:
                  recall_signals_profile: dict | None = None, embedding_cache_profile: dict | None = None,
                  session_reset_boundaries_profile: dict | None = None,
                  prompt_runtime_context_profile: dict | None = None,
-                 prompt_history_repair_profile: dict | None = None, dream_phase_profile: dict | None = None):
+                 prompt_history_repair_profile: dict | None = None, dream_phase_profile: dict | None = None,
+                 flush_plan_target_profile: dict | None = None):
         self.config = deepcopy(config)
         self.adapter_hashes = dict(adapter_hashes)
         self.fixture_captures = fixture_captures
@@ -732,6 +735,8 @@ class ReleaseOracleExecution:
         self.prompt_runtime_context_profile = deepcopy(prompt_runtime_context_profile)
         self.prompt_history_repair_profile = deepcopy(prompt_history_repair_profile)
         self.dream_phase_profile = deepcopy(dream_phase_profile)
+        self.flush_plan_target_profile = deepcopy(flush_plan_target_profile)
+        self._retained_flush_captures: dict[str, dict] = {}
         self._retained_dream_captures: dict[str, dict] = {}
         self._retained_history_captures: dict[str, dict] = {}
         self._retained_prompt_captures: dict[str, dict] = {}
@@ -747,6 +752,10 @@ class ReleaseOracleExecution:
                 self.forget_lineage_profile, self.forget_boundaries_profile, self.recall_signals_profile,
                 self.embedding_cache_profile, self.session_reset_boundaries_profile,
                 self.prompt_runtime_context_profile, self.prompt_history_repair_profile, self.dream_phase_profile)
+            if self.flush_plan_target_profile is not None:
+                if not self.fixture_captures or any(value is not None for value in capabilities):
+                    raise RuntimeOracleError("Flush plan authority requires only its own reviewed fixture capture.")
+                self.flush_plan_target_profile = flush_plan_target.validate_profile(self.flush_plan_target_profile)
             if sum(value is not None for value in capabilities) + bool(self.fixture_captures) > 1:
                 raise RuntimeOracleError("Independent native profiles cannot borrow one another's executable, source, backend or hook capabilities.")
             if self.get_read_race_profile is not None:
@@ -929,6 +938,9 @@ class ReleaseOracleExecution:
                 self._context["approvedNodeRuntime"] = self.prompt_history_repair_profile["nodeRuntime"]
                 self._context["promptHistoryRepairProfile"] = self.prompt_history_repair_profile
                 self._context["promptHistoryRepairHostTimezone"] = "UTC"
+            if self.flush_plan_target_profile is not None:
+                self._context["approvedNodeRuntime"] = self.flush_plan_target_profile["nodeRuntime"]
+                self._context["flushPlanTargetProfile"] = self.flush_plan_target_profile
             if self.dream_phase_profile is not None:
                 self._context["approvedNodeRuntime"] = self.dream_phase_profile["nodeRuntime"]
                 self._context["dreamPhaseProfile"] = self.dream_phase_profile
@@ -1148,6 +1160,8 @@ class ReleaseOracleExecution:
                 if (self.prompt_runtime_context_profile is not None
                         and case.get("operation") == "prompt-runtime-context-runtime"):
                     record.update(self._retain_prompt_capture(identifier, raw))
+                if self.flush_plan_target_profile is not None and identifier == self.flush_plan_target_profile["caseId"]:
+                    record.update(self._retain_case_capture(identifier, raw, "flush-plan-target", self._retained_flush_captures))
                 if self.dream_phase_profile is not None and case.get("operation") in DREAM_FAMILIES:
                     record.update(self._retain_dream_capture(identifier, raw))
                 if (self.prompt_history_repair_profile is not None
@@ -1255,6 +1269,12 @@ class ReleaseOracleExecution:
             profile = validate_prompt_history_repair_profile(self.prompt_history_repair_profile)
             if profile["caseId"] != case.get("id") or profile["caseBindings"][profile["caseId"]] != _digest(history_case_wire(case)):
                 raise RuntimeOracleError("A prompt history repair case changed its frozen inputs")
+        if (self.flush_plan_target_profile is not None) != (operation == flush_plan_target.OPERATION):
+            raise RuntimeOracleError("Flush plan authority must use its own registered operation.")
+        if self.flush_plan_target_profile is not None:
+            flush_plan_target.validate_case(case)
+            if self.flush_plan_target_profile["caseId"] != case["id"]:
+                raise RuntimeOracleError("Flush plan authority must use its exact input and identity.")
         if (self.dream_phase_profile is not None) != (operation in DREAM_FAMILIES):
             raise RuntimeOracleError("Dreaming requires its exact frozen profile")
         if self.dream_phase_profile is not None:
@@ -1368,6 +1388,8 @@ class ReleaseOracleExecution:
             raise RuntimeOracleError(
                 "Embedding cache fixtures require their declared deterministic provider."
                 if self.embedding_cache_profile is not None else "Release memory fixtures require provider none.")
+        if operation == flush_plan_target.OPERATION and not row["ok"]:
+            raise RuntimeOracleError(f"Original flush plan execution failed: {row['error']}")
         if operation in DREAM_FAMILIES and not row["ok"]:
             raise RuntimeOracleError(f"Original dreaming sweep failed: {row['error']}")
         if operation == "embed-cache-lifecycle-runtime" and not row["ok"]:
@@ -1407,7 +1429,7 @@ class ReleaseOracleExecution:
             if filename is None:
                 raise RuntimeOracleError("A release thread trace has an invalid identity.")
             raw = _regular(trace, MAX_SINGLE_TRACE_BYTES)
-            if self.dream_phase_profile is not None or self.entry_profile is not None or self.memory_budget_profile is not None or self.promotion_profile is not None or self.promotion_apply_profile is not None or self.forget_lineage_profile is not None or self.forget_boundaries_profile is not None or self.recall_signals_profile is not None or self.embedding_cache_profile is not None or self.session_reset_boundaries_profile is not None or self.prompt_runtime_context_profile is not None or self.prompt_history_repair_profile is not None:
+            if self.flush_plan_target_profile is not None or self.dream_phase_profile is not None or self.entry_profile is not None or self.memory_budget_profile is not None or self.promotion_profile is not None or self.promotion_apply_profile is not None or self.forget_lineage_profile is not None or self.forget_boundaries_profile is not None or self.recall_signals_profile is not None or self.embedding_cache_profile is not None or self.session_reset_boundaries_profile is not None or self.prompt_runtime_context_profile is not None or self.prompt_history_repair_profile is not None:
                 entry_trace_files.append({"name": trace.name, "bytes": len(raw), "sha256": _digest(raw),
                                           "text": raw.decode("utf-8")})
             if self.bootstrap_profile is not None:
@@ -1435,6 +1457,7 @@ class ReleaseOracleExecution:
                               or (self.promotion_apply_profile["nodeRuntime"] if self.promotion_apply_profile is not None else None)
                               or (self.forget_lineage_profile["nodeRuntime"] if self.forget_lineage_profile is not None else None)
                               or (self.forget_boundaries_profile["nodeRuntime"] if self.forget_boundaries_profile is not None else None)
+                              or (self.flush_plan_target_profile["nodeRuntime"] if self.flush_plan_target_profile is not None else None)
                               or (self.dream_phase_profile["nodeRuntime"] if self.dream_phase_profile is not None else None)
                               or (self.recall_signals_profile["nodeRuntime"] if self.recall_signals_profile is not None else None)
                               or (self.session_reset_boundaries_profile["nodeRuntime"] if self.session_reset_boundaries_profile is not None else None)
@@ -1453,6 +1476,10 @@ class ReleaseOracleExecution:
             bootstrap.append({"pid": pid, "threadId": thread, "isMainThread": thread == 0,
                               **({"runtime": first["runtime"]} if node_authority is not None else {}),
                               **({"entryProfile": first["entryProfile"]} if self.entry_profile is not None else {})})
+            if self.flush_plan_target_profile is not None:
+                if first.get("flushPlanTargetProfile") != self.flush_plan_target_profile:
+                    raise RuntimeOracleError("The protected flush process or worker omitted its frozen plan profile.")
+                bootstrap[-1]["flushPlanTargetProfile"] = deepcopy(first["flushPlanTargetProfile"])
             if self.atomic_profile is not None:
                 bootstrap[-1]["atomicProfile"] = first["atomicProfile"]
             if self.bootstrap_profile is not None:
@@ -1602,7 +1629,7 @@ class ReleaseOracleExecution:
                     source = event.get("sourcePath")
                     capture = event.get("capturePath")
                     proof = event.get("proofPath")
-                    if (not self.fixture_captures or case.get("operation") != "flush-execution-runtime"
+                    if (not self.fixture_captures or operation not in {"flush-execution-runtime", flush_plan_target.OPERATION}
                             or source != str((ROOT / "equivalence/flush-execution.mjs").resolve())
                             or path != source or self._locals.get(source) != digest
                             or not isinstance(capture, str) or not _FIXTURE_CAPTURE.fullmatch(capture)):
@@ -1625,6 +1652,8 @@ class ReleaseOracleExecution:
                             "proofPath": proof, "proofSha256": _digest(proof_bytes),
                             "bytes": len(proof_bytes),
                         }
+                        if self.flush_plan_target_profile is not None:
+                            captures[capture]["text"] = proof_bytes.decode("utf-8")
                 elif kind == "release":
                     key = (event.get("package"), path)
                     if self._packages.get(key) != digest:
@@ -1761,6 +1790,21 @@ class ReleaseOracleExecution:
             history_capture = self._retain_history_capture(case["id"], raw)
         if not isinstance(diagnostic, list):
             raise RuntimeOracleError("Native lifecycle diagnostics must retain raw snapshot rows.")
+        if operation == flush_plan_target.OPERATION:
+            from equivalence.flush_plan_target_evidence import validate_native
+
+            required_drivers = {"flush-execution.mjs", "flush-plan-selection.mjs"}
+            if not {str((ROOT / "equivalence" / name).resolve()) for name in required_drivers} <= local_imports:
+                raise RuntimeOracleError("The native flush runner and model route observer must both execute.")
+            if len(diagnostic) != 1 or not isinstance(diagnostic[0], dict):
+                raise RuntimeOracleError("The original automatic flush must emit one complete observation.")
+            actor = diagnostic[0].get("process")
+            if not isinstance(actor, dict) or not any(
+                    thread["pid"] == actor.get("pid") and thread["isMainThread"] for thread in bootstrap):
+                raise RuntimeOracleError("The native plan receipt must originate in the authenticated process.")
+            if diagnostic[0].get("modelStarts") and not captures:
+                raise RuntimeOracleError("Actual model calls require the reviewed provider source capture.")
+            validate_native(case, row["result"], diagnostic, evidence.parent, loaded)
         if operation in DREAM_FAMILIES:
             from equivalence.dream_light_evidence import validate_dream_light_native
 
@@ -2108,6 +2152,32 @@ class ReleaseOracleExecution:
                                   "nativeBinaryPolicy": "all artifact bytes authenticated before and after execution"}
         answer["runtimeDiagnostics"] = [{"id": case["id"], "sha256": _digest(raw),
                                           "rawSnapshots": _json(raw) if self.entry_profile is not None or self.memory_budget_profile is not None or self.promotion_profile is not None or self.promotion_apply_profile is not None else diagnostic}]
+        if operation == flush_plan_target.OPERATION:
+            receipt = self._retain_case_capture(case["id"], raw, "flush-plan-target", self._retained_flush_captures)
+            directory = Path(receipt["retainedNativeRawPath"]).parent
+            source = evidence.parent / "workspace"
+            os.close(_owned_directory(self.root, source))
+            (directory / "workspace").mkdir()
+            for path in sorted(source.rglob("*")):
+                dest = directory / "workspace" / path.relative_to(source)
+                if stat.S_ISDIR(path.lstat().st_mode):
+                    dest.mkdir()
+                else:
+                    content = _owned_regular(source, path, MAX_DIAGNOSTIC_BYTES)
+                    with dest.open("xb") as stream:
+                        stream.write(content)
+            progress = _owned_regular(self.root, evidence.parent / "native-progress.json", MAX_DIAGNOSTIC_BYTES)
+            (directory / "native-progress.json").write_bytes(progress)
+            for trace in entry_trace_files:
+                (directory / trace["name"]).write_bytes(trace["text"].encode("utf-8"))
+            for captured in captures.values():
+                path = directory / captured["proofPath"]
+                path.parent.mkdir(exist_ok=True)
+                path.write_bytes(captured["text"].encode("utf-8"))
+            answer["runtimeDiagnostics"][0].update(receipt, validationStatus="verified", evidenceDirectory=str(directory))
+            answer["releaseTrace"]["flushPlanTargetTransport"] = {
+                "profile": deepcopy(self.flush_plan_target_profile), "traceFiles": entry_trace_files,
+                "fixtureSourceCaptures": [captures[key] for key in sorted(captures)]}
         if operation in DREAM_FAMILIES:
             answer["runtimeDiagnostics"][0].update(self._retain_dream_capture(case["id"], raw))
             answer["runtimeDiagnostics"][0]["validationStatus"] = "verified"

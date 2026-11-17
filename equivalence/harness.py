@@ -22,6 +22,7 @@ import tempfile
 import time
 from typing import Any, Callable
 
+from equivalence import flush_plan_target
 from equivalence.dream_phase_family import FAMILIES as DREAM_FAMILIES, PHASES as DREAM_PHASES, evidence_family, report_key
 
 
@@ -410,6 +411,7 @@ def _validate_scope(scope: Any, cases: Any) -> tuple[list[dict], dict[str, set[s
 
         from equivalence.workspace_lock_cases import validate_registration as validate_workspace_locks
 
+        flush_plan_target.validate_registration(cases)
         validate_workspace_locks(cases)
         validate_deep_consolidation(cases)
         validate_prompt_history_repair(cases)
@@ -435,7 +437,13 @@ def _oracle(node: Path, script: Path, checkout: Path, cases: list[dict], timeout
     query_sync_boundary_case = len(cases) == 1 and cases[0]["operation"] == "query-sync-boundaries-runtime"
     if any(case.get("operation") == "query-sync-boundaries-runtime" for case in cases) and not query_sync_boundary_case:
         raise HarnessError("query-sync-boundary-capability-invalid", "Query-sync boundaries require one exact isolated dispatch.")
-    timeout_limit = 180 if boundary_case or query_sync_boundary_case else 120
+    flush_plan_case = len(cases) == 1 and cases[0]["operation"] == flush_plan_target.OPERATION
+    if flush_plan_case:
+        try:
+            flush_plan_target.validate_case(cases[0])
+        except ValueError as error:
+            raise HarnessError("cases-invalid", str(error)) from None
+    timeout_limit = 240 if flush_plan_case else 180 if boundary_case or query_sync_boundary_case else 120
     if not isinstance(timeout, (int, float)) or isinstance(timeout, bool) or not 0 < timeout <= timeout_limit:
         raise HarnessError("timeout-invalid", f"The oracle requires a finite timeout of at most {timeout_limit} seconds.")
     if len(cases) == 1 and cases[0]["operation"] == "automation-job-state-runtime":
@@ -734,8 +742,10 @@ def _oracle(node: Path, script: Path, checkout: Path, cases: list[dict], timeout
 
             try:
                 context_options = ({"fixture_captures": True}
-                                   if len(cases) == 1 and cases[0]["operation"] == "flush-execution-runtime"
+                                   if len(cases) == 1 and cases[0]["operation"] in {"flush-execution-runtime", flush_plan_target.OPERATION}
                                    else {})
+                if len(cases) == 1 and cases[0]["operation"] == flush_plan_target.OPERATION:
+                    context_options["flush_plan_target_profile"] = flush_plan_target.profile_for(cases[0], node)
                 if len(cases) == 1 and cases[0]["operation"] == "turn-trust-runtime":
                     from equivalence.turn_trust_source_authority import prepare_turn_taint_source_authority
 
@@ -899,6 +909,15 @@ def _oracle(node: Path, script: Path, checkout: Path, cases: list[dict], timeout
                         name: {"text": value, "bytes": len(value.encode("utf8")),
                                "sha256": hashlib.sha256(value.encode("utf8")).hexdigest()}
                         for name, value in (("stdout", stdout), ("stderr", stderr))}
+                if len(cases) == 1 and cases[0]["operation"] == flush_plan_target.OPERATION:
+                    streams = {}
+                    retained = Path(result["runtimeDiagnostics"][0]["retainedNativeRawPath"]).parent
+                    for name, value in (("stdout", stdout), ("stderr", stderr)):
+                        content = value.encode("utf-8")
+                        with (retained / (name + ".log")).open("xb") as stream:
+                            stream.write(content)
+                        streams[name] = {"text": value, "bytes": len(content), "sha256": hashlib.sha256(content).hexdigest()}
+                    result["releaseTrace"]["flushPlanTargetTransport"]["originalProcessStreams"] = streams
                 if len(cases) == 1 and cases[0]["operation"] in DREAM_FAMILIES:
                     result["releaseTrace"][report_key(cases[0]["operation"], "Transport")]["originalProcessStreams"] = {
                         name: {"text": value, "bytes": len(value.encode("utf8")), "sha256": hashlib.sha256(value.encode("utf8")).hexdigest()}
@@ -930,7 +949,7 @@ def _oracle(node: Path, script: Path, checkout: Path, cases: list[dict], timeout
                 raise failure from None
     except HarnessError as error:
         if len(cases) == 1 and cases[0]["operation"] in {
-                "embed-cache-lifecycle-runtime", "session-reset-boundaries-runtime", "prompt-runtime-context-runtime", "prompt-history-repair-runtime", *DREAM_FAMILIES}:
+                "embed-cache-lifecycle-runtime", "session-reset-boundaries-runtime", "prompt-runtime-context-runtime", "prompt-history-repair-runtime", flush_plan_target.OPERATION, *DREAM_FAMILIES}:
             if error.rejected_evidence is None:
                 try:
                     rejected_result = _json(stdout) if len(stdout.encode("utf8")) <= _MAX_OUTPUT_BYTES else None
@@ -988,7 +1007,7 @@ def _oracle(node: Path, script: Path, checkout: Path, cases: list[dict], timeout
                 process.kill()
             interrupted_stdout, interrupted_stderr = process.communicate()
             if len(cases) == 1 and cases[0]["operation"] in {
-                    "session-reset-boundaries-runtime", "prompt-runtime-context-runtime", "prompt-history-repair-runtime", *DREAM_FAMILIES}:
+                    "session-reset-boundaries-runtime", "prompt-runtime-context-runtime", "prompt-history-repair-runtime", flush_plan_target.OPERATION, *DREAM_FAMILIES}:
                 stdout, stderr = interrupted_stdout, interrupted_stderr
         raise HarnessError("oracle-timeout", "The TypeScript oracle timed out; no retry was made.") from None
     except OSError:
@@ -998,7 +1017,7 @@ def _oracle(node: Path, script: Path, checkout: Path, cases: list[dict], timeout
     finally:
         pending = sys.exc_info()[1]
         if (len(cases) == 1 and cases[0]["operation"] in {
-                "session-reset-boundaries-runtime", "prompt-runtime-context-runtime", "prompt-history-repair-runtime", *DREAM_FAMILIES}
+                "session-reset-boundaries-runtime", "prompt-runtime-context-runtime", "prompt-history-repair-runtime", flush_plan_target.OPERATION, *DREAM_FAMILIES}
                 and isinstance(pending, HarnessError) and pending.rejected_evidence is None):
             # Abort handlers above still retain their actual failure, exit and
             # bounded raw evidence before the owned execution tree closes.
@@ -1203,7 +1222,7 @@ def _query_sync_boundaries_family_complete(rows: list[dict]) -> bool:
 
 def _retain_failed_sdk_capture(report: dict, case: dict, directory: Path | None) -> None:
     """Attach the new SDK's eager failure record without authenticating it."""
-    families = {"prompt-history-repair-runtime": "prompt-history-repair", **{op: evidence_family(op) for op in DREAM_FAMILIES}}
+    families = {flush_plan_target.OPERATION: "flush-plan-target", "prompt-history-repair-runtime": "prompt-history-repair", **{op: evidence_family(op) for op in DREAM_FAMILIES}}
     if case.get("operation") not in families or any(
             item.get("side") == "python" and item.get("id") == case["id"]
             for item in report["runtimeDiagnostics"]):
@@ -1334,7 +1353,7 @@ def run_suite(*, checkout: Path, node: Path, smoke: bool = False,
             "session-reset-boundaries-runtime",
             "prompt-runtime-context-runtime",
             "prompt-history-repair-runtime",
-            *DREAM_FAMILIES,
+            flush_plan_target.OPERATION, *DREAM_FAMILIES,
             "embed-cache-lifecycle-runtime", "automation-job-state-runtime",
         }
         runtime_cases = [case for case in cases if case["operation"] in runtime_operations]
@@ -1445,7 +1464,12 @@ def run_suite(*, checkout: Path, node: Path, smoke: bool = False,
                 except (OSError, ValueError):
                     raise HarnessError("flush-runtime-owner-unavailable",
                                        "The reviewed native flush owner/export could not be verified.") from None
-            flush_execution = any(case["operation"] == "flush-execution-runtime" for case in runtime_cases)
+            flush_plan = any(case["operation"] == flush_plan_target.OPERATION for case in runtime_cases)
+            if flush_plan:
+                from equivalence.model_runtime_authority import prepare_model_node_authority
+
+                report["flushPlanTargetNode"] = prepare_model_node_authority(node)
+            flush_execution = flush_plan or any(case["operation"] == "flush-execution-runtime" for case in runtime_cases)
             if flush_execution:
                 from equivalence.flush_execution_bindings import prepare_flush_execution_bindings
 
@@ -1774,8 +1798,10 @@ def run_suite(*, checkout: Path, node: Path, smoke: bool = False,
                 # case gets one fresh process; failed cases are never retried.
                 try:
                     native = _oracle(node, ROOT / "equivalence/release-oracle.mjs", checkout, [case],
-                                     max(timeout_seconds, 180 if case["operation"] in {"host-turn-barrier-boundaries-runtime", "query-sync-boundaries-runtime"} else
-                                         120 if case["operation"] in {"host-turn-barrier-runtime", "index-identity-boundaries-runtime", "query-sync-outcomes-runtime", "prompt-runtime-context-runtime", "prompt-history-repair-runtime", *DREAM_FAMILIES} else 60),
+                                     max(timeout_seconds, 240 if case["operation"] == flush_plan_target.OPERATION
+                                         and "unavailable" in case["input"]["responses"].values() else
+                                         180 if case["operation"] in {"host-turn-barrier-boundaries-runtime", "query-sync-boundaries-runtime"} else
+                                         120 if case["operation"] in {"host-turn-barrier-runtime", "index-identity-boundaries-runtime", "query-sync-outcomes-runtime", "prompt-runtime-context-runtime", "prompt-history-repair-runtime", flush_plan_target.OPERATION, *DREAM_FAMILIES} else 60),
                                      release_runtime=runtime_config)
                 except HarnessError:
                     report["failedReferenceCaseId"] = case["id"]
@@ -1908,6 +1934,8 @@ def run_suite(*, checkout: Path, node: Path, smoke: bool = False,
                     checkout, Path(runtime_config["runtimeRoot"]),
                 ) != report["flushRuntimeBindings"]:
                     raise ValueError("Flush runtime owner/export changed.")
+                if flush_plan and prepare_model_node_authority(node) != report["flushPlanTargetNode"]:
+                    raise ValueError("Flush plan executable authority changed.")
                 if flush_execution and prepare_flush_execution_bindings(
                     checkout, Path(runtime_config["runtimeRoot"]),
                 ) != report["flushExecutionBindings"]:
@@ -2042,10 +2070,11 @@ def run_suite(*, checkout: Path, node: Path, smoke: bool = False,
                     native_comparison = native["result"]
                     python_case = deepcopy(case)
                     if case in python_diagnostic_cases:
-                        if case["operation"] in {"workspace-lock-process-runtime", "automation-job-state-runtime", "index-identity-boundaries-runtime", "query-sync-outcomes-runtime", "query-sync-boundaries-runtime", "forget-lineage-runtime", "forget-boundaries-runtime", "recall-signals-runtime", "embed-cache-lifecycle-runtime", "session-reset-boundaries-runtime", "prompt-runtime-context-runtime", "prompt-history-repair-runtime", "deep-consolidation-runtime", *DREAM_FAMILIES}:
+                        if case["operation"] in {"workspace-lock-process-runtime", "automation-job-state-runtime", "index-identity-boundaries-runtime", "query-sync-outcomes-runtime", "query-sync-boundaries-runtime", "forget-lineage-runtime", "forget-boundaries-runtime", "recall-signals-runtime", "embed-cache-lifecycle-runtime", "session-reset-boundaries-runtime", "prompt-runtime-context-runtime", "prompt-history-repair-runtime", "deep-consolidation-runtime", flush_plan_target.OPERATION, *DREAM_FAMILIES}:
                             # Keep the original child paths and bytes for the post-run
                             # semantic replay, including failed SDK captures.
                             family = ("deep-consolidation" if case["operation"] == "deep-consolidation-runtime" else
+                                      "flush-plan-target" if case["operation"] == flush_plan_target.OPERATION else
                                       evidence_family(case["operation"]) if case["operation"] in DREAM_FAMILIES else
                                       "automation-job-state" if case["operation"] == "automation-job-state-runtime" else
                                       "workspace-locks" if case["operation"] == "workspace-lock-process-runtime" else
@@ -2061,7 +2090,7 @@ def run_suite(*, checkout: Path, node: Path, smoke: bool = False,
                                       else "index-identity-boundaries")
                             retained = ROOT / ".equivalence-results" / family
                             retained.mkdir(parents=True, exist_ok=True)
-                            if case["operation"] in {"prompt-history-repair-runtime", *DREAM_FAMILIES} and (
+                            if case["operation"] in {"prompt-history-repair-runtime", flush_plan_target.OPERATION, *DREAM_FAMILIES} and (
                                     retained.is_symlink() or retained.resolve(strict=True) != retained or not retained.is_dir()):
                                 raise ValueError("History SDK retention requires its canonical owned directory")
                             directory = Path(tempfile.mkdtemp(prefix="sdk-attempt-", dir=retained))
@@ -2262,18 +2291,23 @@ def run_suite(*, checkout: Path, node: Path, smoke: bool = False,
                             lineage_diagnostic["validationStatus"] = "verified"
                             row["runtimeEvidenceValidated"] = True
                             row.update(openclaw=native_comparison, python=python)
-                        if case["operation"] in DREAM_FAMILIES:
-                            from equivalence.dream_light_sdk_evidence import validate_sdk
+                        if case["operation"] in DREAM_FAMILIES or case["operation"] == flush_plan_target.OPERATION:
+                            if case["operation"] == flush_plan_target.OPERATION:
+                                from equivalence.flush_plan_target_evidence import validate_sdk
+                            else:
+                                from equivalence.dream_light_sdk_evidence import validate_sdk
 
                             original = next(d for d in report["runtimeDiagnostics"]
                                             if d["side"] == "native" and d["id"] == case["id"])
                             diagnostic = {"id": case["id"], "side": "python", "sha256": hashlib.sha256(raw).hexdigest(),
                                           "rawSnapshots": snapshots, "evidenceDirectory": str(directory),
                                           "validationStatus": "unverified"}
+                            if case["operation"] == flush_plan_target.OPERATION:
+                                diagnostic.update(retainedSdkRawPath=str(evidence), sdkRawBytes=len(raw))
                             report["runtimeDiagnostics"].append(diagnostic)
                             validate_sdk(case, python, snapshots, directory)
                             if original.get("validationStatus") != "verified":
-                                raise ValueError("Missing authenticated dreaming sweep")
+                                raise ValueError(f"Missing authenticated native execution for {case['operation']}")
                             row.update(openclaw=native_comparison, python=python, runtimeEvidenceValidated=True)
                             diagnostic["validationStatus"] = "verified"
                         if case["operation"] == "recall-signals-runtime":
@@ -2378,7 +2412,7 @@ def run_suite(*, checkout: Path, node: Path, smoke: bool = False,
                         diagnostic_key = "sourceDiagnostics" if case in source_diagnostic_cases else "runtimeDiagnostics"
                         if case["operation"] not in {"workspace-lock-process-runtime", "promotion-apply-family-runtime", "deep-consolidation-runtime", "host-restart-session-runtime",
                                                      "host-update-isolation-runtime", "host-turn-barrier-runtime",
-                                                     "host-turn-barrier-boundaries-runtime", "index-identity-boundaries-runtime", "query-sync-outcomes-runtime", "query-sync-boundaries-runtime", "forget-lineage-runtime", "forget-boundaries-runtime", "recall-signals-runtime", "embed-cache-lifecycle-runtime", "session-reset-boundaries-runtime", "prompt-runtime-context-runtime", "prompt-history-repair-runtime", *DREAM_FAMILIES}:
+                                                     "host-turn-barrier-boundaries-runtime", "index-identity-boundaries-runtime", "query-sync-outcomes-runtime", "query-sync-boundaries-runtime", "forget-lineage-runtime", "forget-boundaries-runtime", "recall-signals-runtime", "embed-cache-lifecycle-runtime", "session-reset-boundaries-runtime", "prompt-runtime-context-runtime", "prompt-history-repair-runtime", flush_plan_target.OPERATION, *DREAM_FAMILIES}:
                             report[diagnostic_key].append({
                                 "id": case["id"], "side": "python", "sha256": hashlib.sha256(raw).hexdigest(),
                                 "rawSnapshots": snapshots,
@@ -2402,9 +2436,9 @@ def run_suite(*, checkout: Path, node: Path, smoke: bool = False,
                     row.update(status="blocked", code="python-case-failed")
                     if case["operation"] in {"workspace-lock-process-runtime", "promotion-apply-family-runtime", "deep-consolidation-runtime", "host-restart-session-runtime",
                                              "host-update-isolation-runtime", "host-turn-barrier-runtime",
-                                             "host-turn-barrier-boundaries-runtime", "index-identity-boundaries-runtime", "query-sync-outcomes-runtime", "query-sync-boundaries-runtime", "forget-lineage-runtime", "forget-boundaries-runtime", "recall-signals-runtime", "embed-cache-lifecycle-runtime", "session-reset-boundaries-runtime", "prompt-runtime-context-runtime", "prompt-history-repair-runtime", *DREAM_FAMILIES}:
+                                             "host-turn-barrier-boundaries-runtime", "index-identity-boundaries-runtime", "query-sync-outcomes-runtime", "query-sync-boundaries-runtime", "forget-lineage-runtime", "forget-boundaries-runtime", "recall-signals-runtime", "embed-cache-lifecycle-runtime", "session-reset-boundaries-runtime", "prompt-runtime-context-runtime", "prompt-history-repair-runtime", flush_plan_target.OPERATION, *DREAM_FAMILIES}:
                         row["evidenceError"] = {"name": type(error).__name__, "message": str(error)}
-                    if case["operation"] in {"prompt-history-repair-runtime", *DREAM_FAMILIES} and python_diagnostics is not None:
+                    if case["operation"] in {"prompt-history-repair-runtime", flush_plan_target.OPERATION, *DREAM_FAMILIES} and python_diagnostics is not None:
                         _retain_failed_sdk_capture(report, case, python_case.get("_diagnosticDirectory"))
                     if case["operation"] == "host-update-isolation-runtime" and python_diagnostics is not None:
                         _retain_failed_host_update_capture(
@@ -2456,6 +2490,8 @@ def run_suite(*, checkout: Path, node: Path, smoke: bool = False,
 
         history_complete = history_family_complete(report["cases"])
         report["promptHistoryRepairFamilyComplete"] = history_complete
+        flush_plan_complete = flush_plan_target.family_complete(report["cases"])
+        report["flushPlanTargetFamilyComplete"] = flush_plan_complete
         dream_points = {}
         for op, family in DREAM_FAMILIES.items():
             complete = family.family_complete(report["cases"])
@@ -2521,6 +2557,7 @@ def run_suite(*, checkout: Path, node: Path, smoke: bool = False,
                                                       and (point["id"] not in history_points
                                                            or history_complete)
                                                       and (point["id"] != jobs_point or jobs_complete)
+                                                      and (point["id"] not in flush_plan_target.POINTS or flush_plan_complete)
                                                       and dream_points.get(point["id"], True)
                                                       and (point["id"] not in numeric_points or numeric_complete)
                                                       and (point["id"] not in deep_points or deep_complete)

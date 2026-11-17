@@ -25,15 +25,19 @@ kaynağının korunması 7/7 örnekte eşleşti. **84 → 90** hedefi için bu 1
 örnek önceki 1.500 örnekle birlikte çalıştırılıyor.
 [Genel karşılaştırma](https://github.com/DorukhanArslan/memory-core/actions/runs/44189169478) · [PR #30](https://github.com/DorukhanArslan/memory-core/pull/30)
 
-**Sonraki paketin hedefi +7 koşul.** Dört işin 23 örneği kendi
-karşılaştırmalarında geçti. İlk paket 90'a ulaşırsa ikinci paketin hedefi
-**97/128**. İkinci paketin genel sonucu bekleniyor.
+**Sonraki paketin hedefi +12 koşul.** Aşağıdaki 40 örnek kendi
+karşılaştırmalarında geçti. İki günlük yazma grubunun 14 örneği, değişiklikler
+birleştirildikten sonra da birlikte geçti. İlk paket 90'a ulaşırsa bu paketin
+hedefi **102/128**. Resmî puan genel karşılaştırmayla güncellenir.
 
 | İş | İki sistemde denenen örnek | Eşleşme | Hedef artış |
 | --- | --- | ---: | ---: |
 | Günlük not seçimi | Aynı bilgiyi grupla ve silinen notu sonraki taramada ele | 7/7 | +2 |
-| Rüya günlüğü | Yazım sırasında dayanak not silinirse o bilgiyi yayımlama | 8/8 | +2 |
-| Zamanlanmış görev | Zamanı gelince güncel notu oku ve yeniden başlatınca görevi tekrarlama | 1/1, yedi adım | +1 |
+| Rüya günlüğü | Yeniden tararken günlüğün kendi yorumlarını kaynak olarak alma | 8/8 | +2 |
+| Günlükte alıntı ve kaynak | Kaynak ya da önceki alıntı yazım sırasında silinirse girdiyi yayımlama | 7/7 | +2 |
+| Notların birlikte değerlendirilmesi | Kalıcı notu kaydet, günlük yazımı başarısız olursa iki sonucu ayrı bildir | 7/7 | +2 |
+| Zamanlanmış görevin sınırları | Zamanı gelince güncel notu oku ve yeniden başlatınca aynı işi tekrarlama | 1/1, yedi adım | +1 |
+| Zamanlanmış görevin sonucu | Başarısız denemeyi, yeniden deneme zamanını ve görevin geri yüklenmesini karşılaştır | 3/3 | +1 |
 | Ortak nota yazma | İkinci yazar beklesin ve kapanan yazarın kilidi süre dolunca devralınsın | 7/7 | +2 |
 
 84/128, kabul koşullarının %65,6'sıdır; harcanan işin veya genel parity'nin

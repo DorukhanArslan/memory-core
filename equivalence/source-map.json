@@ -5305,7 +5305,7 @@
           "path": "memory_core/consolidation/light_phase.py",
           "symbol": "prepare_light_phase",
           "anchor": "def prepare_light_phase(",
-          "line": 239
+          "line": 205
         }
       ],
       "implementation": "partial",
@@ -5455,13 +5455,13 @@
           "path": "memory_core/consolidation/artifacts.py",
           "symbol": "update_dreams_file",
           "anchor": "def update_dreams_file(",
-          "line": 156
+          "line": 195
         },
         {
           "path": "memory_core/consolidation/artifacts.py",
           "symbol": "append_consolidation_summary",
           "anchor": "def append_consolidation_summary(",
-          "line": 179
+          "line": 219
         }
       ],
       "implementation": "partial",
@@ -6328,7 +6328,7 @@
           "path": "memory_core/consolidation/artifacts.py",
           "symbol": "write_dreams_file_atomic",
           "anchor": "def write_dreams_file_atomic(",
-          "line": 128
+          "line": 167
         },
         {
           "path": "memory_core/consolidation/forget.py",

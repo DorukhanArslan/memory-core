@@ -4,6 +4,11 @@ This is the active plan for `memory-core`. Cleanup is the first work item. The t
 
 A completed infrastructure task does not mean a completed port. Every behavior in section 4 starts unverified. The authoritative machine-readable contract is [scope.json](../equivalence/scope.json): **64 required contracts and 128 acceptance points**. A report belongs to the exact reference and scope hashes it records. Scope changes must be versioned explicitly; do not silently add requirements to a previously reported baseline.
 
+The plain-language [parity completion tracker](parity-completion-checklist.md)
+separates the acceptance score, open comparison differences and final release
+criteria. Update it with this checklist after every accepted implementation batch;
+128/128 alone does not establish completed equivalence.
+
 ## 1. Remove unnecessary and misleading material first
 
 - [x] Remove the 14 superseded implementation plans and specifications under `docs/superpowers/`; verify that active documentation has no remaining links to them.
@@ -291,9 +296,9 @@ reaching 66/128 before the update/isolation and natural next-turn packages.
 | Contract status | Contracts | Verified conditions | Remaining conditions |
 | --- | ---: | ---: | ---: |
 | Complete | 38 | 76 | 0 |
-| Partial | 5 | 5 | 5 |
-| Pending verification | 21 | 0 | 42 |
-| Total | 64 | 81 | 47 |
+| Partial | 6 | 6 | 6 |
+| Pending verification | 20 | 0 | 40 |
+| Total | 64 | 82 | 46 |
 
 Pending verification can include existing implementation. Partial contracts retain one open
 condition. Infrastructure sections 1–3 remain **20/22 tasks completed**; infrastructure and
@@ -494,6 +499,10 @@ pre-open race authority, full raw filesystem evidence and broader SDK-only limit
 - [x] **`host.update-isolation` — Update current facts while preserving isolation.** Replace a prior preference, retain unrelated facts and query from independent user/workspace scopes. Compare current versus superseded answers and honest write/index failure reporting.
 
 ## 5. Completion evidence and release decision
+
+The current status of these existing finish criteria, the open diagnostics and
+the scope-limit review is tracked in the [parity completion checklist](parity-completion-checklist.md).
+It adds no acceptance points or new host scenarios.
 
 The host acceptance entries above already include the end-to-end scenario: save a natural preference, ask an immediate follow-up, update the preference while retaining unrelated facts, open a fresh chat, restart the host and recall the updated fact from an actual source. Repeat isolation and failure cases. Do not turn these steps into new checklist items at closeout.
 

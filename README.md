@@ -293,6 +293,8 @@ Host adapters and Lab behavior are identified separately from upstream parity.
 ### Current equivalence target
 
 The [full-equivalence checklist](docs/full-equivalence-checklist.md) is the current acceptance plan.
+The [parity completion tracker](docs/parity-completion-checklist.md) shows the
+current score, open differences and the remaining finish criteria in plain Turkish.
 It starts with repository cleanup and fixes the target at OpenClaw **v2026.9.9**, commit
 `bcfc88812a35243893585dbeca87ca41b48272ca`, matching the native bridge's release.
 Existing v2026.9.6 tests remain regression evidence; their results do not complete the new contract.
@@ -312,6 +314,7 @@ Project-specific extensions are identified separately and cannot establish upstr
 | [Lab](docs/lab.md) | Browser demo setup and behavior |
 | [Parity Matrix](docs/parity_matrix.md) | Upstream evidence and compatibility limits |
 | [Full Equivalence Checklist](docs/full-equivalence-checklist.md) | Cleanup, fixed v2026.9.9 scope, acceptance conditions, and unfinished work |
+| [Parity Completion Tracker](docs/parity-completion-checklist.md) | Plain-language progress, open differences, and the criteria for declaring parity complete (Turkish) |
 | [Equivalence Source Map](docs/equivalence-source-map.md) | Pinned upstream/Python entry points, source hashes, and implementation gaps |
 | [Release Checklist](docs/release.md) | Clean installs and consumer type checks |
 

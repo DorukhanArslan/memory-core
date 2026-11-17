@@ -90,6 +90,7 @@ _OPERATIONS = {
     "prompt-runtime-context-runtime": ("prompt-runtime-context-runtime.mjs", "dist/builtin-openclaw-D1Xfnzzr.mjs", False),
     **dict.fromkeys(("dream-light-runtime", "dream-rem-runtime"), ("dream-light-runtime.mjs", "dist/dreaming-phases-rmgXNBLP.mjs", False)),
     "dream-diary-publication-runtime": ("dream-diary-runtime.mjs", "dist/dreaming-dreams-file-BJzlZFlf.mjs", False),
+    "dream-deep-runtime": ("dream-deep-runtime.mjs", "dist/extensions/memory-core/index.js", False),
     "prompt-history-repair-runtime": ("prompt-history-repair-runtime.mjs", "dist/builtin-openclaw-D1Xfnzzr.mjs", False),
     "flush-trigger-runtime": (
         "flush-runtime.mjs", "dist/agent-runner-memory-Cc4lCZcs.mjs", False,
@@ -1765,6 +1766,8 @@ class ReleaseOracleExecution:
         if operation in DREAM_FAMILIES:
             if operation == "dream-diary-publication-runtime":
                 from equivalence.dream_diary_evidence import validate_native
+            elif operation == "dream-deep-runtime":
+                from equivalence.dream_deep_evidence import validate_deep_native as validate_native
             else:
                 from equivalence.dream_light_evidence import validate_dream_light_native as validate_native
 

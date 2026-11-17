@@ -134,6 +134,10 @@ def prepare_dream_light_bindings(checkout: Path, runtime_root: Path, phase="ligh
     if _git(checkout, "rev-parse", "HEAD").decode().strip() != REFERENCE_COMMIT:
         raise ValueError("The light sweep requires the pinned OpenClaw source commit")
 
+    if phase == "deep":
+        from equivalence.dream_deep_bindings import prepare_deep_bindings
+
+        return prepare_deep_bindings(checkout, runtime_root)
     if phase not in ("light", "rem", "diary"):
         raise ValueError("Unknown dreaming phase")
     source = {**SOURCE, **REM_SOURCE} if phase == "rem" else SOURCE

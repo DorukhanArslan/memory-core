@@ -24,7 +24,7 @@ NUMERIC_REGISTERED_CASES = 1512
 NUMERIC_CATALOG_SHA256 = "e9673faf7122adb19f59b1284d779a63a6bda20620e7c210854cce1da9cc257e"
 DEEP_REGISTERED_CASES = 1519
 DEEP_CATALOG_SHA256 = "d6a6e64b7c48efa35fe09ddd542e1e82f2329725bc5245bc138bb5b304c6024d"
-REGISTERED_CASES = 1552
+REGISTERED_CASES = 1559
 
 # PR22 changes these three policy texts, not the thirteen cases' business inputs,
 # order, coverage or other fields. Reversing only the exact reviewed fragments
@@ -192,9 +192,10 @@ def definition_authority(cases, *, fif_version):
         validate_registration(cases)
     maintenance = cases[DEEP_REGISTERED_CASES:]
     if maintenance:
-        from equivalence import automation_job_outcomes, automation_job_state, dream_diary, dream_light, dream_rem, workspace_lock_cases
+        from equivalence import automation_job_outcomes, automation_job_state, workspace_lock_cases
+        from equivalence.dream_phase_family import FAMILIES as dream_families
 
-        expected = [case for family in (dream_light, dream_rem, dream_diary, automation_job_state, workspace_lock_cases, automation_job_outcomes)
+        expected = [case for family in (*dream_families.values(), automation_job_state, workspace_lock_cases, automation_job_outcomes)
                     for case in family.build_cases()]
         if _sha(cases[:DEEP_REGISTERED_CASES]) != DEEP_CATALOG_SHA256 or _sha(maintenance) != _sha(expected):
             raise ValueError("Maintenance cases must follow the exact prior 1519 definitions")

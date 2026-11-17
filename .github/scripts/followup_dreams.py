@@ -122,6 +122,10 @@ def replay_dreams(data, cases, args, runtime):
     require(cases, "Dreaming replay requires one complete phase")
     operation = cases[0]["operation"]
     family = FAMILIES[operation]
+    if operation == "dream-deep-runtime":
+        from equivalence.dream_deep_evidence import validate_deep_native as native_validator, validate_deep_sdk as sdk_validator
+    else:
+        native_validator, sdk_validator = validate_dream_light_native, validate_sdk
     family.validate_registration(cases)
     require(_same_json(cases, family.build_cases()), "Dreaming replay requires the complete frozen family")
     root = args.report.parent.resolve(strict=True)
@@ -158,8 +162,8 @@ def replay_dreams(data, cases, args, runtime):
         directory = Path(ns[0]["root"]).parent
         require(directory.name == digest(cid.encode("utf-8")) and directory.parent.name == "evidence",
                 "Dreaming original root does not bind the case")
-        validate_dream_light_native(case, pair["openclaw"], ns, directory, observed)
-        validate_sdk(case, pair["python"], ss, sp.parent)
+        native_validator(case, pair["openclaw"], ns, directory, observed)
+        sdk_validator(case, pair["python"], ss, sp.parent)
         require(digest(_owned_regular(ROOT, np, MAX_DIAGNOSTIC_BYTES)) == native["sha256"]
                 and digest(_owned_regular(ROOT, sp, MAX_DIAGNOSTIC_BYTES)) == sdk["sha256"],
                 "Dreaming capture changed during replay")

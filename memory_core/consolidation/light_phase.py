@@ -42,6 +42,8 @@ class LightDreamingOptions:
     dedupe_similarity: float = 0.9
     storage_mode: Literal["inline", "separate", "both"] = "separate"
     separate_reports: bool = False
+    model: str | None = None
+    complete: Callable[[dict], dict] | None = None
 
     def __post_init__(self):
         if self.storage_mode not in {"inline", "separate", "both"}:
@@ -209,6 +211,7 @@ def prepare_light_phase(
     lookback_days: float,
     options: LightDreamingOptions,
     on_event: Callable[[dict[str, Any]], None] | None = None,
+    recent_diary: list[str] | None = None,
 ):
     """Publish the selected group leaders, then mark their keys under the same workspace lock."""
     from memory_core.consolidation.dreaming import filter_recall_entries_within_lookback
@@ -238,6 +241,8 @@ def prepare_light_phase(
         )
         groups = dedupe_dreaming_entries(entries, options.dedupe_similarity)
         diary = read_recent_dream_diary_entries(root, limit=4)
+        if recent_diary is not None:
+            recent_diary.extend(diary)
 
         def covered(entry):
             snippet = js_trim(re.sub(JS_SPACE + "+", " ", entry["snippet"].lower()))

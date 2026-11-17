@@ -5305,7 +5305,7 @@
           "path": "memory_core/consolidation/light_phase.py",
           "symbol": "prepare_light_phase",
           "anchor": "def prepare_light_phase(",
-          "line": 203
+          "line": 205
         }
       ],
       "implementation": "partial",
@@ -5394,22 +5394,28 @@
       ],
       "python": [
         {
-          "path": "memory_core/consolidation/dreaming.py",
-          "symbol": "run_dreaming_sweep",
-          "anchor": "def run_dreaming_sweep(",
-          "line": 185
+          "path": "memory_core/consolidation/managed_dreaming.py",
+          "symbol": "run_managed_dreaming_turn",
+          "anchor": "def run_managed_dreaming_turn(",
+          "line": 151
         },
         {
-          "path": "memory_core/consolidation/dreaming.py",
-          "symbol": "deep promotion invocation",
-          "anchor": "promotion = run_short_term_promotion(",
-          "line": 347
+          "path": "memory_core/consolidation/dreaming_repair.py",
+          "symbol": "repair_dreaming_recall",
+          "anchor": "def repair_dreaming_recall(",
+          "line": 16
+        },
+        {
+          "path": "memory_core/consolidation/promotion.py",
+          "symbol": "run_short_term_promotion",
+          "anchor": "def run_short_term_promotion(",
+          "line": 320
         }
       ],
       "implementation": "partial",
       "notes": [
-        "Deep promotion and an optional host-injected consolidation model exist, including policy gates and origin inputs; Python accepts one explicit phase rather than composing native light then REM then repair/promotion in a workspace sweep.",
-        "Native per-workspace owner resolution, degraded/pending narrative receipts and report/fallback composition are not reproduced by run_dreaming_sweep; host orchestration must be compared separately."
+        "The managed turn accepts the host roster, queued heartbeat events and injected completion or cron queue. It composes light and REM, repairs recall artifacts, applies ranked candidates, writes the deep report and publishes the diary.",
+        "The original registered callback and the SDK turn are compared on a local UTC roster. The scope includes admitted and ignored triggers, source trust, failed publication, consolidation and detached diary settlement."
       ]
     },
     {
@@ -5443,7 +5449,7 @@
           "path": "memory_core/consolidation/dreaming.py",
           "symbol": "_append_dreams_section",
           "anchor": "def _append_dreams_section(",
-          "line": 382
+          "line": 403
         },
         {
           "path": "memory_core/consolidation/artifacts.py",

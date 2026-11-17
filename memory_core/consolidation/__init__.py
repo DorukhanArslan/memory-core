@@ -163,6 +163,11 @@ from memory_core.consolidation.store import (
 )
 from memory_core.memory_budget import DEFAULT_MEMORY_FILE_MAX_CHARS
 
+from memory_core.consolidation.managed_dreaming import (
+    DreamingWorkspace, ManagedDreamingOptions, run_managed_dreaming_turn,
+)
+
+
 __all__ = [
     "DreamingIngestion",
     "LightDreamingOptions",
@@ -267,6 +272,9 @@ __all__ = [
     "repair_short_term_promotion_artifacts",
     "resolve_deep_dreaming_policy",
     "run_dreaming_sweep",
+    "run_managed_dreaming_turn",
+    "DreamingWorkspace",
+    "ManagedDreamingOptions",
     "run_short_term_promotion",
     "undecorate_search_results",
 ]

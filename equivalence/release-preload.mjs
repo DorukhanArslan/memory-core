@@ -17,7 +17,7 @@ const embeddingMode = context.embeddingCacheProfile !== undefined;
 const promptMode = context.promptRuntimeContextProfile !== undefined;
 if (context.dreamPhaseProfile !== undefined) {
   const profile = context.dreamPhaseProfile;
-  const phasePrefix = {"dream-light-runtime": "dream-light-", "dream-rem-runtime": "dream-rem-", "dream-diary-publication-runtime": "dream-diary-"};
+  const phasePrefix = {"dream-light-runtime": "dream-light-", "dream-rem-runtime": "dream-rem-", "dream-diary-publication-runtime": "dream-diary-", "dream-deep-runtime": "dream-deep-"};
   if (!profile || Object.keys(profile).sort().join() !== "caseId,inputSha256,nodeRuntime,operation" ||
       !Object.hasOwn(phasePrefix, profile.operation) || !profile.caseId?.startsWith(phasePrefix[profile.operation]) ||
       !/^[a-f0-9]{64}$/.test(profile.inputSha256) ||

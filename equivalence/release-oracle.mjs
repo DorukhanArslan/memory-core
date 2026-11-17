@@ -53,6 +53,7 @@ const operations = {
   "dream-diary-publication-runtime": ["dream-diary-runtime.mjs", "runDreamDiaryRuntime"],
   "dream-light-runtime": ["dream-light-runtime.mjs", "runDreamLightRuntime"],
   "dream-rem-runtime": ["dream-light-runtime.mjs", "runDreamRemRuntime"],
+  "dream-deep-runtime": ["dream-deep-runtime.mjs", "runDreamDeepRuntime"],
   "embed-cache-lifecycle-runtime": ["embedding-cache-lifecycle-runtime.mjs", "runEmbeddingCacheLifecycleRuntime"],
   "promotion-apply-reconcile-runtime": ["promotion-apply-runtime.mjs", "runPromotionApplyRuntime"],
 };
@@ -190,7 +191,7 @@ for (const testCase of request.cases) {
       }
     }
     const dreamPhase = context.dreamPhaseProfile;
-    if ((dreamPhase !== undefined) !== (["dream-light-runtime", "dream-rem-runtime", "dream-diary-publication-runtime"].includes(testCase.operation))) {
+    if ((dreamPhase !== undefined) !== (["dream-light-runtime", "dream-rem-runtime", "dream-diary-publication-runtime", "dream-deep-runtime"].includes(testCase.operation))) {
       throw Error("Only the frozen dreaming profile may execute its native sweep");
     }
     if (dreamPhase !== undefined) {

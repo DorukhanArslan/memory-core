@@ -2292,6 +2292,8 @@ def run_suite(*, checkout: Path, node: Path, smoke: bool = False,
                         if case["operation"] in DREAM_FAMILIES:
                             if case["operation"] == "dream-diary-publication-runtime":
                                 from equivalence.dream_diary_evidence import validate_sdk
+                            elif case["operation"] == "dream-deep-runtime":
+                                from equivalence.dream_deep_evidence import validate_deep_sdk as validate_sdk
                             else:
                                 from equivalence.dream_light_sdk_evidence import validate_sdk
 

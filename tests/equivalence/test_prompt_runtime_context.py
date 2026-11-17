@@ -121,11 +121,16 @@ def test_whole_tool_result_requires_real_before_after_receipts_and_source_custod
         "messages": [deepcopy(response), tool_message]}}}], "toolCalls": [
             {"hook": "before_tool_call", "event": {"toolName": "memory_get", "toolCallId": "get", "params": script["arguments"]}},
             {"hook": "after_tool_call", "event": {"toolName": "memory_get", "toolCallId": "get",
-             "params": script["arguments"], "result": result}}],
+             "params": script["arguments"], "result": result, "error": {"type": "undefined"}}}],
         "sourcesAfter": {"memory/a.md": {"bytes": {"hex": payload.hex(), "size": len(payload),
                                                  "sha256": hashlib.sha256(payload).hexdigest()}}}}
     specification = {"scriptedTools": [script]}
     _tools(specification, operation, True)
+    undefined_details = deepcopy(operation)
+    undefined_details["toolCalls"][-1]["event"]["result"]["details"]["warning"] = {"type": "undefined"}
+    retained_undefined = deepcopy(undefined_details)
+    _tools(specification, undefined_details, True)
+    assert undefined_details == retained_undefined
     projected = deepcopy(operation)
     projected_script = {**script, "id": "recall-get"}
     projected["providerCalls"][0]["response"]["content"][0]["id"] = "recall-get"
@@ -134,7 +139,8 @@ def test_whole_tool_result_requires_real_before_after_receipts_and_source_custod
     for receipt in projected["toolCalls"]:
         receipt["event"]["toolCallId"] = "recall-get"
     _tools({"scriptedTools": [projected_script]}, projected, True)
-    for mutation in ("missing-hook", "forged-content", "forged-source", "broken-projected-id"):
+    for mutation in ("missing-hook", "forged-content", "forged-source", "broken-projected-id", "real-error",
+                     "malformed-undefined-error", "forged-undefined-detail"):
         altered = deepcopy(operation)
         if mutation == "missing-hook":
             altered["toolCalls"].pop()
@@ -142,6 +148,12 @@ def test_whole_tool_result_requires_real_before_after_receipts_and_source_custod
             altered["providerCalls"][1]["request"]["context"]["messages"][-1]["content"][0]["text"] = "replacement"
         elif mutation == "broken-projected-id":
             altered["providerCalls"][1]["request"]["context"]["messages"][-1]["toolCallId"] = "unrelated-result"
+        elif mutation == "real-error":
+            altered["toolCalls"][-1]["event"]["error"] = "genuine tool failure"
+        elif mutation == "malformed-undefined-error":
+            altered["toolCalls"][-1]["event"]["error"] = {"type": "undefined", "value": "failure"}
+        elif mutation == "forged-undefined-detail":
+            altered["toolCalls"][-1]["event"]["result"]["details"]["warning"] = {"type": "undefined", "value": "invented"}
         else:
             altered["toolCalls"][-1]["event"]["result"]["details"]["text"] = "invented source"
             altered["toolCalls"][-1]["event"]["result"]["content"][0]["text"] = json.dumps(

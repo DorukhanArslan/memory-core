@@ -115,6 +115,35 @@ def _text(messages):
     return "\n".join(result)
 
 
+def _native_json_details(value):
+    """Read the raw capture's JS undefined tags using JSON transport semantics.
+
+    Raw tool returns remain untouched. JSON.stringify omits undefined object
+    properties and writes undefined array entries as null; the actual carrier
+    text is checked independently against this complete transport value.
+    """
+    missing = object()
+
+    def project(item):
+        if isinstance(item, dict):
+            if item == {"type": "undefined"}:
+                return missing
+            result = {}
+            for key, child in item.items():
+                projected = project(child)
+                if projected is not missing:
+                    result[key] = projected
+            return result
+        if isinstance(item, list):
+            values = [project(child) for child in item]
+            return [None if child is missing else child for child in values]
+        return item
+
+    result = project(value)
+    _require(result is not missing, "a complete JSON tool result cannot itself be undefined")
+    return result
+
+
 def _physical_native(raw):
     captures = [physical_snapshot(capture) for capture in raw["physical"]]
     _require(len(captures) == len(raw["operations"]) + 2,
@@ -423,7 +452,8 @@ def _tools(specification, operation, native):
                 _same(row["event"]["toolName"], script["name"], "a real tool observer changed tool name")
                 _same(row["event"]["params"], script["arguments"], "a real tool observer changed arguments")
             event = receipts[-1]["event"]
-            _require("result" in event and not event.get("error"), "the original tool did not return successfully")
+            _require("result" in event and event.get("error") in (None, {"type": "undefined"}),
+                     "the original tool did not return successfully")
             result = event["result"]
         else:
             receipts = [row for row in operation["toolCalls"] if row["toolCallId"] == script["id"]]
@@ -441,7 +471,8 @@ def _tools(specification, operation, native):
             _same(added[0]["content"], results[0]["content"], "the actual SDK tool result was rewritten for the model")
         if native or (isinstance(result, dict) and "content" in result and "details" in result):
             _same(results[0]["content"], result["content"], "whole actual tool content changed before the next model call")
-            business = decode_search_tool_envelope(result)["details"]
+            envelope = ({**result, "details": _native_json_details(result["details"])} if native else result)
+            business = decode_search_tool_envelope(envelope)["details"]
         else:
             # HostKit returns the complete business mapping. The production
             # result-message owner renders it; retain that actual content and

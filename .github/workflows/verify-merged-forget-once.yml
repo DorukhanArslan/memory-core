@@ -1,10 +1,10 @@
-name: Verify prompt runtime context once
+name: Recheck prompt runtime context once
 # One frozen full measurement; retain the first result without retrying.
 # The previous 1,490 definitions stay intact; the complete prompt family is appended.
 
 on:
   push:
-    branches: [verify/prompt-runtime-context-once]
+    branches: [verify/prompt-runtime-context-recheck-once]
     paths: [.github/workflows/verify-merged-forget-once.yml]
 
 permissions:
@@ -95,7 +95,7 @@ jobs:
         if: always()
         uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
         with:
-          name: prompt-runtime-context-summary
+          name: prompt-runtime-context-recheck-summary
           path: .equivalence-results/summary/
           include-hidden-files: true
           if-no-files-found: warn
@@ -103,7 +103,7 @@ jobs:
         if: always()
         uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
         with:
-          name: prompt-runtime-context-raw-evidence
+          name: prompt-runtime-context-recheck-raw-evidence
           path: |
             .equivalence-results/
             /var/tmp/memory-host-v4-*/

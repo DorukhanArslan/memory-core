@@ -28,7 +28,7 @@ def main():
             sys.stdout, ensure_ascii=False, allow_nan=False)
         sys.stdout.write("\n")
         raise
-    json.dump(output, sys.stdout, ensure_ascii=False, allow_nan=False)
+    json.dump(output, sys.stdout, ensure_ascii=False, allow_nan=False, separators=(",", ":"))
     sys.stdout.write("\n")
 
 

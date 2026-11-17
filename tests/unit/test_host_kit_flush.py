@@ -62,6 +62,18 @@ def test_flush_request_creates_the_empty_target_file(tmp_path):
     assert (tmp_path / TARGET).read_text() == "- kept\n"
 
 
+def test_automatic_flush_resolves_the_local_date_again_before_opening_the_note(tmp_path):
+    # Istanbul crosses from January 1 into January 2 between admission and preparation.
+    moments = iter((1767301199999, 1767301200000))
+    config = MemoryConfig(workspace_dir=tmp_path, flags=FeatureFlags(vector_search=False))
+    memory = Memory.from_workspace(tmp_path, config=config, initialize=False)
+    kit = HostKit(memory, now_ms=lambda: next(moments, 1767301200000), flush_timezone="Europe/Istanbul")
+    record = _due(kit)
+    assert record.flush.target == "memory/2026-01-02.md"
+    assert (tmp_path / record.flush.target).read_bytes() == b""
+    assert not (tmp_path / "memory/2026-01-01.md").exists()
+
+
 def test_flush_setup_failure_records_a_strike(tmp_path):
     outside = tmp_path / "outside"
     outside.mkdir()

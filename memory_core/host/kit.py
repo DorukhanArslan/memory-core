@@ -50,7 +50,7 @@ from memory_core.bootstrap.files import (
 from memory_core.client import Memory
 from memory_core.config import MemoryConfig
 from memory_core.consolidation.artifact_provenance import MemoryArtifactProvenanceStore
-from memory_core.current_time import DEFAULT_TIME_FORMAT, TimeFormat, resolve_time_format
+from memory_core.current_time import DEFAULT_TIME_FORMAT, TimeFormat, resolve_time_format, resolve_user_timezone
 from memory_core.curation import CurationPolicy, MemoryCurator
 from memory_core.embeddings.base import EmbeddingProvider
 from memory_core.heartbeat import prepare_heartbeat_turn, resolve_message_text
@@ -241,6 +241,7 @@ class HostKit:
         on_event: Callable[[dict[str, Any]], None] | None = None,
         artifact_provenance: MemoryArtifactProvenanceStore | None = None,
         flush_config: Mapping[str, Any] | None = None,
+        flush_timezone: str | None = None,
         flush_read_tool: Mapping[str, Any] | None = None,
         flush_read_dispatch: Callable[[Mapping[str, Any]], dict[str, Any]] | None = None,
         active_project_keys: Sequence[str] | None = None,
@@ -274,6 +275,9 @@ class HostKit:
             else layout.bootstrap_file in (self._templates or {})
         )
         self._timezone = timezone
+        # Native flush plans use the agent's configured zone, falling back to the host.
+        self._flush_timezone = (timezone if flush_timezone is None else
+                                resolve_user_timezone(flush_timezone, host_timezone=timezone)[0])
         self._flush_config = deepcopy(dict(flush_config)) if flush_config is not None else {}
         if (flush_read_tool is None) != (flush_read_dispatch is None):
             raise ValueError("flush_read_tool and flush_read_dispatch must be supplied together")
@@ -667,6 +671,11 @@ class HostKit:
         recorded = replace(recorded, entry=entry)
         if not decision.should_flush:
             return TurnRecord(session=recorded, flush_plan=plan, flush_decision=decision)
+        # Re-resolve the date at preparation. Admission and the write may straddle midnight.
+        plan = self._flush_plan(window)
+        if plan is None:
+            return TurnRecord(session=recorded, flush_plan=None,
+                              flush_decision=MemoryFlushTriggerDecision(False, "disabled"))
         authority_error: BaseException | None = None
 
         def check_current() -> None:
@@ -944,7 +953,7 @@ class HostKit:
             workspace_dir=self._root,
             now_ms=self._clock(),
             cfg={"agents": {"defaults": {
-                "userTimezone": self._timezone,
+                "userTimezone": self._flush_timezone,
                 "compaction": {"memoryFlush": self._flush_config},
             }}},
             context_window_tokens=context_window_tokens,
@@ -970,6 +979,7 @@ class HostKit:
             session_id=session.session_id,
             compaction_count=0 if count is None else count,
             target=plan.relative_path,
+            model=plan.model,
             reason=reason,
             messages=messages,
             provenance=self._artifact_provenance,

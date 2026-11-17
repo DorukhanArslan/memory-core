@@ -58,7 +58,8 @@ from memory_core.current_time import (
     format_current_time_line,
     resolve_date_timestamp_ms,
     resolve_user_timezone,
-    utc_and_local_instants,
+    calendar_instants,
+    year_of_era,
 )
 from memory_core.memory_paths import UnsafeMemoryPathError, validate_daily_memory_path
 from memory_core.runtime_identity import MEMORY_CORE_RUNTIME_IDENTITY, RuntimeIdentity
@@ -256,9 +257,7 @@ def build_memory_flush_plan(
 
     ``now_ms`` follows ``resolveMemoryCoreNowMs`` (extensions/memory-core/src/time.ts): a
     missing, non-finite or out-of-``Date``-range (beyond ±8.64e15) value means the current
-    time. Deviation: a ``Date``-valid instant outside the years 1-9999 raises ``ValueError``
-    (Python dates stop there; upstream formats it), and before the year 1000 the unpadded
-    upstream stamp (``memory/999-01-01.md``) fails the daily-path check.
+    time. The generated filename uses the year width returned by Intl for that instant.
     """
     del workspace_dir
 
@@ -279,7 +278,9 @@ def build_memory_flush_plan(
     resolved_now_ms = resolve_date_timestamp_ms(now_ms)
     _, zone = resolve_user_timezone(timezone)
     date_stamp = _format_date_stamp_in_timezone(resolved_now_ms, zone)
-    relative_path = validate_daily_memory_target(f"memory/{date_stamp}.md")
+    # Only these calendar fields produce this path. The public user-supplied write
+    # validator keeps its four-digit daily-note contract.
+    relative_path = f"memory/{date_stamp}.md"
     time_line = format_current_time_line(resolved_now_ms, timezone, time_format)
 
     prompt_base = ensure_no_reply_hint(ensure_memory_flush_safety_hints(DEFAULT_MEMORY_FLUSH_PROMPT))
@@ -993,5 +994,5 @@ def _optional_text(value: Any) -> str | None:
 
 def _format_date_stamp_in_timezone(now_ms: int | float, zone: tzinfo) -> str:
     """``formatDateStampInTimezone`` (flush-plan.ts): en-US ``numeric`` year, 2-digit month/day."""
-    _, local = utc_and_local_instants(now_ms, zone)
-    return f"{local.year}-{local.month:02d}-{local.day:02d}"
+    _, local, year_offset = calendar_instants(now_ms, zone)
+    return f"{year_of_era(local.year + year_offset)}-{local.month:02d}-{local.day:02d}"

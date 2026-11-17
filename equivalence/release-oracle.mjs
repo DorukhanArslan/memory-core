@@ -20,6 +20,7 @@ const operations = {
   "forget-lineage-runtime": ["forget-lineage-runtime.mjs", "runForgetLineageRuntime"],
   "forget-boundaries-runtime": ["forget-lineage-runtime.mjs", "runForgetLineageRuntime"],
   "flush-trigger-runtime": ["flush-runtime.mjs", "runFlushRuntime"],
+  "flush-plan-target-runtime": ["flush-plan-target-runtime.mjs", "runFlushPlanTarget"],
   "flush-execution-runtime": ["flush-execution.mjs", "runFlushExecution"],
   "search-contract-runtime": ["search-contract-runtime.mjs", "runSearchContractRuntime"],
   "search-contract-helper-runtime": ["search-contract-runtime.mjs", "runSearchContractHelperRuntime"],
@@ -110,7 +111,8 @@ for (const testCase of request.cases) {
       context.forgetLineageProfile === undefined && context.forgetBoundariesProfile === undefined &&
       context.recallSignalsProfile === undefined && context.embeddingCacheProfile === undefined &&
       context.sessionResetBoundariesProfile === undefined && context.promptRuntimeContextProfile === undefined &&
-      context.promptHistoryRepairProfile === undefined && context.dreamPhaseProfile === undefined;
+      context.promptHistoryRepairProfile === undefined && context.dreamPhaseProfile === undefined &&
+      context.flushPlanTargetProfile === undefined;
     if (modelAuthority !== Object.hasOwn(modelKinds, testCase.operation) ||
         modelAuthority && modelKinds[testCase.operation] !== null && testCase.input?.kind !== modelKinds[testCase.operation]) {
       throw Error("The model binary capability cannot execute another operation or input contract before import");
@@ -120,7 +122,7 @@ for (const testCase of request.cases) {
         mixedTurnSource && testCase.input?.kind !== "turn-trust") {
       throw Error("The single-source turn capability cannot execute another operation or input contract before import");
     }
-    if (((context.fixtureSourceCaptures ?? []).length !== 0) !== (testCase.operation === "flush-execution-runtime")) {
+    if (((context.fixtureSourceCaptures ?? []).length !== 0) !== ["flush-execution-runtime", "flush-plan-target-runtime"].includes(testCase.operation)) {
       throw Error("The fixture source capture capability cannot execute another operation before import");
     }
     const bootstrapProfile = context.bootstrapDiscoveryProfile;
@@ -186,6 +188,18 @@ for (const testCase of request.cases) {
           boundaryProfile.inputKind !== testCase.input?.kind ||
           crypto.createHash("sha256").update(wire).digest("hex") !== boundaryProfile.caseBindings[testCase.id]) {
         throw Error("The boundary caller received changed or substituted literal inputs");
+      }
+    }
+    const flushPlan = context.flushPlanTargetProfile;
+    if ((flushPlan !== undefined) !== (testCase.operation === "flush-plan-target-runtime")) {
+      throw Error("The automatic flush plan requires its own approved profile");
+    }
+    if (flushPlan !== undefined) {
+      const stable = x => Array.isArray(x) ? x.map(stable) : x && typeof x === "object"
+        ? Object.fromEntries(Object.keys(x).sort().map(k => [k, stable(x[k])])) : x;
+      if (flushPlan.caseId !== testCase.id || flushPlan.operation !== testCase.operation ||
+          crypto.createHash("sha256").update(JSON.stringify(stable(testCase.input))).digest("hex") !== flushPlan.inputSha256) {
+        throw Error("The automatic flush plan input changed after authorization");
       }
     }
     const dreamPhase = context.dreamPhaseProfile;

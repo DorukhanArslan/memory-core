@@ -18,7 +18,8 @@ from equivalence.catalog_migration import definition_authority  # noqa: E402
 from equivalence.harness import _adapter_identity, _implementation_identity, _same_json  # noqa: E402
 from equivalence.strict_report_reader import Reader, _constant, _finite, _object  # noqa: E402
 
-from followup_families import FAMILIES, REPORT_FIELDS, replay_followup
+from followup_families import FAMILIES, REPORT_FIELDS, family_key, replay_followup
+from followup_heartbeat import CORPUS_OWNERS
 from followup_seal import (CATALOG_SHA, PREVIOUS_CASES, PREVIOUS_CATALOG_SHA, PREVIOUS_COMPARISON,
                            PRODUCT, REGISTERED_CASES, SCOPE_SHA as SCOPE, SDK_FILES, SDK_SHA, check_seal)
 
@@ -130,7 +131,7 @@ def project(path, host_ids, lineage_ids, boundary_ids, recall_ids, cache_ids, re
             "engineNumericFamilyComplete", "numericSourceImports", "promotionRankingRuntimeBindings", "promotionRankingProfile",
             "deepConsolidationFamilyComplete", "deepConsolidationBindings", "promotionApplyFamilyBindings", "promotionApplyFamilyNode"}
     kept.update(REPORT_FIELDS)
-    result = {"followupRows": {}, "followupReleaseSources": [], "cases": [], "hostPairs": {}, "hostDiagnostics": {},
+    result = {"followupRows": {}, "heartbeatSources": [], "followupReleaseSources": [], "cases": [], "hostPairs": {}, "hostDiagnostics": {},
               "lineagePairs": {}, "lineageDiagnostics": {}, "lineageTraces": {},
               "boundaryPairs": {}, "boundaryDiagnostics": {}, "boundaryTraces": {},
               "recallPairs": {}, "recallDiagnostics": {}, "recallTraces": {},
@@ -147,6 +148,8 @@ def project(path, host_ids, lineage_ids, boundary_ids, recall_ids, cache_ids, re
             if key in kept:
                 result.setdefault(key, [])
             return
+        if key == "sources" and value["path"] in CORPUS_OWNERS:
+            result["heartbeatSources"].append(value)
         if key == "releaseSources":
             result["followupReleaseSources"].append(value)
         if key in {"cases", "releaseTraces", "runtimeDiagnostics"} and value.get("id") in followup_ids:
@@ -1435,7 +1438,7 @@ def recompute(data, definitions, scope):
         for point in {point for row in deep for point in row["covers"]}:
             gates.setdefault(point, []).append("deep-consolidation-runtime")
     for operation, (family, _, _) in FAMILIES.items():
-        family_rows = [row for row in rows if row["operation"] == operation]
+        family_rows = [row for row in rows if family_key(row) == operation]
         require(family_rows, "An appended family is missing")
         states[operation] = family.family_complete(rows)
         for point in {p for row in family_rows for p in row["covers"]}:
@@ -1535,7 +1538,7 @@ def assess(args, result):
                    {case["id"] for case in cache_cases}, {case["id"] for case in reset_cases},
                    {case["id"] for case in prompt_cases}, {case["id"] for case in history_cases},
                    {case["id"] for case in numeric_cases}, {case["id"] for case in deep_cases},
-                   {case["id"] for case in definitions if case["operation"] in FAMILIES})
+                   {case["id"] for case in definitions if family_key(case) in FAMILIES})
     result.update(completeReportParsed=True, report=data["report"], projection={
         key: data[key] for key in ("reference", "mode", "status", "fullScopePassed", "summary", "manifestSha256",
                                    "paidProviderCalls", "providerCredentialsForwarded", "startedAt", "finishedAt")})

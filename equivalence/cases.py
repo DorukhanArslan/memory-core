@@ -350,6 +350,10 @@ def build_cases(*, include_prospective: bool = False) -> list[dict[str, Any]]:
     from equivalence.automation_job_outcomes import build_cases as build_automation_outcomes
 
     cases.extend(build_automation_outcomes())
+
+    from equivalence.heartbeat_turn_boundaries import build_cases as build_heartbeat_exclusions
+
+    cases.extend(build_heartbeat_exclusions())
     if include_prospective:
         from equivalence.flush_contract import build_prospective_flush_contract_cases
         from equivalence.session_projection import build_prospective_session_projection_cases

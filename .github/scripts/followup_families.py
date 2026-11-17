@@ -7,11 +7,14 @@ from equivalence.release_runtime import prepare_release_runtime
 
 from followup_diary import replay_diary
 from followup_dreams import replay_dreams
+from followup_heartbeat import HEARTBEAT_GATE, replay_heartbeat
+from equivalence import heartbeat_turn_boundaries
 from followup_jobs import replay_jobs
 from followup_locks import replay_locks
 
 
 FAMILIES = {
+    HEARTBEAT_GATE: (heartbeat_turn_boundaries, "heartbeatExclusionsComplete", replay_heartbeat),
     dream_light.OPERATION: (dream_light, "dreamLightFamilyComplete", replay_dreams),
     dream_rem.OPERATION: (dream_rem, "dreamRemFamilyComplete", replay_dreams),
     dream_deep.OPERATION: (dream_deep, "dreamDeepFamilyComplete", replay_dreams),
@@ -21,18 +24,30 @@ FAMILIES = {
     workspace_lock_cases.OPERATION: (workspace_lock_cases, "workspaceLockFamilyComplete", replay_locks),
 }
 REPORT_FIELDS = {field for _, field, _ in FAMILIES.values()} | {
-    "dreamLightBindings", "dreamLightNode", "dreamRemBindings", "dreamRemNode", "dreamDiaryBindings", "dreamDiaryNode", "dreamDeepBindings", "dreamDeepNode", "workspaceLockBindings"}
+    "heartbeatCorpusSourceImports", "flushExecutionBindings", "dreamLightBindings", "dreamLightNode", "dreamRemBindings", "dreamRemNode", "dreamDiaryBindings", "dreamDiaryNode", "dreamDeepBindings", "dreamDeepNode", "workspaceLockBindings"}
+
+
+def family_key(case):
+    if HEARTBEAT_GATE in case.get("covers", ()):
+        return HEARTBEAT_GATE
+    return case["operation"]
 
 
 def replay_followup(data, definitions, args, metrics):
     runtime = prepare_release_runtime(args.reference, args.release_runtime, download=False)
     results = {}
-    expected = [case["id"] for case in definitions if case["operation"] in FAMILIES]
+    expected = [case["id"] for case in definitions if family_key(case) in FAMILIES]
     rows = data["followupRows"]
-    if set(rows) != set(expected) or not all(set(row) == {"case", "native", "python", "trace"} for row in rows.values()):
-        raise ValueError("An appended case, process trace or complete diagnostic is missing")
+    if set(rows) != set(expected):
+        raise ValueError("An appended case is missing")
+    for case in definitions:
+        if case["id"] not in rows:
+            continue
+        required = {"case"} if (family_key(case) == HEARTBEAT_GATE and case["operation"] == "session-projection") else {"case", "native", "python", "trace"}
+        if set(rows[case["id"]]) != required:
+            raise ValueError("An appended case, process trace or complete diagnostic is missing")
     for op, (family, field, replay) in FAMILIES.items():
-        cases = [c for c in definitions if c["operation"] == op]
+        cases = [c for c in definitions if family_key(c) == op]
         if not _same_json(cases, family.build_cases()):
             raise ValueError("The registered ordered family differs from its frozen definitions")
         evidence = replay(data, cases, args, runtime)

@@ -155,6 +155,7 @@ jobs:
           # The small per-attempt files hold a rejected original host's own streams and capture.
           path: |
             .equivalence-results/*.json
+            .equivalence-results/compaction-context-assembly/**
             .equivalence-results/host-update-isolation/*/case/stdout.json
             .equivalence-results/host-update-isolation/*/case/stderr.log
             .equivalence-results/host-update-isolation/*/case/evidence/native-raw.json

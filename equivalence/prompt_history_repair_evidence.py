@@ -190,7 +190,7 @@ def _fingerprints(messages):
     return [hashlib.sha256(canonical(message)).hexdigest() for message in messages]
 
 
-def _trace_record(record):
+def _trace_record(record, original_messages):
     messages = record.get("messages")
     _require(isinstance(messages, list) and record.get("messageCount") == len(messages), "whole source stage messages omitted")
     fingerprints = record.get("messageFingerprints")
@@ -199,7 +199,17 @@ def _trace_record(record):
              "source stage fingerprints omitted")
     _same(record.get("messagesDigest"), hashlib.sha256(canonical("|".join(fingerprints))).hexdigest(),
           "complete ordered stage digest changed")
-    _same(record.get("messageRoles"), [message.get("role") for message in messages], "source stage roles omitted")
+    roles = []
+    for message, fingerprint in zip(messages, fingerprints, strict=True):
+        if isinstance(message, dict):
+            roles.append(message.get("role"))
+        else:
+            # CacheTrace fingerprints the original, then redacts its display.
+            # A display marker needs a complete, separately recorded message.
+            _require(message == "[Truncated]" and fingerprint in original_messages,
+                     "source trace display has no authenticated whole message")
+            roles.append(original_messages[fingerprint]["role"])
+    _same(record.get("messageRoles"), roles, "source stage roles omitted")
 
 
 def _native_trace(case, raw, ordinal, operation):
@@ -220,18 +230,61 @@ def _native_trace(case, raw, ordinal, operation):
         positions.append(found[0])
     _require(positions == sorted(positions), "genuine source history stage causality changed")
     model = operation["model"]
+    whole_messages = [event["message"] for event in operation["beforeTranscript"]
+                      if event.get("type") == "message"]
+    whole_messages.extend(message for call in operation["providerCalls"]
+                          for message in call["request"]["context"]["messages"])
+    originals = dict(zip(_fingerprints(whole_messages), whole_messages, strict=True))
     for row in selected:
         _require(row.get("sessionId") == SESSION_ID and row.get("sessionKey") == case["input"]["sessionKey"]
                  and row.get("provider") == model["provider"] and row.get("modelId") == model["id"]
                  and row.get("modelApi") == model["api"] and row.get("workspaceDir") == raw["workspace"],
                  "source stage escaped actual attempt/model/session")
         if "messages" in row:
-            _trace_record(row)
+            _trace_record(row, originals)
     streams = [row for row in selected if row.get("stage") == "stream:context"]
     for stream, call in zip(streams, operation["providerCalls"], strict=True):
         _same(stream["messageFingerprints"], _fingerprints(call["request"]["context"]["messages"]),
               "whole callback request differs from source-owned stream stage")
     return {row["stage"]: row for row in selected if row.get("stage") in wanted}
+
+
+def _verify_diagnostic_arguments(wire, expected):
+    """Compare the JSON arguments of a real call, including backward aliases.
+
+    The native observer assigns each array/object an index on first visit. A
+    later occurrence of the same object names that index. Verify the value at
+    each reference against its original completed subtree without expanding
+    a graph of untrusted references.
+    """
+    values = []
+    completed = set()
+
+    def visit(encoded, value):
+        if isinstance(encoded, dict) and encoded.get("type") == "reference":
+            target = encoded.get("target")
+            _require(set(encoded) == {"type", "target"} and type(target) is int
+                     and target in completed, "invalid diagnostic argument reference")
+            _same(values[target], value, "diagnostic argument reference identifies a different value")
+            return
+        if isinstance(value, (list, dict)):
+            index = len(values)
+            values.append(value)
+            if isinstance(value, list):
+                _require(isinstance(encoded, list) and len(encoded) == len(value),
+                         "diagnostic argument array changed")
+                for item, original in zip(encoded, value, strict=True):
+                    visit(item, original)
+            else:
+                _require(isinstance(encoded, dict) and encoded.keys() == value.keys(),
+                         "diagnostic argument object changed")
+                for key, item in encoded.items():
+                    visit(item, value[key])
+            completed.add(index)
+            return
+        _same(encoded, value, "diagnostic argument value changed")
+
+    visit(wire, expected)
 
 
 def _tool_catalog(specification, operation, native):
@@ -448,11 +501,11 @@ def validate_pair(case, native_raw, sdk_raw, native_public, sdk_public, sdk_dire
         _same(sdk["historyReplay"]["historyLimit"], expected_limit, "SDK effective source-derived history limit changed")
         diagnostic = native["replayPolicy"]
         _require(diagnostic["role"] == "diagnostic-after-attempt", "policy diagnostic was substituted for an attempt")
-        arguments = diagnostic["arguments"][0]
-        _same(arguments["config"], native["config"], "policy resolver received different actual configuration")
-        _same(arguments["model"], native["model"], "policy resolver received different actual model")
-        _require(arguments["modelApi"] == native["model"]["api"] and arguments["modelId"] == native["model"]["id"]
-                 and arguments["provider"] == native["model"]["provider"], "policy diagnostic route changed")
+        model = native["model"]
+        _verify_diagnostic_arguments(diagnostic["arguments"], [{
+            "modelApi": model["api"], "modelId": model["id"], "provider": model["provider"],
+            "config": native["config"], "workspaceDir": native_raw["workspace"], "model": model,
+        }])
         _same(diagnostic["returnValue"], sdk["historyReplay"]["policy"], "actual resolved provider replay policies differ")
         limit = native["historyLimit"]
         _require(limit["role"] == "diagnostic-after-attempt", "history-limit diagnostic was substituted for an attempt")

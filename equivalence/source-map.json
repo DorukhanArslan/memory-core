@@ -4302,7 +4302,7 @@
           "path": "memory_core/model_prompt.py",
           "symbol": "ModelPrompt",
           "anchor": "class ModelPrompt:",
-          "line": 262
+          "line": 267
         },
         {
           "path": "memory_core/host/lifecycle.py",
@@ -4523,19 +4523,19 @@
           "path": "memory_core/model_prompt.py",
           "symbol": "RuntimePromptInput",
           "anchor": "class RuntimePromptInput:",
-          "line": 68
+          "line": 73
         },
         {
           "path": "memory_core/model_prompt.py",
           "symbol": "ModelPrompt.bind_current_user",
           "anchor": "    def bind_current_user(self, canonical_user, position, *, prior_messages=()):",
-          "line": 321
+          "line": 326
         },
         {
           "path": "memory_core/model_prompt.py",
           "symbol": "ModelPrompt.request",
           "anchor": "    def request(self, messages):",
-          "line": 334
+          "line": 339
         },
         {
           "path": "memory_core/host/lifecycle.py",
@@ -6412,6 +6412,12 @@
           "symbol": "promotion score rendering",
           "anchor": "candidate.score.toFixed(3)",
           "line": 86
+        },
+        {
+          "path": "extensions/memory-core/src/flush-plan.ts",
+          "symbol": "buildMemoryFlushPlan",
+          "anchor": "export function buildMemoryFlushPlan(",
+          "line": 63
         }
       ],
       "python": [
@@ -6432,11 +6438,23 @@
           "symbol": "_js_number",
           "anchor": "def _js_number(",
           "line": 192
+        },
+        {
+          "path": "memory_core/memory_flush.py",
+          "symbol": "build_memory_flush_plan_from_config",
+          "anchor": "def build_memory_flush_plan_from_config(",
+          "line": 301
+        },
+        {
+          "path": "memory_core/model_prompt.py",
+          "symbol": "serialize_model_tool_json",
+          "anchor": "def serialize_model_tool_json(value):",
+          "line": 37
         }
       ],
       "implementation": "partial",
       "notes": [
-        "Numeric coercion, formatting and promotion gates exist; exact V8/libm score-threshold equivalence still requires fresh boundary tests."
+        "Numeric plan fields and scalar serialization are observed at the public flush planner and model JSON renderer. Real promotion ranking reads stored adjacent binary64 scores and applies the configured gates. Diagnostic observations include signed zero and non-finite inputs. Markdown score formatting has a separate source counterpart."
       ],
       "acceptancePoints": [
         "engine.numeric-boundaries.outcomes",

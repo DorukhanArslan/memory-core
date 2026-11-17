@@ -57,3 +57,23 @@ def prepare_family_bindings(checkout: Path, runtime_root: Path):
             "additionalCompiledBindings": compiled_evidence, "additionalSourceImportLinks": links,
             "normalizationAliases": {"readPhysical": "i", "normalize": "k", "retain": "_", "read": "a"},
             "provenanceWriteAlias": "a", "covers": []}
+
+def prepare_deep_consolidation_bindings(checkout: Path, runtime_root: Path):
+    """Bind the planning, preimage and lineage calls in the original apply owner."""
+    from equivalence.promotion_apply_bindings import SOURCE_HASHES as apply_sources, COMPILED_HASHES as apply_compiled
+    prefix = "extensions/memory-core/src/"
+    apply = prefix + "short-term-promotion-apply.ts"
+    entry = "dist/short-term-promotion-MX1vHJuE.mjs"
+    origins = "dist/memory-entry-origins-BCQSIB3X.mjs"
+    sources, source_rows = _owners(checkout, {apply: apply_sources[apply]},
+        {apply: ("const rollbackOrigins = reserveMemoryEntryOrigins({",)}, committed=True)
+    _, compiled = _owners(runtime_root, {entry: apply_compiled[entry], origins: COMPILED_HASHES[origins]},
+        {entry: ("await consolidateMemory({", "else consolidationResult = applyMemoryConsolidationPlan({",
+                 "retainedPreimageKeys = await storeMemoryPreimage({", "const rollbackOrigins = reserveMemoryEntryOrigins({"),
+         origins: ("recordMemoryEntryOrigins as a",)}, committed=False)
+    links = [_named_link(sources, apply, module, names, kind="import") for module, names in (
+        ("./dreaming-consolidation.js", ("applyMemoryConsolidationPlan", "consolidateMemory")),
+        ("./memory-entry-origins.js", ("pruneMemoryEntryOrigins", "reserveMemoryEntryOrigins")),
+        ("./dreaming-consolidation-artifacts.js", ("storeMemoryPreimage", "appendConsolidationSummary")))]
+    return {"operation": "deep-consolidation-runtime", "sourceBuildReproduced": False,
+            "sourceBindings": source_rows, "compiledBindings": compiled, "sourceImportLinks": links}

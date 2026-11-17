@@ -48,7 +48,12 @@ def serialize_model_tool_json(value):
         if isinstance(item, str):
             return js_json_stringify(item)
         if isinstance(item, (int, float)):
-            return "null" if isinstance(item, float) and not math.isfinite(item) else _js_number_to_string(item)
+            # The model's JSON number is binary64, including for Python ints.
+            try:
+                number = float(item)
+            except OverflowError:
+                return "null"
+            return _js_number_to_string(number) if math.isfinite(number) else "null"
         padding, child_padding = "  " * depth, "  " * (depth + 1)
         if isinstance(item, Mapping):
             if any(not isinstance(key, str) for key in item):

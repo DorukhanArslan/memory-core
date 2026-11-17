@@ -18,11 +18,11 @@ from equivalence.catalog_migration import definition_authority  # noqa: E402
 from equivalence.harness import _adapter_identity, _implementation_identity, _same_json  # noqa: E402
 from equivalence.strict_report_reader import Reader, _constant, _finite, _object  # noqa: E402
 
-PRODUCT = "4463154b8b9f9323d70400e1ce82c581c3823ced"
+PRODUCT = "065280258f8194b87c06f605b0b0819574fed049"
 SCOPE = "a8e066e63970dd0be734485d62a5932640894b8c0a42f47ac3eb67f784cbc7b9"
-SDK = {"sourceSha256": "84b53816c2c6a5c3625d3a9d0fca774c6d7f1ff064da707cb94f619cebbc6c87", "sourceFiles": 168}
-CATALOG_SHA = "f40567a91042cb6e46bca64d94e83a3619fe5d2353192730c6e6838998822493"
-REGISTERED_CASES = 1508
+SDK = {"sourceSha256": "ac4672c96a76cfb448730a96d2ce55820f9fb11bf909f1141aa4b7ff4a76084b", "sourceFiles": 168}
+CATALOG_SHA = "d6a6e64b7c48efa35fe09ddd542e1e82f2329725bc5245bc138bb5b304c6024d"
+REGISTERED_CASES = 1519
 OPERATIONS = ("host-restart-session-runtime", "host-update-isolation-runtime",
               "host-turn-barrier-boundaries-runtime", "index-identity-boundaries-runtime",
               "query-sync-outcomes-runtime", "query-sync-boundaries-runtime",
@@ -112,7 +112,11 @@ def load(path):
     return value
 
 
-def project(path, host_ids, lineage_ids, boundary_ids, recall_ids, cache_ids, reset_ids, prompt_ids, history_ids):
+def project(path, host_ids, lineage_ids, boundary_ids, recall_ids, cache_ids, reset_ids, prompt_ids, history_ids,
+            numeric_ids=frozenset(), deep_ids=frozenset()):
+    from equivalence.engine_numeric_family import SOURCE_OWNERS
+    from equivalence.promotion_ranking_bindings import COMPILED_HASHES as rank_compiled
+
     kept = {"schemaVersion", "kind", "mode", "status", "fullScopePassed", "implementation",
             "reference", "manifestSha256", "adapterSha256", "casesSha256", "definitionMigration",
             "summary", "requirements", "errors", "startedAt", "finishedAt", "durationSeconds",
@@ -123,7 +127,9 @@ def project(path, host_ids, lineage_ids, boundary_ids, recall_ids, cache_ids, re
             "embeddingCacheBindings", "embeddingCacheNode", "sessionResetBoundariesFamilyComplete",
             "sessionResetBoundariesBindings", "sessionResetBoundariesNode",
             "promptRuntimeContextFamilyComplete", "promptRuntimeContextBindings", "promptRuntimeContextNode",
-            "promptHistoryRepairFamilyComplete", "promptHistoryRepairBindings", "promptHistoryRepairNode"}
+            "promptHistoryRepairFamilyComplete", "promptHistoryRepairBindings", "promptHistoryRepairNode",
+            "engineNumericFamilyComplete", "numericSourceImports", "promotionRankingRuntimeBindings", "promotionRankingProfile",
+            "deepConsolidationFamilyComplete", "deepConsolidationBindings", "promotionApplyFamilyBindings", "promotionApplyFamilyNode"}
     result = {"cases": [], "hostPairs": {}, "hostDiagnostics": {}, "mismatchPairs": {},
               "lineagePairs": {}, "lineageDiagnostics": {}, "lineageTraces": {},
               "boundaryPairs": {}, "boundaryDiagnostics": {}, "boundaryTraces": {},
@@ -131,7 +137,9 @@ def project(path, host_ids, lineage_ids, boundary_ids, recall_ids, cache_ids, re
               "cachePairs": {}, "cacheDiagnostics": {}, "cacheTraces": {},
               "resetPairs": {}, "resetDiagnostics": {}, "resetTraces": {},
               "promptPairs": {}, "promptDiagnostics": {}, "promptTraces": {},
-              "historyPairs": {}, "historyDiagnostics": {}, "historyTraces": {}}
+              "historyPairs": {}, "historyDiagnostics": {}, "historyTraces": {},
+              "numericPairs": {}, "numericDiagnostics": {}, "numericTraces": {}, "numericSources": [], "numericReleaseSources": [],
+              "deepPairs": {}, "deepDiagnostics": {}, "deepTraces": {}}
     before = digest(path)
 
     def accept(key, value, array):
@@ -161,6 +169,10 @@ def project(path, host_ids, lineage_ids, boundary_ids, recall_ids, cache_ids, re
                     result["cachePairs"][value["id"]] = pair
                 if value["id"] in reset_ids:
                     result["resetPairs"][value["id"]] = pair
+                if value["id"] in numeric_ids:
+                    result["numericPairs"][value["id"]] = pair
+                if value["id"] in deep_ids:
+                    result["deepPairs"][value["id"]] = pair
                 if value["id"] in history_ids:
                     result["historyPairs"][value["id"]] = pair
                 if value["id"] in prompt_ids:
@@ -169,6 +181,22 @@ def project(path, host_ids, lineage_ids, boundary_ids, recall_ids, cache_ids, re
                     result["mismatchPairs"][value["id"]] = pair
             require(value["status"] != "mismatched" or "python" in value, "Mismatch omitted whole public values")
             result["cases"].append(row)
+        elif key == "sources" and value["path"] in SOURCE_OWNERS:
+            result["numericSources"].append(value)
+        elif key == "releaseSources" and value["package"] == "node_modules/openclaw" and value["path"] in rank_compiled:
+            result["numericReleaseSources"].append(value)
+        elif key in {"runtimeDiagnostics", "releaseTraces"} and value.get("id") in numeric_ids | deep_ids:
+            family = "numeric" if value["id"] in numeric_ids else "deep"
+            target = result[family + ("Traces" if key == "releaseTraces" else "Diagnostics")]
+            if key == "runtimeDiagnostics":
+                require(value.get("side") in {"native", "python"}, "Unexpected captured diagnostic side")
+                require(isinstance(value.get("rawSnapshots"), list) and len(value["rawSnapshots"]) == 1,
+                        "The complete original capture is required")
+                identity = value["id"] + "--" + value["side"]
+            else:
+                identity = value["id"]
+            require(identity not in target, "Duplicate protected trace or diagnostic")
+            target[identity] = value
         elif key == "runtimeDiagnostics" and (value.get("id") in prompt_ids or value.get("id") in history_ids):
             diagnostics = result["historyDiagnostics"] if value["id"] in history_ids else result["promptDiagnostics"]
             require(value.get("side") in {"native", "python"}, "Unknown prompt diagnostic side")
@@ -1057,6 +1085,316 @@ def replay_prompt(data, cases, args, *, history=False):
     return results
 
 
+
+def replay_deep(data, cases, args):
+    """Read both actual captures and independently rebuild the whole consolidation comparison."""
+    from equivalence.deep_consolidation import CASE_HASHES, validate_registration
+    from equivalence.deep_consolidation_evidence import compare_deep_state
+    from equivalence.model_runtime_authority import prepare_model_node_authority
+    from equivalence.promotion_apply_family_bindings import prepare_deep_consolidation_bindings, prepare_family_bindings
+    from equivalence.promotion_apply_family_evidence import validate_native_capture, validate_pair
+    from equivalence.promotion_apply_family_native import LOCAL, validate_traces
+    from equivalence.release_runtime import prepare_release_runtime
+
+    validate_registration(cases)
+    ids = [c['id'] for c in cases]
+    require(len(ids) == 7 and ids == list(CASE_HASHES) and set(ids) == set(data['deepPairs']) == set(data['deepTraces'])
+            and set(data['deepDiagnostics']) == {cid + '--' + side for cid in ids for side in ('native', 'python')},
+            'Deep consolidation replay requires its seven original cases and all public/raw pairs')
+
+    runtime = prepare_release_runtime(args.reference, args.release_runtime, download=False)
+    runtime_root = Path(runtime['runtimeRoot'])
+    authority = prepare_model_node_authority(args.node)
+    family = ROOT / '.equivalence-results/deep-consolidation'
+    require(family.resolve(strict=True) == family and family.is_dir(), 'Invalid deep consolidation artifact root')
+    used_native, used_sdk = set(), set()
+    local_sources = [{'path': str(ROOT / 'equivalence' / name), 'sha256': digest(ROOT / 'equivalence' / name)}
+                     for name in LOCAL]
+
+    def verify_bindings():
+        require(_same_json(data['promotionApplyFamilyBindings'], prepare_family_bindings(args.reference, runtime_root))
+                and _same_json(data['deepConsolidationBindings'], prepare_deep_consolidation_bindings(args.reference, runtime_root))
+                and _same_json(data['promotionApplyFamilyNode'], authority), 'Deep original source or release authority changed')
+
+    verify_bindings()
+    results = []
+    for case in cases:
+        cid = case['id']
+        trace = data['deepTraces'][cid]
+        original = data['deepDiagnostics'][cid + '--native']
+        python = data['deepDiagnostics'][cid + '--python']
+        require(trace['id'] == original['id'] == python['id'] == cid and original['side'] == 'native'
+                and python['side'] == 'python' and python['validationStatus'] == 'verified',
+                'Deep consolidation diagnostics borrowed another case or process')
+        case_path = Path(trace['familyProfile']['casePath'])
+        directory, sdk_path = case_path.parent, Path(python['retainedSdkRawPath'])
+        sdk_dir = sdk_path.parent
+        require(case_path.name == 'case.json' and directory.name == 'case' and directory.parent.parent == family
+                and re.fullmatch(r'attempt-[a-zA-Z0-9_-]+', directory.parent.name) and directory not in used_native
+                and sdk_path.name == 'python-raw.json' and sdk_dir.parent == family
+                and re.fullmatch(r'sdk-attempt-[a-zA-Z0-9_-]+', sdk_dir.name) and sdk_dir not in used_sdk,
+                'Deep consolidation capture does not belong to a distinct canonical attempt')
+        used_native.add(directory)
+        used_sdk.add(sdk_dir)
+        hashes = {}
+
+        def owned(path):
+            require(path.resolve(strict=True) == path and path.is_file() and path.stat().st_nlink == 1,
+                    'A deep artifact was replaced by a link or nonregular file')
+            hashes[path] = digest(path)
+            return path
+
+        case_file = load(owned(case_path))
+        context_path = owned(directory / 'context.json')
+        context = load(context_path)
+        profile = {'kind': 'deep-consolidation-family', 'operation': case['operation'], 'casePath': str(case_path),
+                   'caseFileSha256': hashes[case_path], 'caseWireSha256': CASE_HASHES[cid], 'nodeRuntime': authority,
+                   'acceptancePointsAwarded': 0}
+        traces, evidence = directory / 'traces', directory / 'evidence'
+        expected_context = {'schemaVersion': 1, 'kind': 'release-oracle-execution', 'runtime': runtime, 'providerMode': 'none',
+                            'fetchPolicy': 'deny', 'approvedNodeRuntime': authority, 'promotionApplyFamilyProfile': profile,
+                            'allowedLocal': local_sources, 'traceDirectory': str(traces), 'evidenceDirectory': str(evidence),
+                            'stateDirectory': str(directory / 'state'), 'configPath': str(directory / 'openclaw.json'),
+                            'approvedReferenceSources': [], 'fixtureSourceCaptures': []}
+        require(_same_json(case_file, case) and _same_json(context, expected_context) and _same_json(trace['familyProfile'], profile)
+                and traces.is_dir() and traces.resolve(strict=True) == traces, 'Deep case, context, or worker profile changed')
+        native_path = owned(evidence / 'native-raw.json')
+        sdk_path = owned(sdk_path)
+        packets = []
+        for path, diagnostic in ((native_path, original), (sdk_path, python)):
+            packet = load(path)
+            require(hashes[path] == diagnostic['sha256'] and isinstance(packet, list) and len(packet) == 1
+                    and _same_json(packet, diagnostic['rawSnapshots']), 'Deep raw file does not reproduce its full-report packet')
+            packets.append(packet[0])
+        native_raw, sdk_raw = packets
+        require(sdk_path.stat().st_size == python['sdkRawBytes'] and Path(native_raw['fixtureBase']).parent == evidence
+                and Path(sdk_raw['fixtureBase']) == sdk_dir / 'sdk-promotion-apply-fixture', 'Wrong deep fixture owner')
+        sdk_owners = {}
+        for source in sdk_raw['sourceOwners']:
+            path = Path(source['path'])
+            require(path.resolve(strict=True) == path and path.is_file() and path.suffix == '.py' and path not in sdk_owners
+                    and (path.is_relative_to(ROOT / 'memory_core') or path.parent == ROOT / 'equivalence')
+                    and source['sourceBytes'].encode('utf-8') == path.read_bytes() and digest(path) == source['sha256'],
+                    'A captured Python source changed or escaped the measured SDK')
+            sdk_owners[path] = source['sha256']
+        require({ROOT / 'memory_core/consolidation' / name for name in ('llm_consolidation.py', 'origins.py', 'promotion.py')}
+                <= sdk_owners.keys(), 'SDK consolidation, promotion or origin owner was omitted')
+        receipt = trace['processReceipt']
+        require(type(receipt['processPid']) is int and type(receipt['coordinatorPid']) is int
+                and receipt['processPid'] == native_raw['pid'] and receipt['coordinatorPid'] == native_raw['ppid']
+                and receipt['processPid'] > 0 and receipt['coordinatorPid'] > 0 and receipt['processPid'] != receipt['coordinatorPid']
+                and type(receipt['actualReturnCode']) is int and receipt['actualReturnCode'] == 0,
+                'Original consolidation child process or exit code changed')
+        stdout, stderr = owned(directory / 'stdout.json'), owned(directory / 'stderr.log')
+        streams = {name: {'sha256': hashes[path], 'bytes': path.stat().st_size}
+                   for name, path in (('stdout', stdout), ('stderr', stderr))}
+        require(_same_json(receipt['originalProcessStreams'], streams), 'Deep process stream bytes do not match their capture')
+        returned = load(stdout)
+        require(_same_json(returned, {'id': cid, 'ok': True, 'result': native_raw['output']}),
+                'Original stdout does not contain the complete original return')
+        captures = []
+        for file in sorted(traces.iterdir()):
+            owned(file)
+            captures.append({'name': file.name, 'text': file.read_bytes().decode('utf-8'), 'sha256': hashes[file]})
+        require(_same_json(captures, trace['rawProcessWorkerTraces']), 'One of the whole original worker traces changed')
+        observed = validate_traces(traces, {**context, '_sha256': hashes[context_path]}, runtime, authority,
+                                   process_pid=receipt['processPid'], coordinator_pid=receipt['coordinatorPid'])
+        require(_same_json(observed['bootstraps'], trace['threads']) and trace['provider'] == 'none'
+                and trace['kind'] == 'authenticated-promotion-family-process-thread-trace' and trace['networkFetchDenied'] is True
+                and trace['protectedWorkerThreads'] == len(observed['bootstraps']) - 1, 'Deep worker attestation changed')
+        loaded = {(entry['path'], entry['sha256']) for entry in observed['loaded'] if entry['package'] == 'node_modules/openclaw'}
+        require(all((entry['path'], entry['sha256']) in loaded for entry in data['deepConsolidationBindings']['compiledBindings']),
+                'The original consolidation apply or origin module did not execute')
+        validate_native_capture(case, native_raw, returned['result'], authority=authority, pid=receipt['processPid'])
+        validate_pair(case, native_raw, sdk_raw, returned['result'], sdk_raw['output'])
+        native_state, sdk_state = compare_deep_state(case, native_raw, sdk_raw)
+        native = {**returned['result'], 'consolidationState': native_state}
+        sdk = {**sdk_raw['output'], 'consolidationState': sdk_state}
+        pair = data['deepPairs'][cid]
+        require(_same_json(pair['openclaw'], native) and _same_json(pair['python'], sdk),
+                'The complete deep public results differ from original raw evidence')
+        require(all(path.resolve(strict=True) == path and digest(path) == sha for path, sha in (hashes | sdk_owners).items()),
+                'Deep captures or SDK source changed during independent replay')
+        results.append({'id': cid, 'validated': True, 'publicMatch': _same_json(native, sdk), 'nativeRawSha256': hashes[native_path],
+                        'sdkRawSha256': hashes[sdk_path], 'originalStdoutSha256': hashes[stdout], 'originalStderrSha256': hashes[stderr],
+                        'originalContextSha256': hashes[context_path], 'nativeRawFileBytes': native_path.stat().st_size,
+                        'sdkRawFileBytes': sdk_path.stat().st_size, 'protectedWorkerThreads': trace['protectedWorkerThreads'],
+                        'nativeOnDiskRawReopened': True, 'sdkOnDiskRawReopened': True, 'physicalStateRebuilt': True})
+    verify_bindings()
+    require(_same_json(prepare_model_node_authority(args.node), authority)
+            and all(digest(Path(item['path'])) == item['sha256'] for item in local_sources),
+            'The deep Node or adapter sources changed during independent replay')
+    return results
+
+
+def replay_numeric_rank(case, pair, native, sdk, trace, release_sources, bindings, profile, args, runtime):
+    from equivalence.engine_numeric_rank import RANK_ID, validate_numeric_rank, validate_rank_case
+    from equivalence.promotion_ranking_bindings import (
+        COMPILED_HASHES, prepare_promotion_ranking_bindings, prepare_promotion_ranking_profile,
+    )
+    from equivalence.promotion_ranking_evidence import validate_promotion_ranking_raw
+    from equivalence.runtime_oracle import MAX_SINGLE_TRACE_BYTES, MAX_DIAGNOSTIC_BYTES
+
+    cid = case["id"]
+    validate_rank_case(case)
+    require(cid == RANK_ID and set(pair) == {"openclaw", "python"}, "Missing complete numeric ranking pair")
+    for packet, side in ((native, "native"), (sdk, "python")):
+        require(packet["id"] == cid and packet["side"] == side
+                and re.fullmatch(r"[a-f0-9]{64}", packet["sha256"])
+                and isinstance(packet["rawSnapshots"], list) and len(packet["rawSnapshots"]) == 1,
+                "Numeric ranking raw packet belongs to a different producer")
+    original, python = native["rawSnapshots"][0], sdk["rawSnapshots"][0]
+    # The collector retained parsed packets. Reconstruct each producer's wire format
+    # and check the original byte digest. Neither temporary database is reopened here.
+    sdk_wire = (json.dumps(sdk["rawSnapshots"], ensure_ascii=True, indent=2, allow_nan=False) + "\n").encode()
+    native_wire = subprocess.run(
+        [str(args.node.resolve()), "-e",
+         "process.stdout.write(JSON.stringify(JSON.parse(require('node:fs').readFileSync(0,'utf8'))))"],
+        input=json.dumps(native["rawSnapshots"], ensure_ascii=True, allow_nan=False).encode("ascii"),
+        check=True, stdout=subprocess.PIPE, timeout=30,
+    ).stdout
+    for packet, encoded in ((native, native_wire), (sdk, sdk_wire)):
+        require(0 < len(encoded) <= MAX_DIAGNOSTIC_BYTES
+                and hashlib.sha256(encoded).hexdigest() == packet["sha256"],
+                "Numeric ranking raw packet did not reproduce its original wire-byte digest")
+
+    root = Path(runtime["runtimeRoot"])
+    require(_same_json(bindings, prepare_promotion_ranking_bindings(args.reference, root))
+            and _same_json(profile, prepare_promotion_ranking_profile(args.node)),
+            "Numeric ranking source, official release or executable changed")
+    transport = trace["promotionRankingTransport"]
+    require(trace["id"] == cid and trace["kind"] == "authenticated-process-thread-trace"
+            and trace["networkFetchDenied"] is True and trace["provider"] == "none"
+            and transport["kind"] == "actual-promotion-ranking-validator-inputs"
+            and transport["runtimeRoot"] == str(root) and transport["adapterRoot"] == str(ROOT)
+            and python["implementationRoot"] == str(ROOT) and _same_json(transport["profile"], profile),
+            "Numeric ranking was executed under another capability or source tree")
+
+    allowed = {(package["location"], item["path"]): item["sha256"]
+               for package in runtime["packages"] for item in package["files"]}
+    projected = {(row["package"], row["path"]): row["sha256"] for row in release_sources}
+    required = {("node_modules/openclaw", path): sha for path, sha in COMPILED_HASHES.items()}
+    require(len(projected) == len(release_sources) and projected == required,
+            "Full report omits, duplicates or substitutes a numeric ranking compiled owner")
+    local_paths = {str(ROOT / "equivalence" / name): digest(ROOT / "equivalence" / name)
+                   for name in ("release-oracle.mjs", "promotion-ranking-runtime.mjs", "model-runtime-observation.mjs")}
+    preload_sha = digest(ROOT / "equivalence/release-preload.mjs")
+    carriers = transport["rawProcessWorkerTraces"]
+    require(len(carriers) == 2, "Numeric ranking needs the original main process and its protected worker")
+    pid, ppid = original["pid"], original["ppid"]
+    require(type(pid) is int and type(ppid) is int and min(pid, ppid) > 0, "Missing numeric ranking process IDs")
+    bootstrap, worker_imports, loaded, locals_loaded, context_hashes = [], [], {}, set(), set()
+    for carrier in carriers:
+        blob = carrier["text"].encode("utf-8")
+        require(0 < len(blob) == carrier["bytes"] <= MAX_SINGLE_TRACE_BYTES and blob.endswith(b"\n")
+                and hashlib.sha256(blob).hexdigest() == carrier["sha256"], "Incomplete numeric ranking trace bytes")
+        records = [json.loads(line) for line in carrier["text"].splitlines()]
+        first = records[0]
+        thread = first["threadId"]
+        require(type(thread) is int and thread >= 0 and first["event"] == "bootstrap"
+                and first["pid"] == pid and first["ppid"] == ppid and first["isMainThread"] is (thread == 0)
+                and carrier["name"] == f"{pid}-{thread}.jsonl" and first["preloadSha256"] == preload_sha
+                and first["fetchDenied"] is True and first["providerMode"] == "none"
+                and re.fullmatch(r"[a-f0-9]{64}", first["contextSha256"])
+                and _same_json(first["promotionProfile"], profile) and _same_json(first["runtime"], profile["nodeRuntime"])
+                and {key for key in first if key.endswith("Profile")} == {"promotionProfile"},
+                "Numeric ranking thread lacks its original protected bootstrap")
+        context_hashes.add(first["contextSha256"])
+        bootstrap.append({key: first[key] for key in ("pid", "threadId", "isMainThread", "runtime", "promotionProfile")})
+        for event in records[1:]:
+            require(event["pid"] == pid and event["threadId"] == thread and event["event"] in {"load", "resolve-native"},
+                    "Numeric ranking trace escaped the declared processes")
+            path = event["path"]
+            if event["kind"] == "oracle":
+                require(thread == 0 and event["event"] == "load" and local_paths.get(path) == event["sha256"],
+                        "Numeric ranking loaded an unrelated comparison adapter")
+                locals_loaded.add(path)
+                continue
+            key = (event.get("package"), path)
+            require(event["kind"] == "release" and key in allowed and allowed[key] == event["sha256"],
+                    "Numeric ranking import differs from its original authenticated release file")
+            if event["event"] == "load":
+                loaded[key] = event["sha256"]
+                if thread:
+                    worker_imports.append({"package": key[0], "path": path, "threadId": thread, "pid": pid})
+    release_loaded = {path for package, path in loaded if package == "node_modules/openclaw"}
+    require(len(context_hashes) == 1 and _same_json(bootstrap, transport["bootstrap"])
+            and _same_json(bootstrap, trace["threads"]) and len({b["threadId"] for b in bootstrap}) == 2
+            and trace["protectedWorkerThreads"] == 1 and trace["loadedReleaseFiles"] == len(loaded)
+            and transport["processParents"] == {str(pid): ppid}
+            and locals_loaded == set(local_paths) and transport["localByPid"] == {str(pid): sorted(locals_loaded)}
+            and transport["releaseByPid"] == {str(pid): sorted(release_loaded)}
+            and _same_json(worker_imports, transport["workerImports"])
+            and all(loaded.get(key) == sha for key, sha in required.items()),
+            "Actual numeric ranking load traces disagree with the process, worker or source projection")
+
+    directory = Path(original["fixtureBase"]).parent
+    require(directory.is_absolute() and directory.name == hashlib.sha256(cid.encode()).hexdigest()
+            and directory.parent.name == "evidence" and directory.parent.parent.name.startswith("memory-release-oracle-"),
+            "Retained numeric ranking SQLite receipts escaped the owned fixture")
+    validate_promotion_ranking_raw(
+        {"id": cid, "ok": True, "result": pair["openclaw"]}, case, native["rawSnapshots"], directory,
+        runtime_root=root, bootstrap=bootstrap, release_by_pid={pid: release_loaded},
+        local_by_pid={pid: locals_loaded}, worker_imports=worker_imports,
+        process_parents={pid: ppid}, adapter_root=ROOT)
+    validate_numeric_rank(case, pair["openclaw"], pair["python"], native["rawSnapshots"], sdk["rawSnapshots"])
+    return {"id": cid, "validated": True, "publicMatch": _same_json(pair["openclaw"], pair["python"]),
+            "sdkRawSha256": sdk["sha256"], "nativeCollectorRawSha256": native["sha256"],
+            "rawWireHashesReproduced": True, "nativeOnDiskRawReopened": False,
+            "protectedWorkerThreads": trace["protectedWorkerThreads"],
+            "rawTraceSha256": [carrier["sha256"] for carrier in carriers],
+            "compiledOwners": len(required), "sourceOwners": len(bindings["sourceBindings"]),
+            "candidateCounts": [len(row["candidates"]) for row in pair["openclaw"]["queries"]]}
+
+
+def replay_numeric(data, cases, args):
+    from equivalence.engine_numeric_family import SOURCE_OPERATION, SOURCE_OWNERS, validate_registration, validate_source_pair
+    from equivalence.engine_numeric_rank import RANK_ID
+    from equivalence.promotion_ranking_bindings import prepare_promotion_ranking_bindings, prepare_promotion_ranking_profile
+    from equivalence.release_runtime import prepare_release_runtime
+
+    validate_registration(cases)
+    case_ids = {case["id"] for case in cases}
+    sources = {case["id"] for case in cases if case["operation"] == SOURCE_OPERATION}
+    require(len(cases) == 4 and case_ids == set(data["numericPairs"]) == sources | {RANK_ID}
+            and set(data["numericSourceImports"]) == sources
+            and set(data["numericTraces"]) == {RANK_ID}
+            and set(data["numericDiagnostics"]) == {RANK_ID + "--native", RANK_ID + "--python"},
+            "Numeric acceptance needs every whole plan and ranking observation")
+    require(case_ids.intersection(data["referenceExecution"]["trackedTypeScriptCaseIds"]) == sources
+            and case_ids.intersection(data["referenceExecution"]["compiledReleaseCaseIds"]) == {RANK_ID},
+            "Numeric inputs were dispatched to the wrong execution owners")
+    source_receipts = data["numericSources"]
+    require(len(source_receipts) == len(SOURCE_OWNERS)
+            and {owner["path"] for owner in source_receipts} == set(SOURCE_OWNERS),
+            "Missing source receipts for original numeric plans")
+    for owner in source_receipts:
+        original = subprocess.check_output(["git", "show", data["reference"]["commit"] + ":" + owner["path"]],
+                                           cwd=args.reference)
+        require(digest(args.reference / owner["path"]) == hashlib.sha256(original).hexdigest() == owner["sha256"],
+                "Original numeric source bytes changed")
+    runtime = prepare_release_runtime(args.reference, args.release_runtime, download=False)
+    bindings = prepare_promotion_ranking_bindings(args.reference, Path(runtime["runtimeRoot"]))
+    profile = prepare_promotion_ranking_profile(args.node)
+    require(_same_json(data["promotionRankingRuntimeBindings"], bindings)
+            and _same_json(data["promotionRankingProfile"], profile), "Original ranking identity changed")
+    results = []
+    for case in cases:
+        cid = case["id"]
+        pair = data["numericPairs"][cid]
+        if cid == RANK_ID:
+            results.append(replay_numeric_rank(case, pair, data["numericDiagnostics"][cid + "--native"],
+                                               data["numericDiagnostics"][cid + "--python"], data["numericTraces"][cid],
+                                               data["numericReleaseSources"], bindings, profile, args, runtime))
+        else:
+            imports = data["numericSourceImports"][cid]
+            validate_source_pair(case, imports, source_receipts, pair["openclaw"], pair["python"])
+            results.append({"id": cid, "validated": True, "publicMatch": _same_json(pair["openclaw"], pair["python"]),
+                            "probes": len(case["input"]["probes"]), "sourceImports": imports,
+                            "publicValueSha256": {side: hashlib.sha256(canonical(row)).hexdigest()
+                                                 for side, row in pair.items()}})
+    return results
+
 def recompute(data, definitions, scope):
     rows = data["cases"]
     require(len(rows) == len(definitions) and len({row["id"] for row in rows}) == len(definitions),
@@ -1073,6 +1411,18 @@ def recompute(data, definitions, scope):
                                 for row in members)
         for point in {p for row in members for p in row["covers"]}:
             gates.setdefault(point, []).append(operation)
+    numeric = [row for row in rows if row["requirement"] == "engine.numeric-boundaries"]
+    require(numeric, "Numeric acceptance family is missing")
+    states["engine.numeric-boundaries"] = all(row["status"] == "matched" and row.get("numericEvidenceValidated") is True
+                                              for row in numeric)
+    for point in {point for row in numeric for point in row["covers"]}:
+        gates.setdefault(point, []).append("engine.numeric-boundaries")
+    deep = [row for row in rows if row["operation"] == "deep-consolidation-runtime"]
+    if deep:
+        states["deep-consolidation-runtime"] = all(row["status"] == "matched" and row.get("runtimeEvidenceValidated") is True
+                                                  for row in deep)
+        for point in {point for row in deep for point in row["covers"]}:
+            gates.setdefault(point, []).append("deep-consolidation-runtime")
     requirements = data["requirements"]
     require(len(scope) == len(requirements) == 64, "Fixed requirement count changed")
     counts, contracts, points = Counter(row["status"] for row in rows), Counter(), []
@@ -1125,7 +1475,7 @@ def assess(args, result):
             and seal["catalogSha256"] == CATALOG_SHA
             and _same_json(seal["previousCatalog"], previous)
             and hashlib.sha256(canonical(definitions[:previous["registeredCases"]])).hexdigest() == previous["sha256"],
-            "The complete prior comparison catalog changed or the frozen prompt append is incomplete")
+            "The complete prior comparison catalog changed or the frozen appended cases are incomplete")
     host_cases = [case for case in definitions if case["operation"] == "host-turn-barrier-v4-runtime"]
     lineage_cases = [case for case in definitions if case["operation"] == "forget-lineage-runtime"]
     boundary_cases = [case for case in definitions if case["operation"] == "forget-boundaries-runtime"]
@@ -1134,16 +1484,21 @@ def assess(args, result):
     reset_cases = [case for case in definitions if case["operation"] == "session-reset-boundaries-runtime"]
     prompt_cases = [case for case in definitions if case["operation"] == "prompt-runtime-context-runtime"]
     history_cases = [case for case in definitions if case["operation"] == "prompt-history-repair-runtime"]
+    numeric_cases = [case for case in definitions if case["requirement"] == "engine.numeric-boundaries"]
+    deep_cases = [case for case in definitions if case["operation"] == "deep-consolidation-runtime"]
     data = project(args.report, {case["id"] for case in host_cases}, {case["id"] for case in lineage_cases},
                    {case["id"] for case in boundary_cases}, {case["id"] for case in recall_cases},
                    {case["id"] for case in cache_cases}, {case["id"] for case in reset_cases},
-                   {case["id"] for case in prompt_cases}, {case["id"] for case in history_cases})
+                   {case["id"] for case in prompt_cases}, {case["id"] for case in history_cases},
+                   {case["id"] for case in numeric_cases}, {case["id"] for case in deep_cases})
     result.update(completeReportParsed=True, report=data["report"], projection={
         key: value for key, value in data.items() if key not in {
             "lineagePairs", "lineageDiagnostics", "lineageTraces", "boundaryPairs", "boundaryDiagnostics", "boundaryTraces",
             "recallPairs", "recallDiagnostics", "recallTraces", "cachePairs", "cacheDiagnostics", "cacheTraces",
             "resetPairs", "resetDiagnostics", "resetTraces", "promptPairs", "promptDiagnostics", "promptTraces",
-            "historyPairs", "historyDiagnostics", "historyTraces"}})
+            "historyPairs", "historyDiagnostics", "historyTraces",
+            "numericPairs", "numericDiagnostics", "numericTraces", "numericReleaseSources", "numericSources",
+            "deepPairs", "deepDiagnostics", "deepTraces"}})
     require(data["errors"] == [] and data["mode"] == "full" and data["kind"] == "pinned-differential-acceptance",
             "Global collector error or non-full report; no candidate score")
     require(_same_json(data["implementation"], seal["implementation"])
@@ -1204,6 +1559,20 @@ def assess(args, result):
             is metrics["families"]["prompt-history-repair-runtime"]
             is all(row["publicMatch"] for row in result["promptHistoryRepairReplays"]),
             "Prompt history repair complete-family gate differs")
+    from equivalence.engine_numeric_family import family_complete as numeric_complete
+
+    result["engineNumericReplays"] = replay_numeric(data, numeric_cases, args)
+    require(data["engineNumericFamilyComplete"] is numeric_complete(data["cases"])
+            is metrics["families"]["engine.numeric-boundaries"]
+            is all(row["publicMatch"] for row in result["engineNumericReplays"]),
+            "Numeric whole-family replay contradicts the complete point calculation")
+    from equivalence.deep_consolidation import family_complete as deep_complete
+
+    result["deepConsolidationReplays"] = replay_deep(data, deep_cases, args)
+    require(data["deepConsolidationFamilyComplete"] is deep_complete(data["cases"])
+            is metrics["families"]["deep-consolidation-runtime"]
+            is all(row["publicMatch"] for row in result["deepConsolidationReplays"]),
+            "Consolidation replay contradicts the complete point calculation")
     public = {row["id"]: row.get("publicValueSha256") for row in data["cases"]}
     require(set(PREVIOUS_MISMATCH_PUBLIC_SHA256) <= set(public), "A previous mismatch case disappeared")
     result["previousComparison"] = PREVIOUS_COMPARISON

@@ -104,9 +104,15 @@ def run_native_case(case, node, runtime, directory, *, timeout=120):
     evidence.mkdir()
     case_path = directory / "case.json"
     write_json(case_path, case)
-    profile = {"kind": "promotion-apply-family-development", "operation": case["operation"],
+    if case["operation"] == "deep-consolidation-runtime":
+        from equivalence.deep_consolidation import CASE_HASHES as case_hashes
+        profile_kind = "deep-consolidation-family"
+    else:
+        case_hashes = CASE_HASHES
+        profile_kind = "promotion-apply-family-development"
+    profile = {"kind": profile_kind, "operation": case["operation"],
                "casePath": str(case_path), "caseFileSha256": digest(case_path),
-               "caseWireSha256": CASE_HASHES[case["id"]], "nodeRuntime": authority, "acceptancePointsAwarded": 0}
+               "caseWireSha256": case_hashes[case["id"]], "nodeRuntime": authority, "acceptancePointsAwarded": 0}
     context = {"schemaVersion": 1, "kind": "release-oracle-execution", "runtime": runtime,
                "providerMode": "none", "fetchPolicy": "deny", "approvedNodeRuntime": authority,
                "promotionApplyFamilyProfile": profile,
@@ -155,12 +161,26 @@ def run_native_case(case, node, runtime, directory, *, timeout=120):
         raise ValueError("The original fixture borrowed another case's evidence directory")
     from equivalence.promotion_apply_family_evidence import validate_native_capture
     validate_native_capture(case, raw[0], returned["result"], authority=authority, pid=process.pid)
+    if case["operation"] == "deep-consolidation-runtime":
+        from equivalence.promotion_apply_family_bindings import COMPILED_HASHES
+        owner = "dist/memory-entry-origins-BCQSIB3X.mjs"
+        if not any(row["package"] == "node_modules/openclaw" and row["path"] == owner
+                   and row["sha256"] == COMPILED_HASHES[owner] for row in trace["loaded"]):
+            raise ValueError("The original release origin owner did not execute")
+    process_fields = {}
+    if case["operation"] == "deep-consolidation-runtime":
+        streams = {}
+        for label, filename in (("stdout", "stdout.json"), ("stderr", "stderr.log")):
+            path = directory / filename
+            streams[label] = {"sha256": digest(path), "bytes": path.stat().st_size}
+        process_fields["processReceipt"] = {"processPid": process.pid, "coordinatorPid": os.getpid(),
+            "actualReturnCode": process.returncode, "originalProcessStreams": streams}
     return {"kind": "official-release-runtime-comparison", "sources": [],
             "results": [returned], "releaseSources": trace["loaded"],
             "releaseTrace": {"kind": "authenticated-promotion-family-process-thread-trace",
                 "threads": trace["bootstraps"], "networkFetchDenied": True, "provider": "none",
                 "protectedWorkerThreads": len(trace["bootstraps"]) - 1,
-                "familyProfile": profile,
+                "familyProfile": profile, **process_fields,
                 "rawProcessWorkerTraces": [{"name": p.name, "text": p.read_text(), "sha256": digest(p)}
                                            for p in sorted(traces.glob("*.jsonl"))]},
             "runtimeDiagnostics": [{"id": case["id"], "sha256": digest(evidence / "native-raw.json"),

@@ -19,6 +19,15 @@ const CASE_HASHES = {
   "promotion-apply-prelock-marker-reconciliation": "62954ad5591378a27eaa48747268213b3148d43baa0583a7f1f4a6d3b9af5105",
   "promotion-apply-add-only-preimage-origin-and-dreams-publication": "c4fb4bbac7df8a72ea601527332e6035b53dd3cb37244607f8689669a27af231"
 };
+const DEEP_HASHES = {
+  "deep-consolidation-added": "f74f8724207fdb9a113b842254c7b8e878396a2dc5d6b8ed2c14c643e66e969f",
+  "deep-consolidation-merged": "c3fc863aac8d05cc72d5c595ea8037b09de9e337076ce2ff3183e965ab4c54bf",
+  "deep-consolidation-superseded": "badeb3ed9089f4618f04f0479ecb51284b54c63ecd2453db6f9b995ae8ba2ff1",
+  "deep-consolidation-unsafe-loss": "be64165bc04667a425e963f279ac9797c56e40ddf8d6fb1d4492654b34bece4b",
+  "deep-consolidation-unrelated-prior": "dd90f9559aacaf1fed226c0e699ab97cd184aef6136abff3d84f6a6b0777566f",
+  "deep-consolidation-invalid-reply": "1a4794ac86ad14d7357b7058d63b5ecc82160a9c9781d7d6a2229b663e2a93ea",
+  "deep-consolidation-concurrent-edit": "bd5da515f2cd84573b1942f8d0eb9c68d8293f45d950d9b010b0c94778193275"
+};
 const stable = value => Array.isArray(value) ? value.map(stable) : value !== null && typeof value === "object"
   ? Object.fromEntries(Object.keys(value).sort().map(key => [key, stable(value[key])])) : value;
 const hash = value => createHash("sha256").update(value).digest("hex");
@@ -105,8 +114,10 @@ function mapPaths(value, prefix) {
 
 export async function runPromotionApplyFamily(testCase, runtimeConfig) {
   const input = testCase.input;
-  if (testCase.operation !== "promotion-apply-family-runtime" || !Object.hasOwn(CASE_HASHES, testCase.id) ||
-      hash(JSON.stringify(stable({ id: testCase.id, operation: testCase.operation, input }))) !== CASE_HASHES[testCase.id] ||
+  const hashes = testCase.operation === "deep-consolidation-runtime" ? DEEP_HASHES : CASE_HASHES;
+  if (!["promotion-apply-family-runtime", "deep-consolidation-runtime"].includes(testCase.operation)
+      || !Object.hasOwn(hashes, testCase.id) ||
+      hash(JSON.stringify(stable({ id: testCase.id, operation: testCase.operation, input }))) !== hashes[testCase.id] ||
       !path.isAbsolute(runtimeConfig?.runtimeRoot ?? "") || !path.isAbsolute(runtimeConfig?.evidenceDirectory ?? "")) {
     throw Error("Apply requires its exact reviewed literal input and authenticated absolute owned roots");
   }
@@ -167,6 +178,12 @@ export async function runPromotionApplyFamily(testCase, runtimeConfig) {
     const write = { operation: "writeStore", workspaceDir: workspace, argumentBefore: structuredClone(seed) };
     raw.calls.push(write); const written = await recall.l(workspace, seed);
     Object.assign(write, { argumentAfter: structuredClone(seed), returnedUndefined: written === undefined });
+    if (input.originSeeds) {
+      const origins = await imp("dist/memory-entry-origins-BCQSIB3X.mjs");
+      const request = {agentId: input.options.agentId, origins: structuredClone(input.originSeeds)};
+      const result = origins.a(request);
+      raw.calls.push({operation: "recordMemoryEntryOrigins", request, result});
+    }
     for (const entry of input.artifactProvenanceWrites ?? []) {
       const request = { workspaceDir: workspace, ...entry };
       const rollback = await (await imp("dist/memory-artifact-provenance-DhnyWiV1.mjs")).a(request);

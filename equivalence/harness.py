@@ -173,7 +173,7 @@ def _reference_bindings(checkout: Path, *, cache: bool, publication: bool,
 
         extension = prepare_reuse_bindings(
             checkout, bootstrap="bootstrap-budget" in reuse_operations,
-            flush=bool(reuse_operations & {"flush-contract", "flush-target"}),
+            flush=bool(reuse_operations & {"flush-contract", "flush-target", "engine-numeric-boundaries"}),
             session="session-projection" in reuse_operations,
         )
         for key in ("allowedResolutions", "projectionEvidence"):
@@ -305,6 +305,11 @@ def _validate_scope(scope: Any, cases: Any) -> tuple[list[dict], dict[str, set[s
         validate_storage_path_acceptance_registration(cases)
     except (TypeError, ValueError) as error:
         raise HarnessError("cases-invalid", "Path-safety acceptance requires its complete reviewed whole-tool family set.") from error
+    from equivalence.engine_numeric_family import validate_registration as validate_numeric_registration
+    try:
+        validate_numeric_registration(cases)
+    except (ValueError, KeyError, TypeError) as error:
+        raise HarnessError("cases-invalid", str(error)) from None
     from equivalence.promotion_ranking_acceptance import validate_promotion_ranking_acceptance
     try:
         validate_promotion_ranking_acceptance(cases)
@@ -406,6 +411,9 @@ def _validate_scope(scope: Any, cases: Any) -> tuple[list[dict], dict[str, set[s
     from equivalence.prompt_history_repair import validate_registration as validate_prompt_history_repair
 
     try:
+        from equivalence.deep_consolidation import validate_registration as validate_deep_consolidation
+
+        validate_deep_consolidation(cases)
         validate_prompt_history_repair(cases)
     except ValueError as error:
         raise HarnessError("cases-invalid", str(error)) from None
@@ -733,12 +741,13 @@ def _oracle(node: Path, script: Path, checkout: Path, cases: list[dict], timeout
             failure.rejected_evidence = {"caseIds": [cases[0]["id"]], "coverageCredit": False,
                                          "retainedDirectory": str(attempt), "reason": str(error)}
             raise failure from error
-    if len(cases) == 1 and cases[0]["operation"] == "promotion-apply-family-runtime":
+    if len(cases) == 1 and cases[0]["operation"] in {"promotion-apply-family-runtime", "deep-consolidation-runtime"}:
         from equivalence.promotion_apply_family_native import run_native_case
 
         if release_runtime is None:
             raise HarnessError("release-runtime-unavailable", "Whole promotion apply requires its authenticated release runtime.")
-        retained = ROOT / ".equivalence-results" / "promotion-family"
+        family = "deep-consolidation" if cases[0]["operation"] == "deep-consolidation-runtime" else "promotion-family"
+        retained = ROOT / ".equivalence-results" / family
         retained.mkdir(parents=True, exist_ok=True)
         attempt = Path(tempfile.mkdtemp(prefix="attempt-", dir=retained)) / "case"
         try:
@@ -1610,7 +1619,7 @@ def run_suite(*, checkout: Path, node: Path, smoke: bool = False,
             "atomic-commit-runtime", "atomic-append-runtime", "atomic-bootstrap-runtime",
             "bootstrap-discovery-runtime",
             "memory-budget-runtime", "memory-budget-apply-runtime",
-            "promotion-ranking-runtime", "promotion-apply-reconcile-runtime", "promotion-apply-family-runtime",
+            "promotion-ranking-runtime", "promotion-apply-reconcile-runtime", "promotion-apply-family-runtime", "deep-consolidation-runtime",
             "host-restart-session-runtime",
             "host-update-isolation-runtime",
             "host-turn-barrier-runtime",
@@ -1651,7 +1660,7 @@ def run_suite(*, checkout: Path, node: Path, smoke: bool = False,
         } for case in cases)
         reuse_operations = frozenset(case["operation"] for case in cases
                                      if case["operation"] in {
-                                         "bootstrap-budget", "flush-contract", "flush-target", "session-projection",
+                                         "bootstrap-budget", "flush-contract", "flush-target", "engine-numeric-boundaries", "session-projection",
                                          "vector-scoring", "hybrid-scoring", "exact-path-priority",
                                          "importance-project",
                                          "search-contract",
@@ -1944,12 +1953,17 @@ def run_suite(*, checkout: Path, node: Path, smoke: bool = False,
                 report["promotionApplyRuntimeBindings"] = prepare_promotion_apply_bindings(
                     checkout, Path(runtime_config["runtimeRoot"]))
                 report["promotionApplyProfile"] = prepare_promotion_apply_profile(node)
-            if any(case["operation"] == "promotion-apply-family-runtime" for case in runtime_cases):
+            if any(case["operation"] in {"promotion-apply-family-runtime", "deep-consolidation-runtime"} for case in runtime_cases):
                 from equivalence.promotion_apply_family_bindings import prepare_family_bindings
                 from equivalence.model_runtime_authority import prepare_model_node_authority
 
                 report["promotionApplyFamilyBindings"] = prepare_family_bindings(checkout, Path(runtime_config["runtimeRoot"]))
                 report["promotionApplyFamilyNode"] = prepare_model_node_authority(node)
+                if any(case["operation"] == "deep-consolidation-runtime" for case in runtime_cases):
+                    from equivalence.promotion_apply_family_bindings import prepare_deep_consolidation_bindings
+
+                    report["deepConsolidationBindings"] = prepare_deep_consolidation_bindings(
+                        checkout, Path(runtime_config["runtimeRoot"]))
             if any(case["operation"] == "host-restart-session-runtime" for case in runtime_cases):
                 from equivalence.host_restart_publication_bindings import prepare_host_restart_publication_bindings
                 from equivalence.model_runtime_authority import prepare_model_node_authority
@@ -2110,6 +2124,10 @@ def run_suite(*, checkout: Path, node: Path, smoke: bool = False,
                         != report["forgetLineageBindings"]
                         or prepare_model_node_authority(node) != report["forgetLineageNode"]):
                     raise ValueError("Original forget source/artifact/executable owners changed.")
+                if "deepConsolidationBindings" in report and (
+                        prepare_deep_consolidation_bindings(checkout, Path(runtime_config["runtimeRoot"]))
+                        != report["deepConsolidationBindings"]):
+                    raise ValueError("Original consolidation or lineage owner changed during execution")
                 if "promotionApplyFamilyBindings" in report and (
                         prepare_family_bindings(checkout, Path(runtime_config["runtimeRoot"])) != report["promotionApplyFamilyBindings"]
                         or prepare_model_node_authority(node) != report["promotionApplyFamilyNode"]):
@@ -2271,6 +2289,9 @@ def run_suite(*, checkout: Path, node: Path, smoke: bool = False,
         if after != report["reference"]:
             raise HarnessError("reference-changed", "The reference checkout changed during comparison.")
         report["sources"] = oracle.get("sources", [])
+        numeric_source_imports = oracle.get("numericSourceImports", {})
+        if numeric_source_imports:
+            report["numericSourceImports"] = numeric_source_imports
         source_diagnostic_cases = [case for case in source_cases if case["operation"] == "storage-discovery"]
         if source_diagnostic_cases:
             from equivalence.storage_discovery_evidence import validate_storage_discovery_diagnostic
@@ -2304,6 +2325,8 @@ def run_suite(*, checkout: Path, node: Path, smoke: bool = False,
             native = native_rows[case["id"]]
             if not native["ok"]:
                 row.update(status="blocked", code="oracle-case-failed")
+                if case["requirement"] == "engine.numeric-boundaries":
+                    row["numericOracleError"] = native.get("error")
                 # Retain a bounded package identifier for source-graph setup
                 # failures, without copying arbitrary exception text (which
                 # can contain fixture secrets or host data) into reports.
@@ -2319,10 +2342,11 @@ def run_suite(*, checkout: Path, node: Path, smoke: bool = False,
                     native_comparison = native["result"]
                     python_case = deepcopy(case)
                     if case in python_diagnostic_cases:
-                        if case["operation"] in {"index-identity-boundaries-runtime", "query-sync-outcomes-runtime", "query-sync-boundaries-runtime", "forget-index-fence-v6-runtime", "host-turn-barrier-v4-runtime", "forget-lineage-runtime", "forget-boundaries-runtime", "recall-signals-runtime", "embed-cache-lifecycle-runtime", "session-reset-boundaries-runtime", "prompt-runtime-context-runtime", "prompt-history-repair-runtime"}:
+                        if case["operation"] in {"deep-consolidation-runtime", "index-identity-boundaries-runtime", "query-sync-outcomes-runtime", "query-sync-boundaries-runtime", "forget-index-fence-v6-runtime", "host-turn-barrier-v4-runtime", "forget-lineage-runtime", "forget-boundaries-runtime", "recall-signals-runtime", "embed-cache-lifecycle-runtime", "session-reset-boundaries-runtime", "prompt-runtime-context-runtime", "prompt-history-repair-runtime"}:
                             # Keep the original child paths and bytes for the post-run
                             # semantic replay, including failed SDK captures.
-                            family = ("prompt-history-repair" if case["operation"] == "prompt-history-repair-runtime" else
+                            family = ("deep-consolidation" if case["operation"] == "deep-consolidation-runtime" else
+                                      "prompt-history-repair" if case["operation"] == "prompt-history-repair-runtime" else
                                       "prompt-runtime-context" if case["operation"] == "prompt-runtime-context-runtime" else
                                       "session-reset-boundaries" if case["operation"] == "session-reset-boundaries-runtime" else
                                       "embedding-cache-lifecycle" if case["operation"] == "embed-cache-lifecycle-runtime" else
@@ -2353,6 +2377,14 @@ def run_suite(*, checkout: Path, node: Path, smoke: bool = False,
                         python_case["_hostTurnBarrierV4Authorities"] = {
                             "node": node, "runtime": runtime_config, "reference_root": checkout}
                     python = python_runner(python_case)
+                    if case["requirement"] == "engine.numeric-boundaries":
+                        row.update(openclaw=native_comparison, python=python)
+                    if case["operation"] == "engine-numeric-boundaries":
+                        from equivalence.engine_numeric_family import validate_source_pair
+
+                        validate_source_pair(case, numeric_source_imports.get(case["id"]), report["sources"],
+                                             native_comparison, python)
+                        row["numericEvidenceValidated"] = True
                     if case in python_diagnostic_cases:
                         evidence = directory / "python-raw.json"
                         if case["operation"] == "forget-index-fence-v6-runtime":
@@ -2375,7 +2407,7 @@ def run_suite(*, checkout: Path, node: Path, smoke: bool = False,
                             from equivalence.get_fixture_filesystem import validate_python_get_filesystem_evidence
 
                             validate_python_get_filesystem_evidence(snapshots, case["input"], python)
-                        if case["operation"] == "promotion-apply-family-runtime":
+                        if case["operation"] in {"promotion-apply-family-runtime", "deep-consolidation-runtime"}:
                             from equivalence.promotion_apply_family_evidence import validate_pair
 
                             family_diagnostic = {"id": case["id"], "side": "python", "sha256": hashlib.sha256(raw).hexdigest(),
@@ -2384,6 +2416,14 @@ def run_suite(*, checkout: Path, node: Path, smoke: bool = False,
                             original = next(d for d in report["runtimeDiagnostics"]
                                             if d["side"] == "native" and d["id"] == case["id"])
                             validate_pair(case, original["rawSnapshots"][0], snapshots[0], native["result"], python)
+                            if case["operation"] == "deep-consolidation-runtime":
+                                from equivalence.deep_consolidation_evidence import compare_deep_state
+                                family_diagnostic.update(retainedSdkRawPath=str(evidence), sdkRawBytes=len(raw))
+                                compared = compare_deep_state(case, original["rawSnapshots"][0], snapshots[0])
+                                native_comparison = {**native["result"], "consolidationState": compared[0]}
+                                python = {**python, "consolidationState": compared[1]}
+                                row["runtimeEvidenceValidated"] = True
+                                row.update(openclaw=native_comparison, python=python)
                             family_diagnostic["validationStatus"] = "verified"
                         if case["operation"] == "host-restart-session-runtime":
                             from equivalence.host_restart_session_evidence import validate_pair
@@ -2627,13 +2667,20 @@ def run_suite(*, checkout: Path, node: Path, smoke: bool = False,
                             row["runtimeEvidenceValidated"] = True
                             row.update(openclaw=native_comparison, python=python)
                         diagnostic_key = "sourceDiagnostics" if case in source_diagnostic_cases else "runtimeDiagnostics"
-                        if case["operation"] not in {"promotion-apply-family-runtime", "host-restart-session-runtime",
+                        if case["operation"] not in {"promotion-apply-family-runtime", "deep-consolidation-runtime", "host-restart-session-runtime",
                                                      "host-update-isolation-runtime", "host-turn-barrier-runtime", "host-turn-barrier-v4-runtime",
                                                      "host-turn-barrier-boundaries-runtime", "index-identity-boundaries-runtime", "query-sync-outcomes-runtime", "query-sync-boundaries-runtime", "forget-index-fence-v6-runtime", "forget-lineage-runtime", "forget-boundaries-runtime", "recall-signals-runtime", "embed-cache-lifecycle-runtime", "session-reset-boundaries-runtime", "prompt-runtime-context-runtime", "prompt-history-repair-runtime"}:
                             report[diagnostic_key].append({
                                 "id": case["id"], "side": "python", "sha256": hashlib.sha256(raw).hexdigest(),
                                 "rawSnapshots": snapshots,
                             })
+                    if case["requirement"] == "engine.numeric-boundaries" and case["operation"] == "promotion-ranking-runtime":
+                        from equivalence.engine_numeric_rank import validate_numeric_rank
+
+                        original = next(d for d in report["runtimeDiagnostics"]
+                                        if d["side"] == "native" and d["id"] == case["id"])
+                        validate_numeric_rank(case, native_comparison, python, original["rawSnapshots"], snapshots)
+                        row["numericEvidenceValidated"] = True
                     # Reject non-JSON outputs and non-finite values explicitly.
                     python = _json(json.dumps(python, ensure_ascii=False, allow_nan=False))
                     row["status"] = "matched" if _same_json(python, native_comparison) else "mismatched"
@@ -2645,8 +2692,10 @@ def run_suite(*, checkout: Path, node: Path, smoke: bool = False,
                         row.update(operation=case["operation"], input=case["input"],
                                    python=python, openclaw=native_comparison)
                 except Exception as error:
+                    if case["requirement"] == "engine.numeric-boundaries":
+                        row["numericError"] = {"type": type(error).__name__, "message": str(error)}
                     row.update(status="blocked", code="python-case-failed")
-                    if case["operation"] in {"promotion-apply-family-runtime", "host-restart-session-runtime",
+                    if case["operation"] in {"promotion-apply-family-runtime", "deep-consolidation-runtime", "host-restart-session-runtime",
                                              "host-update-isolation-runtime", "host-turn-barrier-runtime", "host-turn-barrier-v4-runtime",
                                              "host-turn-barrier-boundaries-runtime", "index-identity-boundaries-runtime", "query-sync-outcomes-runtime", "query-sync-boundaries-runtime", "forget-index-fence-v6-runtime", "forget-lineage-runtime", "forget-boundaries-runtime", "recall-signals-runtime", "embed-cache-lifecycle-runtime", "session-reset-boundaries-runtime", "prompt-runtime-context-runtime", "prompt-history-repair-runtime"}:
                         row["evidenceError"] = {"name": type(error).__name__, "message": str(error)}
@@ -2714,6 +2763,15 @@ def run_suite(*, checkout: Path, node: Path, smoke: bool = False,
 
         history_complete = history_family_complete(report["cases"])
         report["promptHistoryRepairFamilyComplete"] = history_complete
+        from equivalence.engine_numeric_family import family_complete as numeric_family_complete, POINTS as numeric_points
+
+        numeric_complete = numeric_family_complete(report["cases"])
+        report["engineNumericFamilyComplete"] = numeric_complete
+
+        from equivalence.deep_consolidation import family_complete as deep_family_complete, POINTS as deep_points
+
+        deep_complete = deep_family_complete(report["cases"])
+        report["deepConsolidationFamilyComplete"] = deep_complete
         from equivalence.query_sync_boundaries import POINTS as query_sync_boundary_points
         from equivalence.query_sync_outcomes import POINTS as query_sync_points
         from equivalence.index_identity_boundaries import POINTS as identity_boundary_points
@@ -2755,7 +2813,9 @@ def run_suite(*, checkout: Path, node: Path, smoke: bool = False,
                                                       and (point["id"] not in prompt_points
                                                            or prompt_complete)
                                                       and (point["id"] not in history_points
-                                                           or history_complete)]})
+                                                           or history_complete)
+                                                      and (point["id"] not in numeric_points or numeric_complete)
+                                                      and (point["id"] not in deep_points or deep_complete)]})
             report["requirements"].append({"id": requirement["id"], "required": requirement["required"],
                                             "acceptance": acceptance, "registeredCases": len(rows)})
         uncovered = [point["id"] for requirement in report["requirements"] if requirement["required"]

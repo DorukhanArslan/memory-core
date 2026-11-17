@@ -264,7 +264,10 @@ def validate_publication_order(case, native, sdk):
             elif mutation["action"] == "delete":
                 releases.append(r)
     no_live = case["id"] == "promotion-apply-daily-file-quarantine"
-    require(len(acquires) == len(releases) == (1 if no_live else 2), "Missing actual initial/commit workspace lease receipts")
+    skipped_rewrite = case["id"] == "deep-consolidation-concurrent-edit"
+    # A skipped rewrite publishes its history in a subsequent, separately held lease.
+    expected_leases = 1 if no_live else 3 if skipped_rewrite else 2
+    require(len(acquires) == len(releases) == expected_leases, "Missing actual promotion workspace lease receipts")
     require(len(sidecars) == (0 if no_live else 1), "Promotion sidecar acquisition was not actually observed")
     sdk_locks = [r for r in sdk["receipts"] if r["operation"] == "lock" and r["phase"] == "acquired"]
     require(len(sdk_locks) == (0 if no_live else 1), "SDK sidecar observation is missing")
@@ -291,8 +294,14 @@ def validate_publication_order(case, native, sdk):
         require(r["arguments"][1] in {str(Path(native["workspace"]) / name) for name in ("MEMORY.md", "DREAMS.md")}
                 and Path(r["arguments"][0]).parent == Path(native["workspace"]),
                 "Original publication borrowed an unowned document path")
-        require(ends[inner["sequence"]]["sequence"] < r["sequence"] < ends[r["sequence"]]["sequence"] < release["sequence"],
-                "Original document publication escaped its held workspace lease")
+        if skipped_rewrite and r["arguments"][1].endswith("/DREAMS.md"):
+            require(ends[closes[0]["sequence"]]["sequence"] < acquires[2]["sequence"]
+                    and ends[acquires[2]["sequence"]]["sequence"] < r["sequence"]
+                    and ends[r["sequence"]]["sequence"] < releases[2]["sequence"],
+                    "Original skip summary escaped its separate post-promotion workspace lease")
+        else:
+            require(ends[inner["sequence"]]["sequence"] < r["sequence"] < ends[r["sequence"]]["sequence"] < release["sequence"],
+                    "Original document publication escaped its held workspace lease")
     memory = [r for r in publications if r["arguments"][1].endswith("/MEMORY.md")]
     marked = [r for r in successful if r["operation"] == "store[short-term-recall].register"
               and inner["sequence"] < r["sequence"] < release["sequence"]]
@@ -354,8 +363,14 @@ def validate_publication_order(case, native, sdk):
                         and r["arguments"][1].endswith("/short-term-recall.json"),
                         "An undeclared SDK host publication escaped the commit lease")
                 continue
-            require(sdk_enter[0]["sequence"] < r["sequence"] < sdk_exit[0]["sequence"],
-                    "SDK atomic publication escaped its commit lease")
+            if skipped_rewrite and r["arguments"][1].endswith("/DREAMS.md"):
+                releases = [item for item in sdk["receipts"] if item["operation"] == "workspace-lock"
+                            and item["when"] == "released"]
+                require(len(releases) == 1 and releases[0]["sequence"] < r["sequence"],
+                        "SDK skip summary preceded release of the actual promotion lease")
+            else:
+                require(sdk_enter[0]["sequence"] < r["sequence"] < sdk_exit[0]["sequence"],
+                        "SDK atomic publication escaped its commit lease")
 
 
 def validate_pair(case, native, sdk, native_output, sdk_output):

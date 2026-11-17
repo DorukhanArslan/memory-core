@@ -11,7 +11,7 @@ from memory_core.current_time import format_current_time_line, resolve_cron_styl
 from memory_core.flags import FeatureFlags
 from memory_core.host import HistoryReplayContext, HostModelResult, HostSessionRunner, RuntimePromptInput, SessionState
 from memory_core.compaction_replay import ReplayModel
-from memory_core.model_prompt import normalize_model_messages
+from memory_core.model_prompt import normalize_model_messages, serialize_model_tool_json
 from memory_core.runtime_context_prompt import project_runtime_context_fragments, resolve_runtime_context_prompt_parts
 from memory_core.runtime_identity import OPENCLAW_COMPAT_RUNTIME_IDENTITY as IDENTITY
 from memory_core.session_catalog import MemorySessionCatalog
@@ -21,6 +21,15 @@ from memory_core.turn_tool_dispatch import TurnTool
 
 NOW = 1_767_225_600_000
 KEY, SESSION = "agent:main:main", "model-prompt-session"
+
+
+def test_model_tool_json_renders_integer_limits_and_nonfinite_values():
+    values = [2**53 - 1, 2**53 + 1, -(2**53 + 1), 10**21, 10**400,
+              float("nan"), float("-inf"), -0.0, 5e-324]
+    assert serialize_model_tool_json(values) == (
+        "[\n  9007199254740991,\n  9007199254740992,\n  -9007199254740992,"
+        "\n  1e+21,\n  null,\n  null,\n  null,\n  0,\n  5e-324\n]"
+    )
 
 
 def _runner(tmp_path, *, tools=(), timezone="UTC", time_format="24", source_policy=None):

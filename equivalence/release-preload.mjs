@@ -15,15 +15,16 @@ if (rawContext.byteLength > 64 * 1024 * 1024) throw Error("Release execution con
 const context = JSON.parse(rawContext);
 const embeddingMode = context.embeddingCacheProfile !== undefined;
 const promptMode = context.promptRuntimeContextProfile !== undefined;
-if (context.dreamLightProfile !== undefined) {
-  const profile = context.dreamLightProfile;
+if (context.dreamPhaseProfile !== undefined) {
+  const profile = context.dreamPhaseProfile;
+  const phasePrefix = {"dream-light-runtime": "dream-light-", "dream-rem-runtime": "dream-rem-"};
   if (!profile || Object.keys(profile).sort().join() !== "caseId,inputSha256,nodeRuntime,operation" ||
-      profile.operation !== "dream-light-runtime" || !profile.caseId?.startsWith("dream-light-") ||
+      !Object.hasOwn(phasePrefix, profile.operation) || !profile.caseId?.startsWith(phasePrefix[profile.operation]) ||
       !/^[a-f0-9]{64}$/.test(profile.inputSha256) ||
       JSON.stringify(profile.nodeRuntime) !== JSON.stringify(context.approvedNodeRuntime) ||
-      Object.keys(context).some(k => k.endsWith("Profile") && k !== "dreamLightProfile") ||
+      Object.keys(context).some(k => k.endsWith("Profile") && k !== "dreamPhaseProfile") ||
       (context.fixtureSourceCaptures ?? []).length || (context.approvedReferenceSources ?? []).length) {
-    throw Error("Unapproved light dreaming process authority");
+    throw Error("Unapproved dreaming process authority");
   }
 }
 const historyMode = context.promptHistoryRepairProfile !== undefined;
@@ -347,7 +348,7 @@ trace({ event: "bootstrap", isMainThread, ppid: process.ppid, contextSha256: has
         ...(context.promotionApplyProfile ? { promotionApplyProfile: context.promotionApplyProfile } : {}),
         ...(context.forgetLineageProfile ? { forgetLineageProfile: context.forgetLineageProfile } : {}),
         ...(context.forgetBoundariesProfile ? { forgetBoundariesProfile: context.forgetBoundariesProfile } : {}),
-        ...(context.dreamLightProfile ? {dreamLightProfile: context.dreamLightProfile} : {}),
+        ...(context.dreamPhaseProfile ? {dreamPhaseProfile: context.dreamPhaseProfile} : {}),
         ...(context.recallSignalsProfile ? { recallSignalsProfile: context.recallSignalsProfile } : {}),
         ...(context.sessionResetBoundariesProfile ? { sessionResetBoundariesProfile: context.sessionResetBoundariesProfile } : {}),
         ...(context.promptRuntimeContextProfile ? { promptRuntimeContextProfile: context.promptRuntimeContextProfile,

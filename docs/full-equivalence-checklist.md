@@ -57,7 +57,44 @@ Comparisons must not normalize away behavior. A platform-specific path, generate
 Entries remain pending until their complete acceptance conditions are verified against `v2026.9.9`. Their detailed acceptance points and stable identifiers are in [scope.json](../equivalence/scope.json). A helper that already exists in Python still needs the new differential evidence. A known difference must stay visible until its implementation and tests agree. Bounded passing subsets are recorded below without closing the containing contract.
 
 <!-- CURRENT-VERIFICATION-START -->
-The latest complete assessment has **82/128 verified conditions (64.1%)**,
+The latest complete assessment has **84/128 verified conditions (65.6%)**,
+with **44 conditions remaining**: **39 complete, six partial and 19 pending
+contracts**. This measures verified conditions, not effort or elapsed work.
+
+The [prompt runtime-context closeout](prompt_runtime_context_closeout.md) records
+the authenticated [second full comparison](https://github.com/DorukhanArslan/memory-core/actions/runs/44137396647)
+on clean comparison head `a27ec47`, measuring approved product source `907944e`
+in [PR #29](https://github.com/DorukhanArslan/memory-core/pull/29). Its 164-file SDK
+has SHA-256 `375890b10db63088c9fb1d2e6ce7ddafed363acfd6aa020da52dfd46de0d0517`.
+The run retains **1,500 cases: 1,486 matches, 14 mismatches, zero blocked and no
+runner errors**, in **6,210.218580552 seconds**. The full gate still fails
+(actual exit 1, `fullScopePassed: false`): **42 uncovered and two registered
+unresolved conditions**. The fixed 64-contract, 128-condition scope is unchanged.
+The 1,522,925,718-byte full report has SHA-256
+`080d8a69437fcc44db824583b5a7fb3b834be1c575220a7a000a5a28455a2dd4`.
+
+All ten new whole-pair cases verify only the original
+`prompt.runtime-context.outcomes` and `prompt.runtime-context.boundaries`
+conditions: **82 → 84/128, net +2**, completing this contract at **2/2**.
+Actual memory guidance, tool availability, clock fragments and ordered model
+messages match under the declared sequential manual, non-incognito profile.
+Composition and data isolation do not establish model obedience. Provider-supplied
+response identity, calendar years 1–9999 and other scope limits remain explicit
+in the closeout; unrelated persona/tool-registry raw capture is not compared.
+
+The CI assessor parses the complete report to EOF and authenticates all 14
+complete-family gates and all ten prompt raw replays. Local root review and
+independent audit recompute all 128 conditions from the authenticated summary,
+preserving all 82 prior points. All 14 old SDK public
+mismatch hashes are unchanged; only the uncredited Native warm-flush hash changed.
+The first failed full run and its capture-limit diagnosis remain retained and
+earn no credit. Only the authenticated 673,299-byte summary was retrieved;
+the full report and raw archive remain retained in GitHub. The 14 old differences
+remain open and the four held value investigations stay on hold. Another
+implementation batch requires the user's scope approval.
+
+**Historical complete assessment (`a1bdec4`, 82/128):** This assessment has
+**82/128 verified conditions (64.1%)**,
 with **46 conditions remaining**: **38 complete, six partial and 20 pending
 contracts**. This measures verified conditions, not effort or elapsed work.
 
@@ -295,10 +332,10 @@ reaching 66/128 before the update/isolation and natural next-turn packages.
 
 | Contract status | Contracts | Verified conditions | Remaining conditions |
 | --- | ---: | ---: | ---: |
-| Complete | 38 | 76 | 0 |
+| Complete | 39 | 78 | 0 |
 | Partial | 6 | 6 | 6 |
-| Pending verification | 20 | 0 | 40 |
-| Total | 64 | 82 | 46 |
+| Pending verification | 19 | 0 | 38 |
+| Total | 64 | 84 | 44 |
 
 Pending verification can include existing implementation. Partial contracts retain one open
 condition. Infrastructure sections 1–3 remain **20/22 tasks completed**; infrastructure and
@@ -341,7 +378,7 @@ Current status of all 64 contracts:
 | 30 | `sessions.durable-context` | Complete | 2/2 |
 | 31 | `prompt.bootstrap-discovery` | Partial | 1/2 |
 | 32 | `prompt.bootstrap-budget` | Complete | 2/2 |
-| 33 | `prompt.runtime-context` | Pending verification | 0/2 |
+| 33 | `prompt.runtime-context` | Complete | 2/2 |
 | 34 | `prompt.history-repair` | Pending verification | 0/2 |
 | 35 | `flush.plan-target` | Pending verification | 0/2 |
 | 36 | `flush.trigger-usage` | Complete | 2/2 |
@@ -438,7 +475,7 @@ pre-open race authority, full raw filesystem evidence and broader SDK-only limit
 
 - [ ] **`prompt.bootstrap-discovery` — Match workspace bootstrap selection.** Exercise setup states, session kinds, available files and compatibility layouts. Compare ensure decisions, selected files and their order under the same inputs.
 - [x] **`prompt.bootstrap-budget` — Match bootstrap clipping and notices.** Exercise per-file, USER.md and aggregate UTF-16 limits and exact boundary values. Compare clipping, omitted files, warning modes and once-per-session state.
-- [ ] **`prompt.runtime-context` — Match memory and runtime prompt composition.** Compare memory guidance, tools, runtime markers and fixed clock/timezone fragments. Compare insertion order and isolation of untrusted or recalled text.
+- [x] **`prompt.runtime-context` — Match memory and runtime prompt composition.** Compare memory guidance, tools, runtime markers and fixed clock/timezone fragments. Compare insertion order and isolation of untrusted or recalled text. Both original conditions are verified by the [complete runtime-context family](prompt_runtime_context_closeout.md) under its declared sequential manual, non-incognito profile. Actual composition and data labels are compared; model obedience and broader provider/lifecycle modes remain unproved.
 - [ ] **`prompt.history-repair` — Match history windowing and tool repair.** Exercise missing results, duplicate or invalid calls, failed turns and provider replay metadata. Compare repaired model-visible messages while preserving the original durable transcript.
 
 ### Flush and compaction

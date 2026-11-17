@@ -4,8 +4,28 @@ Use the [plain-language parity completion tracker](parity-completion-checklist.m
 to follow the acceptance score, remaining comparison differences and final finish criteria.
 
 The [active checklist](full-equivalence-checklist.md) records the latest complete
-measurement: **82/128 verified conditions, 46 remaining**, with **38 complete,
-six partial and 20 pending contracts**. The single full run measures approved
+measurement: **84/128 verified conditions, 44 remaining**, with **39 complete,
+six partial and 19 pending contracts**. The authenticated
+[second full comparison](https://github.com/DorukhanArslan/memory-core/actions/runs/44137396647)
+measures approved product source `907944e` through clean comparison head
+`a27ec47`: **1,500 cases, 1,486 matches, 14 mismatches and zero blocked/errors**.
+The [prompt runtime-context closeout](prompt_runtime_context_closeout.md)
+verifies only the original `prompt.runtime-context.outcomes` and
+`prompt.runtime-context.boundaries` conditions: **82 → 84/128, net +2**,
+completing this contract at **2/2**. All 82 prior conditions, all 14 complete-family
+gates and all ten prompt whole-pair raw replays are independently authenticated.
+The old 14 SDK public mismatch hashes are unchanged; only the uncredited Native
+warm-flush hash changed. The 14 differences remain open; the four older value
+investigations stay on hold. The full scope gate still fails (actual exit 1,
+`fullScopePassed: false`), with **42 uncovered and two registered unresolved
+conditions**. Actual prompt composition and data labels match under the declared
+sequential manual, non-incognito profile; model obedience and broader runtime
+modes remain unclaimed. The first failed full run and its read-only capture
+diagnosis retain their original zero-credit identities in the new closeout.
+
+The preceding [reset-hook assessment](session_reset_boundaries_closeout.md)
+records the historical measurement: **82/128 verified conditions, 46 remaining**,
+with **38 complete, six partial and 20 pending contracts**. The single full run measures approved
 product source `3d70e59` through comparison head `a1bdec4`: **1,490 cases,
 1,476 matches, 14 mismatches and zero blocked/errors**. The
 [reset-hook boundary closeout](session_reset_boundaries_closeout.md) verifies

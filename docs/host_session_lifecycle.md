@@ -129,6 +129,15 @@ configured timezones then fall back to the supplied host timezone. Existing cloc
 retain their UTC fallback. Optional `TurnTool.definition` associates the provider schema
 with its actual registered tool; `offered_tool_names` selects from that registry.
 
+Set `tool_call_id_mode="strict"` when the host selects the strict provider replay
+policy. It pairs model-facing call/result IDs while preserving execution and
+durable IDs; the default `None` leaves provider policy to the host. A live
+model-only text replacement retains its original transcript text in
+`__openclawTranscriptPromptText`; the saved conversation and later turns keep
+their original text without that temporary marker. The assembled model text
+controls blank admission; a synthetic session prompt does not override a blank
+model-text replacement.
+
 A flush callback receives the actual `FlushRequest` through `turn.flush_request`, with its
 private `messages` and restricted `tools`. Its `context` is `None`. It uses the same
 `record_message` and dispatch methods; those maintenance messages stay outside the visible

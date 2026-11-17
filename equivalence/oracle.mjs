@@ -33,6 +33,7 @@ for (const [operation, filename, name] of [
   ["index-publication", "index-publication.mjs", "runIndexPublication"],
   ["markdown-chunking", "markdown-chunking.mjs", "runMarkdownChunking"],
   ["flush-contract", "flush-contract.mjs", "runFlushContract"],
+  ["engine-numeric-boundaries", "engine-numeric-boundaries.mjs", "runEngineNumericBoundaries"],
   ["flush-target", "flush-target.mjs", "runFlushTarget"],
   ["bootstrap-budget", "bootstrap-budget.mjs", "runBootstrapBudget"],
   ["session-projection", "session-projection.mjs", "runSessionProjection"],
@@ -198,7 +199,21 @@ const number = (value) => typeof value === "string"
   : value;
 
 const sourceDiagnostics = [];
+const numericSourceImports = {};
 async function execute(operation, input, id) {
+  if (operation === "engine-numeric-boundaries") {
+    const imports = new Set();
+    numericSourceImports[id] = [];
+    try {
+      return await adapters.get(operation)(input, async relative => {
+        const module = await import(sourceUrl(relative));
+        imports.add(relative);
+        return module;
+      });
+    } finally {
+      numericSourceImports[id] = [...imports].sort();
+    }
+  }
   if (adapters.has(operation)) return adapters.get(operation)(input, (relative) => import(sourceUrl(relative)), {
     recordDiagnostic: (record) => sourceDiagnostics.push({ id, ...record }),
   });
@@ -246,6 +261,7 @@ for (const testCase of request.cases) {
 process.stdout.write(JSON.stringify({
   results,
   sourceDiagnostics,
+  ...(Object.keys(numericSourceImports).length ? { numericSourceImports } : {}),
   sources: [...sources].sort().map((relative) => ({
     path: relative,
     sha256: crypto.createHash("sha256").update(fs.readFileSync(path.join(root, relative))).digest("hex"),

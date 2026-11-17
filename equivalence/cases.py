@@ -322,6 +322,9 @@ def build_cases(*, include_prospective: bool = False) -> list[dict[str, Any]]:
     from equivalence.prompt_history_repair import build_cases as build_prompt_history_repair
 
     cases.extend(build_prompt_history_repair())
+    from equivalence.engine_numeric_family import build_cases as build_engine_numeric_cases
+
+    cases.extend(build_engine_numeric_cases())
     if include_prospective:
         from equivalence.flush_contract import build_prospective_flush_contract_cases
         from equivalence.session_projection import build_prospective_session_projection_cases
@@ -337,6 +340,10 @@ def build_cases(*, include_prospective: bool = False) -> list[dict[str, Any]]:
 def run_python(case: dict[str, Any]) -> Any:
     """Execute the installed Python implementation; never manufacture a match."""
     operation, arguments = case["operation"], case["input"]
+    if operation == "engine-numeric-boundaries":
+        from equivalence.engine_numeric_boundaries import run_engine_numeric_boundaries
+
+        return run_engine_numeric_boundaries(arguments)
     if operation in {"atomic-commit-runtime", "atomic-append-runtime", "atomic-bootstrap-runtime"}:
         from equivalence.atomic_publication_runtime import run_atomic_publication
 

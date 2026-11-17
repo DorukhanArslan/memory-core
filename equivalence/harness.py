@@ -173,7 +173,7 @@ def _reference_bindings(checkout: Path, *, cache: bool, publication: bool,
 
         extension = prepare_reuse_bindings(
             checkout, bootstrap="bootstrap-budget" in reuse_operations,
-            flush=bool(reuse_operations & {"flush-contract", "flush-target"}),
+            flush=bool(reuse_operations & {"flush-contract", "flush-target", "engine-numeric-boundaries"}),
             session="session-projection" in reuse_operations,
         )
         for key in ("allowedResolutions", "projectionEvidence"):
@@ -305,6 +305,11 @@ def _validate_scope(scope: Any, cases: Any) -> tuple[list[dict], dict[str, set[s
         validate_storage_path_acceptance_registration(cases)
     except (TypeError, ValueError) as error:
         raise HarnessError("cases-invalid", "Path-safety acceptance requires its complete reviewed whole-tool family set.") from error
+    from equivalence.engine_numeric_family import validate_registration as validate_numeric_registration
+    try:
+        validate_numeric_registration(cases)
+    except (ValueError, KeyError, TypeError) as error:
+        raise HarnessError("cases-invalid", str(error)) from None
     from equivalence.promotion_ranking_acceptance import validate_promotion_ranking_acceptance
     try:
         validate_promotion_ranking_acceptance(cases)
@@ -1292,7 +1297,7 @@ def run_suite(*, checkout: Path, node: Path, smoke: bool = False,
         } for case in cases)
         reuse_operations = frozenset(case["operation"] for case in cases
                                      if case["operation"] in {
-                                         "bootstrap-budget", "flush-contract", "flush-target", "session-projection",
+                                         "bootstrap-budget", "flush-contract", "flush-target", "engine-numeric-boundaries", "session-projection",
                                          "vector-scoring", "hybrid-scoring", "exact-path-priority",
                                          "importance-project",
                                          "search-contract",
@@ -1893,6 +1898,9 @@ def run_suite(*, checkout: Path, node: Path, smoke: bool = False,
         if after != report["reference"]:
             raise HarnessError("reference-changed", "The reference checkout changed during comparison.")
         report["sources"] = oracle.get("sources", [])
+        numeric_source_imports = oracle.get("numericSourceImports", {})
+        if numeric_source_imports:
+            report["numericSourceImports"] = numeric_source_imports
         source_diagnostic_cases = [case for case in source_cases if case["operation"] == "storage-discovery"]
         if source_diagnostic_cases:
             from equivalence.storage_discovery_evidence import validate_storage_discovery_diagnostic
@@ -1926,6 +1934,8 @@ def run_suite(*, checkout: Path, node: Path, smoke: bool = False,
             native = native_rows[case["id"]]
             if not native["ok"]:
                 row.update(status="blocked", code="oracle-case-failed")
+                if case["requirement"] == "engine.numeric-boundaries":
+                    row["numericOracleError"] = native.get("error")
                 # Retain a bounded package identifier for source-graph setup
                 # failures, without copying arbitrary exception text (which
                 # can contain fixture secrets or host data) into reports.
@@ -1970,6 +1980,14 @@ def run_suite(*, checkout: Path, node: Path, smoke: bool = False,
                             "authenticated-all-source-redaction-policy" if case in policy_source_cases else "authenticated-official-release"
                         )
                     python = python_runner(python_case)
+                    if case["requirement"] == "engine.numeric-boundaries":
+                        row.update(openclaw=native_comparison, python=python)
+                    if case["operation"] == "engine-numeric-boundaries":
+                        from equivalence.engine_numeric_family import validate_source_pair
+
+                        validate_source_pair(case, numeric_source_imports.get(case["id"]), report["sources"],
+                                             native_comparison, python)
+                        row["numericEvidenceValidated"] = True
                     if case in python_diagnostic_cases:
                         evidence = directory / "python-raw.json"
                         info = evidence.lstat()
@@ -2217,6 +2235,13 @@ def run_suite(*, checkout: Path, node: Path, smoke: bool = False,
                                 "id": case["id"], "side": "python", "sha256": hashlib.sha256(raw).hexdigest(),
                                 "rawSnapshots": snapshots,
                             })
+                    if case["requirement"] == "engine.numeric-boundaries" and case["operation"] == "promotion-ranking-runtime":
+                        from equivalence.engine_numeric_rank import validate_numeric_rank
+
+                        original = next(d for d in report["runtimeDiagnostics"]
+                                        if d["side"] == "native" and d["id"] == case["id"])
+                        validate_numeric_rank(case, native_comparison, python, original["rawSnapshots"], snapshots)
+                        row["numericEvidenceValidated"] = True
                     # Reject non-JSON outputs and non-finite values explicitly.
                     python = _json(json.dumps(python, ensure_ascii=False, allow_nan=False))
                     row["status"] = "matched" if _same_json(python, native_comparison) else "mismatched"
@@ -2224,6 +2249,8 @@ def run_suite(*, checkout: Path, node: Path, smoke: bool = False,
                         row.update(operation=case["operation"], input=case["input"],
                                    python=python, openclaw=native_comparison)
                 except Exception as error:
+                    if case["requirement"] == "engine.numeric-boundaries":
+                        row["numericError"] = {"type": type(error).__name__, "message": str(error)}
                     row.update(status="blocked", code="python-case-failed")
                     if case["operation"] in {"promotion-apply-family-runtime", "host-restart-session-runtime",
                                              "host-update-isolation-runtime", "host-turn-barrier-runtime",
@@ -2281,6 +2308,10 @@ def run_suite(*, checkout: Path, node: Path, smoke: bool = False,
 
         history_complete = history_family_complete(report["cases"])
         report["promptHistoryRepairFamilyComplete"] = history_complete
+        from equivalence.engine_numeric_family import family_complete as numeric_family_complete, POINTS as numeric_points
+
+        numeric_complete = numeric_family_complete(report["cases"])
+        report["engineNumericFamilyComplete"] = numeric_complete
         from equivalence.query_sync_boundaries import POINTS as query_sync_boundary_points
         from equivalence.query_sync_outcomes import POINTS as query_sync_points
         from equivalence.index_identity_boundaries import POINTS as identity_boundary_points
@@ -2320,7 +2351,8 @@ def run_suite(*, checkout: Path, node: Path, smoke: bool = False,
                                                       and (point["id"] not in prompt_points
                                                            or prompt_complete)
                                                       and (point["id"] not in history_points
-                                                           or history_complete)]})
+                                                           or history_complete)
+                                                      and (point["id"] not in numeric_points or numeric_complete)]})
             report["requirements"].append({"id": requirement["id"], "required": requirement["required"],
                                             "acceptance": acceptance, "registeredCases": len(rows)})
         uncovered = [point["id"] for requirement in report["requirements"] if requirement["required"]

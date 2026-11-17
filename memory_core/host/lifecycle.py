@@ -296,6 +296,7 @@ class HostTurn:
             return saved
 
     def _record(self, message: dict[str, Any]) -> dict[str, Any]:
+        runtime_message = deepcopy(message)
         # Like the native transcript guard, stamp the actual run owner after
         # trust metadata is established and before its message is persisted.
         run_id = js_trim(self.turn_id)
@@ -315,7 +316,7 @@ class HostTurn:
             # A flush is private maintenance context, never a user transcript append.
             saved = deepcopy(message)
         self._messages.append(deepcopy(saved))
-        self._projection_messages.append(deepcopy(saved))
+        self._projection_messages.append(deepcopy(runtime_message if self._model_prompt is not None else saved))
         return deepcopy(saved)
 
     def _reserve(self, tool_call_id: str, name: str, arguments: Mapping[str, Any]) -> _DispatchReservation:

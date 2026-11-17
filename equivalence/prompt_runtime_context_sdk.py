@@ -68,8 +68,9 @@ def _iso(now):
 class _FixtureModel:
     """A real host model callback with no prompt assembly or expected messages."""
 
-    def __init__(self, operation, calls, tool_calls, clock):
+    def __init__(self, operation, calls, tool_calls, clock, operation_index):
         self.operation, self.calls, self.tool_calls, self.clock = operation, calls, tool_calls, clock
+        self.operation_index = operation_index
 
     async def __call__(self, turn):
         scripted = self.operation.get("scriptedTools", [])
@@ -82,6 +83,8 @@ class _FixtureModel:
                 "stopReason": "toolUse" if tool else "stop", "timestamp": self.clock(),
                 "usage": {"input": 0, "output": 0, "cacheRead": 0, "cacheWrite": 0, "totalTokens": 0,
                           "cost": {"input": 0, "output": 0, "cacheRead": 0, "cacheWrite": 0, "total": 0}}}
+            if tool:
+                response["responseId"] = f"prompt-tool-response-{self.operation_index}-{ordinal}"
             call = {"request": {"model": deepcopy(MODEL), "context": deepcopy(request), "options": {}},
                     "response": deepcopy(response)}
             self.calls.append(call)
@@ -184,7 +187,7 @@ class _Owners:
             host_time_format=self.value["hostTimeFormat"], include_clock=operation["includeClock"])
         actual["callArguments"] = {"user_message": operation["effectivePrompt"], "prompt_context": _wire(options),
                                    "request_id": f"prompt-runtime-{ordinal}"}
-        callback = _FixtureModel(operation, actual["providerCalls"], actual["toolCalls"], lambda: self.now[0])
+        callback = _FixtureModel(operation, actual["providerCalls"], actual["toolCalls"], lambda: self.now[0], ordinal)
         try:
             returned = await self.runner.run_turn(operation["effectivePrompt"], execute=callback,
                 prompt_context=options, request_id=f"prompt-runtime-{ordinal}")

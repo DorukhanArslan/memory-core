@@ -1,6 +1,7 @@
 """Frozen real-workspace inputs for the original REM phase's two checklist conditions."""
 from __future__ import annotations
 
+from copy import deepcopy
 import hashlib
 import json
 
@@ -121,3 +122,24 @@ def family_complete(rows):
 
 
 DEFINITION_SHA256 = "228a41f65979ab9fa23a36f0ee42799e875fa265f72a92b220971ea3171089f1"
+
+
+def profile_for(case, node):
+    from equivalence.model_runtime_authority import prepare_model_node_authority
+
+    validate_case(case)
+    return {"caseId": case["id"], "operation": OPERATION, "nodeRuntime": prepare_model_node_authority(node),
+            "inputSha256": hashlib.sha256(canonical(case["input"])).hexdigest()}
+
+
+def validate_profile(profile):
+    from equivalence.model_runtime_authority import validate_model_node_authority
+
+    if not isinstance(profile, dict) or set(profile) != {"caseId", "inputSha256", "operation", "nodeRuntime"}:
+        raise ValueError("Incomplete REM dreaming authority")
+    ids = {row["id"]: hashlib.sha256(canonical(row["input"])).hexdigest() for row in build_cases()}
+    if (profile["operation"] != OPERATION or profile["caseId"] not in ids
+            or profile["inputSha256"] != ids[profile["caseId"]]):
+        raise ValueError("REM dreaming requires one frozen input")
+    validate_model_node_authority(profile["nodeRuntime"])
+    return deepcopy(profile)

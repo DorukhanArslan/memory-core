@@ -46,13 +46,22 @@ function publicEvents(records, root) {
     [key, ["reportPath", "inlinePath"].includes(key) && typeof value === "string" && value.startsWith(root + "/") ? "$WORKSPACE" + value.slice(root.length) : value])));
 }
 
-export async function runDreamLightRuntime(input, runtimeConfig) {
+export function runDreamLightRuntime(input, runtimeConfig) {
+  return runPhase(input, runtimeConfig, "light", hashes);
+}
+
+export async function runDreamRemRuntime(input, runtimeConfig) {
+  const rem = await import("./dream-rem-runtime.mjs");
+  return runPhase(input, runtimeConfig, "rem", rem.remHashes, rem);
+}
+
+async function runPhase(input, runtimeConfig, phase, boundHashes, rem) {
   const inputSha256 = digest(JSON.stringify(ordered(input)));
-  if (!hashes.has(inputSha256) || !path.isAbsolute(runtimeConfig?.evidenceDirectory ?? "") ||
+  if (!boundHashes.has(inputSha256) || !path.isAbsolute(runtimeConfig?.evidenceDirectory ?? "") ||
       !path.isAbsolute(runtimeConfig?.runtimeRoot ?? "")) throw Error("Unbound light sweep request");
   const evidence = runtimeConfig.evidenceDirectory;
   await fs.mkdir(evidence, {recursive: true});
-  const root = await fs.mkdtemp(path.join(evidence, "native-light-"));
+  const root = await fs.mkdtemp(path.join(evidence, `native-${phase}-`));
   const workspace = path.join(root, "workspace");
   const env = {OPENCLAW_STATE_DIR: path.join(root, "state"), OPENCLAW_HOME: root,
     OPENCLAW_CONFIG_PATH: path.join(root, "openclaw.json")};
@@ -61,9 +70,9 @@ export async function runDreamLightRuntime(input, runtimeConfig) {
     logging: {level: "silent", consoleLevel: "silent", file: path.join(root, "openclaw.log")}};
   const options = input.options;
   const pluginConfig = {dreaming: {enabled: options.enabled, timezone: options.timezone,
-    storage: {mode: options.storageMode}, phases: {light: {enabled: true, limit: options.limit,
+    storage: {mode: options.storageMode}, phases: phase === "rem" ? rem.remPhaseConfig(options) : {light: {enabled: true, limit: options.limit,
       lookbackDays: options.lookbackDays, dedupeSimilarity: options.dedupeSimilarity}, rem: {enabled: false}}}};
-  const raw = {factoryCalls: [], kind: "official-light-sweep", input, inputSha256, root, workspace, cfg, pluginConfig, env,
+  const raw = {factoryCalls: [], kind: `official-${phase}-sweep`, input, inputSha256, root, workspace, cfg, pluginConfig, env,
     pid: process.pid, ppid: process.ppid, owners: [], calls: [], snapshots: [], blobs: {}, logs: [], observations: []};
   let clockEnabled = false;
   let close;
@@ -119,19 +128,28 @@ export async function runDreamLightRuntime(input, runtimeConfig) {
     const readRecall = await owner(storeModule, "a");
     const readSignals = await owner(storeModule, "r");
     const readEvents = await owner("dist/plugin-sdk/memory-host-events.js", "readMemoryHostEventRecords");
-    if (Object.hasOwn(input.files, recallFile)) await call("writeStore", [workspace, JSON.parse(input.files[recallFile])],
-      await owner(storeModule, "l"));
+    const writeRecall = Object.hasOwn(input.files, recallFile) ? await owner(storeModule, "l") : undefined;
+    if (writeRecall) await call("writeStore", [workspace, JSON.parse(input.files[recallFile])], writeRecall);
     if (Object.hasOwn(input.files, signalFile)) await call("writePhaseSignalStore", [workspace, JSON.parse(input.files[signalFile])],
       await owner(storeModule, "c"));
     raw.snapshots.push(await snapshot(root, raw.blobs));
     const logger = Object.fromEntries(["info", "debug", "error", "warn"].map(level =>
       [level, (...args) => raw.logs.push({level, args})]));
+    const modelCalls = [], sweepResults = [];
+    if (phase === "rem") raw.modelCalls = [];
     for (const operation of input.operations) {
-      if (operation.op === "light") {
+      if (operation.op === phase) {
         nowMs = operation.nowMs;
         mock.timers.setTime(nowMs);
-        const args = {workspaceDir: workspace, agentId: "main", cfg, pluginConfig, nowMs};
-        await call("runDreamingSweepPhases", [args], sweep, [{...args, logger}]);
+        const args = {workspaceDir: workspace, cfg, pluginConfig, nowMs};
+        if (phase === "light" || options.agentId !== null) args.agentId = phase === "light" ? "main" : options.agentId;
+        const provider = phase === "rem" ? rem.remNarrator(options, modelCalls, raw.modelCalls, async key => {
+          const state = await call("readStore", [workspace, new Date(nowMs).toISOString()], readRecall);
+          if (!Object.hasOwn(state.entries, key)) throw Error("Missing fixture recall key");
+          delete state.entries[key];
+          await call("writeStore", [workspace, state], writeRecall);
+        }) : {};
+        sweepResults.push(await call("runDreamingSweepPhases", [args], sweep, [{...args, ...provider, logger}]));
       } else if (operation.op === "remove") {
         if (!Object.hasOwn(input.files, operation.path)) throw Error("Removal is not a literal seed");
         await fs.unlink(path.join(workspace, operation.path));
@@ -145,7 +163,8 @@ export async function runDreamLightRuntime(input, runtimeConfig) {
       raw.snapshots.push(tree);
       const documents = Object.fromEntries(Object.entries(tree).filter(([p]) => p.startsWith("workspace/") && p.endsWith(".md"))
         .map(([p, record]) => [p.slice("workspace/".length), Buffer.from(raw.blobs[record.sha256], "base64").toString("utf8")]));
-      raw.observations.push({operation, documents, recall, signals, events: publicEvents(records, workspace)});
+      raw.observations.push({operation, documents, recall, signals, events: publicEvents(records, workspace),
+        ...(phase === "rem" ? {modelCalls: structuredClone(modelCalls), sweepResults: structuredClone(sweepResults)} : {})});
     }
     raw.completed = true;
     return {observations: raw.observations};

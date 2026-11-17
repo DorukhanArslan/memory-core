@@ -11,6 +11,10 @@ from pathlib import Path
 import stat
 
 from equivalence.dream_light import NOW, validate_case
+from equivalence import dream_rem
+from equivalence.dream_rem_sdk import rem_options
+from memory_core.consolidation.rem_phase import prepare_rem_phase
+from memory_core.consolidation.dream_narrative import run_rem_narrative
 from equivalence.promotion_apply_runtime import _json_value, _safe_path
 from memory_core.config import MemoryConfig
 from memory_core.flags import FeatureFlags
@@ -66,7 +70,8 @@ def run_sdk(case, evidence_directory):
     if evidence_directory is None:
         with TemporaryDirectory(prefix="light-sdk-") as path:
             return run_sdk(case, Path(path))
-    validate_case(case)
+    phase = "rem" if case.get("operation") == dream_rem.OPERATION else "light"
+    (dream_rem.validate_case if phase == "rem" else validate_case)(case)
     value = case["input"]
     opts = value["options"]
     directory = Path(evidence_directory).absolute()
@@ -79,11 +84,16 @@ def run_sdk(case, evidence_directory):
     workspace.mkdir()
     events = []
     observations = []
-    raw = {"kind": "dream-light-sdk", "input": deepcopy(value), "workspace": str(workspace),
-           "owners": [_owner(fn) for fn in (run_dreaming_sweep, prepare_light_phase, publish_daily_dreaming_phase_block,
+    calls, phase_results = [], []
+    owners = (prepare_rem_phase, run_rem_narrative) if phase == "rem" else (prepare_light_phase,)
+    raw = {"kind": f"dream-{phase}-sdk", "input": deepcopy(value), "workspace": str(workspace),
+           "owners": [_owner(fn) for fn in (run_dreaming_sweep, *owners, publish_daily_dreaming_phase_block,
                                              ingest_daily_memory_signals, ingest_session_transcript_signals,
                                              read_canonical_recall_store, read_canonical_phase_signal_store)],
            "operations": [], "events": events, "snapshots": [], "blobs": {}}
+
+    if phase == "rem":
+        raw["modelCalls"] = []
 
     def snapshot():
         raw["snapshots"].append(snapshot_files(root, raw["blobs"]))
@@ -106,20 +116,27 @@ def run_sdk(case, evidence_directory):
                 config = MemoryConfig(workspace_dir=workspace, store_path=root / "index.sqlite",
                                       flags=FeatureFlags(vector_search=False))
                 store = SQLiteMemoryStore(config, None)
-                outcome = run_dreaming_sweep(config=config, store=store, phase="light", now_ms=now,
+                options = rem_options(opts, workspace, now, calls, raw["modelCalls"]) if phase == "rem" else {
+                    "light_options": LightDreamingOptions(enabled=opts["enabled"], dedupe_similarity=opts["dedupeSimilarity"],
+                                                         storage_mode=opts["storageMode"])}
+                outcome = run_dreaming_sweep(config=config, store=store, phase=phase, now_ms=now,
                     timezone=opts["timezone"], limit=opts["limit"], identity=OPENCLAW_COMPAT_RUNTIME_IDENTITY,
                     ingestion=DreamingIngestion(lookback_days=opts["lookbackDays"], limit=opts["limit"],
                         agent_ids=("main",), corpus_entries=lambda _agent: ()),
-                    light_options=LightDreamingOptions(enabled=opts["enabled"], dedupe_similarity=opts["dedupeSimilarity"],
-                                                     storage_mode=opts["storageMode"]),
+                    **options,
                     on_event=lambda event: events.append(deepcopy(event)))
                 row["return"] = _json_value(outcome)
+                if phase == "rem":
+                    phase_results.append({"degradedPhases": int(outcome.narrative_status == "degraded"),
+                                          "pendingNarratives": int(outcome.narrative_status == "pending")})
             readback = {"operation": deepcopy(op),
                         "documents": {f.relative_to(workspace).as_posix(): f.read_bytes().decode("utf8")
                                       for f in sorted(workspace.rglob("*.md")) if f.is_file()},
                         "recall": read_canonical_recall_store(recall_store_path(workspace), now),
                         "signals": read_canonical_phase_signal_store(phase_signal_store_path(workspace), now),
                         "events": event_projection(events, workspace)}
+            if phase == "rem":
+                readback.update(modelCalls=deepcopy(calls), sweepResults=deepcopy(phase_results))
             row["events"] = deepcopy(events)
             row["observation"] = deepcopy(readback)
             observations.append(readback)

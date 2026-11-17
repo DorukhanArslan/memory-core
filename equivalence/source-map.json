@@ -362,7 +362,7 @@
           "path": "memory_core/consolidation/daily_ingestion.py",
           "symbol": "read_daily_ingestion_state",
           "anchor": "def read_daily_ingestion_state(",
-          "line": 487
+          "line": 488
         }
       ],
       "implementation": "partial",
@@ -5293,13 +5293,13 @@
           "path": "memory_core/consolidation/dreaming.py",
           "symbol": "run_dreaming_sweep",
           "anchor": "def run_dreaming_sweep(",
-          "line": 183
+          "line": 185
         },
         {
           "path": "memory_core/consolidation/dreaming.py",
           "symbol": "filter_recall_entries_within_lookback",
           "anchor": "def filter_recall_entries_within_lookback(",
-          "line": 81
+          "line": 82
         },
         {
           "path": "memory_core/consolidation/light_phase.py",
@@ -5342,22 +5342,28 @@
       ],
       "python": [
         {
-          "path": "memory_core/consolidation/dreaming.py",
-          "symbol": "run_dreaming_sweep",
-          "anchor": "def run_dreaming_sweep(",
-          "line": 183
+          "path": "memory_core/consolidation/rem_phase.py",
+          "symbol": "prepare_rem_phase",
+          "anchor": "def prepare_rem_phase(",
+          "line": 116
         },
         {
           "path": "memory_core/consolidation/dreaming.py",
-          "symbol": "_append_dreams_section",
-          "anchor": "def _append_dreams_section(",
-          "line": 366
+          "symbol": "run_dreaming_sweep",
+          "anchor": "def run_dreaming_sweep(",
+          "line": 185
+        },
+        {
+          "path": "memory_core/consolidation/dream_narrative.py",
+          "symbol": "run_rem_narrative",
+          "anchor": "def run_rem_narrative(",
+          "line": 108
         }
       ],
       "implementation": "partial",
       "notes": [
-        "Python REM ranks recall candidates, records phase signals and appends snippets; native REM evidence grouping, pattern strengths, candidate truths and optional narrative generation are not implemented by that path.",
-        "Python does not prefer and consume light-staged keys, recheck live sources under the publication lock, or publish the native daily REM phase block and narrative outcomes."
+        "Resolved REM options use the ordinary SDK sweep to prefer pending light signals, group evidence, write reports and record considered and selected keys under the workspace lock.",
+        "The host supplies an awaited narrative provider. Diary publication rechecks the contributing recall keys after the provider returns. Detached cron scheduling has a separate host owner."
       ]
     },
     {
@@ -5391,13 +5397,13 @@
           "path": "memory_core/consolidation/dreaming.py",
           "symbol": "run_dreaming_sweep",
           "anchor": "def run_dreaming_sweep(",
-          "line": 183
+          "line": 185
         },
         {
           "path": "memory_core/consolidation/dreaming.py",
           "symbol": "deep promotion invocation",
           "anchor": "promotion = run_short_term_promotion(",
-          "line": 331
+          "line": 347
         }
       ],
       "implementation": "partial",
@@ -5437,7 +5443,7 @@
           "path": "memory_core/consolidation/dreaming.py",
           "symbol": "_append_dreams_section",
           "anchor": "def _append_dreams_section(",
-          "line": 366
+          "line": 382
         },
         {
           "path": "memory_core/consolidation/artifacts.py",

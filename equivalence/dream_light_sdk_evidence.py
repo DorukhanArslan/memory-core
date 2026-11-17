@@ -7,6 +7,7 @@ import hashlib
 import json
 from pathlib import Path, PurePosixPath
 
+from equivalence import dream_rem, dream_rem_sdk_evidence
 from equivalence.dream_light import NOW, RECALL, SIGNALS, TODAY, validate_case
 from equivalence.dream_light_evidence import require, same
 from equivalence.dream_light_sdk import event_projection, snapshot_files
@@ -160,7 +161,8 @@ def _verify_sweep(case, ordinal, row, workspace, before, after, now, added_event
 
 
 def validate_sdk(case, public, snapshots, directory):
-    validate_case(case)
+    rem = case.get("operation") == dream_rem.OPERATION
+    (dream_rem.validate_case if rem else validate_case)(case)
     directory = Path(directory).absolute()
     root = directory / "sdk-fixture"
     workspace = root / "workspace"
@@ -168,14 +170,17 @@ def validate_sdk(case, public, snapshots, directory):
             and workspace.is_dir() and workspace == workspace.resolve(), "Unowned SDK workspace")
     require(isinstance(snapshots, list) and len(snapshots) == 1, "Expected one SDK light capture")
     raw = snapshots[0]
-    require(raw.get("complete") is True and "error" not in raw and raw["kind"] == "dream-light-sdk",
+    require(raw.get("complete") is True and "error" not in raw and raw["kind"] == ("dream-rem-sdk" if rem else "dream-light-sdk"),
             "Incomplete SDK light capture")
     same(raw["workspace"], str(workspace), "Misbound SDK fixture")
     same(raw["input"], case["input"], "SDK used a different fixture")
     same(raw["output"], public, "SDK public result differs from captured output")
     expected_owners = []
     owner_root = Path(__file__).resolve().parents[1] / "memory_core/consolidation"
-    for name, module in _OWNER_MODULES.items():
+    owner_modules = list(_OWNER_MODULES.items())
+    if rem:
+        owner_modules[1:2] = [("prepare_rem_phase", "rem_phase"), ("run_rem_narrative", "dream_narrative")]
+    for name, module in owner_modules:
         path = owner_root / (module + ".py")
         expected_owners.append({"name": name, "path": str(path), "sha256": hashlib.sha256(path.read_bytes()).hexdigest()})
     same(raw["owners"], expected_owners, "SDK production source identity changed")
@@ -193,6 +198,7 @@ def validate_sdk(case, public, snapshots, directory):
     require(len(trees) == len(operations) + 1 and len(raw["operations"]) == len(public["observations"]) == len(operations),
             "Incomplete SDK operation evidence")
     previous_events = []
+    phase_results = []
     now = NOW
     for index, (op, row, observation) in enumerate(zip(operations, raw["operations"], public["observations"])):
         same(row["operation"], op, "Unexpected SDK operation")
@@ -206,12 +212,18 @@ def validate_sdk(case, public, snapshots, directory):
             require(not added and "return" not in row, "Removing a source ran a sweep")
             require(after == {key: data for key, data in before.items() if key != "workspace/" + op["path"]},
                     "Removal changed other files")
+        elif rem:
+            phase_results.append(dream_rem_sdk_evidence.verify_sweep(
+                case, index, row, workspace, before, after, now, added, recall, signals, _stores))
         else:
             _verify_sweep(case, index, row, workspace, before, after, now, added, recall, signals)
         documents = {key.removeprefix("workspace/"): data.decode() for key, data in after.items()
                      if key.startswith("workspace/") and key.endswith(".md")}
         physical = {"operation": op, "documents": documents, "recall": recall, "signals": signals,
                     "events": event_projection(events, workspace)}
+        if rem:
+            calls = dream_rem_sdk_evidence.verify_callbacks(case, raw["modelCalls"], now)
+            physical.update(sweepResults=deepcopy(phase_results), modelCalls=calls)
         same(row["observation"], physical, "SDK readback disagrees with physical files or callbacks")
         same(observation, physical, "Public SDK observation disagrees with physical files or callbacks")
         previous_events = events

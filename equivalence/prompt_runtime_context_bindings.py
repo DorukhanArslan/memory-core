@@ -78,6 +78,7 @@ _EXTRA_SOURCE_HASHES = {
     "src/agents/embedded-agent-runner/run/attempt-prompt-phase.ts": "746722496d8818e96648449df10bfdd9fe75845eebc214d11cf6b31c81ee82ab",
     "src/agents/embedded-agent-runner/run/attempt-prompt-submit.ts": "91d72acf733ec2defc9b66841cce3c5670cbe6520c227fdb5b7ebe040cdd0867",
     "src/agents/embedded-agent-runner/run/attempt-llm-boundary.ts": "6da9c2597018b27b496d14d22a70e6cfff91a4a9dd398f781b83748ecbe0f041",
+    "src/agents/embedded-agent-runner/tool-result-context-guard.ts": "358b55d48d440017e27cad40a8147388d0218f5accf49bc1c8e377a4fc932ab7",
     "src/agents/embedded-agent-runner/run/runtime-context-prompt.ts": "69e82242918c567188a5a8a65f1651c45253e5deb6c50c728599902cc410f6d0",
     "src/agents/internal-runtime-context.ts": "22afc06e907f9216a89e63081636e4696da0a8904bf66ebe21b40f9aca2b9585",
     "src/agents/system-prompt.ts": "951e09f7704838361b236fbe650ea67cff0890d821e91f9bec811694cf724cb1",
@@ -174,7 +175,15 @@ _EXTRA_SOURCE_ANCHORS = {
     ],
     "src/agents/embedded-agent-runner/run/attempt-llm-boundary.ts": [
         "export function normalizeMessagesForLlmBoundary(",
-        "export function installRuntimeContextMessageForPrompt("
+        "export function installRuntimeContextMessageForPrompt(",
+        "export function installModelPromptTransform(",
+        "function replaceUserTextPrompt(",
+        "markTranscriptPromptText(next[userIndex], params.transcriptText);"
+    ],
+    "src/agents/embedded-agent-runner/tool-result-context-guard.ts": [
+        'const TRANSCRIPT_PROMPT_TEXT_KEY = "__openclawTranscriptPromptText";',
+        "export function markTranscriptPromptText(",
+        "Object.defineProperty(message, TRANSCRIPT_PROMPT_TEXT_KEY, {\n    configurable: true,\n    enumerable: true,"
     ],
     "src/agents/embedded-agent-runner/run/runtime-context-prompt.ts": [
         "export function resolveRuntimeContextPromptParts(",

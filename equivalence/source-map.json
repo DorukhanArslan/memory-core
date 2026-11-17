@@ -5111,13 +5111,13 @@
           "path": "memory_core/consolidation/store.py",
           "symbol": "read_canonical_recall_store",
           "anchor": "def read_canonical_recall_store(",
-          "line": 262
+          "line": 286
         },
         {
           "path": "memory_core/consolidation/store.py",
           "symbol": "read_canonical_phase_signal_store",
           "anchor": "def read_canonical_phase_signal_store(",
-          "line": 271
+          "line": 295
         },
         {
           "path": "memory_core/consolidation/store_normalization.py",
@@ -6169,25 +6169,25 @@
           "path": "memory_core/consolidation/store.py",
           "symbol": "memory_workspace_lock",
           "anchor": "def memory_workspace_lock(",
-          "line": 194
+          "line": 220
         },
         {
           "path": "memory_core/consolidation/store.py",
           "symbol": "_acquire_workspace_lock",
           "anchor": "def _acquire_workspace_lock(",
-          "line": 112
+          "line": 115
         },
         {
           "path": "memory_core/consolidation/store.py",
           "symbol": "recall_store_lock",
           "anchor": "def recall_store_lock(",
-          "line": 81
+          "line": 84
         },
         {
           "path": "memory_core/consolidation/file_lock.py",
           "symbol": "with_file_lock",
           "anchor": "def with_file_lock(",
-          "line": 229
+          "line": 247
         },
         {
           "path": "memory_core/workspace.py",

@@ -8,6 +8,8 @@ from equivalence.release_runtime import prepare_release_runtime
 from followup_compaction import replay_compaction
 from followup_diary import replay_diary
 from followup_dreams import replay_dreams
+from followup_flush import replay_flush
+from equivalence import flush_plan_target
 from followup_heartbeat import HEARTBEAT_GATE, replay_heartbeat
 from equivalence import heartbeat_turn_boundaries
 from followup_jobs import replay_jobs
@@ -15,6 +17,7 @@ from followup_locks import replay_locks
 
 
 FAMILIES = {
+    flush_plan_target.OPERATION: (flush_plan_target, "flushPlanTargetFamilyComplete", replay_flush),
     HEARTBEAT_GATE: (heartbeat_turn_boundaries, "heartbeatExclusionsComplete", replay_heartbeat),
     dream_light.OPERATION: (dream_light, "dreamLightFamilyComplete", replay_dreams),
     dream_rem.OPERATION: (dream_rem, "dreamRemFamilyComplete", replay_dreams),
@@ -26,7 +29,7 @@ FAMILIES = {
     workspace_lock_cases.OPERATION: (workspace_lock_cases, "workspaceLockFamilyComplete", replay_locks),
 }
 REPORT_FIELDS = {field for _, field, _ in FAMILIES.values()} | {
-    "heartbeatCorpusSourceImports", "flushExecutionBindings", "dreamLightBindings", "dreamLightNode", "dreamRemBindings", "dreamRemNode", "dreamDiaryBindings", "dreamDiaryNode", "dreamDeepBindings", "dreamDeepNode", "workspaceLockBindings"}
+    "heartbeatCorpusSourceImports", "flushExecutionBindings", "flushPlanTargetNode", "dreamLightBindings", "dreamLightNode", "dreamRemBindings", "dreamRemNode", "dreamDiaryBindings", "dreamDiaryNode", "dreamDeepBindings", "dreamDeepNode", "workspaceLockBindings"}
 
 
 def family_key(case):

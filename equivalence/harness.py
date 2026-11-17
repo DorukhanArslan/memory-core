@@ -307,6 +307,7 @@ def _validate_scope(scope: Any, cases: Any) -> tuple[list[dict], dict[str, set[s
         validate_storage_path_acceptance_registration(cases)
     except (TypeError, ValueError) as error:
         raise HarnessError("cases-invalid", "Path-safety acceptance requires its complete reviewed whole-tool family set.") from error
+    from equivalence.compaction_assembly import validate_registration as validate_compaction_restarts
     from equivalence.automation_job_outcomes import validate_registration as validate_job_outcomes
     from equivalence.automation_job_state import validate_registration as validate_jobs_registration
     from equivalence.engine_numeric_family import validate_registration as validate_numeric_registration
@@ -317,6 +318,7 @@ def _validate_scope(scope: Any, cases: Any) -> tuple[list[dict], dict[str, set[s
         validate_heartbeat_exclusions(cases)
         validate_jobs_registration(cases)
         validate_job_outcomes(cases)
+        validate_compaction_restarts(cases)
     except (ValueError, KeyError, TypeError) as error:
         raise HarnessError("cases-invalid", str(error)) from None
     from equivalence.promotion_ranking_acceptance import validate_promotion_ranking_acceptance
@@ -443,18 +445,23 @@ def _oracle(node: Path, script: Path, checkout: Path, cases: list[dict], timeout
     timeout_limit = 180 if boundary_case or query_sync_boundary_case else 120
     if not isinstance(timeout, (int, float)) or isinstance(timeout, bool) or not 0 < timeout <= timeout_limit:
         raise HarnessError("timeout-invalid", f"The oracle requires a finite timeout of at most {timeout_limit} seconds.")
-    if len(cases) == 1 and cases[0]["operation"] == "automation-job-outcomes-runtime":
-        from equivalence.automation_job_outcomes import run_original
+    if len(cases) == 1 and cases[0]["operation"] in {"automation-job-outcomes-runtime", "compaction-assembly-restart-runtime"}:
+        if cases[0]["operation"] == "compaction-assembly-restart-runtime":
+            from equivalence.compaction_assembly import run_original
+            family = "compaction-context-assembly"
+        else:
+            from equivalence.automation_job_outcomes import run_original
+            family = "automation-job-outcomes"
 
         if release_runtime is None:
-            raise HarnessError("release-runtime-unavailable", "Automation outcomes require the pinned release.")
-        retained = ROOT / ".equivalence-results" / "automation-job-outcomes"
+            raise HarnessError("release-runtime-unavailable", f"{family} requires the pinned release.")
+        retained = ROOT / ".equivalence-results" / family
         retained.mkdir(parents=True, exist_ok=True)
         attempt = Path(tempfile.mkdtemp(prefix="native-attempt-", dir=retained))
         try:
             return run_original(cases[0], node, checkout, release_runtime, attempt)
         except Exception as error:
-            failure = HarnessError("automation-job-outcomes-evidence-invalid", str(error))
+            failure = HarnessError(f"{family}-evidence-invalid", str(error))
             failure.rejected_evidence = {"caseIds": [cases[0]["id"]], "coverageCredit": False,
                                          "retainedDirectory": str(attempt), "reason": str(error)}
             raise failure from error
@@ -1356,6 +1363,7 @@ def run_suite(*, checkout: Path, node: Path, smoke: bool = False,
             "prompt-history-repair-runtime",
             *DREAM_FAMILIES,
             "embed-cache-lifecycle-runtime", "automation-job-state-runtime", "automation-job-outcomes-runtime",
+            "compaction-assembly-restart-runtime",
         }
         runtime_cases = [case for case in cases if case["operation"] in runtime_operations]
         source_cases = [case for case in cases if case["operation"] not in runtime_operations]
@@ -2065,11 +2073,12 @@ def run_suite(*, checkout: Path, node: Path, smoke: bool = False,
                     native_comparison = native["result"]
                     python_case = deepcopy(case)
                     if case in python_diagnostic_cases:
-                        if case["operation"] in {"automation-job-outcomes-runtime", "workspace-lock-process-runtime", "automation-job-state-runtime", "index-identity-boundaries-runtime", "query-sync-outcomes-runtime", "query-sync-boundaries-runtime", "forget-lineage-runtime", "forget-boundaries-runtime", "recall-signals-runtime", "embed-cache-lifecycle-runtime", "session-reset-boundaries-runtime", "prompt-runtime-context-runtime", "prompt-history-repair-runtime", "deep-consolidation-runtime", *DREAM_FAMILIES}:
+                        if case["operation"] in {"compaction-assembly-restart-runtime", "automation-job-outcomes-runtime", "workspace-lock-process-runtime", "automation-job-state-runtime", "index-identity-boundaries-runtime", "query-sync-outcomes-runtime", "query-sync-boundaries-runtime", "forget-lineage-runtime", "forget-boundaries-runtime", "recall-signals-runtime", "embed-cache-lifecycle-runtime", "session-reset-boundaries-runtime", "prompt-runtime-context-runtime", "prompt-history-repair-runtime", "deep-consolidation-runtime", *DREAM_FAMILIES}:
                             # Keep the original child paths and bytes for the post-run
                             # semantic replay, including failed SDK captures.
                             family = ("deep-consolidation" if case["operation"] == "deep-consolidation-runtime" else
                                       evidence_family(case["operation"]) if case["operation"] in DREAM_FAMILIES else
+                                      "compaction-context-assembly" if case["operation"] == "compaction-assembly-restart-runtime" else
                                       "automation-job-outcomes" if case["operation"] == "automation-job-outcomes-runtime" else
                                       "automation-job-state" if case["operation"] == "automation-job-state-runtime" else
                                       "workspace-locks" if case["operation"] == "workspace-lock-process-runtime" else
@@ -2120,8 +2129,11 @@ def run_suite(*, checkout: Path, node: Path, smoke: bool = False,
                             snapshots = [snapshots]
                         if not isinstance(snapshots, list):
                             raise ValueError("Runtime diagnostics must retain raw snapshot rows.")
-                        if case["operation"] == "automation-job-outcomes-runtime":
-                            from equivalence.automation_job_outcomes import review_pair
+                        if case["operation"] in {"automation-job-outcomes-runtime", "compaction-assembly-restart-runtime"}:
+                            if case["operation"] == "compaction-assembly-restart-runtime":
+                                from equivalence.compaction_assembly import review_pair
+                            else:
+                                from equivalence.automation_job_outcomes import review_pair
 
                             original = next(d for d in report["runtimeDiagnostics"]
                                             if d["side"] == "native" and d["id"] == case["id"])
@@ -2453,7 +2465,7 @@ def run_suite(*, checkout: Path, node: Path, smoke: bool = False,
                     row.update(status="blocked", code="python-case-failed")
                     if case["requirement"] == "heartbeat.turn-decisions":
                         row["evidenceError"] = {"name": type(error).__name__, "message": str(error)}
-                    if case["operation"] in {"automation-job-outcomes-runtime", "workspace-lock-process-runtime", "promotion-apply-family-runtime", "deep-consolidation-runtime", "host-restart-session-runtime",
+                    if case["operation"] in {"compaction-assembly-restart-runtime", "automation-job-outcomes-runtime", "workspace-lock-process-runtime", "promotion-apply-family-runtime", "deep-consolidation-runtime", "host-restart-session-runtime",
                                              "host-update-isolation-runtime", "host-turn-barrier-runtime",
                                              "host-turn-barrier-boundaries-runtime", "index-identity-boundaries-runtime", "query-sync-outcomes-runtime", "query-sync-boundaries-runtime", "forget-lineage-runtime", "forget-boundaries-runtime", "recall-signals-runtime", "embed-cache-lifecycle-runtime", "session-reset-boundaries-runtime", "prompt-runtime-context-runtime", "prompt-history-repair-runtime", *DREAM_FAMILIES}:
                         row["evidenceError"] = {"name": type(error).__name__, "message": str(error)}
@@ -2538,6 +2550,11 @@ def run_suite(*, checkout: Path, node: Path, smoke: bool = False,
         locks_complete = lock_family_complete(report["cases"])
         report["workspaceLockFamilyComplete"] = locks_complete
 
+        from equivalence.compaction_assembly import family_complete as compaction_restarts_complete, POINT as restart_point
+
+        restarts_complete = compaction_restarts_complete(report["cases"])
+        report["compactionAssemblyRestartComplete"] = restarts_complete
+
         from equivalence.automation_job_outcomes import family_complete as job_outcomes_complete, POINT as job_outcome_point
 
         outcomes_complete = job_outcomes_complete(report["cases"])
@@ -2585,6 +2602,7 @@ def run_suite(*, checkout: Path, node: Path, smoke: bool = False,
                                                       and (point["id"] != jobs_point or jobs_complete)
                                                       and (point["id"] != job_outcome_point or outcomes_complete)
                                                       and (point["id"] != heartbeat_boundary or heartbeat_complete)
+                                                      and (point["id"] != restart_point or restarts_complete)
                                                       and dream_points.get(point["id"], True)
                                                       and (point["id"] not in numeric_points or numeric_complete)
                                                       and (point["id"] not in deep_points or deep_complete)

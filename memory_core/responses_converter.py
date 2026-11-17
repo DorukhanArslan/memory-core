@@ -29,6 +29,7 @@ from collections.abc import Mapping, Sequence
 from typing import Any
 
 from memory_core.bootstrap._js import js_trim, js_truthy, js_utf8_encode, utf16_len
+from memory_core.responses_egress import project_responses_input, resolve_responses_endpoint_class
 from memory_core.compaction_replay import (
     UNDEFINED,
     ReplayIdentity,
@@ -796,6 +797,38 @@ def convert_responses_messages(
         redact=redact,
         provider_style=False,
     )
+
+
+def build_responses_transport_input(
+    model: ReplayModel, request: Mapping[str, Any], identity: ReplayIdentity,
+) -> list[Any]:
+    """Build the HTTP input for an openai-responses transport using its route capabilities."""
+    if model.api != "openai-responses":
+        raise ValueError("This transport requires the openai-responses API")
+    endpoint = resolve_responses_endpoint_class(model.base_url)
+    provider = js_trim(model.provider).lower()
+    compat = model.compat or {}
+    supports_instructions = compat.get("supportsInstructions")
+    if not isinstance(supports_instructions, bool):
+        supports_instructions = (provider == "openai" if endpoint == "default" else
+                                 endpoint in {"openai-public", "openai", "xai-native"})
+    native_store = (provider in {"openai", "azure-openai", "azure-openai-responses"}
+                    and endpoint in {"openai-public", "openai", "azure-openai"})
+    configured_store = (compat.get("supportsResponsesContinuation") is True
+                        and provider not in {"azure-openai", "azure-openai-responses"})
+    # The provider wrapper applies its storage policy before converting item IDs.
+    replay_item_ids = compat.get("supportsStore") is not False and (native_store or configured_store)
+    prompt = request.get("systemPrompt")
+    items = convert_responses_messages(
+        model, request["messages"], prompt, include_system_prompt=not supports_instructions,
+        replay_responses_item_ids=replay_item_ids, session_id=identity.session_id,
+        auth_profile_id=identity.auth_profile_id,
+    )
+    if not items and prompt:
+        if not strip_system_prompt_cache_boundary(prompt):
+            raise ValueError("OpenAI Responses requires non-empty input when only systemPrompt is provided.")
+        items.append(_responses_message("user", [{"type": "input_text", "text": " "}]))
+    return project_responses_input(items, model)
 
 
 def convert_provider_responses_messages(

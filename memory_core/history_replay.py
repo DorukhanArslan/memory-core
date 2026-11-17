@@ -15,7 +15,10 @@ import re
 from typing import Any
 
 from memory_core.bootstrap._js import js_trim
-from memory_core.compaction_replay import ReplayModel
+from memory_core.compaction_replay import (
+    ReplayIdentity, ReplayModel, preserve_compaction_replay_window,
+    resolve_compaction_replay_eligibility,
+)
 from memory_core.history import get_history_limit_from_session_key, limit_history_turns
 from memory_core.history_stream_inputs import sanitize_replay_tool_call_inputs
 from memory_core.history_validation import (
@@ -51,6 +54,7 @@ class HistoryReplayContext:
     model: ReplayModel
     config: Mapping[str, Any] | None = None
     route: Mapping[str, Any] | None = None
+    forwarded_auth_profile_id: str | None = None
 
     def __post_init__(self):
         if not isinstance(self.model, ReplayModel):
@@ -64,6 +68,8 @@ class HistoryReplayContext:
             raise TypeError("history replay config must be a mapping")
         if self.route is not None and not isinstance(self.route, Mapping):
             raise TypeError("history replay route must be a mapping")
+        if self.forwarded_auth_profile_id is not None and not isinstance(self.forwarded_auth_profile_id, str):
+            raise TypeError("the forwarded auth profile id must be a string")
         object.__setattr__(self, "model", replace(self.model,
             params=deepcopy(self.model.params), compat=deepcopy(self.model.compat)))
         object.__setattr__(self, "config", deepcopy(dict(self.config)) if self.config is not None else None)
@@ -247,11 +253,13 @@ def _assert_responses_pairs(messages):
 class HistoryReplay:
     """One admitted turn's actual preparation and callback-stage observations."""
 
-    def __init__(self, context, *, session_key, events, allowed_tool_names, now_ms):
+    def __init__(self, context, *, session_key, events, allowed_tool_names, now_ms, session_id=None):
         self.context = deepcopy(context)
         self.policy = resolve_history_replay_policy(context.model)
         self.now_ms = now_ms
         self.is_responses = context.model.api in _RESPONSES
+        self.replay_identity = ReplayIdentity(session_id, context.forwarded_auth_profile_id,
+                                              resolve_compaction_replay_eligibility(context.model))
         self.allowed_tool_names = tuple(allowed_tool_names)
         self.history_limit = get_history_limit_from_session_key(session_key, context.config, context.route)
         self.stages = []
@@ -305,7 +313,8 @@ class HistoryReplay:
         if self.policy.validateAnthropicTurns:
             source = validate_anthropic_turns(source)
         self._stage("session:validated", source)
-        source = limit_history_turns(source, self.history_limit)
+        source = preserve_compaction_replay_window(
+            source, limit_history_turns(source, self.history_limit), self.context.model, self.replay_identity)
         source = sanitize_tool_use_result_pairing_for_model(source, self.is_responses, now_ms=self.now_ms)
         self.prepared = self._stage("session:limited", source)
         return deepcopy(self.prepared)

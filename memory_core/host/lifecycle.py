@@ -19,6 +19,7 @@ from typing import Any, Literal
 from uuid import uuid4
 
 from memory_core.bootstrap._js import js_trim
+from memory_core.compaction_replay import CompactionTracker, build_openai_responses_reasoning_replay_metadata
 from memory_core.config import MemoryConfig
 from memory_core.consolidation.artifact_provenance import MemoryArtifactProvenanceStore
 from memory_core.curation import APPEND_DAILY_NOTE, CURATION_OPERATIONS
@@ -27,6 +28,7 @@ from memory_core.host.kit import HostKit, TurnContext
 from memory_core.host.session import SessionState, TurnUsage, apply_turn_usage
 from memory_core.memory_write_provenance import _observe_memory_write_entry
 from memory_core.model_prompt import ModelPrompt, RuntimePromptInput, serialize_model_tool_json
+from memory_core.responses_converter import build_responses_transport_input
 from memory_core.session_catalog import MemorySessionCatalog, normalize_session_agent_id
 from memory_core.session_transcript_append import resolve_message_append_parent, timestamp_ms_to_iso
 from memory_core.transcript_tree import select_visible_transcript_events
@@ -269,6 +271,35 @@ class HostTurn:
                 self._model_prompt = self._runner._prepare_model_prompt(
                     "", RuntimePromptInput(), self.context, self.turn_id)
             return self._model_prompt.request(self._projection_messages)
+
+    def _responses_history(self):
+        if not self._open:
+            raise RuntimeError("The host turn is closed")
+        history = self._model_prompt.history_replay if self._model_prompt is not None else None
+        if history is None or history.context.model.api != "openai-responses":
+            raise ValueError("Configure an openai-responses history replay route for this turn")
+        return history
+
+    def responses_input(self) -> list[Any]:
+        """Return the provider HTTP input for the admitted OpenAI Responses turn."""
+        with self._guard:
+            history = self._responses_history()
+            return build_responses_transport_input(
+                history.context.model, self.model_request(), history.replay_identity)
+
+    def responses_compaction_tracker(self, assistant: dict[str, Any]) -> CompactionTracker:
+        """Bind stream item events to this session before record_message persists the assistant.
+
+        On output_item.added and output_item.done, supply the item and current
+        assistant content length to the tracker's added and completed methods.
+        """
+        with self._guard:
+            history = self._responses_history()
+            if assistant.get("role") != "assistant":
+                raise ValueError("Responses checkpoints belong to the emitted assistant")
+            model = history.context.model
+            metadata = build_openai_responses_reasoning_replay_metadata(model, history.replay_identity)
+            return CompactionTracker(assistant, model, metadata)
 
     def record_message(self, message: Mapping[str, Any]) -> dict[str, Any]:
         """Persist one actual model-produced assistant record with owned trust."""
@@ -1012,7 +1043,7 @@ class HostSessionRunner:
         prompt = ModelPrompt(effective_prompt, options, tools=registry,
             workspace_prompt=context.workspace.prompt_text, citations_mode=self.kit.memory.config.citation_mode,
             identity=self.kit._identity, now_ms=self._clock(), session_version=version, user_key=user_key,
-            session_key=self.session.session_key,
+            session_key=self.session.session_key, session_id=self.session.session_id,
             history_events=select_visible_transcript_events(list(snapshot.events)) if snapshot else ())
         self.last_model_prompt = prompt
         return prompt

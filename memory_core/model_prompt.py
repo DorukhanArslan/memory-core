@@ -268,7 +268,7 @@ class ModelPrompt:
     """One admitted prompt's transient carrier and actual assembly receipts."""
 
     def __init__(self, effective_prompt, options, *, tools, workspace_prompt, citations_mode,
-                 identity, now_ms, session_version, user_key, session_key=None, history_events=()):
+                 identity, now_ms, session_version, user_key, session_key=None, history_events=(), session_id=None):
         self.options, self.identity, self.session_version = options, identity, session_version
         self.user_key, self.closed = user_key, False
         self.now_ms = now_ms
@@ -280,7 +280,7 @@ class ModelPrompt:
             raise ValueError("Model tools must select unique genuine host registrations")
         self.tools = [registry[name] for name in offered]
         self.history_replay = (HistoryReplay(options.history_replay, session_key=session_key,
-            events=history_events, allowed_tool_names=offered, now_ms=now_ms)
+            events=history_events, allowed_tool_names=offered, now_ms=now_ms, session_id=session_id)
             if options.history_replay is not None else None)
         mode = options.citations_mode or citations_mode
         guidance = build_prompt_section(set(offered), citations_mode=mode)

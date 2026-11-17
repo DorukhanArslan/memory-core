@@ -55,6 +55,11 @@ def test_assemble_context_engine_messages_strips_hidden_runtime_context():
     assert assemble_context_engine_messages(
         [visible_user, runtime_context, visible_assistant]
     ) == [visible_user, visible_assistant]
+    signed_prefix = [visible_user, runtime_context, visible_assistant]
+    assembled = assemble_context_engine_messages(signed_prefix, append_only_runtime_context=True)
+    assert assembled == signed_prefix
+    assembled.clear()
+    assert len(signed_prefix) == 3
 
 
 def test_build_context_engine_conversation_snapshot_adjusts_pre_prompt_count():

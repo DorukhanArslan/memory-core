@@ -22,7 +22,7 @@ const recallFile = "memory/.dreams/short-term-recall.json";
 const signalFile = "memory/.dreams/phase-signals.json";
 const errorRecord = e => ({name: e.name, message: e.message, stack: e.stack, ...(e.code ? {code: e.code} : {})});
 
-async function snapshot(root, blobs, folder = root, result = {}) {
+export async function snapshot(root, blobs, folder = root, result = {}) {
   for (const name of (await fs.readdir(folder)).sort()) {
     const file = path.join(folder, name);
     const info = await fs.lstat(file);
@@ -40,10 +40,21 @@ async function snapshot(root, blobs, folder = root, result = {}) {
   return result;
 }
 
-function publicEvents(records, root) {
+export function compressCapturedBlobs(raw) {
+  raw.blobEncoding = "gzip-base64";
+  let capturedBytes = 0;
+  for (const [sha256, content] of Object.entries(raw.blobs)) {
+    const bytes = Buffer.from(content, "base64");
+    capturedBytes += bytes.length;
+    if (capturedBytes > 16 * 1024 * 1024) throw Error("Light capture exceeded the reviewed filesystem bound");
+    raw.blobs[sha256] = gzipSync(bytes).toString("base64");
+  }
+}
+
+export function publicEvents(records, root) {
   // Event paths originate in the real write callback. Only its owned root varies.
   return records.map(event => Object.fromEntries(Object.entries(event).map(([key, value]) =>
-    [key, ["reportPath", "inlinePath"].includes(key) && typeof value === "string" && value.startsWith(root + "/") ? "$WORKSPACE" + value.slice(root.length) : value])));
+    [key, ["reportPath", "inlinePath", "memoryPath"].includes(key) && typeof value === "string" && value.startsWith(root + "/") ? "$WORKSPACE" + value.slice(root.length) : value])));
 }
 
 export function runDreamLightRuntime(input, runtimeConfig) {
@@ -182,14 +193,7 @@ async function runPhase(input, runtimeConfig, phase, boundHashes, rem) {
     for (const [key, value] of Object.entries(savedEnv)) {
       if (value === undefined) delete process.env[key]; else process.env[key] = value;
     }
-    raw.blobEncoding = "gzip-base64";
-    let capturedBytes = 0;
-    for (const [sha256, content] of Object.entries(raw.blobs)) {
-      const bytes = Buffer.from(content, "base64");
-      capturedBytes += bytes.length;
-      if (capturedBytes > 16 * 1024 * 1024) throw Error("Light capture exceeded the reviewed filesystem bound");
-      raw.blobs[sha256] = gzipSync(bytes).toString("base64");
-    }
+    compressCapturedBlobs(raw);
     await fs.writeFile(path.join(evidence, "native-raw.json"), JSON.stringify([raw]), {flag: "wx"});
   }
 }

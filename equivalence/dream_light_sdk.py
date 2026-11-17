@@ -34,7 +34,7 @@ def event_projection(events, workspace):
     result = deepcopy(events)
     prefix = str(workspace) + "/"
     for event in result:
-        for key in ("reportPath", "inlinePath"):
+        for key in ("reportPath", "inlinePath", "memoryPath"):
             path = event.get(key)
             if isinstance(path, str) and path.startswith(prefix):
                 event[key] = "$WORKSPACE/" + path[len(prefix):]

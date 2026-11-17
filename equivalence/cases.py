@@ -420,6 +420,10 @@ def run_python(case: dict[str, Any]) -> Any:
 
         validate_prompt_context_case({key: value for key, value in case.items() if key != "_diagnosticDirectory"})
         return run_prompt_runtime_context(arguments, evidence_directory=case.get("_diagnosticDirectory"))
+    if operation == "dream-deep-runtime":
+        from equivalence.dream_deep_sdk import run_sdk
+
+        return run_sdk(case, case.get("_diagnosticDirectory"))
     if operation in {"dream-light-runtime", "dream-rem-runtime"}:
         from equivalence.dream_light_sdk import run_sdk
 

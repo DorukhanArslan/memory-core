@@ -88,7 +88,8 @@ _OPERATIONS = {
     "recall-signals-runtime": ("recall-signals-runtime.mjs", "dist/short-term-promotion-record-DrLa1fiO.mjs", False),
     "session-reset-boundaries-runtime": ("session-reset-boundaries-runtime.mjs", "dist/bundled/session-memory/handler.js", False),
     "prompt-runtime-context-runtime": ("prompt-runtime-context-runtime.mjs", "dist/builtin-openclaw-D1Xfnzzr.mjs", False),
-    **dict.fromkeys(DREAM_FAMILIES, ("dream-light-runtime.mjs", "dist/dreaming-phases-rmgXNBLP.mjs", False)),
+    **dict.fromkeys(("dream-light-runtime", "dream-rem-runtime"), ("dream-light-runtime.mjs", "dist/dreaming-phases-rmgXNBLP.mjs", False)),
+    "dream-deep-runtime": ("dream-deep-runtime.mjs", "dist/extensions/memory-core/index.js", False),
     "prompt-history-repair-runtime": ("prompt-history-repair-runtime.mjs", "dist/builtin-openclaw-D1Xfnzzr.mjs", False),
     "flush-trigger-runtime": (
         "flush-runtime.mjs", "dist/agent-runner-memory-Cc4lCZcs.mjs", False,
@@ -1773,7 +1774,11 @@ class ReleaseOracleExecution:
                 raise RuntimeOracleError("Missing real SQLite plugin state worker for dreaming")
             if operation == "dream-rem-runtime" and str((ROOT / "equivalence/dream-rem-runtime.mjs").resolve()) not in local_imports:
                 raise RuntimeOracleError("Missing the reviewed REM callback driver")
-            validate_dream_light_native(case, row["result"], diagnostic, evidence.parent, loaded)
+            if operation == "dream-deep-runtime":
+                from equivalence.dream_deep_evidence import validate_deep_native
+                validate_deep_native(case, row["result"], diagnostic, evidence.parent, loaded)
+            else:
+                validate_dream_light_native(case, row["result"], diagnostic, evidence.parent, loaded)
         if operation == "embed-cache-lifecycle-runtime":
             from equivalence.embedding_cache_lifecycle_bindings import REQUIRED_RUNTIME_ARTIFACTS
             from equivalence.embedding_cache_lifecycle_evidence import validate_native

@@ -305,11 +305,13 @@ def _validate_scope(scope: Any, cases: Any) -> tuple[list[dict], dict[str, set[s
         validate_storage_path_acceptance_registration(cases)
     except (TypeError, ValueError) as error:
         raise HarnessError("cases-invalid", "Path-safety acceptance requires its complete reviewed whole-tool family set.") from error
+    from equivalence.automation_job_outcomes import validate_registration as validate_job_outcomes
     from equivalence.automation_job_state import validate_registration as validate_jobs_registration
     from equivalence.engine_numeric_family import validate_registration as validate_numeric_registration
     try:
         validate_numeric_registration(cases)
         validate_jobs_registration(cases)
+        validate_job_outcomes(cases)
     except (ValueError, KeyError, TypeError) as error:
         raise HarnessError("cases-invalid", str(error)) from None
     from equivalence.promotion_ranking_acceptance import validate_promotion_ranking_acceptance
@@ -428,6 +430,21 @@ def _oracle(node: Path, script: Path, checkout: Path, cases: list[dict], timeout
     timeout_limit = 180 if boundary_case or query_sync_boundary_case else 120
     if not isinstance(timeout, (int, float)) or isinstance(timeout, bool) or not 0 < timeout <= timeout_limit:
         raise HarnessError("timeout-invalid", f"The oracle requires a finite timeout of at most {timeout_limit} seconds.")
+    if len(cases) == 1 and cases[0]["operation"] == "automation-job-outcomes-runtime":
+        from equivalence.automation_job_outcomes import run_original
+
+        if release_runtime is None:
+            raise HarnessError("release-runtime-unavailable", "Automation outcomes require the pinned release.")
+        retained = ROOT / ".equivalence-results" / "automation-job-outcomes"
+        retained.mkdir(parents=True, exist_ok=True)
+        attempt = Path(tempfile.mkdtemp(prefix="native-attempt-", dir=retained))
+        try:
+            return run_original(cases[0], node, checkout, release_runtime, attempt)
+        except Exception as error:
+            failure = HarnessError("automation-job-outcomes-evidence-invalid", str(error))
+            failure.rejected_evidence = {"caseIds": [cases[0]["id"]], "coverageCredit": False,
+                                         "retainedDirectory": str(attempt), "reason": str(error)}
+            raise failure from error
     if len(cases) == 1 and cases[0]["operation"] == "automation-job-state-runtime":
         from equivalence.automation_job_state_evidence import validate_native
         from equivalence.automation_job_state_native import run_native
@@ -1299,7 +1316,7 @@ def run_suite(*, checkout: Path, node: Path, smoke: bool = False,
             "session-reset-boundaries-runtime",
             "prompt-runtime-context-runtime",
             "prompt-history-repair-runtime",
-            "embed-cache-lifecycle-runtime", "automation-job-state-runtime",
+            "embed-cache-lifecycle-runtime", "automation-job-state-runtime", "automation-job-outcomes-runtime",
         }
         runtime_cases = [case for case in cases if case["operation"] in runtime_operations]
         source_cases = [case for case in cases if case["operation"] not in runtime_operations]
@@ -1978,10 +1995,11 @@ def run_suite(*, checkout: Path, node: Path, smoke: bool = False,
                     native_comparison = native["result"]
                     python_case = deepcopy(case)
                     if case in python_diagnostic_cases:
-                        if case["operation"] in {"automation-job-state-runtime", "index-identity-boundaries-runtime", "query-sync-outcomes-runtime", "query-sync-boundaries-runtime", "forget-lineage-runtime", "forget-boundaries-runtime", "recall-signals-runtime", "embed-cache-lifecycle-runtime", "session-reset-boundaries-runtime", "prompt-runtime-context-runtime", "prompt-history-repair-runtime"}:
+                        if case["operation"] in {"automation-job-outcomes-runtime", "automation-job-state-runtime", "index-identity-boundaries-runtime", "query-sync-outcomes-runtime", "query-sync-boundaries-runtime", "forget-lineage-runtime", "forget-boundaries-runtime", "recall-signals-runtime", "embed-cache-lifecycle-runtime", "session-reset-boundaries-runtime", "prompt-runtime-context-runtime", "prompt-history-repair-runtime"}:
                             # Keep the original child paths and bytes for the post-run
                             # semantic replay, including failed SDK captures.
-                            family = ("automation-job-state" if case["operation"] == "automation-job-state-runtime" else
+                            family = ("automation-job-outcomes" if case["operation"] == "automation-job-outcomes-runtime" else
+                                      "automation-job-state" if case["operation"] == "automation-job-state-runtime" else
                                       "prompt-history-repair" if case["operation"] == "prompt-history-repair-runtime" else
                                       "prompt-runtime-context" if case["operation"] == "prompt-runtime-context-runtime" else
                                       "session-reset-boundaries" if case["operation"] == "session-reset-boundaries-runtime" else
@@ -2029,6 +2047,15 @@ def run_suite(*, checkout: Path, node: Path, smoke: bool = False,
                             snapshots = [snapshots]
                         if not isinstance(snapshots, list):
                             raise ValueError("Runtime diagnostics must retain raw snapshot rows.")
+                        if case["operation"] == "automation-job-outcomes-runtime":
+                            from equivalence.automation_job_outcomes import review_pair
+
+                            original = next(d for d in report["runtimeDiagnostics"]
+                                            if d["side"] == "native" and d["id"] == case["id"])
+                            native_comparison, python = review_pair(case, native_comparison, python, original,
+                                hashlib.sha256(raw).hexdigest(), directory, report["implementation"])
+                            row.update(runtimeEvidenceValidated=True, openclaw=native_comparison, python=python,
+                                       sdkEvidenceDirectory=str(directory))
                         if case["operation"] == "automation-job-state-runtime":
                             from equivalence.automation_job_state_evidence import validate_sdk
 
@@ -2297,7 +2324,7 @@ def run_suite(*, checkout: Path, node: Path, smoke: bool = False,
                     if case["requirement"] == "engine.numeric-boundaries":
                         row["numericError"] = {"type": type(error).__name__, "message": str(error)}
                     row.update(status="blocked", code="python-case-failed")
-                    if case["operation"] in {"promotion-apply-family-runtime", "host-restart-session-runtime",
+                    if case["operation"] in {"automation-job-outcomes-runtime", "promotion-apply-family-runtime", "host-restart-session-runtime",
                                              "host-update-isolation-runtime", "host-turn-barrier-runtime",
                                              "host-turn-barrier-boundaries-runtime", "index-identity-boundaries-runtime", "query-sync-outcomes-runtime", "query-sync-boundaries-runtime", "forget-lineage-runtime", "forget-boundaries-runtime", "recall-signals-runtime", "embed-cache-lifecycle-runtime", "session-reset-boundaries-runtime", "prompt-runtime-context-runtime", "prompt-history-repair-runtime"}:
                         row["evidenceError"] = {"name": type(error).__name__, "message": str(error)}
@@ -2361,6 +2388,10 @@ def run_suite(*, checkout: Path, node: Path, smoke: bool = False,
 
         jobs_complete = jobs_family_complete(report["cases"])
         report["automationJobStateBoundariesComplete"] = jobs_complete
+        from equivalence.automation_job_outcomes import family_complete as job_outcomes_complete, POINT as job_outcome_point
+
+        outcomes_complete = job_outcomes_complete(report["cases"])
+        report["automationJobOutcomesComplete"] = outcomes_complete
         from equivalence.query_sync_boundaries import POINTS as query_sync_boundary_points
         from equivalence.query_sync_outcomes import POINTS as query_sync_points
         from equivalence.index_identity_boundaries import POINTS as identity_boundary_points
@@ -2402,6 +2433,7 @@ def run_suite(*, checkout: Path, node: Path, smoke: bool = False,
                                                       and (point["id"] not in history_points
                                                            or history_complete)
                                                       and (point["id"] != jobs_point or jobs_complete)
+                                                      and (point["id"] != job_outcome_point or outcomes_complete)
                                                       and (point["id"] not in numeric_points or numeric_complete)]})
             report["requirements"].append({"id": requirement["id"], "required": requirement["required"],
                                             "acceptance": acceptance, "registeredCases": len(rows)})

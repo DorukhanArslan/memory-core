@@ -34,8 +34,8 @@ jobs. Legacy custom scratch stores retain their small host-owned ABI. Fix hints 
 description name the memory-core
 helpers instead of ``openclaw doctor``; the legacy task timestamps come in as
 ``legacy_task_state`` and the cleaned map comes back in the result for the host to persist;
-jobs changed by another writer between planning and commit are not detected (upstream
-``job-conflict``); OS error texts are Python's.
+the file store rechecks planned job identities and declarations at the scratch commit.
+Custom stores retain their host-owned write contract. OS error texts are Python's.
 """
 
 from __future__ import annotations
@@ -111,11 +111,13 @@ from memory_core._heartbeat_constants import (
     HEARTBEAT_TASK_WARNING_INVALID,
     HEARTBEAT_TASK_WARNING_NOT_PLANNED,
     HEARTBEAT_TASK_WARNING_SCRATCH_CHANGED,
+    HEARTBEAT_TASK_WARNING_JOBS_CHANGED,
     HEARTBEAT_TASK_WARNING_UNREADABLE,
     LEGACY_HEARTBEAT_FILENAME,
 )
 from memory_core.automation import (
     AutomationJob,
+    AutomationJobConflictError,
     AutomationStore,
     FileAutomationStore,
     assert_automation_jobs_can_persist,
@@ -155,6 +157,7 @@ __all__ = [
     "heartbeat_task_migration_findings",
     "migrate_heartbeat_md",
     "migrate_heartbeat_tasks",
+    "migrate_session_heartbeat_tasks",
 ]
 
 HEARTBEAT_MIGRATION_ARCHIVE_PARTS = (STATE_DIRNAME, "backups", "heartbeat-migration")
@@ -1080,6 +1083,7 @@ def _converge_task_job(
         return replace(job, next_run_at_ms=compute_job_next_run_at_ms(job, now_ms))
     job = replace(
         existing,
+        calendar_schedule=None,
         display_name=display_name,
         every_ms=interval_ms,
         anchor_ms=anchor,
@@ -1088,7 +1092,7 @@ def _converge_task_job(
     )
 
     def declarative(value: AutomationJob) -> tuple[Any, ...]:
-        return (value.every_ms, value.anchor_ms, value.text, value.display_name, value.enabled)
+        return (value.every_ms, value.anchor_ms, value.calendar_schedule, value.text, value.display_name, value.enabled)
 
     if declarative(existing) == declarative(job):
         return job
@@ -1107,6 +1111,7 @@ def migrate_heartbeat_tasks(
     *,
     agent_id: str = "main",
     legacy_task_state: Mapping[str, float] | None = None,
+    repair: bool = True,
     now_ms: int | None = None,
 ) -> HeartbeatMigrationResult:
     """Turn the ``tasks:`` block of an agent's monitor scratch into automation jobs.
@@ -1152,6 +1157,8 @@ def migrate_heartbeat_tasks(
                 ),
             ),
         )
+    if not repair:
+        return HeartbeatMigrationResult((), ())
     existing_jobs = store.list_jobs()
     planned: list[tuple[AutomationJob | None, AutomationJob]] = []
     for item in validated:
@@ -1200,11 +1207,14 @@ def migrate_heartbeat_tasks(
         committed = store.save_jobs(
             [job for previous, job in planned if previous != job],
             scratch_agent_id=agent_id,
+            **({"expected_jobs": planned} if isinstance(store, FileAutomationStore) else {}),
             scratch_content=document.stripped_content,
             scratch_expected_revision=scratch.revision,
             scratch_source_sha256=scratch.source_sha256,
             now_ms=stamp,
         )
+    except AutomationJobConflictError:
+        return HeartbeatMigrationResult((), (HEARTBEAT_TASK_WARNING_JOBS_CHANGED.format(agent_id=agent_id),))
     except Exception as exc:
         return HeartbeatMigrationResult(
             (),
@@ -1235,3 +1245,21 @@ def migrate_heartbeat_tasks(
         task_state=(remaining or None) if changed else (dict(legacy_task_state) if legacy_task_state else None),
         task_state_changed=changed,
     )
+
+
+
+def migrate_session_heartbeat_tasks(
+    store: AutomationStore, catalog, session_key: str, *, repair: bool = True, now_ms: int | None = None,
+) -> HeartbeatMigrationResult:
+    """Migrate jobs and clear migrated names from the host's durable session catalog."""
+    entry = catalog.get_session_entry(session_key) or {}
+    result = migrate_heartbeat_tasks(store, agent_id=catalog.agent_id, repair=repair,
+                                     legacy_task_state=entry.get("heartbeatTaskState"), now_ms=now_ms)
+    if result.changes:
+        try:
+            catalog.clear_heartbeat_task_timestamps(session_key, [job.name for job in result.jobs])
+        except Exception as error:
+            warning = (f'Agent "{catalog.agent_id}" legacy task timestamps could not be cleared after migration: '
+                       f'{_format_error_message(error)}. Cron jobs remain authoritative and a rerun is safe.')
+            return replace(result, warnings=(*result.warnings, warning))
+    return result

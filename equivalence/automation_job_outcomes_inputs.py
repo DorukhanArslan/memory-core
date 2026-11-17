@@ -20,6 +20,60 @@ def _job(job_id, schedule, *, state=None, name=None, declaration=None, enabled=T
             "state": dict(state or {})}
 
 
+CALENDAR = (('@daily', 'UTC', 1767268800000, None),
+ ('@hourly', 'UTC', 1767268800000, None),
+ ('0 0 LW * *', 'UTC', 1767268800000, None),
+ ('0 0 1W * *', 'UTC', 1767268800000, None),
+ ('0 0 31W * *', 'UTC', 1767268800000, None),
+ ('0 0 L,15 * *', 'UTC', 1767268800000, None),
+ ('0 0 * * FRIL', 'UTC', 1767268800000, None),
+ ('0 0 * * FRI#L', 'UTC', 1767268800000, None),
+ ('0 0 * * FRI-SUN', 'UTC', 1767268800000, None),
+ ('0 0 * * SUN-SAT/2', 'UTC', 1767268800000, None),
+ ('0 1 * JAN-MAR MON-FRI#2', 'UTC', 1767268800000, None),
+ ('0 0 15 * +MON', 'UTC', 1767268800000, None),
+ ('0 0 ? * MON', 'UTC', 1767268800000, None),
+ ('0 0 15 * ?', 'UTC', 1767268800000, None),
+ ('0 0 */2 * FRI', 'UTC', 1767268800000, None),
+ ('0 0 * * ?', 'UTC', 1767268800000, None),
+ ('0 0 */4 * +5', 'UTC', 1767268800000, None),
+ ('0 0 0 1 1 * 2028', 'UTC', 1767268800000, None),
+ ('0 0 0 1 1 * */2', 'UTC', 1767268800000, None),
+ ('0 0 0 1 1 * 2025-2030/2', 'UTC', 1767268800000, None),
+ ('3/5 * * * *', 'UTC', 1767268800000, None),
+ ('*/61 * * * *', 'UTC', 1767268800000, None),
+ ('0 0 31 2 *', 'UTC', 1767268800000, None),
+ ('0 0 0 * * * 2060', 'UTC', 1767268800000, None),
+ ('0 * * * *', 'UTC', 1767268800000, None),
+ ('0 ? * * *', 'UTC', 1767268800000, None),
+ ('1 0 * * *', 'UTC', 1767268800000, None),
+ ('2026-03-07T02:00:00', 'UTC', 1767268800000, None),
+ ('0 1,2 * * *', 'UTC', 1767268800000, None),
+ ('@reboot', 'UTC', 1767268800000, None),
+ ('15 0 * * *', 'Europe/Istanbul', 1775246400000, None),
+ ('30 2 * * *', 'America/New_York', 1772870400000, None),
+ ('30 1 * * *', 'America/New_York', 1793511000000, None),
+ ('5 2 * * *', 'Australia/Lord_Howe', 1791039600000, None),
+ ('45 1 * * *', 'Australia/Lord_Howe', 1775314200000, None),
+ ('0 0 1 1 *', 'Asia/Shanghai', 1798732799000, None),
+ ('0 1 * * *', '+03:30', 1775250000000, None),
+ ('0 1 * * *', 'america/new_york', 1775250000000, None),
+ ('0 0 L * FRI-SUN#L', 'UTC', 1767225600000, None),
+ ('0 * * * *', 'UTC', -2678400000, None),
+ ('0 0 1 1 *', 'UTC', 32503679999000, None),
+ ('0 * * * *', 'UTC', 1767268800000, 0),
+ ('0 * * * *', 'UTC', 1767268800000, 1),
+ ('0 * * * *', 'UTC', 1767268800000, 5000),
+ ('0 * * * *', 'UTC', 1767268800000, 300000),
+ ('0 * * * *', 'UTC', 1767268800000, '5000'))
+ABSOLUTE_TIMES = ('0', '1', '0001', '8640000000000000', '8640000000000001', '9007199254740991', '1970-01-01',
+ '1969-12-31T23:59:59.999Z', '0000-02-29', '0001-01-01', '-000000-01-01', '+000000-01-01',
+ '-000001-12-31', '+275760-09-13T00:00:00Z', '-271821-04-20T00:00:00Z',
+ '+275760-09-13T01:00:00+0100', '2026-02-30', '2024-02-29', '2026-01-01t12:30z',
+ '2026-01-01T24:00:00.0000', '2026-01-01T24:00:00.0001', '2026-01-01T01:02:03.87654-04:30',
+ '2026-01-01T00:00:00+24:00', '2026-01-01 12:00', '+178001', '\ufeff2026-01-01\ufeff')
+
+
 def scheduling_input():
     interval = {"kind": "every", "everyMs": MINUTE, "anchorMs": NOW}
     at = {"kind": "at", "at": "2026-01-01T02:01:00+02:00"}
@@ -48,6 +102,13 @@ def scheduling_input():
                         ("2026-11-01T05:31:00+00:00", "30 1 * * *")):
         probe(_job("local-time", {"kind": "cron", "expr": expr, "tz": "America/New_York", "staggerMs": 0}),
               _time(clock))
+    for expr, zone, stamp, stagger in CALENDAR:
+        schedule = {"kind": "cron", "expr": expr, "tz": zone}
+        if stagger is not None:
+            schedule["staggerMs"] = stagger
+        probe(_job("memory-probe", schedule), stamp)
+    for absolute in ABSOLUTE_TIMES:
+        probe(_job("memory-one-shot", {"kind": "at", "at": absolute}))
     ran = {"status": "ran", "durationMs": 0}
     skipped = {"status": "skipped", "reason": "empty-heartbeat-file"}
     return {"kind": "scheduling", "probes": probes, "jobs": jobs, "runs": [
@@ -57,6 +118,9 @@ def scheduling_input():
         {"jobId": "weekday", "atMs": slot, "mode": "due", "reply": ran},
         {"jobId": "once", "atMs": slot, "mode": "due", "reply": ran},
         {"jobId": "interval", "atMs": slot + MINUTE, "mode": "due", "reply": ran},
+        {"jobId": "interval", "atMs": slot + 2 * MINUTE, "mode": "due",
+         "reply": {"status": "failed", "reason": "maintenance note unavailable"}},
+        {"jobId": "interval", "atMs": slot + 3 * MINUTE, "mode": "due", "reply": ran},
     ]}
 
 

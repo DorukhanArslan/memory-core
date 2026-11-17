@@ -33,10 +33,10 @@ decisions, ported from ``src/cron/service/jobs-scheduling.ts`` and ``src/cron/sc
 ``<root>/.memory-core/automation.json``, written atomically under a lock, so a migration can move
 tasks out of the scratch and into jobs in one write (upstream: one state-DB transaction).
 
-Not ported (documented in docs/parity_matrix.md): ``cron`` and ``at`` schedules, pacing,
-triggers, delivery, error backoff and auto-disable, stagger, startup catch-up, the heartbeat
-monitor scheduling itself (its cadence is ``memory_core.heartbeat.resolve_heartbeat_interval_ms``)
-and job ids other than the host's own strings. FileAutomationStore optionally persists monitor
+The SDK also accepts absolute one-shot and cron calendar schedules, including timezones,
+DST transitions and deterministic stagger. Hosts can reserve one memory task by id, record its
+settlement and migrate old interval timestamps. Gateway triggers, notification delivery,
+configurable retry/auto-disable policies and startup recovery remain host integrations. FileAutomationStore optionally persists monitor
 ownership and job-keyed scratch without constructing or running a scheduler.
 """
 
@@ -49,10 +49,11 @@ import math
 import os
 import tempfile
 import time
+import uuid
 from collections.abc import Iterator, Sequence
-from dataclasses import dataclass, replace
+from dataclasses import dataclass, field, replace
 from pathlib import Path
-from typing import Any, Protocol
+from typing import Any, Literal, Protocol
 
 from memory_core._heartbeat_constants import (
     CRON_STORE_CANNOT_PERSIST,
@@ -107,7 +108,7 @@ def _as_date_timestamp_ms(value: object) -> float | None:
 
 @dataclass(frozen=True)
 class AutomationJob:
-    """One recurring automation job (the ``every``-schedule subset of upstream ``CronJob``).
+    """One stored memory job with an interval, absolute or cron calendar schedule.
 
     ``text`` is the ``systemEvent`` payload (a heartbeat task's prompt). ``to_json`` and
     ``from_json`` use upstream's field names, so a host can persist the job as it is.
@@ -116,7 +117,7 @@ class AutomationJob:
     id: str
     name: str
     agent_id: str
-    every_ms: int
+    every_ms: int | None
     text: str
     anchor_ms: int | None = None
     declaration_key: str | None = None
@@ -131,12 +132,17 @@ class AutomationJob:
     wake_mode: str = "next-heartbeat"
     queued_at_ms: int | None = None
     running_at_ms: int | None = None
+    calendar_schedule: dict[str, Any] | None = None
+    agent_turn: dict[str, Any] | None = None
+    has_agent_id: bool = True
+    runtime_state: dict[str, Any] = field(default_factory=dict)
+    options: dict[str, Any] = field(default_factory=dict)
 
     def to_json(self) -> dict[str, Any]:
         schedule: dict[str, Any] = {"kind": "every", "everyMs": self.every_ms}
         if self.anchor_ms is not None:
             schedule["anchorMs"] = self.anchor_ms
-        state: dict[str, Any] = {}
+        state = dict(self.runtime_state)
         if self.last_run_at_ms is not None:
             state["lastRunAtMs"] = self.last_run_at_ms
         if self.next_run_at_ms is not None:
@@ -145,7 +151,7 @@ class AutomationJob:
             state["queuedAtMs"] = self.queued_at_ms
         if self.running_at_ms is not None:
             state["runningAtMs"] = self.running_at_ms
-        out: dict[str, Any] = {"id": self.id}
+        out: dict[str, Any] = {**self.options, "id": self.id}
         if self.declaration_key is not None:
             out["declarationKey"] = self.declaration_key
         if self.display_name is not None:
@@ -153,15 +159,17 @@ class AutomationJob:
         out["name"] = self.name
         if self.description is not None:
             out["description"] = self.description
-        out.update({"agentId": self.agent_id, "enabled": self.enabled})
+        if self.has_agent_id:
+            out["agentId"] = self.agent_id
+        out["enabled"] = self.enabled
         if self.created_at_ms is not None:
             out["createdAtMs"] = self.created_at_ms
         if self.updated_at_ms is not None:
             out["updatedAtMs"] = self.updated_at_ms
         out.update(
             {
-                "schedule": schedule,
-                "payload": {"kind": "systemEvent", "text": self.text},
+                "schedule": dict(self.calendar_schedule) if self.calendar_schedule is not None else schedule,
+                "payload": dict(self.agent_turn) if self.agent_turn is not None else {"kind": "systemEvent", "text": self.text},
                 "sessionTarget": self.session_target,
                 "wakeMode": self.wake_mode,
                 "state": state,
@@ -185,8 +193,11 @@ class AutomationJob:
         state = data.get("state") or {}
         if not all(isinstance(part, dict) for part in (schedule, payload, state)):
             raise ValueError("job schedule, payload and state must be objects")
-        if schedule.get("kind") != "every" or payload.get("kind") != "systemEvent":
-            raise ValueError("only every-schedule systemEvent jobs are supported")
+        if schedule.get("kind") not in {"at", "cron", "every"} or payload.get("kind") not in {"systemEvent", "agentTurn"}:
+            raise ValueError("unsupported schedule or payload")
+        known_fields = {"id", "name", "agentId", "enabled", "schedule", "payload", "declarationKey", "displayName",
+                        "description", "createdAtMs", "updatedAtMs", "state", "sessionTarget", "wakeMode"}
+        known_state = {"lastRunAtMs", "nextRunAtMs", "queuedAtMs", "runningAtMs"}
         return cls(
             id=str(data["id"]),
             name=str(data.get("name", "")),
@@ -206,6 +217,11 @@ class AutomationJob:
             running_at_ms=state.get("runningAtMs"),
             session_target=str(data.get("sessionTarget", "main")),
             wake_mode=str(data.get("wakeMode", "next-heartbeat")),
+            calendar_schedule=dict(schedule) if schedule["kind"] != "every" else None,
+            has_agent_id="agentId" in data,
+            agent_turn=dict(payload) if payload["kind"] == "agentTurn" else None,
+            runtime_state={key: val for key, val in state.items() if key not in known_state},
+            options={key: val for key, val in data.items() if key not in known_fields},
         )
 
 
@@ -241,6 +257,15 @@ def _persisted_job(job: AutomationJob, *, normalize: bool = True) -> AutomationJ
     for value in (job.next_run_at_ms, job.last_run_at_ms, job.queued_at_ms, job.running_at_ms):
         if value is not None and not _as_safe_integer_in_range(value, 0, _MAX_DATE_TIMESTAMP_MS):
             return None
+    if job.calendar_schedule is not None:
+        from memory_core.automation_schedule import canonical_absolute_time, valid_calendar_schedule
+
+        if not valid_calendar_schedule(job.calendar_schedule):
+            return None
+        if normalize and job.calendar_schedule["kind"] == "at":
+            schedule = {**job.calendar_schedule, "at": canonical_absolute_time(job.calendar_schedule["at"])}
+            return replace(job, calendar_schedule=schedule)
+        return job
     every = _floor_schedule_number(job.every_ms, 1) if normalize else job.every_ms
     if not _as_safe_integer_in_range(every, 1, _MAX_DATE_TIMESTAMP_MS):
         return None
@@ -291,6 +316,10 @@ def compute_job_next_run_at_ms(job: AutomationJob, now_ms: float) -> int | None:
     """Port of ``computeJobNextRunAtMs`` for an ``every`` schedule (``None``: never)."""
     if not job.enabled:
         return None
+    if job.calendar_schedule is not None:
+        from memory_core.automation_schedule import next_calendar_run
+
+        return next_calendar_run(job, now_ms)
     anchor_ms = _as_date_timestamp_ms(parse_strict_finite_number(job.anchor_ms))
     if job.anchor_ms is not None and (anchor_ms is None or anchor_ms < 0):
         return None
@@ -316,14 +345,11 @@ def compute_job_next_run_at_ms(job: AutomationJob, now_ms: float) -> int | None:
     return _next_every_run_at_ms(every, anchor, now_ms)
 
 
-def is_job_due(job: AutomationJob, now_ms: float) -> bool:
+def is_job_due(job: AutomationJob, now_ms: float, *, forced: bool = False) -> bool:
     """Whether a recurring job can be admitted at the due boundary."""
     next_run = _as_date_timestamp_ms(job.next_run_at_ms)
     active = any(type(marker) in (float, int) for marker in (job.queued_at_ms, job.running_at_ms))
-    return (
-        job.enabled and not active
-        and next_run is not None and next_run > 0 and now_ms >= next_run
-    )
+    return not active and (forced or (job.enabled and next_run is not None and next_run > 0 and now_ms >= next_run))
 
 
 def is_heartbeat_task_job(job: AutomationJob) -> bool:
@@ -332,6 +358,7 @@ def is_heartbeat_task_job(job: AutomationJob) -> bool:
         job.declaration_key
         and job.declaration_key.startswith(HEARTBEAT_TASK_DECLARATION_PREFIX)
         and job.session_target == "main"
+        and job.agent_turn is None
     )
 
 
@@ -378,18 +405,52 @@ def heartbeat_scheduled_tasks(jobs: Sequence[AutomationJob]) -> tuple[HeartbeatS
 
 
 def record_automation_job_run(
-    job: AutomationJob, *, started_at_ms: int, ended_at_ms: int | None = None
+    job: AutomationJob, *, started_at_ms: int, ended_at_ms: int | None = None,
+    status: Literal["ok", "skipped", "error"] = "ok", error: str | None = None, forced: bool = False,
 ) -> AutomationJob:
-    """The job after an ``ok`` or ``skipped`` run (``applyJobResult``'s recurring path).
-
-    ``lastRunAtMs`` becomes the run start, ``nextRunAtMs`` is recomputed from the run end.
-    """
+    """Record a completed heartbeat task and advance its durable scheduling state."""
     ended = started_at_ms if ended_at_ms is None else ended_at_ms
-    ran = replace(job, last_run_at_ms=int(started_at_ms), updated_at_ms=int(ended))
-    return replace(ran, next_run_at_ms=compute_job_next_run_at_ms(ran, ended))
+    state = dict(job.runtime_state)
+    preserved = job.next_run_at_ms
+    for key in ("forcePreservedNextRunAtMs", "pacedNextRunAtMs", "runningReceiptId", "runningScheduleChangeId",
+                "lastError", "lastErrorReason", "lastDiagnostics", "lastDiagnosticSummary"):
+        state.pop(key, None)
+    state.update(lastRunStatus=status, lastStatus=status, lastDurationMs=max(0, ended - started_at_ms),
+                 lastDeliveryStatus="not-requested", lastFailureNotificationDeliveryStatus="not-requested",
+                 consecutiveErrors=state.get("consecutiveErrors", 0) + 1 if status == "error" else 0,
+                 consecutiveSkipped=state.get("consecutiveSkipped", 0) + 1 if status == "skipped" else 0)
+    if error is not None:
+        state["lastError"] = error
+    if status == "ok":
+        state.pop("failureAlertIncident", None)
+        state.pop("lastFailureAlertAtMs", None)
+    else:
+        state.setdefault("failureAlertIncident", {"scope": "run"})
+    ran = replace(job, last_run_at_ms=int(started_at_ms), updated_at_ms=int(ended),
+                  queued_at_ms=None, running_at_ms=None, runtime_state=state)
+    once = (job.calendar_schedule or {}).get("kind") == "at"
+    if forced and (not once or preserved is not None and preserved > started_at_ms):
+        if preserved is not None:
+            state["forcePreservedNextRunAtMs"] = preserved
+        return ran
+    if once:
+        return replace(ran, enabled=False, next_run_at_ms=None)
+    next_at = compute_job_next_run_at_ms(ran, ended)
+    if next_at is not None and status == "error":
+        delays = (30_000, 60_000, 300_000, 900_000, 3_600_000)
+        lower_bound = ended + delays[min(state["consecutiveErrors"] - 1, len(delays) - 1)]
+        if next_at < lower_bound and ran.calendar_schedule:
+            next_at = compute_job_next_run_at_ms(ran, lower_bound - 1)
+        else:
+            next_at = max(next_at, lower_bound)
+    return replace(ran, next_run_at_ms=next_at)
 
 
 # --- store interface and default file-backed store ---------------------------------------------
+
+
+class AutomationJobConflictError(RuntimeError):
+    """A job definition changed during a proposed task migration."""
 
 
 class AutomationStore(HeartbeatScratchStore, Protocol):
@@ -786,11 +847,63 @@ class FileAutomationStore:
         """The stored rows ``list_jobs`` skips (upstream keeps them as ``invalidConfigRows``)."""
         return self._load_jobs()[1]
 
+    def claim_heartbeat_task(self, agent_id: str, job_id: str, now_ms: int, *, forced: bool) -> AutomationJob | str:
+        """Atomically reserve one due task. Other host invocations see its running marker."""
+        with self._locked() as data:
+            for index, row in enumerate(data["jobs"]):
+                if not isinstance(row, dict) or row.get("id") != job_id:
+                    continue
+                job = AutomationJob.from_json(row)
+                if job.agent_id != agent_id or not is_heartbeat_task_job(job):
+                    return "not-due"
+                if job.running_at_ms is not None or job.queued_at_ms is not None:
+                    return "already-running"
+                if not is_job_due(job, now_ms, forced=forced):
+                    return "not-due"
+                claimed = replace(job, running_at_ms=now_ms,
+                                  runtime_state={**job.runtime_state, "runningReceiptId": str(uuid.uuid4())})
+                data["jobs"][index] = claimed.to_json()
+                self._save(data)
+                return claimed
+            raise ValueError(f"unknown cron job id: {job_id}")
+
+    def complete_claimed_job(self, claim: AutomationJob, completed: AutomationJob) -> bool:
+        """Commit a matching durable reservation while preserving independent edits/removal."""
+        with self._locked() as data:
+            for index, row in enumerate(data["jobs"]):
+                if not isinstance(row, dict) or row.get("id") != claim.id:
+                    continue
+                current = AutomationJob.from_json(row)
+                if current.runtime_state.get("runningReceiptId") != claim.runtime_state.get("runningReceiptId"):
+                    return False
+                if current == claim:
+                    if ((current.calendar_schedule or {}).get("kind") == "at"
+                            and current.options.get("deleteAfterRun") is True and not completed.enabled
+                            and completed.runtime_state.get("lastRunStatus") == "ok"):
+                        del data["jobs"][index]
+                    else:
+                        data["jobs"][index] = completed.to_json()
+                else:
+                    # The latest edit still owns the future slot. Merge only
+                    # the finished invocation's outcome and release our reservation.
+                    state = dict(current.runtime_state)
+                    for key in ("runningReceiptId", "lastError", "failureAlertIncident"):
+                        state.pop(key, None)
+                    state.update({key: val for key, val in completed.runtime_state.items()
+                                  if key.startswith(("last", "consecutive")) or key == "failureAlertIncident"})
+                    data["jobs"][index] = replace(current, running_at_ms=None,
+                        last_run_at_ms=completed.last_run_at_ms, updated_at_ms=completed.updated_at_ms,
+                        runtime_state=state).to_json()
+                self._save(data)
+                return current == claim
+            return False
+
     def save_jobs(
         self,
         jobs: Sequence[AutomationJob],
         *,
         remove: Sequence[str] = (),
+        expected_jobs: Sequence[tuple[AutomationJob | None, AutomationJob]] = (),
         scratch_agent_id: str | None = None,
         scratch_content: str | None = None,
         scratch_expected_revision: int | None = None,
@@ -837,6 +950,16 @@ class FileAutomationStore:
                     self._put_scratch(data, scratch_agent_id, new_state)
                 if not result.ok:
                     return result
+            for previous, proposed in expected_jobs:
+                matches = [row for row in data["jobs"] if isinstance(row, dict)
+                           and row.get("declarationKey") == proposed.declaration_key]
+                if previous is None:
+                    conflict = bool(matches) or any(isinstance(row, dict) and row.get("id") == proposed.id
+                                                    for row in data["jobs"])
+                else:
+                    conflict = len(matches) != 1 or AutomationJob.from_json(matches[0]) != previous
+                if conflict:
+                    raise AutomationJobConflictError(proposed.id)
             by_id = {job.id: job for job in jobs}
             removed = set(remove)
             if self._owned(data):

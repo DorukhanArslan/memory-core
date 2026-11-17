@@ -329,6 +329,9 @@ def build_cases(*, include_prospective: bool = False) -> list[dict[str, Any]]:
     from equivalence.automation_job_state import build_cases as build_automation_jobs
 
     cases.extend(build_automation_jobs())
+    from equivalence.automation_job_outcomes import build_cases as build_automation_outcomes
+
+    cases.extend(build_automation_outcomes())
     if include_prospective:
         from equivalence.flush_contract import build_prospective_flush_contract_cases
         from equivalence.session_projection import build_prospective_session_projection_cases
@@ -344,6 +347,16 @@ def build_cases(*, include_prospective: bool = False) -> list[dict[str, Any]]:
 def run_python(case: dict[str, Any]) -> Any:
     """Execute the installed Python implementation; never manufacture a match."""
     operation, arguments = case["operation"], case["input"]
+    if operation == "automation-job-outcomes-runtime":
+        from equivalence.automation_job_outcomes import run_python as run_job_outcomes
+        from tempfile import TemporaryDirectory
+
+        exact = dict(case)
+        directory = exact.pop("_diagnosticDirectory", None)
+        if directory is None:
+            with TemporaryDirectory() as temp:
+                return run_job_outcomes(exact, Path(temp))
+        return run_job_outcomes(exact, directory)
     if operation == "automation-job-state-runtime":
         from equivalence.automation_job_state_sdk import run_sdk
 

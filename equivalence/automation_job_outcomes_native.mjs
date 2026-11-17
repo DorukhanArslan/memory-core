@@ -15,9 +15,15 @@ const cfg = { cron: { store: storePath }, agents: { defaults: {
 
 async function driveScheduling() {
   const { t: CronService } = await imp("service-u8zoxec7.mjs");
-  const probes = input.probes.map(({ job, nowMs, forced }) => ({
-    nextRunAtMs: nextRun(job, nowMs) ?? null, due: isJobDue(job, nowMs, { forced }),
-  }));
+  const probeErrors = [];
+  const probes = input.probes.map(({ job, nowMs, forced }, index) => {
+    const due = isJobDue(job, nowMs, { forced });
+    try { return { nextRunAtMs: nextRun(job, nowMs) ?? null, due }; }
+    catch (error) {
+      probeErrors.push({ index, name: error.name, message: error.message, stack: error.stack });
+      return { due, scheduleError: error.message };
+    }
+  });
   await saveCronStore(storePath, { version: 1, jobs: input.jobs });
   const initialStore = await loadCronStore(storePath);
   const runs = [];
@@ -42,7 +48,7 @@ async function driveScheduling() {
     runs.push({ jobId, atMs, mode, beforeStore, afterStore: await loadCronStore(storePath),
       events, receipt, callbacks });
   }
-  return { probes, initialStore, runs };
+  return { probes, probeErrors, initialStore, runs };
 }
 
 async function driveMigration() {

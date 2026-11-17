@@ -15,6 +15,17 @@ if (rawContext.byteLength > 64 * 1024 * 1024) throw Error("Release execution con
 const context = JSON.parse(rawContext);
 const embeddingMode = context.embeddingCacheProfile !== undefined;
 const promptMode = context.promptRuntimeContextProfile !== undefined;
+if (context.dreamLightProfile !== undefined) {
+  const profile = context.dreamLightProfile;
+  if (!profile || Object.keys(profile).sort().join() !== "caseId,inputSha256,nodeRuntime,operation" ||
+      profile.operation !== "dream-light-runtime" || !profile.caseId?.startsWith("dream-light-") ||
+      !/^[a-f0-9]{64}$/.test(profile.inputSha256) ||
+      JSON.stringify(profile.nodeRuntime) !== JSON.stringify(context.approvedNodeRuntime) ||
+      Object.keys(context).some(k => k.endsWith("Profile") && k !== "dreamLightProfile") ||
+      (context.fixtureSourceCaptures ?? []).length || (context.approvedReferenceSources ?? []).length) {
+    throw Error("Unapproved light dreaming process authority");
+  }
+}
 const historyMode = context.promptHistoryRepairProfile !== undefined;
 const expectedProviderMode = embeddingMode ? "deterministic-embedding-fixture" : "none";
 if (context.schemaVersion !== 1 || context.providerMode !== expectedProviderMode || context.fetchPolicy !== "deny") {
@@ -336,6 +347,7 @@ trace({ event: "bootstrap", isMainThread, ppid: process.ppid, contextSha256: has
         ...(context.promotionApplyProfile ? { promotionApplyProfile: context.promotionApplyProfile } : {}),
         ...(context.forgetLineageProfile ? { forgetLineageProfile: context.forgetLineageProfile } : {}),
         ...(context.forgetBoundariesProfile ? { forgetBoundariesProfile: context.forgetBoundariesProfile } : {}),
+        ...(context.dreamLightProfile ? {dreamLightProfile: context.dreamLightProfile} : {}),
         ...(context.recallSignalsProfile ? { recallSignalsProfile: context.recallSignalsProfile } : {}),
         ...(context.sessionResetBoundariesProfile ? { sessionResetBoundariesProfile: context.sessionResetBoundariesProfile } : {}),
         ...(context.promptRuntimeContextProfile ? { promptRuntimeContextProfile: context.promptRuntimeContextProfile,

@@ -329,6 +329,10 @@ def build_cases(*, include_prospective: bool = False) -> list[dict[str, Any]]:
     from equivalence.deep_consolidation import build_cases as build_deep_consolidation
 
     cases.extend(build_deep_consolidation())
+
+    from equivalence.dream_light import build_cases as build_light_cases
+
+    cases.extend(build_light_cases())
     if include_prospective:
         from equivalence.flush_contract import build_prospective_flush_contract_cases
         from equivalence.session_projection import build_prospective_session_projection_cases
@@ -415,6 +419,10 @@ def run_python(case: dict[str, Any]) -> Any:
 
         validate_prompt_context_case({key: value for key, value in case.items() if key != "_diagnosticDirectory"})
         return run_prompt_runtime_context(arguments, evidence_directory=case.get("_diagnosticDirectory"))
+    if operation == "dream-light-runtime":
+        from equivalence.dream_light_sdk import run_sdk
+
+        return run_sdk(case, case.get("_diagnosticDirectory"))
     if operation == "prompt-history-repair-runtime":
         from equivalence.prompt_history_repair import validate_case as validate_history_repair_case
         from equivalence.prompt_history_repair_sdk import run_prompt_history_repair

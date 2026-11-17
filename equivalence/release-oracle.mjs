@@ -50,6 +50,7 @@ const operations = {
   "session-reset-boundaries-runtime": ["session-reset-boundaries-runtime.mjs", "runSessionResetBoundariesRuntime"],
   "prompt-runtime-context-runtime": ["prompt-runtime-context-runtime.mjs", "runPromptRuntimeContextRuntime"],
   "prompt-history-repair-runtime": ["prompt-history-repair-runtime.mjs", "runPromptHistoryRepairRuntime"],
+  "dream-light-runtime": ["dream-light-runtime.mjs", "runDreamLightRuntime"],
   "embed-cache-lifecycle-runtime": ["embedding-cache-lifecycle-runtime.mjs", "runEmbeddingCacheLifecycleRuntime"],
   "promotion-apply-reconcile-runtime": ["promotion-apply-runtime.mjs", "runPromotionApplyRuntime"],
 };
@@ -108,7 +109,7 @@ for (const testCase of request.cases) {
       context.forgetLineageProfile === undefined && context.forgetBoundariesProfile === undefined &&
       context.recallSignalsProfile === undefined && context.embeddingCacheProfile === undefined &&
       context.sessionResetBoundariesProfile === undefined && context.promptRuntimeContextProfile === undefined &&
-      context.promptHistoryRepairProfile === undefined;
+      context.promptHistoryRepairProfile === undefined && context.dreamLightProfile === undefined;
     if (modelAuthority !== Object.hasOwn(modelKinds, testCase.operation) ||
         modelAuthority && modelKinds[testCase.operation] !== null && testCase.input?.kind !== modelKinds[testCase.operation]) {
       throw Error("The model binary capability cannot execute another operation or input contract before import");
@@ -184,6 +185,18 @@ for (const testCase of request.cases) {
           boundaryProfile.inputKind !== testCase.input?.kind ||
           crypto.createHash("sha256").update(wire).digest("hex") !== boundaryProfile.caseBindings[testCase.id]) {
         throw Error("The boundary caller received changed or substituted literal inputs");
+      }
+    }
+    const dreamLight = context.dreamLightProfile;
+    if ((dreamLight !== undefined) !== (testCase.operation === "dream-light-runtime")) {
+      throw Error("Only the frozen light dreaming profile may execute its native sweep");
+    }
+    if (dreamLight !== undefined) {
+      const stable = x => Array.isArray(x) ? x.map(stable) : x && typeof x === "object"
+        ? Object.fromEntries(Object.keys(x).sort().map(k => [k, stable(x[k])])) : x;
+      if (dreamLight.caseId !== testCase.id || dreamLight.operation !== testCase.operation ||
+          crypto.createHash("sha256").update(JSON.stringify(stable(testCase.input))).digest("hex") !== dreamLight.inputSha256) {
+        throw Error("Light dreaming received a different case from the one approved at startup");
       }
     }
     const recallProfile = context.recallSignalsProfile;

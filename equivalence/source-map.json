@@ -5293,19 +5293,25 @@
           "path": "memory_core/consolidation/dreaming.py",
           "symbol": "run_dreaming_sweep",
           "anchor": "def run_dreaming_sweep(",
-          "line": 143
+          "line": 183
         },
         {
           "path": "memory_core/consolidation/dreaming.py",
           "symbol": "filter_recall_entries_within_lookback",
           "anchor": "def filter_recall_entries_within_lookback(",
           "line": 81
+        },
+        {
+          "path": "memory_core/consolidation/light_phase.py",
+          "symbol": "prepare_light_phase",
+          "anchor": "def prepare_light_phase(",
+          "line": 233
         }
       ],
       "implementation": "partial",
       "notes": [
-        "Python ingests optional daily/session inputs, filters lookback and records light signals, but selects with promotion ranking rather than native last-recall ordering, snippet deduplication and recent-diary coverage.",
-        "Native selection and daily phase publication hold a workspace lock and validate live sources; Python light has no equivalent locked phase artifact publication or light-staged freshness lifecycle."
+        "The public sweep accepts resolved light options. It ingests recent signals, checks live sources, groups and orders candidates, prioritizes entries missing from the diary, publishes daily reports and updates the staged keys.",
+        "The host supplies session data and any narrative model. A call with light_options omitted uses the existing scored-promotion selection."
       ]
     },
     {
@@ -5339,13 +5345,13 @@
           "path": "memory_core/consolidation/dreaming.py",
           "symbol": "run_dreaming_sweep",
           "anchor": "def run_dreaming_sweep(",
-          "line": 143
+          "line": 183
         },
         {
           "path": "memory_core/consolidation/dreaming.py",
           "symbol": "_append_dreams_section",
           "anchor": "def _append_dreams_section(",
-          "line": 323
+          "line": 366
         }
       ],
       "implementation": "partial",
@@ -5385,13 +5391,13 @@
           "path": "memory_core/consolidation/dreaming.py",
           "symbol": "run_dreaming_sweep",
           "anchor": "def run_dreaming_sweep(",
-          "line": 143
+          "line": 183
         },
         {
           "path": "memory_core/consolidation/dreaming.py",
           "symbol": "deep promotion invocation",
           "anchor": "promotion = run_short_term_promotion(",
-          "line": 288
+          "line": 331
         }
       ],
       "implementation": "partial",
@@ -5431,7 +5437,7 @@
           "path": "memory_core/consolidation/dreaming.py",
           "symbol": "_append_dreams_section",
           "anchor": "def _append_dreams_section(",
-          "line": 323
+          "line": 366
         },
         {
           "path": "memory_core/consolidation/artifacts.py",

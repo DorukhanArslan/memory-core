@@ -87,6 +87,7 @@ _OPERATIONS = {
     "recall-signals-runtime": ("recall-signals-runtime.mjs", "dist/short-term-promotion-record-DrLa1fiO.mjs", False),
     "session-reset-boundaries-runtime": ("session-reset-boundaries-runtime.mjs", "dist/bundled/session-memory/handler.js", False),
     "prompt-runtime-context-runtime": ("prompt-runtime-context-runtime.mjs", "dist/builtin-openclaw-D1Xfnzzr.mjs", False),
+    "dream-light-runtime": ("dream-light-runtime.mjs", "dist/dreaming-phases-rmgXNBLP.mjs", False),
     "prompt-history-repair-runtime": ("prompt-history-repair-runtime.mjs", "dist/builtin-openclaw-D1Xfnzzr.mjs", False),
     "flush-trigger-runtime": (
         "flush-runtime.mjs", "dist/agent-runner-memory-Cc4lCZcs.mjs", False,
@@ -708,7 +709,7 @@ class ReleaseOracleExecution:
                  recall_signals_profile: dict | None = None, embedding_cache_profile: dict | None = None,
                  session_reset_boundaries_profile: dict | None = None,
                  prompt_runtime_context_profile: dict | None = None,
-                 prompt_history_repair_profile: dict | None = None):
+                 prompt_history_repair_profile: dict | None = None, dream_light_profile: dict | None = None):
         self.config = deepcopy(config)
         self.adapter_hashes = dict(adapter_hashes)
         self.fixture_captures = fixture_captures
@@ -729,6 +730,8 @@ class ReleaseOracleExecution:
         self.session_reset_boundaries_profile = deepcopy(session_reset_boundaries_profile)
         self.prompt_runtime_context_profile = deepcopy(prompt_runtime_context_profile)
         self.prompt_history_repair_profile = deepcopy(prompt_history_repair_profile)
+        self.dream_light_profile = deepcopy(dream_light_profile)
+        self._retained_light_captures: dict[str, dict] = {}
         self._retained_history_captures: dict[str, dict] = {}
         self._retained_prompt_captures: dict[str, dict] = {}
         self.env: dict[str, str] = {}
@@ -742,7 +745,7 @@ class ReleaseOracleExecution:
                 self.promotion_apply_profile, self.get_read_race_profile, self.turn_taint_source,
                 self.forget_lineage_profile, self.forget_boundaries_profile, self.recall_signals_profile,
                 self.embedding_cache_profile, self.session_reset_boundaries_profile,
-                self.prompt_runtime_context_profile, self.prompt_history_repair_profile)
+                self.prompt_runtime_context_profile, self.prompt_history_repair_profile, self.dream_light_profile)
             if sum(value is not None for value in capabilities) + bool(self.fixture_captures) > 1:
                 raise RuntimeOracleError("Independent native profiles cannot borrow one another's executable, source, backend or hook capabilities.")
             if self.get_read_race_profile is not None:
@@ -773,6 +776,10 @@ class ReleaseOracleExecution:
                 self.forget_lineage_profile = validate_forget_lineage_profile(self.forget_lineage_profile)
             if self.forget_boundaries_profile is not None:
                 self.forget_boundaries_profile = validate_forget_boundaries_profile(self.forget_boundaries_profile)
+            if self.dream_light_profile is not None:
+                from equivalence.dream_light import validate_profile
+
+                self.dream_light_profile = validate_profile(self.dream_light_profile)
             if self.recall_signals_profile is not None:
                 self.recall_signals_profile = validate_recall_signals_profile(self.recall_signals_profile)
             if self.embedding_cache_profile is not None:
@@ -920,6 +927,9 @@ class ReleaseOracleExecution:
                 self._context["approvedNodeRuntime"] = self.prompt_history_repair_profile["nodeRuntime"]
                 self._context["promptHistoryRepairProfile"] = self.prompt_history_repair_profile
                 self._context["promptHistoryRepairHostTimezone"] = "UTC"
+            if self.dream_light_profile is not None:
+                self._context["approvedNodeRuntime"] = self.dream_light_profile["nodeRuntime"]
+                self._context["dreamLightProfile"] = self.dream_light_profile
             if self.recall_signals_profile is not None:
                 self._context["approvedNodeRuntime"] = self.recall_signals_profile["nodeRuntime"]
                 self._context["recallSignalsProfile"] = self.recall_signals_profile
@@ -1037,24 +1047,32 @@ class ReleaseOracleExecution:
         """Retain exact new-profile wire bytes for replay after owned temp cleanup."""
         if self.prompt_history_repair_profile is None or len(raw) > MAX_DIAGNOSTIC_BYTES:
             raise RuntimeOracleError("Only the bounded history repair profile can retain its raw wire file.")
-        previous = self._retained_history_captures.get(identifier)
+        return self._retain_case_capture(identifier, raw, "prompt-history-repair", self._retained_history_captures)
+
+    def _retain_light_capture(self, identifier, raw):
+        if self.dream_light_profile is None or self.dream_light_profile["caseId"] != identifier or len(raw) > MAX_DIAGNOSTIC_BYTES:
+            raise RuntimeOracleError("Light dreaming retention requires its bounded original case")
+        return self._retain_case_capture(identifier, raw, "dream-light", self._retained_light_captures)
+
+    def _retain_case_capture(self, identifier, raw, family, cache):
+        previous = cache.get(identifier)
         if previous is not None:
             if _owned_regular(ROOT, Path(previous["retainedNativeRawPath"]), MAX_DIAGNOSTIC_BYTES) != raw:
-                raise RuntimeOracleError("The actual retained history repair wire bytes changed.")
+                raise RuntimeOracleError("The retained original capture changed.")
             return deepcopy(previous)
-        parent = ROOT / ".equivalence-results" / "prompt-history-repair"
+        parent = ROOT / ".equivalence-results" / family
         parent.mkdir(parents=True, exist_ok=True)
         if parent.is_symlink() or parent.resolve(strict=True) != parent or not parent.is_dir():
-            raise RuntimeOracleError("History repair wire retention requires its canonical owned directory.")
+            raise RuntimeOracleError("Retaining the original capture requires its canonical owned directory.")
         directory = Path(tempfile.mkdtemp(prefix="native-attempt-", dir=parent))
         filename = directory / "native-raw.json"
         descriptor = os.open(filename, os.O_WRONLY | os.O_CREAT | os.O_EXCL, 0o600)
         with os.fdopen(descriptor, "wb") as stream:
             stream.write(raw)
         if _owned_regular(ROOT, filename, MAX_DIAGNOSTIC_BYTES) != raw:
-            raise RuntimeOracleError("The retained history repair capture differs from its actual raw file.")
+            raise RuntimeOracleError("The retained capture differs from its original raw file.")
         value = {"retainedNativeRawPath": str(filename), "nativeRawBytes": len(raw)}
-        self._retained_history_captures[identifier] = value
+        cache[identifier] = value
         return deepcopy(value)
 
     def capture_rejected(
@@ -1127,6 +1145,8 @@ class ReleaseOracleExecution:
                 if (self.prompt_runtime_context_profile is not None
                         and case.get("operation") == "prompt-runtime-context-runtime"):
                     record.update(self._retain_prompt_capture(identifier, raw))
+                if self.dream_light_profile is not None and case.get("operation") == "dream-light-runtime":
+                    record.update(self._retain_light_capture(identifier, raw))
                 if (self.prompt_history_repair_profile is not None
                         and case.get("operation") == "prompt-history-repair-runtime"):
                     record.update(self._retain_history_capture(identifier, raw))
@@ -1232,6 +1252,14 @@ class ReleaseOracleExecution:
             profile = validate_prompt_history_repair_profile(self.prompt_history_repair_profile)
             if profile["caseId"] != case.get("id") or profile["caseBindings"][profile["caseId"]] != _digest(history_case_wire(case)):
                 raise RuntimeOracleError("A prompt history repair case changed its frozen inputs")
+        if (self.dream_light_profile is not None) != (operation == "dream-light-runtime"):
+            raise RuntimeOracleError("Light dreaming requires its exact frozen profile")
+        if self.dream_light_profile is not None:
+            from equivalence.dream_light import validate_case
+
+            validate_case(case)
+            if self.dream_light_profile["caseId"] != case["id"]:
+                raise RuntimeOracleError("Light dreaming requires the same case in every process")
         if (self.recall_signals_profile is not None) is not (operation == "recall-signals-runtime"):
             raise RuntimeOracleError("Recall signals authority cannot execute another operation")
         if self.recall_signals_profile is not None:
@@ -1334,11 +1362,13 @@ class ReleaseOracleExecution:
             raise RuntimeOracleError("The release oracle returned an unexpected case identity.")
         expected_provider = EMBEDDING_PROVIDER_MODE if self.embedding_cache_profile is not None else "none"
         if row["ok"] and (not isinstance(row["result"], dict)
-                or operation not in {PROMOTION_RANKING_OPERATION, "recall-signals-runtime", "prompt-runtime-context-runtime", "prompt-history-repair-runtime"}
+                or operation not in {"dream-light-runtime", PROMOTION_RANKING_OPERATION, "recall-signals-runtime", "prompt-runtime-context-runtime", "prompt-history-repair-runtime"}
                 and row["result"].get("provider") != expected_provider):
             raise RuntimeOracleError(
                 "Embedding cache fixtures require their declared deterministic provider."
                 if self.embedding_cache_profile is not None else "Release memory fixtures require provider none.")
+        if operation == "dream-light-runtime" and not row["ok"]:
+            raise RuntimeOracleError(f"Original light dreaming sweep failed: {row['error']}")
         if operation == "embed-cache-lifecycle-runtime" and not row["ok"]:
             raise RuntimeOracleError("The real embedding-cache manager did not complete its declared fixture flow.")
         if operation == "session-reset-boundaries-runtime" and not row["ok"]:
@@ -1376,7 +1406,7 @@ class ReleaseOracleExecution:
             if filename is None:
                 raise RuntimeOracleError("A release thread trace has an invalid identity.")
             raw = _regular(trace, MAX_SINGLE_TRACE_BYTES)
-            if self.entry_profile is not None or self.memory_budget_profile is not None or self.promotion_profile is not None or self.promotion_apply_profile is not None or self.forget_lineage_profile is not None or self.forget_boundaries_profile is not None or self.recall_signals_profile is not None or self.embedding_cache_profile is not None or self.session_reset_boundaries_profile is not None or self.prompt_runtime_context_profile is not None or self.prompt_history_repair_profile is not None:
+            if self.dream_light_profile is not None or self.entry_profile is not None or self.memory_budget_profile is not None or self.promotion_profile is not None or self.promotion_apply_profile is not None or self.forget_lineage_profile is not None or self.forget_boundaries_profile is not None or self.recall_signals_profile is not None or self.embedding_cache_profile is not None or self.session_reset_boundaries_profile is not None or self.prompt_runtime_context_profile is not None or self.prompt_history_repair_profile is not None:
                 entry_trace_files.append({"name": trace.name, "bytes": len(raw), "sha256": _digest(raw),
                                           "text": raw.decode("utf-8")})
             if self.bootstrap_profile is not None:
@@ -1404,6 +1434,7 @@ class ReleaseOracleExecution:
                               or (self.promotion_apply_profile["nodeRuntime"] if self.promotion_apply_profile is not None else None)
                               or (self.forget_lineage_profile["nodeRuntime"] if self.forget_lineage_profile is not None else None)
                               or (self.forget_boundaries_profile["nodeRuntime"] if self.forget_boundaries_profile is not None else None)
+                              or (self.dream_light_profile["nodeRuntime"] if self.dream_light_profile is not None else None)
                               or (self.recall_signals_profile["nodeRuntime"] if self.recall_signals_profile is not None else None)
                               or (self.session_reset_boundaries_profile["nodeRuntime"] if self.session_reset_boundaries_profile is not None else None)
                               or (self.prompt_runtime_context_profile["nodeRuntime"] if self.prompt_runtime_context_profile is not None else None)
@@ -1466,6 +1497,10 @@ class ReleaseOracleExecution:
                     raise RuntimeOracleError("The actual prompt history repair process omitted its distinct frozen authority")
                 bootstrap[-1]["promptHistoryRepairProfile"] = deepcopy(first["promptHistoryRepairProfile"])
                 bootstrap[-1]["promptHistoryRepairHostTimezone"] = first["promptHistoryRepairHostTimezone"]
+            if self.dream_light_profile is not None:
+                if first.get("dreamLightProfile") != self.dream_light_profile:
+                    raise RuntimeOracleError("Light sweep worker omitted its literal case and binary authority")
+                bootstrap[-1]["dreamLightProfile"] = deepcopy(first["dreamLightProfile"])
             if self.recall_signals_profile is not None:
                 if first.get("recallSignalsProfile") != self.recall_signals_profile:
                     raise RuntimeOracleError("The actual recall process omitted its distinct frozen authority")
@@ -1725,6 +1760,17 @@ class ReleaseOracleExecution:
             history_capture = self._retain_history_capture(case["id"], raw)
         if not isinstance(diagnostic, list):
             raise RuntimeOracleError("Native lifecycle diagnostics must retain raw snapshot rows.")
+        if operation == "dream-light-runtime":
+            from equivalence.dream_light_evidence import validate_dream_light_native
+
+            from equivalence.promotion_ranking_bindings import PROMOTION_WORKER_ROUTE
+
+            paths_by_worker = {}
+            for item in worker_imports:
+                paths_by_worker.setdefault((item["pid"], item["threadId"]), set()).add(item["path"])
+            if not any(set(PROMOTION_WORKER_ROUTE) <= paths for paths in paths_by_worker.values()):
+                raise RuntimeOracleError("Missing real SQLite plugin state worker for light dreaming")
+            validate_dream_light_native(case, row["result"], diagnostic, evidence.parent, loaded)
         if operation == "embed-cache-lifecycle-runtime":
             from equivalence.embedding_cache_lifecycle_bindings import REQUIRED_RUNTIME_ARTIFACTS
             from equivalence.embedding_cache_lifecycle_evidence import validate_native
@@ -2059,6 +2105,11 @@ class ReleaseOracleExecution:
                                   "nativeBinaryPolicy": "all artifact bytes authenticated before and after execution"}
         answer["runtimeDiagnostics"] = [{"id": case["id"], "sha256": _digest(raw),
                                           "rawSnapshots": _json(raw) if self.entry_profile is not None or self.memory_budget_profile is not None or self.promotion_profile is not None or self.promotion_apply_profile is not None else diagnostic}]
+        if operation == "dream-light-runtime":
+            answer["runtimeDiagnostics"][0].update(self._retain_light_capture(case["id"], raw))
+            answer["runtimeDiagnostics"][0]["validationStatus"] = "verified"
+            answer["releaseTrace"]["dreamLightTransport"] = {"profile": deepcopy(self.dream_light_profile),
+                                                          "traceFiles": entry_trace_files}
         if operation in ATOMIC_PUBLICATION_PROFILES:
             answer["releaseTrace"]["atomicReturnLifecycle"] = atomic_transport
         if entry_transport is not None:

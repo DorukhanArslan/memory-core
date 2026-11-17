@@ -1,9 +1,9 @@
-"""The two independently frozen families that execute the original dreaming sweep."""
-from equivalence import dream_light, dream_rem
+"""Original dreaming sweeps and their separately verified diary publication family."""
+from equivalence import dream_diary, dream_light, dream_rem
 
 
-FAMILIES = {dream_light.OPERATION: dream_light, dream_rem.OPERATION: dream_rem}
-PHASES = {dream_light.OPERATION: "light", dream_rem.OPERATION: "rem"}
+FAMILIES = {dream_light.OPERATION: dream_light, dream_rem.OPERATION: dream_rem, dream_diary.OPERATION: dream_diary}
+PHASES = {dream_light.OPERATION: "light", dream_rem.OPERATION: "rem", dream_diary.OPERATION: "diary"}
 
 
 def report_key(operation, field):

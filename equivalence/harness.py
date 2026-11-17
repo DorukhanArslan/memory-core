@@ -2680,7 +2680,10 @@ def run_suite(*, checkout: Path, node: Path, smoke: bool = False,
                             row["runtimeEvidenceValidated"] = True
                             row.update(openclaw=native_comparison, python=python)
                         if case["operation"] in DREAM_FAMILIES:
-                            from equivalence.dream_light_sdk_evidence import validate_sdk
+                            if case["operation"] == "dream-diary-publication-runtime":
+                                from equivalence.dream_diary_evidence import validate_sdk
+                            else:
+                                from equivalence.dream_light_sdk_evidence import validate_sdk
 
                             original = next(d for d in report["runtimeDiagnostics"]
                                             if d["side"] == "native" and d["id"] == case["id"])

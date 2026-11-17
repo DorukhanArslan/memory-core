@@ -11,10 +11,10 @@ from typing import Any
 from memory_core._intl_zone_names import en_us_short_time_zone_name
 from memory_core.bootstrap._js import js_trim
 from memory_core.consolidation.artifacts import (
-    read_dreams_file, resolve_dreams_path, write_dreams_file_atomic,
+    diary_context_entries, update_dreams_file,
 )
 from memory_core.consolidation.store import (
-    memory_workspace_lock, read_canonical_recall_store, recall_store_path,
+    read_canonical_recall_store, recall_store_path,
 )
 from memory_core.current_time import _EN_US_MONTHS, resolve_user_timezone, utc_and_local_instants
 
@@ -67,7 +67,11 @@ def _model_unavailable(error: Exception) -> bool:
     return unavailable
 
 
-def _append(workspace: Path, narrative: str, keys: Sequence[str], now_ms: int, timezone: str | None) -> bool:
+def append_narrative_entry(
+    *, workspace: Path, narrative: str, now_ms: int, timezone: str | None = None,
+    source_entry_keys: Sequence[str] = (), recent_diary_entries: Sequence[str] = (),
+) -> Path | None:
+    """Publish once every quoted source and prior diary passage still exists under the lease."""
     name = timezone if timezone is not None else os.getenv("TZ", "UTC")
     resolved, zone = resolve_user_timezone(name)
     if name and resolved != name:
@@ -77,13 +81,13 @@ def _append(workspace: Path, narrative: str, keys: Sequence[str], now_ms: int, t
              f"{local.hour % 12 or 12}:{local.minute:02} {'AM' if local.hour < 12 else 'PM'} "
              f"{en_us_short_time_zone_name(resolved, local)}")
     entry = f"\n---\n\n*{stamp}*\n\n{narrative}\n"
-    with memory_workspace_lock(workspace):
-        path = resolve_dreams_path(workspace)
-        existing = read_dreams_file(path)
-        if keys:
+    def update(existing: str, path: Path) -> tuple[str | None, Path | None]:
+        if source_entry_keys:
             current = read_canonical_recall_store(recall_store_path(workspace), now_ms)["entries"]
-            if any(key not in current for key in keys):
-                return False
+            if any(key not in current for key in source_entry_keys):
+                return None, None
+        if recent_diary_entries and not set(recent_diary_entries).issubset(diary_context_entries(existing)):
+            return None, None
         if _START in existing and _END in existing:
             cut = existing.rindex(_END)
             updated = existing[:cut] + entry + "\n" + existing[cut:]
@@ -94,13 +98,14 @@ def _append(workspace: Path, narrative: str, keys: Sequence[str], now_ms: int, t
             updated = f"# Dream Diary\n\n{_START}{entry}\n{_END}\n"
             if js_trim(existing):
                 updated += "\n" + existing
-        write_dreams_file_atomic(path, updated if updated.endswith("\n") else updated + "\n")
-    return True
+        return updated, path
+
+    return update_dreams_file(workspace, update)
 
 
 def _fallback(workspace: Path, now_ms: int, timezone: str | None) -> None:
     try:
-        _append(workspace, _FALLBACK, (), now_ms, timezone)
+        append_narrative_entry(workspace=workspace, narrative=_FALLBACK, now_ms=now_ms, timezone=timezone)
     except Exception as error:
         _LOG.warning("REM fallback diary publication failed: %s", type(error).__name__)
 
@@ -135,7 +140,8 @@ def run_rem_narrative(
             reply = complete(request)
         text = js_trim(reply["text"])
         if text:
-            published = _append(workspace_dir, text, source_entry_keys, now_ms, timezone)
+            published = append_narrative_entry(workspace=workspace_dir, narrative=text, source_entry_keys=source_entry_keys,
+                                               now_ms=now_ms, timezone=timezone)
             return "completed" if published else "skipped"
     except Exception as error:
         _LOG.warning("REM narrative completion or publication failed: %s", type(error).__name__)

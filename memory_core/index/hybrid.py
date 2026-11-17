@@ -101,11 +101,13 @@ class HybridResult:
         payload = {
             "path": self.path, "startLine": self.start_line, "endLine": self.end_line,
             "score": self.score,
-            "snippet": self.snippet, "source": self.source,
         }
+        if self._retrieval_mode == "keyword":
+            payload["textScore"] = self.text_score
+        payload.update(snippet=self.snippet, source=self.source)
         if self._retrieval_mode == "hybrid":
             payload["vectorScore"] = self.vector_score
-        if self._retrieval_mode != "vector":
+        if self._retrieval_mode not in {"vector", "keyword"}:
             payload["textScore"] = self.text_score
         for name, value in (
             ("importance", self.importance), ("triggers", self.triggers),

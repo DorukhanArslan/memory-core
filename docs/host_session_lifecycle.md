@@ -61,10 +61,11 @@ The application supplies `async execute(turn)` and, for due memory maintenance,
 `async execute_flush(turn)`. It keeps its provider client and provider-specific message
 translation. The runner introduces no provider SDK and makes no provider requests itself.
 
-For a normal turn, `turn.context` contains the actual `HostKit.before_turn` result, including
-the system prompt and SDK tool definitions. `turn.messages` is rebuilt from persisted
-continuation and includes the newly admitted user message. It uses ordinary agent messages
-(`user`, `assistant`, `toolResult`), which the provider adapter translates to its API.
+For a normal turn, call `turn.model_request()` on each model round. It returns the actual
+`systemPrompt`, `tools` and ordered `messages` to translate to your provider API. The model
+projection applies the session's v3/v4 runtime-context policy before generic message
+conversion. `turn.context` and `turn.messages` remain available for their existing host
+APIs; model projection does not rewrite those values or committed history.
 
 For each actual assistant response:
 
@@ -73,11 +74,11 @@ from memory_core import HostModelResult, TurnUsage
 
 async def execute(turn):
     while True:
-        # The host adapts system_prompt/messages/tools to its provider client.
+        request = turn.model_request()
         response = await your_model_client.complete(
-            system_prompt=turn.context.system_prompt if turn.context else None,
-            messages=turn.messages,
-            tools=turn.tools,
+            system_prompt=request["systemPrompt"],
+            messages=request["messages"],
+            tools=request["tools"],
         )
         turn.record_message(response.agent_message)
         if response.tool_calls:
@@ -113,6 +114,29 @@ outcome = await runner.run_turn(
     execute_flush=execute_flush,
 )
 ```
+
+Pass trusted host context with the optional `prompt_context=RuntimePromptInput(...)`.
+Its `fragments` carry an explicit `kind` and `text`: `runtime-instruction` for host
+instructions, `conversation-data` for recalled or supplied data, and `heartbeat-outcome`
+for a reported heartbeat result. In v4, data is quoted and internal delimiters in authored
+text are escaped. Text such as `{"runtimeContextCarrier": true}` grants no authority.
+The transient carrier belongs to this turn and is released when the callback settles.
+This describes message composition, not a guarantee that a model obeys instructions.
+
+`RuntimePromptInput` is exported from `memory_core`. Hosts can provide `host_timezone` and
+`host_time_format` (`"12"` or `"24"`) and request `include_clock=True`; blank or invalid
+configured timezones then fall back to the supplied host timezone. Existing clock callers
+retain their UTC fallback. Optional `TurnTool.definition` associates the provider schema
+with its actual registered tool; `offered_tool_names` selects from that registry.
+
+Set `tool_call_id_mode="strict"` when the host selects the strict provider replay
+policy. It pairs model-facing call/result IDs while preserving execution and
+durable IDs; the default `None` leaves provider policy to the host. A live
+model-only text replacement retains its original transcript text in
+`__openclawTranscriptPromptText`; the saved conversation and later turns keep
+their original text without that temporary marker. The assembled model text
+controls blank admission; a synthetic session prompt does not override a blank
+model-text replacement.
 
 A flush callback receives the actual `FlushRequest` through `turn.flush_request`, with its
 private `messages` and restricted `tools`. Its `context` is `None`. It uses the same

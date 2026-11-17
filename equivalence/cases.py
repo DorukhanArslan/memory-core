@@ -316,6 +316,9 @@ def build_cases(*, include_prospective: bool = False) -> list[dict[str, Any]]:
     from equivalence.session_reset_boundaries import build_cases as build_session_reset_boundaries
 
     cases.extend(build_session_reset_boundaries())
+    from equivalence.prompt_runtime_context import build_cases as build_prompt_runtime_context
+
+    cases.extend(build_prompt_runtime_context())
     if include_prospective:
         from equivalence.flush_contract import build_prospective_flush_contract_cases
         from equivalence.session_projection import build_prospective_session_projection_cases
@@ -392,6 +395,12 @@ def run_python(case: dict[str, Any]) -> Any:
 
         validate_reset_boundary_case({key: value for key, value in case.items() if key != "_diagnosticDirectory"})
         return run_session_reset_boundaries(arguments, evidence_directory=case.get("_diagnosticDirectory"))
+    if operation == "prompt-runtime-context-runtime":
+        from equivalence.prompt_runtime_context import validate_case as validate_prompt_context_case
+        from equivalence.prompt_runtime_context_sdk import run_prompt_runtime_context
+
+        validate_prompt_context_case({key: value for key, value in case.items() if key != "_diagnosticDirectory"})
+        return run_prompt_runtime_context(arguments, evidence_directory=case.get("_diagnosticDirectory"))
     if operation == "recall-signals-runtime":
         from equivalence.recall_signals import validate_case as validate_recall_signals_case
         from equivalence.recall_signals_sdk import run_recall_signals

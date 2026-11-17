@@ -21,12 +21,17 @@ class TurnTool:
     name: str
     execute: Callable[[str, Mapping[str, Any]], Any]
     result_content_source: str | None = None
+    definition: Mapping[str, Any] | None = None
 
     def __post_init__(self):
         if not isinstance(self.name, str) or not self.name or not callable(self.execute):
             raise ValueError("A host tool requires a name and executable source")
         if self.result_content_source not in {None, "network"}:
             raise ValueError("The supported registered content source is network")
+        if self.definition is not None:
+            if not isinstance(self.definition, Mapping) or self.definition.get("name") != self.name:
+                raise ValueError("A model tool definition must name its actual registered source")
+            object.__setattr__(self, "definition", deepcopy(dict(self.definition)))
 
 
 class TurnToolDispatcher:

@@ -10,25 +10,27 @@ izler; yeni kabul koşulu veya puan eklemez. **128/128 tek başına bitiş deği
 
 | Gösterge | Doğrulanmış durum | Bitiş hedefi |
 | --- | --- | --- |
-| Kabul koşulları | **82/128**; **46 açık** | 128/128 |
-| Henüz karşılaştırmayla kapsanmayan koşullar | 44 | 0 |
+| Kabul koşulları | **84/128**; **44 açık** | 128/128 |
+| Henüz karşılaştırmayla kapsanmayan koşullar | 42 | 0 |
 | Karşılaştırması olan fakat kapanmayan koşullar | 2 | 0 |
-| Başlıklar | 38 tamam, 6 kısmi, 20 bekliyor | 64 tamam |
-| Son tam koşudaki örnekler | 1.476 eşleşti / 1.490 | Kapsamdaki tüm kayıtlı örnekler eşleşmeli |
+| Başlıklar | 39 tamam, 6 kısmi, 19 bekliyor | 64 tamam |
+| Son tam koşudaki örnekler | 1.486 eşleşti / 1.500 | Kapsamdaki tüm kayıtlı örnekler eşleşmeli |
 | Kayıtlı karşılaştırma farkları | **14 açık** | 0 açık fark |
 | Engellenen örnekler / koşu hataları | 0 / 0 | 0 / 0 |
 | Tam eşdeğerlik kapısı | Geçmedi; gerçek çıkış kodu 1 | `fullScopePassed: true`, çıkış kodu 0 |
 
-82/128, kabul koşullarının %64,1'idir; harcanan işin veya genel parity'nin
-%64,1'i anlamına gelmez. **46 koşul ve 14 fark toplanmaz:** farklı ölçülerdir.
+84/128, kabul koşullarının %65,6'sıdır; harcanan işin veya genel parity'nin
+%65,6'sı anlamına gelmez. **44 koşul ve 14 fark toplanmaz:** farklı ölçülerdir.
 14 farkın 11'i puana bağlanmamış teşhis örnekleridir (`covers: []`);
 kalan üç örnek iki açık koşula bağlıdır. Bu yüzden yalnızca puana bakamayız.
 
-Kanıt: [son tam koşu](https://github.com/DorukhanArslan/memory-core/actions/runs/43961408161),
-[82/128 kapanış notu](session_reset_boundaries_closeout.md) ve
-[birleşen uygulama PR'ı #27](https://github.com/DorukhanArslan/memory-core/pull/27).
-Ölçülen ürün kaynağı `3d70e59`, karşılaştırma kaynağı `a1bdec4`;
-aynı SDK `f623376` ile main'e birleşti. Ayrıntılı 64 başlığın durumu
+Kanıt: [son tam koşu](https://github.com/DorukhanArslan/memory-core/actions/runs/44137396647),
+[84/128 kapanış notu](prompt_runtime_context_closeout.md) ve
+[uygulama PR'ı #29](https://github.com/DorukhanArslan/memory-core/pull/29).
+Ölçülen ürün kaynağı `907944e`, karşılaştırma kaynağı `a27ec47`;
+PR #29 ölçülen 164 dosyalık SDK ağacını içerir. Bağımsız denetimler önceki
+82 koşulun korunduğunu ve yalnızca iki özgün runtime-context koşulunun
+kapandığını doğruladı. Ayrıntılı 64 başlığın durumu
 [ana checklist'te](full-equivalence-checklist.md#4-implement-and-verify-the-fixed-memory-behavior-contract).
 
 ## “Tamamlandı” diyebilmek için
@@ -38,8 +40,8 @@ aynı SDK `f623376` ile main'e birleşti. Ayrıntılı 64 başlığın durumu
 - [x] **B1 — Hedef sabit.** Sürüm, 64 başlık ve 128 koşul tanımlı.
   Referans: `bcfc88812a35243893585dbeca87ca41b48272ca`;
   [sabit kapsam](../equivalence/scope.json). Sonraki OpenClaw sürümleri bu iddiaya dahil değil.
-- [ ] **B2 — 128 koşulun tamamı doğrulandı.** Şimdi 82/128.
-  Kalan 46 koşul mevcut başlıkları altında kapanmalı; yalnızca kodun mevcut
+- [ ] **B2 — 128 koşulun tamamı doğrulandı.** Şimdi 84/128.
+  Kalan 44 koşul mevcut başlıkları altında kapanmalı; yalnızca kodun mevcut
   olması veya bir yardımcı fonksiyonun geçmesi yeterli değil.
 - [ ] **B3 — Kayıtlı açık fark kalmadı.** Şimdi 14 fark var; aşağıda tek tek izleniyor.
   Puansız olması bir farkı çözülmüş yapmaz. Başarısız örnekler silinerek,
@@ -51,7 +53,7 @@ aynı SDK `f623376` ile main'e birleşti. Ayrıntılı 64 başlığın durumu
   Kaydetme, hemen hatırlama, güncelleme, yeni sohbet, yeniden başlatma,
   kullanıcı/çalışma alanı ayrımı ve gerçek hata akışları aynı son kaynakta geçmeli.
   Bunlar mevcut host sözleşmeleridir; yeni puan kalemleri değildir.
-  Son 82/128 ölçümünde ilgili host kanıtları geçti; nihai kaynak temeli henüz yok.
+  Son 84/128 ölçümünde ilgili host kanıtları geçti; nihai kaynak temeli henüz yok.
 - [ ] **B6 — Paket ve kullanım kontrolleri son sürümde geçti.** İddia edilen
   Python sürümleri, dağıtım paketleri ve temiz kurulumdan SDK kullanan örnekler
   için [mevcut yayın kontrolleri](release.md) tamamlanmalı.
@@ -63,7 +65,7 @@ aynı SDK `f623376` ile main'e birleşti. Ayrıntılı 64 başlığın durumu
 - [ ] **B8 — Bağımsız son kontrol ve main doğrulaması yapıldı.** Raporun tamamı,
   kaynak kimlikleri ve kapsam sınırları bağımsızca kontrol edilmeli; main'deki
   SDK ölçülen SDK ile aynı olmalı. Komutlar, rapor ve kapanış notları yeniden
-  üretilebilir olmalı. Mevcut 82/128 paketi bunu kendi kapsamı için sağlıyor;
+  üretilebilir olmalı. Mevcut 84/128 paketi kendi sınırları için bağımsızca incelendi;
   nihai eşdeğerlik paketi henüz tamamlanmadı.
 
 ## Puanın dışında kaybolmaması gereken bilinen sınırlar
@@ -77,7 +79,7 @@ Sınırsız bütün platform/sağlayıcı/zamanlama olasılıkları için yeni b
 | K1 — Arama modları | Aynı not farklı arama altyapısında da doğru sırada bulunsun. CPU dışı hızlandırılmış arama, ICU/trigram ve Unicode dosya adı sırası için mevcut sınırlar denetlenecek. | [Arama koşulları](full-equivalence-checklist.md#retrieval-and-ranking); `retrieval.*`, `engine.unicode-collation` |
 | K2 — Sağlayıcı ve indeks yayını | Bir not kaydedilirken değişirse hangi sürümün yayımlandığı ve aramada görüldüğü tutarlı olsun. Mevcut kanıtların bazıları sağlayıcısız veya kontrollü sağlayıcı profiline ait. Native'in yayımlayıp SDK'nın reddettiği gerçek akış açıkça kayıtlı. | [Cache sınırları](embedding_cache_lifecycle_closeout.md#compared-boundary); `indexing.*`, `tools.*`, `recovery.*` |
 | K3 — Sıfırlama ve host modları | Arka arkaya ve eşzamanlı işlemler, otomatik sıfırlama, özel sohbet ve desteklenecek adlandırma/host akışları mevcut sınırlarıyla denetlensin. Sıralı manuel reset kanıtı hepsini tamamlamaz. | [Açık reset kapsamı](session_reset_boundaries_closeout.md#remaining-scope); `sessions.reset-hook`, `host.*`, `concurrency.*` |
-| K4 — Diğer başlıkların sınırları | Gizleme kuralları, tarih/sayı sınırları, arşivler, başlangıç dosyaları ve bakım akışlarında “yalnızca şu profilde” notları mevcut 64 başlık üzerinden taransın. | [Ana plan](full-equivalence-checklist.md), [kaynak haritası](equivalence-source-map.md) ve ilgili kapanış notları |
+| K4 — Diğer başlıkların sınırları | Gizleme kuralları, tarih/sayı sınırları, arşivler, başlangıç dosyaları ve bakım akışlarında “yalnızca şu profilde” notları mevcut 64 başlık üzerinden taransın. Runtime kanıtı sıralı, manuel ve özel olmayan sohbetlere, sağlayıcının verdiği `responseId` değerine ve 1–9999 takvim yıllarına bağlıdır; UUID fallback yolu ve modelin talimata uyma başarısı doğrulanmadı. İlgisiz persona ve araç kayıtları ham olarak tutuldu, karşılaştırılmadı. | [Runtime kapsam sınırları](prompt_runtime_context_closeout.md#remaining-scope), [ana plan](full-equivalence-checklist.md), [kaynak haritası](equivalence-source-map.md) ve ilgili kapanış notları |
 
 ## Açık 14 karşılaştırma farkı
 
@@ -121,11 +123,26 @@ puan değişimi ve nedeni saklanmaz. Eski rapor kendi kaynak kimliğiyle korunur
 
 | Güncelleme | Puan değişimi | Kapanan konu | Kanıt |
 | --- | --- | --- | --- |
+| Runtime bağlamının kapanışı | 82 → 84, **+2** | `prompt.runtime-context.outcomes`, `prompt.runtime-context.boundaries` | [PR #29](https://github.com/DorukhanArslan/memory-core/pull/29), [kapanış](prompt_runtime_context_closeout.md) |
 | Reset sınırlarının kapanışı | 81 → 82, **+1** | `sessions.reset-hook.boundaries` | [PR #27](https://github.com/DorukhanArslan/memory-core/pull/27), [kapanış](session_reset_boundaries_closeout.md) |
-| Bu takip sayfasının eklenmesi | 82 → 82, **+0** | İlerleme görünürlüğü; uygulama koşulu kapanmadı | Yukarıdaki mevcut ölçüm; yeni test koşusu yapılmadı |
+| Bu takip sayfasının eklenmesi | 82 → 82, **+0** | İlerleme görünürlüğü; uygulama koşulu kapanmadı | [Tarihsel 82/128 ölçümü](session_reset_boundaries_closeout.md); yeni test koşusu yapılmadı |
 
-Sıradaki uygulama adayı `prompt.runtime-context`: modele verilen ek bilgilerin
-sırası ve güven etiketleri, hedef **+2 (82 → 84)**. Henüz onaylanmadı ve başlamadı.
+**Korunan başarısız ilk koşu:** [İlk tam koşuda](https://github.com/DorukhanArslan/memory-core/actions/runs/44088814920)
+yeni 10 örneğin tamamı eşleşti; eski bir unutma örneğinin kanıt dosyası
+reddedildiği için genel doğrulama tamamlanmadı: 1.485 eşleşme, 14 fark,
+bir engel ve gerçek çıkış kodu 2. O koşuda doğrulanmış puan **82/128** kaldı;
+bu koşuya yeni puan verilmedi. [Kaydedilmiş dosya incelemesi](https://github.com/DorukhanArslan/memory-core/actions/runs/44114457990)
+512 MiB sınırının 357.646 bayt aşıldığını doğruladı. Raporun yapısal
+boşluklarını kaldıran tek satırlık düzeltme, aynı bilgileri ve aynı boyut
+sınırını korudu. Başarısız ilk koşu ve ham kanıtı kendi kimlikleriyle saklanır.
+Sonraki kabul edilen koşu yalnızca B2'nin iki koşulunu kapatır;
+B2–B8 ve kayıtlı 14 fark açık kalır. Dört eski farkın değer incelemeleri
+beklemede kalır; yeni kanıt bu incelemeleri yeniden başlatmadı.
+
+**Sonraki iş önerisi: `prompt.history-repair`.** Hedef **+2 (84 → 86)**:
+örneğin eksik bir araç sonucunu modele görünen geçmişte onarırken kalıcı
+konuşma kaydını değiştirmemek. Tahmin **3–4 saat**, tam karşılaştırma dahil.
+Bu öneri henüz onaylanmadı; uygulama başlatılmadı.
 
 ## Bitişte kullanılabilecek ifade
 

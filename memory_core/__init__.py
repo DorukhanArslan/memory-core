@@ -37,6 +37,7 @@ from memory_core.host import (
     TurnRecord,
     TurnState,
     TurnUsage,
+    RuntimePromptInput,
 )
 from memory_core.tools.common import MemoryToolError, MemoryToolInputError
 from memory_core.workspace import UnsafeMemoryPathError
@@ -55,6 +56,7 @@ __all__ = [
     "HostTurnOutcome",
     "SessionState",
     "TurnUsage",
+    "RuntimePromptInput",
     "TurnContext",
     "TurnState",
     "TurnRecord",

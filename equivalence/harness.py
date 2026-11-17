@@ -88,7 +88,7 @@ def _adapter_identity() -> dict[str, str]:
     fixture_manifest = ROOT / "equivalence/openclaw.plugin.json"
     if fixture_manifest.is_file():
         paths.append(fixture_manifest)
-    for directory in ("host-turn-barrier-provider", "embedding-cache-provider"):
+    for directory in ("host-turn-barrier-provider", "embedding-cache-provider", "prompt-runtime-provider"):
         for name in ("index.mjs", "openclaw.plugin.json"):
             provider_file = ROOT / "equivalence" / directory / name
             if provider_file.is_file():
@@ -386,6 +386,12 @@ def _validate_scope(scope: Any, cases: Any) -> tuple[list[dict], dict[str, set[s
 
     try:
         validate_session_reset_boundaries(cases)
+    except ValueError as error:
+        raise HarnessError("cases-invalid", str(error)) from None
+    from equivalence.prompt_runtime_context import validate_registration as validate_prompt_runtime_context
+
+    try:
+        validate_prompt_runtime_context(cases)
     except ValueError as error:
         raise HarnessError("cases-invalid", str(error)) from None
     return requirements, points
@@ -688,6 +694,10 @@ def _oracle(node: Path, script: Path, checkout: Path, cases: list[dict], timeout
                     from equivalence.session_reset_boundaries_profile import prepare_session_reset_boundaries_profile
 
                     context_options["session_reset_boundaries_profile"] = prepare_session_reset_boundaries_profile(cases[0], node)
+                if len(cases) == 1 and cases[0]["operation"] == "prompt-runtime-context-runtime":
+                    from equivalence.prompt_runtime_context_profile import prepare_prompt_runtime_context_profile
+
+                    context_options["prompt_runtime_context_profile"] = prepare_prompt_runtime_context_profile(cases[0], node)
                 if len(cases) == 1 and cases[0]["operation"] == "embed-cache-lifecycle-runtime":
                     from equivalence.embedding_cache_lifecycle_profile import prepare_embedding_cache_lifecycle_profile
 
@@ -734,8 +744,11 @@ def _oracle(node: Path, script: Path, checkout: Path, cases: list[dict], timeout
                 from equivalence.embedding_cache_lifecycle_profile import PROVIDER_ADAPTER_FILES
 
                 cache_provider_files = set(PROVIDER_ADAPTER_FILES) if context_options.get("embedding_cache_profile") else set()
+                from equivalence.prompt_runtime_context_profile import PROVIDER_ADAPTER_FILES as PROMPT_PROVIDER_FILES
+
+                prompt_provider_files = set(PROMPT_PROVIDER_FILES) if context_options.get("prompt_runtime_context_profile") else set()
                 legacy_adapters = {name: digest for name, digest in _adapter_identity().items()
-                                   if Path(name).name == name or name in cache_provider_files}
+                                   if Path(name).name == name or name in cache_provider_files or name in prompt_provider_files}
                 execution = resources.enter_context(ReleaseOracleExecution(
                     release_runtime, legacy_adapters, **context_options))
                 # Only this reviewed preload is supplied. User Node options,
@@ -802,6 +815,11 @@ def _oracle(node: Path, script: Path, checkout: Path, cases: list[dict], timeout
                         name: {"text": value, "bytes": len(value.encode("utf8")),
                                "sha256": hashlib.sha256(value.encode("utf8")).hexdigest()}
                         for name, value in (("stdout", stdout), ("stderr", stderr))}
+                if len(cases) == 1 and cases[0]["operation"] == "prompt-runtime-context-runtime":
+                    result["releaseTrace"]["promptRuntimeContextTransport"]["originalProcessStreams"] = {
+                        name: {"text": value, "bytes": len(value.encode("utf8")),
+                               "sha256": hashlib.sha256(value.encode("utf8")).hexdigest()}
+                        for name, value in (("stdout", stdout), ("stderr", stderr))}
                 if len(cases) == 1 and cases[0]["operation"] in {"forget-lineage-runtime", "forget-boundaries-runtime"}:
                     transport = ("forgetBoundariesTransport" if cases[0]["operation"] == "forget-boundaries-runtime"
                                  else "forgetLineageTransport")
@@ -829,7 +847,7 @@ def _oracle(node: Path, script: Path, checkout: Path, cases: list[dict], timeout
                 raise failure from None
     except HarnessError as error:
         if len(cases) == 1 and cases[0]["operation"] in {
-                "embed-cache-lifecycle-runtime", "session-reset-boundaries-runtime"}:
+                "embed-cache-lifecycle-runtime", "session-reset-boundaries-runtime", "prompt-runtime-context-runtime"}:
             if error.rejected_evidence is None:
                 try:
                     rejected_result = _json(stdout) if len(stdout.encode("utf8")) <= _MAX_OUTPUT_BYTES else None
@@ -839,6 +857,8 @@ def _oracle(node: Path, script: Path, checkout: Path, cases: list[dict], timeout
                     if execution is None:
                         raise ValueError("The reset execution context was not created"
                                          if cases[0]["operation"] == "session-reset-boundaries-runtime"
+                                         else "The prompt runtime execution context was not created"
+                                         if cases[0]["operation"] == "prompt-runtime-context-runtime"
                                          else "The cache execution context was not created")
                     error.rejected_evidence = execution.capture_rejected(
                         rejected_result, cases, stdout=stdout, stderr=stderr,
@@ -882,7 +902,8 @@ def _oracle(node: Path, script: Path, checkout: Path, cases: list[dict], timeout
             else:
                 process.kill()
             interrupted_stdout, interrupted_stderr = process.communicate()
-            if len(cases) == 1 and cases[0]["operation"] == "session-reset-boundaries-runtime":
+            if len(cases) == 1 and cases[0]["operation"] in {
+                    "session-reset-boundaries-runtime", "prompt-runtime-context-runtime"}:
                 stdout, stderr = interrupted_stdout, interrupted_stderr
         raise HarnessError("oracle-timeout", "The TypeScript oracle timed out; no retry was made.") from None
     except OSError:
@@ -891,7 +912,8 @@ def _oracle(node: Path, script: Path, checkout: Path, cases: list[dict], timeout
         raise HarnessError("oracle-protocol", "The TypeScript oracle did not return valid bounded JSON.") from None
     finally:
         pending = sys.exc_info()[1]
-        if (len(cases) == 1 and cases[0]["operation"] == "session-reset-boundaries-runtime"
+        if (len(cases) == 1 and cases[0]["operation"] in {
+                "session-reset-boundaries-runtime", "prompt-runtime-context-runtime"}
                 and isinstance(pending, HarnessError) and pending.rejected_evidence is None):
             # Abort handlers above still retain their actual failure, exit and
             # bounded raw evidence before the owned execution tree closes.
@@ -1198,6 +1220,7 @@ def run_suite(*, checkout: Path, node: Path, smoke: bool = False,
             "forget-boundaries-runtime",
             "recall-signals-runtime",
             "session-reset-boundaries-runtime",
+            "prompt-runtime-context-runtime",
             "embed-cache-lifecycle-runtime",
         }
         runtime_cases = [case for case in cases if case["operation"] in runtime_operations]
@@ -1592,6 +1615,13 @@ def run_suite(*, checkout: Path, node: Path, smoke: bool = False,
                 report["sessionResetBoundariesBindings"] = prepare_session_reset_boundaries_bindings(
                     checkout, Path(runtime_config["runtimeRoot"]))
                 report["sessionResetBoundariesNode"] = prepare_model_node_authority(node)
+            if any(case["operation"] == "prompt-runtime-context-runtime" for case in runtime_cases):
+                from equivalence.prompt_runtime_context_bindings import prepare_prompt_runtime_context_bindings
+                from equivalence.model_runtime_authority import prepare_model_node_authority
+
+                report["promptRuntimeContextBindings"] = prepare_prompt_runtime_context_bindings(
+                    checkout, Path(runtime_config["runtimeRoot"]))
+                report["promptRuntimeContextNode"] = prepare_model_node_authority(node)
             if any(case["operation"] == "embed-cache-lifecycle-runtime" for case in runtime_cases):
                 from equivalence.embedding_cache_lifecycle_bindings import prepare_embedding_cache_lifecycle_bindings
                 from equivalence.model_runtime_authority import prepare_model_node_authority
@@ -1606,7 +1636,7 @@ def run_suite(*, checkout: Path, node: Path, smoke: bool = False,
                 try:
                     native = _oracle(node, ROOT / "equivalence/release-oracle.mjs", checkout, [case],
                                      max(timeout_seconds, 180 if case["operation"] in {"host-turn-barrier-boundaries-runtime", "query-sync-boundaries-runtime"} else
-                                         120 if case["operation"] in {"host-turn-barrier-runtime", "index-identity-boundaries-runtime", "query-sync-outcomes-runtime"} else 60),
+                                         120 if case["operation"] in {"host-turn-barrier-runtime", "index-identity-boundaries-runtime", "query-sync-outcomes-runtime", "prompt-runtime-context-runtime"} else 60),
                                      release_runtime=runtime_config)
                 except HarnessError:
                     report["failedReferenceCaseId"] = case["id"]
@@ -1639,6 +1669,11 @@ def run_suite(*, checkout: Path, node: Path, smoke: bool = False,
                         != report["sessionResetBoundariesBindings"]
                         or prepare_model_node_authority(node) != report["sessionResetBoundariesNode"]):
                     raise ValueError("Original session reset source/artifact/executable owners changed.")
+                if "promptRuntimeContextBindings" in report and (
+                        prepare_prompt_runtime_context_bindings(checkout, Path(runtime_config["runtimeRoot"]))
+                        != report["promptRuntimeContextBindings"]
+                        or prepare_model_node_authority(node) != report["promptRuntimeContextNode"]):
+                    raise ValueError("Original prompt runtime context source/artifact/executable owners changed.")
                 if "forgetLineageBindings" in report and (
                         prepare_forget_lineage_bindings(checkout, Path(runtime_config["runtimeRoot"]))
                         != report["forgetLineageBindings"]
@@ -1848,10 +1883,11 @@ def run_suite(*, checkout: Path, node: Path, smoke: bool = False,
                     native_comparison = native["result"]
                     python_case = deepcopy(case)
                     if case in python_diagnostic_cases:
-                        if case["operation"] in {"index-identity-boundaries-runtime", "query-sync-outcomes-runtime", "query-sync-boundaries-runtime", "forget-lineage-runtime", "forget-boundaries-runtime", "recall-signals-runtime", "embed-cache-lifecycle-runtime", "session-reset-boundaries-runtime"}:
+                        if case["operation"] in {"index-identity-boundaries-runtime", "query-sync-outcomes-runtime", "query-sync-boundaries-runtime", "forget-lineage-runtime", "forget-boundaries-runtime", "recall-signals-runtime", "embed-cache-lifecycle-runtime", "session-reset-boundaries-runtime", "prompt-runtime-context-runtime"}:
                             # Keep the original child paths and bytes for the post-run
                             # semantic replay, including failed SDK captures.
-                            family = ("session-reset-boundaries" if case["operation"] == "session-reset-boundaries-runtime" else
+                            family = ("prompt-runtime-context" if case["operation"] == "prompt-runtime-context-runtime" else
+                                      "session-reset-boundaries" if case["operation"] == "session-reset-boundaries-runtime" else
                                       "embedding-cache-lifecycle" if case["operation"] == "embed-cache-lifecycle-runtime" else
                                       "recall-signals" if case["operation"] == "recall-signals-runtime" else
                                       "forget-boundaries" if case["operation"] == "forget-boundaries-runtime" else
@@ -2060,6 +2096,23 @@ def run_suite(*, checkout: Path, node: Path, smoke: bool = False,
                             reset_diagnostic["validationStatus"] = "verified"
                             row["runtimeEvidenceValidated"] = True
                             row.update(openclaw=native_comparison, python=python)
+                        if case["operation"] == "prompt-runtime-context-runtime":
+                            from equivalence.prompt_runtime_context_evidence import validate_pair
+
+                            prompt_diagnostic = {"id": case["id"], "side": "python", "sha256": hashlib.sha256(raw).hexdigest(),
+                                                 "rawSnapshots": snapshots, "evidenceDirectory": str(directory),
+                                                 "validationStatus": "unverified"}
+                            report["runtimeDiagnostics"].append(prompt_diagnostic)
+                            original = next(d for d in report["runtimeDiagnostics"]
+                                            if d["side"] == "native" and d["id"] == case["id"])
+                            if (original.get("validationStatus") != "verified"
+                                    or len(original["rawSnapshots"]) != 1 or len(snapshots) != 1):
+                                raise ValueError("Prompt runtime context requires one authenticated original and SDK capture")
+                            native_comparison, python = validate_pair(
+                                case, original["rawSnapshots"][0], snapshots[0], native["result"], python, directory)
+                            prompt_diagnostic["validationStatus"] = "verified"
+                            row["runtimeEvidenceValidated"] = True
+                            row.update(openclaw=native_comparison, python=python)
                         if case["operation"] == "embed-cache-lifecycle-runtime":
                             from equivalence.embedding_cache_lifecycle_evidence import validate_pair
 
@@ -2080,7 +2133,7 @@ def run_suite(*, checkout: Path, node: Path, smoke: bool = False,
                         diagnostic_key = "sourceDiagnostics" if case in source_diagnostic_cases else "runtimeDiagnostics"
                         if case["operation"] not in {"promotion-apply-family-runtime", "host-restart-session-runtime",
                                                      "host-update-isolation-runtime", "host-turn-barrier-runtime",
-                                                     "host-turn-barrier-boundaries-runtime", "index-identity-boundaries-runtime", "query-sync-outcomes-runtime", "query-sync-boundaries-runtime", "forget-lineage-runtime", "forget-boundaries-runtime", "recall-signals-runtime", "embed-cache-lifecycle-runtime", "session-reset-boundaries-runtime"}:
+                                                     "host-turn-barrier-boundaries-runtime", "index-identity-boundaries-runtime", "query-sync-outcomes-runtime", "query-sync-boundaries-runtime", "forget-lineage-runtime", "forget-boundaries-runtime", "recall-signals-runtime", "embed-cache-lifecycle-runtime", "session-reset-boundaries-runtime", "prompt-runtime-context-runtime"}:
                             report[diagnostic_key].append({
                                 "id": case["id"], "side": "python", "sha256": hashlib.sha256(raw).hexdigest(),
                                 "rawSnapshots": snapshots,
@@ -2095,7 +2148,7 @@ def run_suite(*, checkout: Path, node: Path, smoke: bool = False,
                     row.update(status="blocked", code="python-case-failed")
                     if case["operation"] in {"promotion-apply-family-runtime", "host-restart-session-runtime",
                                              "host-update-isolation-runtime", "host-turn-barrier-runtime",
-                                             "host-turn-barrier-boundaries-runtime", "index-identity-boundaries-runtime", "query-sync-outcomes-runtime", "query-sync-boundaries-runtime", "forget-lineage-runtime", "forget-boundaries-runtime", "recall-signals-runtime", "embed-cache-lifecycle-runtime", "session-reset-boundaries-runtime"}:
+                                             "host-turn-barrier-boundaries-runtime", "index-identity-boundaries-runtime", "query-sync-outcomes-runtime", "query-sync-boundaries-runtime", "forget-lineage-runtime", "forget-boundaries-runtime", "recall-signals-runtime", "embed-cache-lifecycle-runtime", "session-reset-boundaries-runtime", "prompt-runtime-context-runtime"}:
                         row["evidenceError"] = {"name": type(error).__name__, "message": str(error)}
                     if case["operation"] == "host-update-isolation-runtime" and python_diagnostics is not None:
                         _retain_failed_host_update_capture(
@@ -2139,6 +2192,10 @@ def run_suite(*, checkout: Path, node: Path, smoke: bool = False,
 
         reset_complete = reset_family_complete(report["cases"])
         report["sessionResetBoundariesFamilyComplete"] = reset_complete
+        from equivalence.prompt_runtime_context import family_complete as prompt_family_complete, POINTS as prompt_points
+
+        prompt_complete = prompt_family_complete(report["cases"])
+        report["promptRuntimeContextFamilyComplete"] = prompt_complete
         from equivalence.query_sync_boundaries import POINTS as query_sync_boundary_points
         from equivalence.query_sync_outcomes import POINTS as query_sync_points
         from equivalence.index_identity_boundaries import POINTS as identity_boundary_points
@@ -2174,7 +2231,9 @@ def run_suite(*, checkout: Path, node: Path, smoke: bool = False,
                                                       and (point["id"] not in embedding_points
                                                            or embedding_complete)
                                                       and (point["id"] not in reset_points
-                                                           or reset_complete)]})
+                                                           or reset_complete)
+                                                      and (point["id"] not in prompt_points
+                                                           or prompt_complete)]})
             report["requirements"].append({"id": requirement["id"], "required": requirement["required"],
                                             "acceptance": acceptance, "registeredCases": len(rows)})
         uncovered = [point["id"] for requirement in report["requirements"] if requirement["required"]

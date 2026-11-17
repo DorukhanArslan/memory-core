@@ -873,23 +873,21 @@ def _search_debug(
 ) -> tuple[dict[str, Any], str | None]:
     events = [*runtime_events, *_runtime_debug_events(context)]
     latest = events[-1] if events else {}
-    debug: dict[str, Any] = {
-        "effectiveMode": effective_mode or "n/a",
-        "searchMs": max(0, context.clock() - started_at),
-        "hits": hits,
-        "candidateHits": candidates,
-        "withheldHits": max(0, candidates - filtered),
-        "searchWindow": window,
-    }
-    for name, owner in (("backend", status), ("configuredMode", latest), ("fallback", latest)):
+    debug: dict[str, Any] = {}
+    for name, owner in (("backend", status), ("configuredMode", latest)):
         if name in owner:
             debug[name] = owner[name]
+    debug["effectiveMode"] = effective_mode or "n/a"
+    if "fallback" in latest:
+        debug["fallback"] = latest["fallback"]
     if context.manager_ms is not None:
         debug["managerMs"] = context.manager_ms
+    debug["searchMs"] = max(0, context.clock() - started_at)
     bootstrap = next((event["embeddingBootstrap"] for event in reversed(events)
                       if event.get("embeddingBootstrap")), None)
     if bootstrap is not None:
         debug["embeddingBootstrap"] = bootstrap
+    debug.update(hits=hits, candidateHits=candidates, withheldHits=max(0, candidates - filtered), searchWindow=window)
     return debug, effective_mode or latest.get("effectiveMode")
 
 

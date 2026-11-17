@@ -104,9 +104,14 @@ def _values(token: str, low: int, high: int, *, field_length: int | None = None)
         else:
             lower, dash, upper = expression.partition("-")
             if stride and not dash:
-                raise ValueError(f"Numeric-prefixed cron step {part!r} requires a range")
+                raise ValueError(f"CronPattern: Syntax error, stepping with numeric prefix ('{part}') is not allowed. "
+                                 "Use wildcard (*/step) or range (min-max/step) instead.")
             start, end = int(lower), int(upper) if dash else int(lower)
-        if not 1 <= step <= size or not low <= start <= end <= high:
+        if step == 0:
+            raise ValueError("CronPattern: Syntax error, illegal stepping: 0")
+        if step > size:
+            raise ValueError(f"CronPattern: Syntax error, steps cannot be greater than maximum value of part ({size})")
+        if not low <= start <= end <= high:
             raise ValueError(f"Invalid cron field {token!r}")
         result.update(range(start, end + 1, step))
     return tuple(sorted(result))
@@ -204,6 +209,9 @@ class _CalendarPattern:
 @lru_cache(maxsize=128)
 def _parse_cron(expr: str) -> _CalendarPattern:
     text = js_trim(expr).upper()
+    if text == "@REBOOT":
+        raise ValueError("CronPattern: @reboot is not supported in this environment. "
+                         "This is an event-based trigger that requires system startup detection.")
     fields = _ALIASES.get(text, text).split()
     if len(fields) == 5:
         fields.insert(0, "0")
@@ -213,7 +221,7 @@ def _parse_cron(expr: str) -> _CalendarPattern:
         raise ValueError("Cron requires five, six or seven fields")
     sec, minute, hour, dom, month, dow, year = fields
     if any(part.startswith(("*/", "?/")) for part in year.split(",")):
-        raise ValueError("Cron wildcard year steps start at the invalid year zero")
+        raise ValueError("CronPattern: Invalid value for year: 0 (supported range: 1-9999)")
     years: range | tuple[int, ...]
     if year == "*":
         years = range(1, 3000)  # Croner's wildcard-year search horizon.

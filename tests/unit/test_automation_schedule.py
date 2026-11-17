@@ -32,5 +32,5 @@ def test_one_shot_store_normalization_preserves_instant_and_year():
 def test_numeric_prefixed_cron_step_rejects_invalid_schedule():
     job = AutomationJob(id="memory", name="Read the note", agent_id="main", every_ms=None, text="read",
                         calendar_schedule={"kind": "cron", "expr": "3/5 * * * *", "tz": "UTC"})
-    with pytest.raises(ValueError, match="requires a range"):
+    with pytest.raises(ValueError, match="stepping with numeric prefix"):
         compute_job_next_run_at_ms(job, _ms("2026-01-01T00:00Z"))

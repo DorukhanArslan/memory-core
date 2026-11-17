@@ -42,6 +42,8 @@ class LightDreamingOptions:
     dedupe_similarity: float = 0.9
     storage_mode: Literal["inline", "separate", "both"] = "separate"
     separate_reports: bool = False
+    model: str | None = None
+    complete: Callable[[dict], dict] | None = None
 
     def __post_init__(self):
         if self.storage_mode not in {"inline", "separate", "both"}:
@@ -62,6 +64,10 @@ def _recent_diary(workspace):
         content = read_dreams_file(resolve_dreams_path(workspace))
     except PermissionError:
         return []
+    return diary_context_entries(content)[-4:][::-1]
+
+
+def diary_context_entries(content):
     start = "<!-- openclaw:dreaming:diary:start -->"
     end = "<!-- openclaw:dreaming:diary:end -->"
     if start not in content or content.find(end) < content.index(start):
@@ -84,7 +90,7 @@ def _recent_diary(workspace):
                 if utf16_len(body) > 360
                 else body
             )
-    return entries[-4:][::-1]
+    return entries
 
 
 def _fresh(entry, signal):
@@ -239,6 +245,7 @@ def prepare_light_phase(
     lookback_days: float,
     options: LightDreamingOptions,
     on_event: Callable[[dict[str, Any]], None] | None = None,
+    recent_diary: list[str] | None = None,
 ):
     """Publish the selected group leaders, then mark their keys under the same workspace lock."""
     from memory_core.consolidation.dreaming import filter_recall_entries_within_lookback
@@ -268,6 +275,8 @@ def prepare_light_phase(
         )
         groups = dedupe_dreaming_entries(entries, options.dedupe_similarity)
         diary = _recent_diary(root)
+        if recent_diary is not None:
+            recent_diary.extend(diary)
 
         def covered(entry):
             snippet = js_trim(re.sub(JS_SPACE + "+", " ", entry["snippet"].lower()))

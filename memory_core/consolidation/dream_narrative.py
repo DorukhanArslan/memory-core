@@ -9,7 +9,7 @@ import re
 from typing import Any
 
 from memory_core._intl_zone_names import en_us_short_time_zone_name
-from memory_core.bootstrap._js import js_trim
+from memory_core.bootstrap._js import JS_SPACE, js_trim, js_trim_end, truncate_utf16_safe, utf16_len
 from memory_core.consolidation.artifacts import (
     read_dreams_file, resolve_dreams_path, write_dreams_file_atomic,
 )
@@ -67,7 +67,8 @@ def _model_unavailable(error: Exception) -> bool:
     return unavailable
 
 
-def _append(workspace: Path, narrative: str, keys: Sequence[str], now_ms: int, timezone: str | None) -> bool:
+def _append(workspace: Path, narrative: str, keys: Sequence[str], now_ms: int, timezone: str | None,
+            recent_diary: Sequence[str] = ()) -> bool:
     name = timezone if timezone is not None else os.getenv("TZ", "UTC")
     resolved, zone = resolve_user_timezone(name)
     if name and resolved != name:
@@ -84,6 +85,10 @@ def _append(workspace: Path, narrative: str, keys: Sequence[str], now_ms: int, t
             current = read_canonical_recall_store(recall_store_path(workspace), now_ms)["entries"]
             if any(key not in current for key in keys):
                 return False
+        if recent_diary:
+            from memory_core.consolidation.light_phase import diary_context_entries
+            if not set(recent_diary).issubset(diary_context_entries(existing)):
+                return False
         if _START in existing and _END in existing:
             cut = existing.rindex(_END)
             updated = existing[:cut] + entry + "\n" + existing[cut:]
@@ -98,11 +103,11 @@ def _append(workspace: Path, narrative: str, keys: Sequence[str], now_ms: int, t
     return True
 
 
-def _fallback(workspace: Path, now_ms: int, timezone: str | None) -> None:
+def append_fallback_narrative(workspace: Path, now_ms: int, timezone: str | None) -> None:
     try:
         _append(workspace, _FALLBACK, (), now_ms, timezone)
     except Exception as error:
-        _LOG.warning("REM fallback diary publication failed: %s", type(error).__name__)
+        _LOG.warning("Dream fallback diary publication failed: %s", type(error).__name__)
 
 
 def run_rem_narrative(
@@ -110,17 +115,44 @@ def run_rem_narrative(
     model: str | None, snippets: Sequence[str], themes: Sequence[str], source_entry_keys: Sequence[str],
     now_ms: int, timezone: str | None,
 ) -> str:
-    """Return the publication outcome after the ordinary awaited REM completion."""
+    """Use the shared diary publisher with the REM evidence captured inside the phase lock."""
+    return run_dream_narrative(workspace_dir=workspace_dir, agent_id=agent_id, complete=complete, model=model,
+                              snippets=snippets, themes=themes, source_entry_keys=source_entry_keys,
+                              now_ms=now_ms, timezone=timezone)
+
+
+def run_dream_narrative(
+    *, workspace_dir: Path, agent_id: str | None, complete: Callable[[dict], Mapping[str, Any]],
+    model: str | None, snippets: Sequence[str], themes: Sequence[str] = (), source_entry_keys: Sequence[str],
+    now_ms: int, timezone: str | None, promotions: Sequence[str] = (), day: str | None = None,
+    recent_diary: Sequence[str] = (),
+) -> str:
+    """Generate and publish a diary entry after the phase releases its workspace lock."""
     if not snippets:
         return "skipped"
     if not agent_id:
-        _fallback(workspace_dir, now_ms, timezone)
+        append_fallback_narrative(workspace_dir, now_ms, timezone)
         return "completed"
     lines = ["Write a dream diary entry from these memory fragments:\n"]
     lines.extend(f"- {snippet}" for snippet in snippets[:12])
     if themes:
         lines.append("\nRecurring themes:")
         lines.extend(f"- {theme}" for theme in themes[:6])
+    if promotions:
+        lines.append("\nMemories that crystallized into something lasting:")
+        lines.extend(f"- {text}" for text in promotions[:5])
+    if day or recent_diary:
+        lines.append("\nDiary continuity context:")
+        if day:
+            lines.append(f"- Current sweep: {day}")
+        if recent_diary:
+            lines.append("- Recent diary entries already written:")
+            for text in recent_diary[:3]:
+                text = js_trim(re.sub(JS_SPACE + "+", " ", text))
+                if utf16_len(text) > 360:
+                    text = js_trim_end(truncate_utf16_safe(text, 360)) + "..."
+                lines.append(f"  - {text}")
+        lines.append("- Prefer a fresh angle; do not replay the same first-day framing unless newer fragments change it.")
     request = {"agentId": agent_id, "message": "\n".join(lines), "extraSystemPrompt": _SYSTEM_PROMPT,
                "timeoutMs": 60_000}
     try:
@@ -135,9 +167,9 @@ def run_rem_narrative(
             reply = complete(request)
         text = js_trim(reply["text"])
         if text:
-            published = _append(workspace_dir, text, source_entry_keys, now_ms, timezone)
+            published = _append(workspace_dir, text, source_entry_keys, now_ms, timezone, recent_diary)
             return "completed" if published else "skipped"
     except Exception as error:
-        _LOG.warning("REM narrative completion or publication failed: %s", type(error).__name__)
-    _fallback(workspace_dir, now_ms, timezone)
+        _LOG.warning("Dream narrative completion or publication failed: %s", type(error).__name__)
+    append_fallback_narrative(workspace_dir, now_ms, timezone)
     return "degraded"

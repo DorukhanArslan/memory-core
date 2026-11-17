@@ -114,7 +114,7 @@ def _update_signals(workspace: Path, keys, now_ms, now_iso, *, considered):
 
 
 def prepare_rem_phase(*, config, now_ms, timezone, limit, lookback_days, options: RemDreamingOptions,
-                      agent_id=None, on_event=None):
+                      agent_id=None, on_event=None, dispatch_narrative=None):
     from memory_core.consolidation.dreaming import filter_recall_entries_within_lookback
 
     workspace = config.workspace_dir
@@ -150,11 +150,15 @@ def prepare_rem_phase(*, config, now_ms, timezone, limit, lookback_days, options
     status = "skipped"
     if options.complete is not None and entries:
         snippets = [snippet for _, snippet, _, _ in truths] or [e["snippet"] for e in entries[:8] if e["snippet"]]
-        status = run_rem_narrative(
-            workspace_dir=workspace, agent_id=agent_id, complete=options.complete, model=options.model,
-            snippets=snippets, themes=themes, source_entry_keys=[e["key"] for e in entries],
-            now_ms=now_ms, timezone=timezone,
-        )
+        def narrate():
+            return run_rem_narrative(
+                workspace_dir=workspace, agent_id=agent_id, complete=options.complete, model=options.model,
+                snippets=snippets, themes=themes, source_entry_keys=[e["key"] for e in entries],
+                now_ms=now_ms, timezone=timezone,
+            )
+
+        if snippets:
+            status = dispatch_narrative(narrate) if dispatch_narrative else narrate()
         if status in ("completed", "degraded") and (workspace / "DREAMS.md").is_file():
             changed.append("DREAMS.md")
     return changed, recorded, status

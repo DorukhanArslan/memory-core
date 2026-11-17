@@ -201,6 +201,7 @@ def run_dreaming_sweep(
     ingestion: DreamingIngestion | None = None,
     light_options: LightDreamingOptions | None = None,
     rem_options: RemDreamingOptions | None = None,
+    dispatch_narrative: Callable[[Callable[[], str]], str] | None = None,
 ) -> DreamingSweepResult:
     """Run one dreaming phase over the workspace's recall store.
 
@@ -251,19 +252,39 @@ def run_dreaming_sweep(
             ingestion=ingestion, origins=origins, on_event=on_event,
         )
         if light_options is not None:
+            diary = []
             entries, changed, recorded = prepare_light_phase(
                 config=config, now_ms=now_ms, timezone=timezone, limit=limit,
-                lookback_days=lookback, options=light_options, on_event=on_event,
+                lookback_days=lookback, options=light_options, on_event=on_event, recent_diary=diary,
             )
+            status = None
+            if light_options.complete is not None:
+                from memory_core.consolidation.dream_narrative import run_dream_narrative
+                from memory_core.consolidation.promotion import format_memory_dreaming_day
+
+                snippets = [e["snippet"] for e in entries if e["snippet"]]
+                status = "skipped"
+                if snippets:
+                    def narrate():
+                        return run_dream_narrative(
+                            workspace_dir=config.workspace_dir, agent_id=agent_id, complete=light_options.complete,
+                            model=light_options.model, snippets=snippets, day=format_memory_dreaming_day(now_ms, timezone),
+                            themes=list(dict.fromkeys(t for e in entries for t in e["conceptTags"] if t)),
+                            source_entry_keys=[k for e in entries for k in e["sourceEntryKeys"]],
+                            recent_diary=diary, now_ms=now_ms, timezone=timezone,
+                        )
+                    status = dispatch_narrative(narrate) if dispatch_narrative else narrate()
+                    if status in {"completed", "degraded"} and (config.workspace_dir / DREAMS_FILE_NAME).is_file():
+                        changed.append(DREAMS_FILE_NAME)
             return DreamingSweepResult(
-                phase=phase, candidates=(), light_entries=tuple(entries),
+                phase=phase, candidates=(), light_entries=tuple(entries), narrative_status=status,
                 phase_signals_recorded=recorded, files_changed=tuple(changed),
                 daily_ingestion=daily_result, session_ingestion=session_result,
             )
         if rem_options is not None:
             changed, recorded, status = prepare_rem_phase(
                 config=config, now_ms=now_ms, timezone=timezone, limit=limit, lookback_days=lookback,
-                options=rem_options, agent_id=agent_id, on_event=on_event,
+                options=rem_options, agent_id=agent_id, on_event=on_event, dispatch_narrative=dispatch_narrative,
             )
             return DreamingSweepResult(
                 phase=phase, candidates=(), phase_signals_recorded=recorded, files_changed=tuple(changed),

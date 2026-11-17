@@ -101,6 +101,19 @@ def _ordered_tokens(text, tokens):
              "the actual runtime fragments lost their declared insertion order")
 
 
+def _model_call_presence(evidence, index, calls, operation):
+    if index in evidence.get("forbiddenModelOperations", []):
+        _same(calls, [], "the blank model prompt made an undeclared actual provider call")
+        before, after = operation["beforeTranscript"], operation["afterTranscript"]
+        _same(after[:len(before)], before, "the blank prompt rewrote existing durable history")
+        for event in after[len(before):]:
+            _require(event.get("type") == "thinking_level_change"
+                     or event.get("type") == "custom" and event.get("customType") == "model-snapshot",
+                     "the blank model prompt persisted a new message or runtime carrier")
+    if evidence.get("allSubmitsRequireModel") or index in evidence.get("requiredModelOperations", []):
+        _require(calls, "a required genuine model call did not execute")
+
+
 def _text(messages):
     """Read every actual textual content block without changing its message."""
     result = []
@@ -530,8 +543,7 @@ def _operations(case, raw, public, native):
                                       for call in actual_calls],
               "a whole actual provider-bound message field, block or order was changed")
         total_calls += len(actual_calls)
-        if evidence.get("allSubmitsRequireModel") or index in evidence.get("requiredModelOperations", []):
-            _require(actual_calls, "a required genuine model call did not execute")
+        _model_call_presence(evidence, index, actual_calls, operation)
         text = "\n".join(_text(call["request"]["context"]["messages"]) for call in actual_calls)
         for token in evidence.get("requiredModelTokens", {}).get(str(index), []):
             _require(token in text, "required actual model content is missing: " + token)

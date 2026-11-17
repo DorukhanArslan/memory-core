@@ -74,6 +74,8 @@ _EXTRA_SOURCE_HASHES = {
     "src/agents/embedded-agent-runner/run/attempt-system-prompt-prepare.ts": "55221977201bf389589f65fd33bcf9da1575904ec3dc51ed0fe196867c5351de",
     "src/agents/embedded-agent-runner/run/attempt-system-prompt.ts": "d2e40045c8fd76051acfec14b4f27dbe856f8b26cebc097954e8ca5944a5b96b",
     "src/agents/embedded-agent-runner/run/attempt-prompt-build.ts": "b9e42fc2b03715744eda0da3431169cc729ecf3fde144b4dd6e37342e4e7a77a",
+    "src/agents/embedded-agent-runner/run/attempt-prompt-support.ts": "c1a0d9a4d3eb6c694a283127ce84192f0f727be962de4d65c8ec23f5d2439e19",
+    "src/agents/embedded-agent-runner/run/attempt-prompt-phase.ts": "746722496d8818e96648449df10bfdd9fe75845eebc214d11cf6b31c81ee82ab",
     "src/agents/embedded-agent-runner/run/attempt-prompt-submit.ts": "91d72acf733ec2defc9b66841cce3c5670cbe6520c227fdb5b7ebe040cdd0867",
     "src/agents/embedded-agent-runner/run/attempt-llm-boundary.ts": "6da9c2597018b27b496d14d22a70e6cfff91a4a9dd398f781b83748ecbe0f041",
     "src/agents/embedded-agent-runner/run/runtime-context-prompt.ts": "69e82242918c567188a5a8a65f1651c45253e5deb6c50c728599902cc410f6d0",
@@ -157,7 +159,18 @@ _EXTRA_SOURCE_ANCHORS = {
         "export async function prepareEmbeddedAttemptPromptContext("
     ],
     "src/agents/embedded-agent-runner/run/attempt-prompt-submit.ts": [
-        "export async function submitEmbeddedAttemptPrompt("
+        "export async function submitEmbeddedAttemptPrompt(",
+        "export function resolvePromptSubmissionSkipReason(",
+        "if (params.prompt.trim().length > 0 || params.imageCount > 0) {"
+    ],
+    "src/agents/embedded-agent-runner/run/attempt-prompt-support.ts": [
+        "export function observeEmbeddedAttemptPrompt(",
+        "const promptSkipReason = skipPromptSubmission",
+        ": resolvePromptSubmissionSkipReason({\n        prompt: input.promptForModel,"
+    ],
+    "src/agents/embedded-agent-runner/run/attempt-prompt-phase.ts": [
+        "export async function runEmbeddedAttemptPromptPhase(",
+        "await submitEmbeddedAttemptPrompt({"
     ],
     "src/agents/embedded-agent-runner/run/attempt-llm-boundary.ts": [
         "export function normalizeMessagesForLlmBoundary(",

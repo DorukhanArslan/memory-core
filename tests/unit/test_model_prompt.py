@@ -118,6 +118,10 @@ def test_runtime_only_event_has_no_source_user_key_and_blank_submission_skips_mo
         await runner.run_turn("", execute=model, request_id="suppressed", prompt_context=RuntimePromptInput(
             fragments=[{"kind": "conversation-data", "text": "suppressed-fact"}],
             suppress_next_user_message_persistence=True))
+        await runner.run_turn("\ufeff", execute=model, request_id="blank-model-override",
+            prompt_context=RuntimePromptInput(fragments=[
+                {"kind": "runtime-instruction", "text": "\ufeff"},
+                {"kind": "conversation-data", "text": "\u0085"}]))
         assert len(calls) == 1
         assert runner.catalog.read_transcript(SESSION).events == before
 

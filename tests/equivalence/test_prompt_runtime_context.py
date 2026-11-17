@@ -9,10 +9,10 @@ import pytest
 
 from equivalence.model_runtime_authority import APPROVED_NODE_RUNTIME
 from equivalence.prompt_runtime_context import (
-    CASE_HASHES, POINTS, build_cases, canonical, family_complete, validate_registration,
+    CASE_HASHES, EVIDENCE, POINTS, build_cases, canonical, family_complete, validate_registration,
 )
 from equivalence.prompt_runtime_context_evidence import (
-    MAX_NATIVE_CAPTURE_BYTES, _history, _ordered_tokens, _tools, decode_native_capture,
+    MAX_NATIVE_CAPTURE_BYTES, _history, _model_call_presence, _ordered_tokens, _tools, decode_native_capture,
 )
 from equivalence.prompt_runtime_context_profile import case_bindings, validate_prompt_runtime_context_profile
 from equivalence.runtime_oracle import ReleaseOracleExecution, RuntimeOracleError
@@ -105,6 +105,23 @@ def test_fragment_order_and_durable_history_custody_reject_forged_evidence():
     leaked["afterTranscript"].append({"type": "message", "message": {"role": "user", "content": "runtimeprivate"}})
     with pytest.raises(ValueError, match="leaked"):
         _history(leaked, {"op": "submit"}, {"transientTokens": ["runtimeprivate"]})
+    scope = EVIDENCE["prompt-runtime-context-whitespace-resume"]
+    blank = deepcopy(operation)
+    blank["afterTranscript"].extend([{"type": "thinking_level_change", "thinkingLevel": "off"},
+                                     {"type": "custom", "customType": "model-snapshot", "data": {"modelId": "fixture-model"}}])
+    _model_call_presence(scope, 0, [], blank)
+    with pytest.raises(ValueError, match="undeclared actual provider"):
+        _model_call_presence(scope, 0, [{"invented": "provider request"}], blank)
+    for index in (1, 2, 4):
+        _model_call_presence(scope, index, [{"actual": "provider request"}], operation)
+        with pytest.raises(ValueError, match="required genuine"):
+            _model_call_presence(scope, index, [], operation)
+    for event in ({"type": "message", "message": {"role": "user", "content": "invented"}},
+                  {"type": "custom_message", "customType": "openclaw.runtime-context", "content": "invented"}):
+        persisted = deepcopy(blank)
+        persisted["afterTranscript"].append(event)
+        with pytest.raises(ValueError, match="persisted a new message"):
+            _model_call_presence(scope, 0, [], persisted)
 
 
 def test_whole_tool_result_requires_real_before_after_receipts_and_source_custody():

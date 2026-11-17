@@ -48,6 +48,48 @@ def _text(messages):
         for content in (message["content"] for message in messages))
 
 
+def test_responses_checkpoint_and_tool_result_reopen_under_their_original_route(tmp_path):
+    model = ReplayModel("openai", "openai-responses", "gpt-5.4", "https://api.openai.com/v1")
+    options = RuntimePromptInput(history_replay=HistoryReplayContext(model, forwarded_auth_profile_id="primary"))
+    runner = _runner(tmp_path)
+    (tmp_path / "workspace" / "MEMORY.md").write_text("Record retrieved.", encoding="utf-8")
+
+    async def publish(turn):
+        assistant = {"role": "assistant", "api": model.api, "model": model.id, "provider": model.provider,
+                     "content": [], "timestamp": NOW, "stopReason": "stop"}
+        tracker = turn.responses_compaction_tracker(assistant)
+        item = {"type": "compaction", "id": "cmp_local", "encrypted_content": "checkpoint-data"}
+        tracker.added(item, 0)
+        tracker.completed(item, 0)
+        assistant["content"].append({"type": "text", "text": "Earlier summary."})
+        turn.record_message(assistant)
+        args = {"path": "MEMORY.md", "from": 1, "lines": 1}
+        call = {"type": "toolCall", "id": "call_local|fc_local", "name": "memory_get", "arguments": args}
+        turn.record_message({"role": "assistant", "api": model.api, "provider": model.provider,
+                             "model": model.id, "content": [call], "stopReason": "toolUse", "timestamp": NOW})
+        assert turn.dispatch(call["id"], call["name"], args)["text"] == "Record retrieved."
+        return HostModelResult()
+
+    saved = asyncio.run(runner.run_turn("Read the record.", execute=publish, prompt_context=options))
+    assert saved.ready
+    for profile in ("primary", "changed-account"):
+        fresh = _runner(tmp_path)
+        wire = []
+
+        async def observe(turn):
+            wire.extend(turn.responses_input())
+            return HostModelResult()
+
+        replay = RuntimePromptInput(history_replay=HistoryReplayContext(model, forwarded_auth_profile_id=profile))
+        outcome = asyncio.run(fresh.run_turn("Continue.", execute=observe, prompt_context=replay))
+        assert outcome.ready
+        checkpoints = [row for row in wire if row["type"] == "compaction"]
+        assert checkpoints == ([{"type": "compaction", "id": "cmp_local", "encrypted_content": "checkpoint-data"}]
+                               if profile == "primary" else [])
+        [result] = [row for row in wire if row["type"] == "function_call_output"]
+        assert result["call_id"] == "call_local" and json.loads(result["output"])["text"] == "Record retrieved."
+
+
 def _reply(turn):
     turn.record_message({"role": "assistant", "content": [{"type": "text", "text": "Done."}]})
     return HostModelResult()

@@ -27,8 +27,11 @@ def assemble_context_engine_messages(
     messages: list[dict[str, Any]],
     *,
     identity: RuntimeIdentity = MEMORY_CORE_RUNTIME_IDENTITY,
+    append_only_runtime_context: bool = False,
 ) -> list[dict[str, Any]]:
-    return strip_runtime_context_custom_messages(messages, identity=identity)
+    """Give the engine a private list while retaining an append-only signed prefix."""
+    return list(messages if append_only_runtime_context else
+                strip_runtime_context_custom_messages(messages, identity=identity))
 
 
 def build_context_engine_conversation_snapshot(

@@ -339,7 +339,8 @@ class ModelPrompt:
             user = source[user_index]
             content = user.get("content")
             if isinstance(content, str) and content == self.session_prompt:
-                source[user_index] = {**user, "content": self.model_prompt}
+                source[user_index] = {**user, "content": self.model_prompt,
+                                      "__openclawTranscriptPromptText": self.session_prompt}
             elif isinstance(content, list):
                 replaced, parts = False, []
                 for block in content:
@@ -348,7 +349,9 @@ class ModelPrompt:
                         replaced = True
                     else:
                         parts.append(block)
-                source[user_index] = {**user, "content": parts}
+                if replaced:
+                    source[user_index] = {**user, "content": parts,
+                                          "__openclawTranscriptPromptText": self.session_prompt}
         if self.carrier is not None:
             source.insert(user_index if user_index >= 0 else len(source), self.carrier)
         if self.options.tool_call_id_mode is not None:

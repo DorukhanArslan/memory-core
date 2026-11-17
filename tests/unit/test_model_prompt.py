@@ -85,7 +85,9 @@ def test_host_model_prompt_separates_effective_from_saved_user(tmp_path):
         runner = _runner(tmp_path)
 
         async def model(turn):
-            assert "provider-only-token" in _text(turn.model_request()["messages"])
+            request = turn.model_request()
+            assert "provider-only-token" in _text(request["messages"])
+            assert request["messages"][-1]["__openclawTranscriptPromptText"] == "durable-only-token"
             assert turn.messages[-1]["content"] == "durable-only-token"
             return _reply(turn)
 
@@ -94,6 +96,17 @@ def test_host_model_prompt_separates_effective_from_saved_user(tmp_path):
         assert outcome.ready
         events = runner.catalog.read_transcript(SESSION).events
         assert "durable-only-token" in str(events) and "provider-only-token" not in str(events)
+        assert "__openclawTranscriptPromptText" not in str(events)
+
+        async def next_model(turn):
+            messages = turn.model_request()["messages"]
+            assert "durable-only-token" in _text(messages) and "provider-only-token" not in _text(messages)
+            assert all("__openclawTranscriptPromptText" not in message for message in messages)
+            return _reply(turn)
+
+        await runner.run_turn("An ordinary next request.", execute=next_model,
+            request_id="after-split", prompt_context=RuntimePromptInput())
+        assert runner.catalog.read_transcript(SESSION).events[:len(events)] == events
 
     asyncio.run(scenario())
 

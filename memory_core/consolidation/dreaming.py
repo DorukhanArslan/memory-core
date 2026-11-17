@@ -45,6 +45,7 @@ from memory_core.consolidation.daily_ingestion import (
     daily_ingestion_lookback_days,
     ingest_daily_memory_signals,
 )
+from memory_core.consolidation.rem_phase import RemDreamingOptions, prepare_rem_phase
 from memory_core.consolidation.light_phase import LightDreamingOptions, prepare_light_phase
 from memory_core.consolidation.llm_consolidation import DeepConsolidation
 from memory_core.consolidation.origins import MemoryEntryOriginLedger
@@ -139,6 +140,7 @@ class DreamingSweepResult:
     daily_ingestion: DailyIngestionCollection | None = None
     session_ingestion: SessionIngestionCollection | None = None
     light_entries: tuple[dict[str, Any], ...] = ()
+    narrative_status: str | None = None
 
 
 def _ingest_phase_signals(
@@ -198,6 +200,7 @@ def run_dreaming_sweep(
     on_event: Callable[[dict[str, Any]], None] | None = None,
     ingestion: DreamingIngestion | None = None,
     light_options: LightDreamingOptions | None = None,
+    rem_options: RemDreamingOptions | None = None,
 ) -> DreamingSweepResult:
     """Run one dreaming phase over the workspace's recall store.
 
@@ -223,17 +226,21 @@ def run_dreaming_sweep(
     selection and publication pipeline with live source, staged-key freshness and diary
     coverage checks. It ingests daily notes before publishing even without an explicit
     ingestion source. It returns staged groups in ``light_entries`` with their contributing
-    source keys. ``candidates`` holds scored promotions for the other sweep profiles.
+    source keys. ``rem_options`` selects the REM report and optional awaited diary flow, returning
+    its publication result in ``narrative_status``. ``candidates`` holds scored promotions for the other sweep profiles.
     """
     if phase not in DREAMING_PHASES:
         raise ValueError(f"unsupported dreaming phase: {phase}")
 
+    if light_options is not None and phase != "light":
+        raise ValueError("light_options requires the light dreaming phase")
+    if rem_options is not None and phase != "rem":
+        raise ValueError("rem_options requires the REM dreaming phase")
+    options = light_options or rem_options
     if limit is None:
-        limit = DEFAULT_PHASE_INGESTION_LIMIT["light"] if light_options is not None else 5
-    if light_options is not None:
-        if phase != "light":
-            raise ValueError("light_options requires the light dreaming phase")
-        if not light_options.enabled or limit <= 0:
+        limit = DEFAULT_PHASE_INGESTION_LIMIT[phase] if options is not None else 5
+    if options is not None:
+        if not options.enabled or limit <= 0:
             return DreamingSweepResult(phase=phase, candidates=(), phase_signals_recorded=0,
                                        files_changed=(), skip_reason="disabled")
         ingestion = replace(ingestion or DreamingIngestion(), limit=limit)
@@ -253,12 +260,21 @@ def run_dreaming_sweep(
                 phase_signals_recorded=recorded, files_changed=tuple(changed),
                 daily_ingestion=daily_result, session_ingestion=session_result,
             )
+        if rem_options is not None:
+            changed, recorded, status = prepare_rem_phase(
+                config=config, now_ms=now_ms, timezone=timezone, limit=limit, lookback_days=lookback,
+                options=rem_options, agent_id=agent_id, on_event=on_event,
+            )
+            return DreamingSweepResult(
+                phase=phase, candidates=(), phase_signals_recorded=recorded, files_changed=tuple(changed),
+                daily_ingestion=daily_result, session_ingestion=session_result, narrative_status=status,
+            )
     except Exception as error:
-        if light_options is not None and on_event is not None:
+        if options is not None and on_event is not None:
             try:
                 on_event({
                     "type": "memory.dream.completed", "timestamp": iso_ms(now_ms), "phase": phase,
-                    "outcome": "failed", "error": str(error), "lineCount": 0, "storageMode": light_options.storage_mode,
+                    "outcome": "failed", "error": str(error), "lineCount": 0, "storageMode": options.storage_mode,
                 })
             except Exception:
                 # The host's event sink can itself fail. Preserve the original phase failure.

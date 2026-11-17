@@ -11,9 +11,9 @@ from tempfile import TemporaryDirectory
 
 from equivalence import dream_diary as family
 from equivalence.dream_diary_bindings import OWNERS, COMPILED
-from equivalence.dream_diary_sdk import SDK_OWNERS, capture, documents
+from equivalence.dream_diary_sdk import owner_receipts, capture, documents
 from equivalence.dream_light_evidence import require, same
-from equivalence.dream_light_sdk import _owner, event_projection
+from equivalence.dream_light_sdk import event_projection
 
 _EXPECTED = {
     "phase-and-trust": ["published", "published"], "lowercase-and-truncation": ["published", "published"],
@@ -87,7 +87,7 @@ def _check_append(op, returned, before, after, expected):
          "Diary append touched an unrelated document")
 
 
-def _validate(case, public, raw, workspace, native, database_states):
+def _validate(case, public, raw, workspace, native, database_states, *, live=True):
     family.validate_case(case)
     name = case["id"].removeprefix("dream-diary-")
     seed = raw["initial"]["files"] if native else raw["initial"]
@@ -154,38 +154,51 @@ def _validate(case, public, raw, workspace, native, database_states):
             require(observation["recent"] and observation["recent"][0] == (clipped if len(snippet.encode("utf-16-le")) > 720 else snippet),
                     "Published evidence missing from bounded diary coverage")
         previous = docs
-    current = capture(workspace)
-    expected = raw["rows"][-1]["files"]
-    if native:
-        for item in current.values():
-            item.update(mtimeNs=str(item["mtimeNs"]), ino=str(item["ino"]))
-    same(current, expected, "Final physical diary workspace changed")
+    if live:
+        current = capture(workspace)
+        expected = raw["rows"][-1]["files"]
+        if native:
+            for item in current.values():
+                item.update(mtimeNs=str(item["mtimeNs"]), ino=str(item["ino"]))
+        same(current, expected, "Final physical diary workspace changed")
 
 
-def validate_sdk(case, public, snapshots, directory):
-    workspace = Path(directory).resolve() / "sdk-diary"
-    require(workspace.resolve() == workspace and isinstance(snapshots, list) and len(snapshots) == 1, "Unowned SDK diary receipt")
+def validate_sdk(case, public, snapshots, directory, *, archived_workspace=None):
+    require(isinstance(snapshots, list) and len(snapshots) == 1, "Expected a single SDK diary receipt")
     raw = snapshots[0]
+    workspace = Path(directory).resolve() / "sdk-diary" if archived_workspace is None else Path(archived_workspace)
+    require(workspace.is_absolute() and workspace.name == "sdk-diary" and ".." not in workspace.parts,
+            "Unowned SDK diary receipt")
     same(raw["case"], case, "Wrong SDK diary case")
-    same(raw["owners"], [_owner(fn) for fn in SDK_OWNERS], "SDK diary owner changed")
+    owners = owner_receipts()
+    if archived_workspace is None:
+        require(workspace.resolve() == workspace, "Redirected SDK diary fixture")
+        same(raw["owners"], owners, "SDK diary owner changed")
+    else:
+        # A replay checkout may live elsewhere on disk. Each original production module
+        # must still have its exact repository-relative name and byte hash.
+        same([(r["name"], r["path"].rsplit("/memory_core/",1)[1], r["sha256"]) for r in raw["owners"]],
+             [(r["name"], r["path"].rsplit("/memory_core/",1)[1], r["sha256"]) for r in owners],
+             "Archived SDK owner differs from the replay checkout")
     require(raw["workspace"] == str(workspace) and raw["complete"] is True, "Incomplete SDK diary receipt")
-    events = [json.loads(line) for line in (workspace.parent / "sdk-callbacks.jsonl").read_text().splitlines()]
+    events = [json.loads(line) for line in (Path(directory) / "sdk-callbacks.jsonl").read_text().splitlines()]
     same(events, raw["rows"][-1]["callbacks"], "SDK callback receipt changed")
     if raw["race"]:
         facts = raw["race"]
         require(facts[0]["thread"] != facts[1]["thread"] and facts[2]["lease"].get("ownerToken")
                 and type(facts[2]["lease"].get("pid")) is int,
                 "SDK race lost its distinct writer or physical lease")
-    _validate(case, public, raw, workspace, False, [])
+    _validate(case, public, raw, workspace, False, [], live=archived_workspace is None)
 
 
-def validate_native(case, public, snapshots, directory, loaded):
+def validate_native(case, public, snapshots, directory, loaded, *, archived=False):
     require(isinstance(snapshots, list) and len(snapshots) == 1, "Expected one protected native diary receipt")
     raw = snapshots[0]
     workspace = Path(raw["workspace"])
     root = Path(raw["root"])
-    require(root.is_absolute() and root.resolve() == root and root.parent == Path(directory).resolve()
-            and root.name.startswith("native-diary-") and workspace == root / "workspace" and workspace.resolve() == workspace,
+    require(root.is_absolute() and ".." not in root.parts and root.parent == Path(directory)
+            and root.name.startswith("native-diary-") and workspace == root / "workspace"
+            and (archived or (root.resolve() == root and workspace.resolve() == workspace)),
             "Unowned native diary workspace")
     require(raw.get("complete") is True and raw.get("closed") is True and "error" not in raw, "Incomplete native diary write")
     same(raw["input"], case["input"], "Misbound native diary fixture")
@@ -212,7 +225,8 @@ def validate_native(case, public, snapshots, directory, loaded):
     states = [_verify_db(row, blobs, workspace) for row in raw["rows"]]
     database = root / "state/state/openclaw.sqlite"
     same(raw["database"], str(database), "Unowned SQLite path")
-    same(_database(database), raw["rows"][-1]["database"], "Final original SQLite journal changed")
+    if not archived:
+        same(_database(database), raw["rows"][-1]["database"], "Final original SQLite journal changed")
     calls = raw["leaseCalls"]
     key = hashlib.sha256(str(workspace).encode()).hexdigest()
     sets = [c for c in calls if c["method"] == "compareAndApply" and c["args"][2]["action"] == "set"
@@ -225,4 +239,4 @@ def validate_native(case, public, snapshots, directory, loaded):
         _, _, leases = _verify_db(raw["race"][2], blobs, workspace)
         require(leases.get(key) in [c["args"][2]["value"] for c in sets] and len(sets) >= 2,
                 "Concurrent narrative publication never held the captured lease")
-    _validate(case, public, raw, workspace, True, states)
+    _validate(case, public, raw, workspace, True, states, live=not archived)

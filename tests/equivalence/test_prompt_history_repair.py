@@ -11,7 +11,7 @@ from equivalence.prompt_history_repair import (
     CASE_HASHES, POINTS, build_cases, canonical, family_complete, validate_registration,
 )
 from equivalence.prompt_history_repair_evidence import (
-    MAX_NATIVE_CAPTURE_BYTES, _messages_guard, _operations, _preserve_history, _tool_catalog,
+    MAX_NATIVE_CAPTURE_BYTES, _verify_diagnostic_arguments, _messages_guard, _operations, _preserve_history, _tool_catalog,
     decode_native_capture,
 )
 from equivalence.prompt_history_repair_profile import case_bindings
@@ -171,3 +171,14 @@ def test_raw_transport_rejects_borrowed_identity_trailing_data_and_size_widening
             altered["sha256"] = "0" * 64
         with pytest.raises(ValueError):
             decode_native_capture(altered)
+
+def test_shared_diagnostic_argument_values_require_valid_backward_references():
+    model = {"input": ["text", "image"], "reasoning": False}
+    expected = [{"config": {"model": model}, "model": model}]
+    encoded = [{"config": {"model": deepcopy(model)}, "model": {"type": "reference", "target": 3}}]
+    _verify_diagnostic_arguments(encoded, expected)
+    for target in (0, 2, 4, 5, True, -1):
+        altered = deepcopy(encoded)
+        altered[0]["model"]["target"] = target
+        with pytest.raises(ValueError, match="diagnostic argument reference"):
+            _verify_diagnostic_arguments(altered, expected)

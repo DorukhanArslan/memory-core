@@ -1,5 +1,8 @@
 # Promotion and heartbeat maintenance integration
 
+Use the [plain-language parity completion tracker](parity-completion-checklist.md)
+to follow the acceptance score, remaining comparison differences and final finish criteria.
+
 The [active checklist](full-equivalence-checklist.md) records the latest complete
 measurement: **82/128 verified conditions, 46 remaining**, with **38 complete,
 six partial and 20 pending contracts**. The single full run measures approved

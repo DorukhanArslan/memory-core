@@ -696,6 +696,36 @@ class MemorySessionCatalog:
         """Current host activity time used by live catalog consumers."""
         return self._clock()
 
+    def clear_heartbeat_task_timestamps(self, session_key: str, names: Sequence[str]) -> None:
+        """Remove only migrated task names from the current session and its retained window."""
+        key = self._session_key(session_key)
+        with closing(self._connect()) as db, db:
+            db.execute("BEGIN IMMEDIATE")
+            row = db.execute("SELECT entry_json FROM memory_session_nodes WHERE agent=? AND session_key=?",
+                             (self.agent_id, key)).fetchone()
+            if row is None:
+                return
+            entry = json.loads(row[0])
+            current = entry.get("heartbeatTaskState", {})
+            remaining = {name: stamp for name, stamp in current.items() if name not in names}
+            if current == remaining:
+                return
+            def patched(metadata):
+                if remaining:
+                    metadata["heartbeatTaskState"] = remaining
+                else:
+                    metadata.pop("heartbeatTaskState", None)
+                return _json(metadata)
+            db.execute("UPDATE memory_session_nodes SET entry_json=? WHERE agent=? AND session_key=?",
+                       (patched(entry), self.agent_id, key))
+            session_id = entry.get("sessionId")
+            window = db.execute("SELECT entry_json FROM memory_session_windows WHERE agent=? AND session_id=? AND session_key=?",
+                                (self.agent_id, session_id, key)).fetchone()
+            if window:
+                db.execute("UPDATE memory_session_windows SET entry_json=? WHERE agent=? AND session_id=? AND session_key=?",
+                           (patched(json.loads(window[0])), self.agent_id, session_id, key))
+            self._changed(db)
+
     def compare_and_patch_host_lifecycle(
         self, *, expected_revision: int, updates: Mapping[str, Mapping[str, Any]],
     ) -> bool:

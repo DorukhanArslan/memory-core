@@ -365,6 +365,10 @@ def build_cases(*, include_prospective: bool = False) -> list[dict[str, Any]]:
 
     cases.extend(build_flush_plan_targets())
     cases.extend(build_heartbeat_outcomes())
+
+    from equivalence.configured_redaction import build_cases as build_configured_redaction
+
+    cases.extend(build_configured_redaction())
     if include_prospective:
         from equivalence.flush_contract import build_prospective_flush_contract_cases
         from equivalence.session_projection import build_prospective_session_projection_cases

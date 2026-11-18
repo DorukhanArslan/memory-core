@@ -636,20 +636,18 @@ def test_scenario_matches_upstream(index: int):
     assert not bad, bad[:3]
 
 
-# Valid JavaScript this port reports as unsupported (dropped like an invalid entry), see
-# docs/parity_matrix.md, audit note 30 and the Redaction row.
-UNSUPPORTED = ["(?<n>a)|(?<n>b)", "(?<=;base64,[A-Za-z0-9+/=]*)zz", "/\\p{L}+/u", "/\\P{Lu}/u", "(?<=a+)b", "(?<!\\d{1,3})x", "a{99999999999}"]
+ADVANCED_PATTERNS = ["(?<n>a)|(?<n>b)", "(?<=;base64,[A-Za-z0-9+/=]*)zz", "/\\p{L}+/u", "/\\P{Lu}/u", "(?<=a+)b", "(?<!\\d{1,3})x", "a{99999999999}"]
 
 
-def test_unsupported_syntax_is_reported_not_guessed():
+def test_advanced_patterns_compile_like_the_original():
     from memory_core.redact_user_patterns import compile_redact_pattern
 
-    steps = [{"fn": "compile", "pattern": pattern} for pattern in UNSUPPORTED]
+    steps = [{"fn": "compile", "pattern": pattern} for pattern in ADVANCED_PATTERNS]
     [out] = oracle_run([{"steps": steps}])
-    for pattern, result in zip(UNSUPPORTED, out["steps"], strict=True):
+    for pattern, result in zip(ADVANCED_PATTERNS, out["steps"], strict=True):
         assert result["value"]["reason"] is None, pattern  # JavaScript accepts it
         compiled = compile_redact_pattern(pattern)
-        assert compiled is not None and compiled.reason == "unsupported-syntax", pattern
+        assert compiled is not None and compiled.reason is None, pattern
 
 
 def test_scenarios_exercise_redaction():

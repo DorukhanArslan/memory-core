@@ -419,6 +419,9 @@ def _validate_scope(scope: Any, cases: Any) -> tuple[list[dict], dict[str, set[s
 
         from equivalence.workspace_lock_cases import validate_registration as validate_workspace_locks
 
+        from equivalence.configured_redaction import validate_registration as validate_configured_redaction
+
+        validate_configured_redaction(cases)
         flush_plan_target.validate_registration(cases)
         validate_workspace_locks(cases)
         validate_deep_consolidation(cases)
@@ -2578,7 +2581,11 @@ def run_suite(*, checkout: Path, node: Path, smoke: bool = False,
         report["promptHistoryRepairFamilyComplete"] = history_complete
         flush_plan_complete = flush_plan_target.family_complete(report["cases"])
         report["flushPlanTargetFamilyComplete"] = flush_plan_complete
-        dream_points = {}
+        from equivalence.configured_redaction import family_complete as configured_complete, POINT as configured_point
+
+        configured = configured_complete(report["cases"])
+        report["configuredRedactionOutcomesComplete"] = configured
+        dream_points = {configured_point: configured}
         for op, family in WORKSPACE_FAMILIES.items():
             complete = family.family_complete(report["cases"])
             report[report_key(op, "FamilyComplete")] = complete

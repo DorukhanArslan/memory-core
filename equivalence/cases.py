@@ -365,6 +365,10 @@ def build_cases(*, include_prospective: bool = False) -> list[dict[str, Any]]:
 
     cases.extend(build_flush_plan_targets())
     cases.extend(build_heartbeat_outcomes())
+
+    from equivalence.recovery_failure import build_cases as build_failure_cases
+
+    cases.extend(build_failure_cases())
     if include_prospective:
         from equivalence.flush_contract import build_prospective_flush_contract_cases
         from equivalence.session_projection import build_prospective_session_projection_cases
@@ -486,6 +490,13 @@ def run_python(case: dict[str, Any]) -> Any:
     if operation == "dream-diary-publication-runtime":
         from equivalence.dream_diary_sdk import run_sdk
         return run_sdk({k: v for k, v in case.items() if k != "_diagnosticDirectory"}, case.get("_diagnosticDirectory"))
+    if operation == "recovery-forget-interruption-runtime":
+        from equivalence.recovery_failure_sdk import run_interrupted_forget
+        if case.get("_diagnosticDirectory") is None:
+            from tempfile import TemporaryDirectory
+            with TemporaryDirectory() as directory:
+                return run_interrupted_forget(case, directory)
+        return run_interrupted_forget(case, case["_diagnosticDirectory"])
     if operation in {"recovery-artifact-repair-runtime", "recovery-index-repair-runtime"}:
         from equivalence.recovery_repair import ARTIFACT, validate_case
         validate_case(case)

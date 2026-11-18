@@ -92,6 +92,7 @@ _OPERATIONS = {
     **dict.fromkeys(("dream-light-runtime", "dream-rem-runtime"), ("dream-light-runtime.mjs", "dist/dreaming-phases-rmgXNBLP.mjs", False)),
     "dream-diary-publication-runtime": ("dream-diary-runtime.mjs", "dist/dreaming-dreams-file-BJzlZFlf.mjs", False),
     "recovery-artifact-repair-runtime": ("recovery-artifact-repair-runtime.mjs", "dist/dreaming-state-VYUvbU-n.mjs", False),
+    "recovery-forget-interruption-runtime": ("recovery-forget-interruption-runtime.mjs", "dist/cli.runtime-CVRN4xUp.mjs", False),
     "recovery-index-repair-runtime": ("recovery-index-repair-runtime.mjs", "dist/extensions/memory-core/manager-runtime.js", False),
     "dream-deep-runtime": ("dream-deep-runtime.mjs", "dist/extensions/memory-core/index.js", False),
     "prompt-history-repair-runtime": ("prompt-history-repair-runtime.mjs", "dist/builtin-openclaw-D1Xfnzzr.mjs", False),

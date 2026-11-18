@@ -1,9 +1,9 @@
 """Operation-bound local workspace profiles with complete native and SDK evidence."""
-from equivalence import recovery_repair
+from equivalence import recovery_failure, recovery_repair
 from equivalence.dream_phase_family import FAMILIES as DREAMS, PHASES, report_key as dream_report_key
 
-FAMILIES = {**DREAMS, recovery_repair.ARTIFACT: recovery_repair, recovery_repair.INDEX: recovery_repair}
-RECOVERY = {recovery_repair.ARTIFACT: "recovery-artifact", recovery_repair.INDEX: "recovery-index"}
+FAMILIES = {**DREAMS, recovery_failure.OPERATION: recovery_failure, recovery_repair.ARTIFACT: recovery_repair, recovery_repair.INDEX: recovery_repair}
+RECOVERY = {recovery_failure.OPERATION: "recovery-interruption", recovery_repair.ARTIFACT: "recovery-artifact", recovery_repair.INDEX: "recovery-index"}
 
 
 def evidence_family(operation):
@@ -11,6 +11,8 @@ def evidence_family(operation):
 
 
 def report_key(operation, field):
+    if operation == recovery_failure.OPERATION:
+        return "recoveryInterruption" + field
     if operation in RECOVERY:
         if field == "FamilyComplete":
             return "recoveryRepairFamilyComplete"
@@ -19,6 +21,9 @@ def report_key(operation, field):
 
 
 def prepare_bindings(checkout, runtime_root, operation):
+    if operation == recovery_failure.OPERATION:
+        from equivalence.forget_lineage_bindings import prepare_forget_lineage_bindings
+        return prepare_forget_lineage_bindings(checkout, runtime_root)
     if operation == recovery_repair.ARTIFACT:
         from equivalence.recovery_artifact_evidence import prepare_artifact_bindings
         return prepare_artifact_bindings(checkout, runtime_root)
@@ -30,6 +35,9 @@ def prepare_bindings(checkout, runtime_root, operation):
 
 
 def native_validator(operation):
+    if operation == recovery_failure.OPERATION:
+        from equivalence.recovery_failure_evidence import validate_native
+        return validate_native
     if operation == recovery_repair.ARTIFACT:
         from equivalence.recovery_artifact_evidence import validate_native
         return validate_native
@@ -47,7 +55,9 @@ def native_validator(operation):
 
 
 def sdk_validator(operation):
-    if operation == recovery_repair.ARTIFACT:
+    if operation == recovery_failure.OPERATION:
+        from equivalence.recovery_failure_evidence import validate_sdk
+    elif operation == recovery_repair.ARTIFACT:
         from equivalence.recovery_artifact_evidence import validate_sdk
     elif operation == recovery_repair.INDEX:
         from equivalence.recovery_index_evidence import validate_sdk

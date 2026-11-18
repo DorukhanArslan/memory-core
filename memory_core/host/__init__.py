@@ -7,7 +7,7 @@ docs/host_session_lifecycle.md and docs/host_kit.md.
 """
 
 from memory_core.host.flush import FlushOutcome, FlushRequest
-from memory_core.host.heartbeat_run import HeartbeatOutcome, HeartbeatRun, ScheduledHeartbeatWake
+from memory_core.host.heartbeat_run import HeartbeatDispatch, HeartbeatOutcome, HeartbeatRun, ScheduledHeartbeatWake
 from memory_core.host.kit import (
     DEFAULT_CONTEXT_WINDOW_TOKENS,
     MINIMAL_PROMPT_KINDS,
@@ -43,6 +43,7 @@ __all__ = [
     "FlushModelUnavailable",
     "FlushOutcome",
     "FlushRequest",
+    "HeartbeatDispatch",
     "HeartbeatOutcome",
     "HeartbeatRun",
     "HostKit",

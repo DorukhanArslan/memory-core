@@ -924,9 +924,17 @@ def _oracle(node: Path, script: Path, checkout: Path, cases: list[dict], timeout
             except (OSError, ValueError):
                 raise HarnessError("redaction-source-evidence-invalid",
                                    "The isolated all-source policy caller lost its actual owner, runtime or complete output evidence.") from None
+        if source_policy and cases[0]["id"] in {"secret-boundary-whole-utf16", "secret-boundary-chunked-utf16"}:
+            from equivalence.secret_boundary_transport import retain_streams
+            result["secretSourceStreams"] = retain_streams(cases[0], ROOT, stdout, stderr)
         if execution is not None:
             try:
                 result = execution.collect(result, cases)
+                if len(cases) == 1 and "secretBoundaryTransport" in result["releaseTrace"]:
+                    from equivalence.secret_boundary_transport import retain_streams
+                    directory = Path(result["runtimeDiagnostics"][0]["retainedNativeRawPath"]).parent
+                    result["releaseTrace"]["secretBoundaryTransport"]["originalStreams"] = retain_streams(
+                        cases[0], ROOT, stdout, stderr, directory=directory)
                 if len(cases) == 1 and cases[0]["operation"] == "embed-cache-lifecycle-runtime":
                     result["releaseTrace"]["embeddingCacheTransport"]["originalProcessStreams"] = {
                         name: {"text": value, "bytes": len(value.encode("utf8")),
@@ -1469,7 +1477,10 @@ def run_suite(*, checkout: Path, node: Path, smoke: bool = False,
                     report["failedReferenceCaseId"] = case["id"]
                     raise
                 oracle["results"].extend(native["results"])
-                report["sourcePolicyDiagnostics"].append({"id": case["id"], "sourceExecution": native["sourceExecution"]})
+                receipt = {"id": case["id"], "sourceExecution": native["sourceExecution"]}
+                if "secretSourceStreams" in native:
+                    receipt["originalStreams"] = native["secretSourceStreams"]
+                report["sourcePolicyDiagnostics"].append(receipt)
                 for entry in native["sources"]:
                     if entry["path"] in source_members and source_members[entry["path"]] != entry:
                         raise HarnessError("source-changed", "An isolated source owner changed between cases.")

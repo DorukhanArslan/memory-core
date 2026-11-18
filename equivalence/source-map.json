@@ -6466,7 +6466,7 @@
           "path": "memory_core/consolidation/_util.py",
           "symbol": "js_to_fixed",
           "anchor": "def js_to_fixed(",
-          "line": 70
+          "line": 72
         },
         {
           "path": "memory_core/consolidation/promotion.py",
@@ -6592,7 +6592,7 @@
           "path": "memory_core/consolidation/_util.py",
           "symbol": "parse_ms",
           "anchor": "def parse_ms(",
-          "line": 92
+          "line": 103
         },
         {
           "path": "memory_core/redact_user_patterns.py",

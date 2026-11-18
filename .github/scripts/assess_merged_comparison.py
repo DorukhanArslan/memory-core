@@ -21,7 +21,7 @@ from equivalence.strict_report_reader import Reader, _constant, _finite, _object
 from followup_datetime import SOURCE_OWNERS as DATETIME_SOURCE_OWNERS
 from followup_families import FAMILIES, REPORT_FIELDS, family_key, replay_followup
 from followup_heartbeat import CORPUS_OWNERS
-from followup_seal import (CATALOG_SHA, PREVIOUS_CASES, PREVIOUS_CATALOG_SHA, PREVIOUS_COMPARISON,
+from followup_seal import (CATALOG_SHA, EXPECTED_RESOLUTIONS, PREVIOUS_CASES, PREVIOUS_CATALOG_SHA, PREVIOUS_COMPARISON,
                            PRODUCT, REGISTERED_CASES, SCOPE_SHA as SCOPE, SDK_FILES, SDK_SHA, check_seal)
 
 SDK = {"sourceSha256": SDK_SHA, "sourceFiles": SDK_FILES}
@@ -1658,7 +1658,7 @@ def assess(args, result):
     newly_measured = {"prompt-history-repair-runtime", "engine.numeric-boundaries", "deep-consolidation-runtime"}
     require(set(metrics["families"]) == set(earlier) | newly_measured | set(FAMILIES)
             and all(metrics["families"][name] is passed for name, passed in earlier.items()),
-            "The fourteen previously accepted family gates differ from their retained assessment")
+            "A previously accepted family gate differs from its retained assessment")
     previous_hashes = dict(PREVIOUS_MISMATCH_PUBLIC_SHA256)
     previous_hashes["flush-execution-warm-index-first-recall"] = {
         **previous_hashes["flush-execution-warm-index-first-recall"],
@@ -1671,6 +1671,13 @@ def assess(args, result):
         cid: {"before": before, "after": public[cid]}
         for cid, before in previous_hashes.items() if not _same_json(before, public[cid])}
     rows_by_id = {row["id"]: row for row in data["cases"]}
+    resolved = set(EXPECTED_RESOLUTIONS)
+    require(resolved <= set(previous_hashes), "The expected resolutions include a case outside the previous differences")
+    for cid in resolved:
+        require(rows_by_id[cid]["status"] == "matched"
+                and public[cid] == {"openclaw": previous_hashes[cid]["openclaw"],
+                                     "python": previous_hashes[cid]["openclaw"]},
+                "A declared fix must reproduce the previous original whole output on both implementations")
     sdk_changes = [cid for cid, before in previous_hashes.items()
                    if before["python"] != (public[cid] or {}).get("python")]
     native_changes = [cid for cid, before in previous_hashes.items()
@@ -1682,10 +1689,11 @@ def assess(args, result):
         "sdkChangedCaseIds": sdk_changes, "nativeChangedCaseIds": native_changes,
         "allSdkWholePublicHashesUnchanged": not sdk_changes,
         "allowedUncreditedNativeWarmFlushChanges": allowed_warm_changes,
-        "otherChangedCaseIds": sorted((set(sdk_changes) | set(native_changes)) - set(allowed_warm_changes))}
-    require(len(mismatches) == 14 and {row["id"] for row in mismatches} == set(previous_hashes)
+        "resolvedCaseIds": sorted(resolved),
+        "otherChangedCaseIds": sorted((set(sdk_changes) | set(native_changes)) - set(allowed_warm_changes) - resolved)}
+    require({row["id"] for row in mismatches} == set(previous_hashes) - resolved
             and not result["previousMismatchPublicHashReview"]["otherChangedCaseIds"],
-            "Mismatch identities or previous whole-public digests changed beyond the uncredited warm native field")
+            "Unexpected change to a retained difference or its complete public value")
     expected_status = ("blocked" if metrics["cases"].get("blocked") else "mismatched"
                        if metrics["cases"].get("mismatched") else "incomplete" if metrics["uncovered"] else "passed")
     require(data["status"] == expected_status and data["fullScopePassed"] is (expected_status == "passed"),

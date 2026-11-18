@@ -1,10 +1,10 @@
-name: Compare memory maintenance, recovery and conversation behavior
+name: Compare the remaining OpenClaw memory contracts
 # One frozen full measurement; retain the first result without retrying.
-# The retained 1,519 definitions and previous complete-family gates are included.
+# The retained 1,592 definitions and previous complete-family gates are included.
 
 on:
   push:
-    branches: [verify/maintenance-workspace-once]
+    branches: [verify/memory-contract-remainder-once]
     paths: [.github/workflows/verify-merged-forget-once.yml]
 
 permissions:
@@ -108,7 +108,7 @@ jobs:
         if: always()
         uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
         with:
-          name: maintenance-workspace-summary
+          name: memory-contract-remainder-summary
           path: .equivalence-results/summary/
           include-hidden-files: true
           if-no-files-found: warn
@@ -116,7 +116,7 @@ jobs:
         if: always()
         uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
         with:
-          name: maintenance-workspace-raw-evidence
+          name: memory-contract-remainder-raw-evidence
           path: |
             .equivalence-results/
             /var/tmp/memory-host-v4-*/

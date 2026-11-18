@@ -6497,7 +6497,7 @@
       "implementation": "partial",
       "notes": [
         "Prepared index publication provides atomic chunks/FTS/source/identity/details/provenance/recall replacement and rollback before commit; a post-commit hook error preserves the committed revision. This covers one SQLite publication boundary, not a common recovery receipt across Markdown, recall, origins, provenance and index stores.",
-        "Python also has atomic-rename and rollback primitives, but no common durable operation receipt establishes next-open recovery across all required cuts. Native flush admission and visible failure policy are host state; Python REM directly appends DREAMS text and the Lab live session state is RAM, so interruption and retry outcomes still require host/process failure cases."
+        "Two guarded forget calls use SQLite abort triggers at marker insertion and at final origin deletion after the note rewrite. Reopened database images and durable note bytes identify the partial state and retry. The interruption outcome gate also requires the unchanged write, index, flush, consolidation and diary controls in the same comparison. Recovery after unknown operations and retry across the entire six-publisher scope remain open."
       ]
     },
     {

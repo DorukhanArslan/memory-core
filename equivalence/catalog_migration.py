@@ -30,7 +30,9 @@ PRE_FLUSH_PLAN_CASES = 1575
 PRE_FLUSH_PLAN_CATALOG_SHA256 = "26e794a6eb6389f48202e6c8f85e668932a3aa3d38234cd00fd2835fdf25e582"
 PRE_HEARTBEAT_OUTCOME_CASES = 1588
 PRE_HEARTBEAT_OUTCOME_CATALOG_SHA256 = "f5f01be60adf70d120b77c371dd6ef61dbc27e8b09fc27d307374e730f073974"
-REGISTERED_CASES = 1592
+PRE_INTERRUPTION_CASES = 1592
+PRE_INTERRUPTION_CATALOG_SHA256 = "d0a2b6324abc29306c635f600a46f2105b8c02585f39d9aa88e87100fddab030"
+REGISTERED_CASES = 1594
 
 # PR22 changes these three policy texts, not the thirteen cases' business inputs,
 # order, coverage or other fields. Reversing only the exact reviewed fragments
@@ -122,7 +124,7 @@ def definition_authority(cases, *, fif_version):
                                   BOUNDARY_REGISTERED_CASES, RECALL_REGISTERED_CASES,
                                   CACHE_REGISTERED_CASES, RESET_REGISTERED_CASES, PROMPT_REGISTERED_CASES,
                                   HISTORY_REGISTERED_CASES, NUMERIC_REGISTERED_CASES, DEEP_REGISTERED_CASES, PRE_RECOVERY_CASES, PRE_FLUSH_PLAN_CASES,
-                                  PRE_HEARTBEAT_OUTCOME_CASES, REGISTERED_CASES}
+                                  PRE_HEARTBEAT_OUTCOME_CASES, PRE_INTERRUPTION_CASES, REGISTERED_CASES}
             or fif_version == "v5" and len(cases) != HISTORICAL_REGISTERED_CASES):
         raise ValueError("Catalog migration requires one complete exact registered definition set")
     frozen = families[fif_version]
@@ -219,6 +221,11 @@ def definition_authority(cases, *, fif_version):
         if len(cases) > PRE_HEARTBEAT_OUTCOME_CASES:
             from equivalence.heartbeat_turn_outcomes import build_cases as build_heartbeat_outcome_cases
             expected.extend(build_heartbeat_outcome_cases())
+        if len(cases) >= PRE_INTERRUPTION_CASES and _sha(cases[:PRE_INTERRUPTION_CASES]) != PRE_INTERRUPTION_CATALOG_SHA256:
+            raise ValueError("The first 1592 registered definitions changed")
+        if len(cases) > PRE_INTERRUPTION_CASES:
+            from equivalence.recovery_failure import build_cases as build_interruption_cases
+            expected.extend(build_interruption_cases())
         if _sha(cases[:DEEP_REGISTERED_CASES]) != DEEP_CATALOG_SHA256 or _sha(maintenance) != _sha(expected):
             raise ValueError("Maintenance cases must follow the exact prior 1519 definitions")
     frozen.validate_registration(cases)

@@ -19,6 +19,7 @@ from typing import Any, Literal
 from uuid import uuid4
 
 from memory_core.bootstrap._js import js_trim
+from memory_core.compaction_replay import CompactionTracker, build_openai_responses_reasoning_replay_metadata
 from memory_core.config import MemoryConfig
 from memory_core.consolidation.artifact_provenance import MemoryArtifactProvenanceStore
 from memory_core.curation import APPEND_DAILY_NOTE, CURATION_OPERATIONS
@@ -27,7 +28,11 @@ from memory_core.host.kit import HostKit, TurnContext
 from memory_core.host.session import SessionState, TurnUsage, apply_turn_usage
 from memory_core.memory_write_provenance import _observe_memory_write_entry
 from memory_core.model_prompt import ModelPrompt, RuntimePromptInput, serialize_model_tool_json
+from memory_core.queued_user import merge_text as merge_queued_user_text, trailing_user
+from memory_core.responses_converter import build_responses_transport_input
 from memory_core.session_catalog import MemorySessionCatalog, normalize_session_agent_id
+from memory_core.session_transcript_append import resolve_message_append_parent, timestamp_ms_to_iso
+from memory_core.transcript_tree import select_visible_transcript_events
 from memory_core.session_visibility import is_incognito_session_key, resolve_session_agent_id
 from memory_core.tools.common import format_error_message
 from memory_core.turn_tool_dispatch import TurnTool, TurnToolDispatcher
@@ -198,7 +203,7 @@ class HostTurn:
                  trust: TurnTrust, *, flush: FlushRequest | None = None,
                  publication_turn_id: str | None = None,
                  projection_messages: Sequence[Mapping[str, Any]] | None = None,
-                 model_prompt: ModelPrompt | None = None) -> None:
+                 model_prompt: ModelPrompt | None = None, context_window_tokens: int | None = None) -> None:
         self._runner = runner
         self.turn_id = turn_id
         self._publication_turn_id = publication_turn_id or turn_id
@@ -210,6 +215,7 @@ class HostTurn:
         self._messages = list(deepcopy(messages))
         self._projection_messages = list(deepcopy(projection_messages if projection_messages is not None else messages))
         self._model_prompt = model_prompt
+        self._context_window_tokens = context_window_tokens
         self._appends: list[dict[str, Any]] = []
         self._receipts: list[dict[str, Any]] = []
         self._guard = threading.RLock()
@@ -265,8 +271,51 @@ class HostTurn:
                 if self.context is None:
                     raise RuntimeError("A maintenance callback has no ordinary model prompt")
                 self._model_prompt = self._runner._prepare_model_prompt(
-                    "", RuntimePromptInput(), self.context, self.turn_id)
+                    "", RuntimePromptInput(), self.context, self.turn_id, self._context_window_tokens)
             return self._model_prompt.request(self._projection_messages)
+
+    def _restore_provider_context(self, continuation):
+        """Switch the active request to the newly committed branch while retaining admitted tool IDs."""
+        with self._guard:
+            self._messages = deepcopy(continuation["llmMessages"])
+            self._projection_messages = deepcopy(continuation["context"]["messages"])
+            owner = self._model_prompt
+            if owner is not None and owner.canonical_user is not None:
+                positions = [i for i, row in enumerate(self._projection_messages) if row == owner.canonical_user]
+                if len(positions) != 1:
+                    raise RuntimeError("Recovery lost the admitted user message")
+                owner.bound_user_index = positions[0]
+                if owner.history_replay is not None:
+                    owner.history_replay.prepare(self._projection_messages[:positions[0]])
+
+    def _responses_history(self):
+        if not self._open:
+            raise RuntimeError("The host turn is closed")
+        history = self._model_prompt.history_replay if self._model_prompt is not None else None
+        if history is None or history.context.model.api != "openai-responses":
+            raise ValueError("Configure an openai-responses history replay route for this turn")
+        return history
+
+    def responses_input(self) -> list[Any]:
+        """Return the provider HTTP input for the admitted OpenAI Responses turn."""
+        with self._guard:
+            history = self._responses_history()
+            return build_responses_transport_input(
+                history.context.model, self.model_request(), history.replay_identity)
+
+    def responses_compaction_tracker(self, assistant: dict[str, Any]) -> CompactionTracker:
+        """Bind stream item events to this session before record_message persists the assistant.
+
+        On output_item.added and output_item.done, supply the item and current
+        assistant content length to the tracker's added and completed methods.
+        """
+        with self._guard:
+            history = self._responses_history()
+            if assistant.get("role") != "assistant":
+                raise ValueError("Responses checkpoints belong to the emitted assistant")
+            model = history.context.model
+            metadata = build_openai_responses_reasoning_replay_metadata(model, history.replay_identity)
+            return CompactionTracker(assistant, model, metadata)
 
     def record_message(self, message: Mapping[str, Any]) -> dict[str, Any]:
         """Persist one actual model-produced assistant record with owned trust."""
@@ -448,6 +497,90 @@ def _resolve(future: asyncio.Future) -> None:
 def _consume(future: asyncio.Future) -> None:
     if not future.cancelled():
         future.exception()
+
+
+@dataclass(frozen=True)
+class FlushModelRoute:
+    """One host-owned provider and model candidate for a maintenance run."""
+
+    provider: str
+    model: str
+
+
+@dataclass(frozen=True)
+class FlushModelSelection(FlushModelRoute):
+    """The requested route and fallback policy before candidates are attempted."""
+
+    requested_route_resolution: str | None
+    fallbacks_override: tuple[str, ...] | None
+
+
+class FlushModelUnavailable(Exception):
+    """The host exhausted this candidate's transport retries and permits a fallback."""
+
+
+def _flush_model_route(reference: str, active_provider: str) -> FlushModelRoute:
+    # The maintenance model follows the pinned first-slash rule. A partially
+    # qualified reference remains the complete model name on the active provider.
+    reference = js_trim(reference)
+    provider, slash, model = reference.partition("/")
+    if slash and js_trim(provider) and js_trim(model):
+        return FlushModelRoute(js_trim(provider), js_trim(model))
+    return FlushModelRoute(active_provider, reference)
+
+
+@dataclass(frozen=True)
+class FlushModelExecutor:
+    """A route-aware ``execute_flush`` callback for both foreground and detached runners.
+
+    Supply the conversation's resolved provider, model and configured fallback list.
+    An explicit session-level fallback override takes precedence over that list. The
+    host executes and retries each candidate's transport inside ``execute_candidate``.
+    Raising ``FlushModelUnavailable`` lets an inherited route try the next candidate.
+    """
+
+    provider: str
+    model: str
+    fallbacks: Sequence[str]
+    execute_candidate: Callable[
+        [HostTurn, FlushModelRoute, FlushModelSelection], Awaitable[HostModelResult | None]
+    ]
+    requested_route_resolution: str | None = None
+    fallbacks_override: tuple[str, ...] | None = None
+
+    def __post_init__(self):
+        if isinstance(self.fallbacks, str) or isinstance(self.fallbacks_override, str):
+            raise TypeError("Flush fallbacks must be a sequence of model references")
+        object.__setattr__(self, "fallbacks", tuple(self.fallbacks))
+        if self.fallbacks_override is not None:
+            object.__setattr__(self, "fallbacks_override", tuple(self.fallbacks_override))
+
+    def selection_for(self, request: FlushRequest) -> FlushModelSelection:
+        override = request.model
+        if override and js_trim(override):
+            route = _flush_model_route(override, self.provider)
+            return FlushModelSelection(route.provider, route.model, "raw", ())
+        return FlushModelSelection(
+            self.provider, self.model, self.requested_route_resolution, self.fallbacks_override
+        )
+
+    async def __call__(self, turn: HostTurn) -> HostModelResult | None:
+        if turn.flush_request is None:
+            raise ValueError("A routed flush requires a maintenance turn")
+        selection = self.selection_for(turn.flush_request)
+        fallback_refs = self.fallbacks if selection.fallbacks_override is None else selection.fallbacks_override
+        routes = [FlushModelRoute(selection.provider, selection.model)]
+        for reference in fallback_refs:
+            route = _flush_model_route(reference, self.provider)
+            if route.model and route not in routes:
+                routes.append(route)
+        # Let the final unavailable exception reach ordinary flush completion and error recording.
+        for route in routes[:-1]:
+            try:
+                return await self.execute_candidate(turn, route, selection)
+            except FlushModelUnavailable:
+                continue
+        return await self.execute_candidate(turn, routes[-1], selection)
 
 
 class HostSessionRunner:
@@ -999,7 +1132,7 @@ class HostSessionRunner:
             failures.append(_failure("publication", error, committed=True))
         return index_status
 
-    def _prepare_model_prompt(self, effective_prompt, options, context, user_key):
+    def _prepare_model_prompt(self, effective_prompt, options, context, user_key, context_window_tokens=None):
         options = replace(options,
             host_timezone=options.host_timezone if options.host_timezone is not None else self.kit._timezone,
             host_time_format=options.host_time_format if options.host_time_format is not None else self.kit._time_format)
@@ -1009,9 +1142,34 @@ class HostSessionRunner:
         registry = [*context.tools, *(tool.definition for tool in self.extra_tools if tool.definition is not None)]
         prompt = ModelPrompt(effective_prompt, options, tools=registry,
             workspace_prompt=context.workspace.prompt_text, citations_mode=self.kit.memory.config.citation_mode,
-            identity=self.kit._identity, now_ms=self._clock(), session_version=version, user_key=user_key)
+            identity=self.kit._identity, now_ms=self._clock(), session_version=version, user_key=user_key,
+            session_key=self.session.session_key, session_id=self.session.session_id,
+            context_window_tokens=context_window_tokens,
+            history_events=select_visible_transcript_events(list(snapshot.events)) if snapshot else ())
         self.last_model_prompt = prompt
         return prompt
+
+    def _append_model_snapshot(self, prompt):
+        """Append the history owner's genuine model-snapshot control, once."""
+        owner = prompt.history_replay
+        if owner is None or owner.snapshot_to_append is None:
+            return
+        snapshot = self.catalog.read_transcript(self.session.session_id)
+        events = list(snapshot.events) if snapshot else []
+        appended = []
+        timestamp = timestamp_ms_to_iso(prompt.now_ms)
+        if not events:
+            header = {"type": "session", "version": 4, "id": self.session.session_id,
+                      "timestamp": timestamp, "cwd": str(self.kit.memory.workspace.root)}
+            appended.append(header)
+            events.append(header)
+        appended.append({"type": "custom", "id": str(uuid4()),
+                         "parentId": resolve_message_append_parent(events),
+                         "timestamp": timestamp, "customType": "model-snapshot",
+                         "data": deepcopy(owner.snapshot_to_append)})
+        self.catalog.append_events(self.session.session_id, appended,
+            updated_at_ms=prompt.now_ms, session_key=self.session.session_key)
+        owner.snapshot_to_append = None
 
     async def _produce(self, user_message, execute, execute_flush, turn_id, sender_is_owner,
                        context_window_tokens, capture: _RunCapture,
@@ -1055,23 +1213,60 @@ class HostSessionRunner:
             user.setdefault("timestamp", self._clock())
             user.setdefault("idempotencyKey", turn_id)
             prompt_owner = None
+            queued_append = {}
+            queued_history = None
             if prompt_context is not None:
                 if not isinstance(user.get("content"), str):
                     raise TypeError("RuntimePromptInput requires the current prompt as string text")
-                prompt_owner = self._prepare_model_prompt(user["content"], prompt_context, context, turn_id)
+                prompt_owner = self._prepare_model_prompt(user["content"], prompt_context, context, turn_id, context_window_tokens)
                 if prompt_owner.prompt_submission.get("runtimeOnly"):
                     # A runtime-only event has no persisted source user whose
                     # idempotency identity could be carried to the model.
                     user.pop("idempotencyKey", None)
+                if prompt_context.history_replay is not None and not prompt_context.suppress_next_user_message_persistence:
+                    last_turn = continuation["instanceEntry"].get(_STATE, {}).get("lastTurnId")
+                    queued = trailing_user(continuation["visibleEvents"], last_turn)
+                    if queued and not prompt_owner.skip_submission and not prompt_owner.prompt_submission.get("runtimeOnly"):
+                        queued_append["expected_mutation_at"] = continuation["version"]["updatedAt"]
+                        queued_history = continuation["visibleEvents"]
+                        previous = queued[0]["message"]
+                        prompt_owner.session_prompt = merge_queued_user_text(prompt_owner.session_prompt, previous)
+                        prompt_owner.model_prompt = merge_queued_user_text(prompt_owner.model_prompt, previous)
+                        origin = user.get("provenance")
+                        if not (isinstance(origin, Mapping) and origin.get("kind") == "internal_system" and
+                                str(origin.get("sourceTool", "")).lower() == "main_session_restart_recovery"):
+                            queued_append["detach_queued_user"] = queued[0]["id"]
+                            queued_history = queued_history[:-(1 + len(queued[1]))]
                 user = {**user, "content": prompt_owner.session_prompt}
+            from memory_core.host.provider_overflow import ProviderTurnExecutor
+            if isinstance(execute, ProviderTurnExecutor) and not (prompt_owner is not None and prompt_owner.skip_submission):
+                if prompt_owner is None:
+                    prompt_owner = self._prepare_model_prompt(user["content"], RuntimePromptInput(), context, turn_id)
+                preflight, checkpoints = await execute.prepare_admission(
+                    self, state, turn_id, user["content"], prompt_owner.system_prompt, queued_history=queued_history
+                )
+                if preflight.skip_prompt_submission:
+                    prior = self.catalog.read_continuation(state.session_id, session_key=state.session_key)
+                    execute._emit("terminal", {"kind":"precheck","text":None})
+                    failures.append(_failure("precheck", preflight.prompt_error or RuntimeError("Preflight skipped the provider request")))
+                    return HostTurnOutcome(turn_id, state, tuple(prior["llmMessages"]), (), (), False, False,
+                                           "not-run", tuple(failures))
+                if checkpoints:
+                    if self._cancel_requested.is_set():
+                        raise RuntimeError("The provider turn was cancelled before publishing recovery")
+                    queued_append["admission_compactions"] = checkpoints
             skip = prompt_owner is not None and prompt_owner.skip_submission
             suppress = prompt_context is not None and prompt_context.suppress_next_user_message_persistence
             if not skip and not suppress:
                 saved = self.catalog.append_message(state.session_id, user, session_key=state.session_key,
-                    event_id=f"{turn_id}:user", now_ms=self._clock(), cwd=str(self.kit.memory.workspace.root))
+                    event_id=f"{turn_id}:user", now_ms=self._clock(), cwd=str(self.kit.memory.workspace.root),
+                    **queued_append)
                 appends.append(saved)
                 if not saved["appended"]:
                     raise RuntimeError("This request was already admitted; no model turn was repeated")
+                for checkpoint in queued_append.get("admission_compactions", ()):
+                    execute._emit("compacted", {"firstKeptEntryId": checkpoint["firstKeptEntryId"],
+                                                "summary": checkpoint["summary"]})
             accepted = True
             capture.accepted = True
             self._persist(state, needs_index=True, turn_id=turn_id, index_scope="transcript")
@@ -1082,9 +1277,14 @@ class HostSessionRunner:
                 model_messages = [*model_messages, deepcopy(user)]
                 projection_messages = [*projection_messages, deepcopy(user)]
             if prompt_owner is not None and not skip:
-                prompt_owner.bind_current_user(projection_messages[-1], len(projection_messages) - 1)
+                prompt_owner.bind_current_user(projection_messages[-1], len(projection_messages) - 1,
+                    prior_messages=projection_messages[:-1])
+                self._append_model_snapshot(prompt_owner)
+            elif prompt_owner is not None and prompt_owner.history_replay is not None:
+                prompt_owner.history_replay.prepare(projection_messages)
+                self._append_model_snapshot(prompt_owner)
             turn = HostTurn(self, turn_id, state, context, model_messages, trust,
-                projection_messages=projection_messages, model_prompt=prompt_owner)
+                projection_messages=projection_messages, model_prompt=prompt_owner, context_window_tokens=context_window_tokens)
             self._active_turn = turn
             phase = "model"
             try:

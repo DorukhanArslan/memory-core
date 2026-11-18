@@ -20,8 +20,9 @@ become ``line_map`` like upstream's archive branch). Deviations, by design:
   memory-core and OpenClaw runtime identities), not upstream's full legacy-format stripper.
 - The session key classification (dreaming narrative, cron run) needs the key from the host's
   store; ``normalizeSessionKeyPreservingOpaquePeerIds`` is approximated by trim + lower-case.
-- ``Date.parse`` of string timestamps accepts ISO-8601 forms only (and ``YYYY-MM-DD HH:MM``
-  with a space); other legacy formats count as unknown (0).
+- String timestamps support JavaScript calendar values, slash month/day/year, short numeric
+  dates and UTC-string dates. Unverified implementation-defined formats fall back to the
+  next timestamp candidate.
 - Not ported: the worker offload, archive/incognito path handling, store classification from
   files, transcript stats and the cold-storage restore.
 """
@@ -34,10 +35,9 @@ import math
 import re
 from collections.abc import Callable, Iterable, Mapping
 from dataclasses import dataclass, field
-from datetime import datetime, timedelta
-from datetime import timezone as dt_timezone
 from typing import Any
 
+from memory_core._js_date import js_date_parse
 from memory_core.bootstrap._js import (
     JS_SPACE_CLASS,
     _from_units,
@@ -504,51 +504,6 @@ def _is_recalled_memory_message(message: Mapping[str, Any]) -> bool:
         provenance is not None
         and provenance.get("kind") == "internal_system"
         and provenance.get("sourceTool") in ("memory_search", "memory_get")
-    )
-
-
-_ISO_RE = re.compile(
-    r"^([+-][0-9]{6}|[0-9]{4})(?:-([0-9]{2})(?:-([0-9]{2}))?)?"
-    r"(?:[T ]([0-9]{2}):([0-9]{2})(?::([0-9]{2})(?:[.,]([0-9]+))?)?)?"
-    r"(Z|[+-][0-9]{2}:?[0-9]{2})?\Z",
-    re.ASCII,
-)
-
-
-def js_date_parse(value: str) -> float:
-    """``Date.parse`` for ISO-8601 strings; ``nan`` otherwise (see module doc)."""
-    match = _ISO_RE.match(js_trim(value))
-    if match is None:
-        return math.nan
-    year, month, day, hour, minute, second, frac, zone = match.groups()
-    try:
-        naive = datetime(
-            int(year),
-            int(month or 1),
-            int(day or 1),
-            int(hour or 0),
-            int(minute or 0),
-            int(second or 0),
-        )
-    except ValueError:
-        return math.nan
-    millis = int((frac or "0")[:3].ljust(3, "0"))
-    if zone is not None:
-        if zone == "Z":
-            offset = timedelta(0)
-        else:
-            sign = -1 if zone[0] == "-" else 1
-            digits = zone[1:].replace(":", "")
-            offset = sign * timedelta(hours=int(digits[:2]), minutes=int(digits[2:]))
-        stamp = naive.replace(tzinfo=dt_timezone(offset))
-    elif hour is None:
-        stamp = naive.replace(tzinfo=dt_timezone.utc)  # date-only forms are UTC
-    else:
-        stamp = naive.astimezone()  # date-time without offset: host local time
-        stamp = naive.replace(tzinfo=stamp.tzinfo)
-    return (
-        math.floor((stamp - datetime(1970, 1, 1, tzinfo=dt_timezone.utc)).total_seconds() * 1000)
-        + millis
     )
 
 

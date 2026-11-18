@@ -39,6 +39,10 @@ def validate_case(case, *, registered=False):
 
 
 def validate_execution_case(case):
+    if case.get("operation") == "deep-consolidation-runtime":
+        from equivalence.deep_consolidation import validate_case as validate_deep_case
+
+        return validate_deep_case(case)
     return validate_case(case, registered=case.get("covers") == list(ACCEPTANCE))
 
 

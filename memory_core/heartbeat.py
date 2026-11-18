@@ -54,8 +54,8 @@ Only heartbeat-task jobs become scheduled tasks
 due job (a main-session ``systemEvent`` job that is not a heartbeat task, which upstream runs
 through ``executeMainSessionCronJob``) is the host's to run.
 
-Not ported: pending system events (exec completions, cron events, session notices, so an
-exec-event wake without scheduled tasks is always skipped as ``no-pending-event``), the
+The host supplies selected session-event occurrences. Successful settlement returns the exact
+occurrence IDs it may consume. Generic session notices stay with the host. Not ported: the
 ``heartbeat_respond`` tool and its ``scratch`` argument, response-prefix typing, media replies,
 isolated ``:heartbeat`` sessions and the agent-run failure copy.
 """
@@ -70,6 +70,7 @@ from collections.abc import Mapping, Sequence
 from dataclasses import dataclass
 from typing import Literal
 
+from memory_core.heartbeat_events import HeartbeatEventSelection, HeartbeatSystemEvent, heartbeat_event_prompt, select_heartbeat_events
 from memory_core._heartbeat_constants import (
     DEFAULT_HEARTBEAT_ACK_MAX_CHARS,
     DEFAULT_HEARTBEAT_EVERY,
@@ -845,8 +846,10 @@ def resolve_heartbeat_preflight(
     scheduled_tasks: Sequence[HeartbeatScheduledTask] = (),
     source: str | None = None,
     reason: str | None = None,
+    event_selection: HeartbeatEventSelection | None = None,
+    scheduled_every_ms: int | None = None,
 ) -> HeartbeatPreflight:
-    """Port of ``resolveHeartbeatPreflight`` for a host with no queued system events.
+    """Port of ``resolveHeartbeatPreflight`` for a host-owned session event snapshot.
 
     ``scratch`` is the agent's monitor scratch (a state from a
     :class:`~memory_core.heartbeat_scratch.HeartbeatScratchStore`, its text, or ``None``).
@@ -857,10 +860,11 @@ def resolve_heartbeat_preflight(
     """
     is_exec, is_cron, is_wake_payload = resolve_heartbeat_wake_flags(source, reason)
     content, revision = _scratch_parts(scratch)
-    bypass = is_exec or is_cron or is_wake_payload
+    tagged_cron = bool(event_selection and event_selection.has_tagged_cron)
+    bypass = is_exec or is_cron or is_wake_payload or tagged_cron
     shown = None if bypass else content
-    if is_exec and not scheduled_tasks:
-        # No pending exec-completion event exists in memory-core (no system-event queue).
+    scheduled = type(scheduled_every_ms) is int and 0 < scheduled_every_ms <= 2**53 - 1
+    if is_exec and not (scheduled_tasks or scheduled or tagged_cron or (event_selection and event_selection.exec_events)):
         return HeartbeatPreflight(HEARTBEAT_SKIP_NO_PENDING_EVENT, shown, revision, bypass)
     if bypass or scheduled_tasks or content is None:
         return HeartbeatPreflight(None, shown, revision, bypass)
@@ -938,6 +942,8 @@ class HeartbeatTurn:
     scratch_content: str | None
     scratch_revision: int | None
     uses_response_tool: bool
+    selected_event_ids: tuple[str, ...] = ()
+    internal_turn_source: str = "heartbeat"
 
 
 def prepare_heartbeat_turn(
@@ -951,6 +957,12 @@ def prepare_heartbeat_turn(
     reason: str | None = None,
     timezone: str = "UTC",
     time_format: str = DEFAULT_TIME_FORMAT,
+    pending_events: Sequence[HeartbeatSystemEvent] = (),
+    can_relay_to_user: bool = False,
+    inspects_run_queue: bool = True,
+    scheduled_every_ms: int | None = None,
+    every: str | None = None,
+    main_queue_size: int = 0,
 ) -> HeartbeatTurn:
     """Preflight and prompt of one heartbeat turn the host has decided to run now.
 
@@ -962,12 +974,24 @@ def prepare_heartbeat_turn(
     (``memory_core.current_time`` documents the deviation: upstream detects the host's format).
     """
     tasks = tuple(sorted(scheduled_tasks, key=lambda task: locale_sort_key(task.job_id)))
+    is_exec, is_cron, is_payload = resolve_heartbeat_wake_flags(source, reason)
+    selection = select_heartbeat_events(pending_events, exec_wake=is_exec, cron_wake=is_cron,
+                                        wake_payload=is_payload, inspects_run_queue=inspects_run_queue)
     preflight = resolve_heartbeat_preflight(
-        scratch, scheduled_tasks=tasks, source=source, reason=reason
+        scratch, scheduled_tasks=tasks, source=source, reason=reason, event_selection=selection,
+        scheduled_every_ms=scheduled_every_ms,
     )
-    if preflight.skip_reason:
+    scheduled = type(scheduled_every_ms) is int and 0 < scheduled_every_ms <= 2**53 - 1
+    early_preflight = not tasks and (source == "interval" or (is_exec and not scheduled))
+    targeted_exec = is_exec and not scheduled and not tasks and bool(selection.exec_events)
+    skip_reason = preflight.skip_reason
+    if resolve_heartbeat_interval_ms(every) is None:
+        skip_reason = "disabled"
+    elif main_queue_size > 0 and not targeted_exec and not (early_preflight and skip_reason):
+        skip_reason = "requests-in-flight"
+    if skip_reason:
         return HeartbeatTurn(
-            skip_reason=preflight.skip_reason,
+            skip_reason=skip_reason,
             prompt=None,
             message=None,
             scheduled_tasks=tasks,
@@ -975,12 +999,14 @@ def prepare_heartbeat_turn(
             scratch_revision=preflight.scratch_revision,
             uses_response_tool=False,
         )
-    turn_prompt = build_heartbeat_run_prompt(
-        scheduled_tasks=tasks,
-        scratch_content=preflight.scratch_content,
-        prompt=prompt,
-        use_response_tool=use_response_tool,
-    )
+    event_prompt = None if tasks else heartbeat_event_prompt(selection, relay=can_relay_to_user, use_tool=use_response_tool)
+    if event_prompt is None:
+        turn_prompt = build_heartbeat_run_prompt(
+            scheduled_tasks=tasks, scratch_content=preflight.scratch_content,
+            prompt=prompt, use_response_tool=use_response_tool,
+        )
+    else:
+        turn_prompt = _append_heartbeat_scratch(event_prompt, preflight.scratch_content)
     return HeartbeatTurn(
         skip_reason=None,
         prompt=turn_prompt,
@@ -993,6 +1019,8 @@ def prepare_heartbeat_turn(
         scratch_content=preflight.scratch_content,
         scratch_revision=preflight.scratch_revision,
         uses_response_tool=use_response_tool,
+        selected_event_ids=selection.occurrences(has_tasks=bool(tasks)),
+        internal_turn_source=("exec" if selection.exec_events else "cron") if event_prompt else "heartbeat",
     )
 
 

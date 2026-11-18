@@ -84,7 +84,21 @@ PROTECTED = (
     r"entries\.memory-core\b",
     r'"entries":\s*\{\s*"memory-core"',
     r'\.get\("entries", \{\}\)\s*\.get\("memory-core"',
+    r'_mapping\(_mapping\(config\.get\("plugins"\)\)\.get\("entries"\)\)\.get\("memory-core"\)',
     r'OPENCLAW_BUILTIN_MEMORY_PLUGIN_ID = "memory-core"',
+    # OpenClaw's dreaming-cron-contract.ts and src/memory-host-sdk/dreaming.ts.
+    # Existing jobs depend on these declaration, ownership and dispatch identifiers.
+    r"(?<![\w-])memory-core:memory-dreaming-promotion(?![\w-])",
+    r"\[managed-by=memory-core\.(?:short-term-promotion|dreaming\.(?:light|rem))\]",
+    r"(?<!\w)__openclaw_memory_core_(?:short_term_promotion_dream|light_sleep|rem_sleep)__(?!\w)",
+    # Only the plugin label of the messages returned/logged by dreaming.ts and
+    # dreaming-cron.ts is fixed. Arguments, including the local repair command, can rename.
+    r'memory-core: (?=short-term dreaming (?:(?:disabled(?: by limit)?|missing workspace|degraded|processed)(?![\w -])|" \+ status\b)'
+    r'|dreaming (?:sweep|promotion) failed for workspace |dreaming promotion complete(?: \(workspaces=|"))',
+    r"memory-core: (?=(?:created|updated) managed dreaming cron job\.|pruned duplicate managed dreaming cron jobs\."
+    r"|historical dreaming cron jobs require repair; run "
+    r'|cron jobs (?:[^"\n]*?|\$\{ambiguousIds\.join\(", "\)\}) retain historical dreaming tags with authored payloads;'
+    r"|removed (?:\d+|\{len\(remove\)\}|\$\{removed\}) managed dreaming cron job\(s\)\.)",
     # Identifiers that name the upstream component, and the locals that hold its config entry
     # (by their context: bare, they are the project's own snake and camel forms).
     r"(?<![\w$])(?:initialize_memory_core_workspace|_memory_core_plugin_config"

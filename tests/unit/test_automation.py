@@ -161,10 +161,23 @@ def test_store_skips_rows_it_cannot_load_and_keeps_them(tmp_path):
     data["jobs"] += [cron_row, "not a job", bad_state]
     store.path.write_text(json.dumps(data), encoding="utf-8")
 
-    assert [job.id for job in store.list_jobs()] == ["job-1"]
+    assert [job.id for job in store.list_jobs()] == ["job-1", "cron-1"]
     assert [(row.index, row.job_id) for row in store.skipped_job_rows()] == [
-        (1, "cron-1"), (2, None), (3, "job-2"),
+        (2, None), (3, "job-2"),
     ]
     store.save_jobs([record_automation_job_run(inbox, started_at_ms=NOW + 1)])
     kept = json.loads(store.path.read_text(encoding="utf-8"))["jobs"]
     assert kept[1:] == [cron_row, "not a job", bad_state]
+
+
+def test_string_schedule_is_normalized_and_persisted_active_jobs_are_not_due(tmp_path):
+    store = FileAutomationStore(tmp_path)
+    initial = _job("a", "recurring", 60_000, NOW, next_run_at_ms=NOW)
+    job = replace(initial, every_ms=" 6e4 ", anchor_ms=str(NOW), next_run_at_ms=NOW)
+    assert compute_job_next_run_at_ms(job, NOW) == NOW + 60_000
+    for marker in ("queued_at_ms", "running_at_ms"):
+        store.save_jobs([replace(job, **{marker: NOW})])
+        [reopened] = FileAutomationStore(tmp_path).list_jobs()
+        assert (reopened.every_ms, reopened.anchor_ms) == (60_000, NOW)
+        assert getattr(reopened, marker) == NOW
+        assert not is_job_due(reopened, NOW)

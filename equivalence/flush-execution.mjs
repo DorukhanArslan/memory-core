@@ -27,7 +27,7 @@ export default {
   },
 };
 
-export async function runFlushExecution(input, config) {
+export async function runFlushExecution(input, config, planObserver) {
   if (!config?.runtimeRoot || !path.isAbsolute(config.runtimeRoot)) throw Error("An authenticated absolute runtime root is required");
   const imp = (relative) => import(pathToFileURL(path.join(config.runtimeRoot, relative)).href);
   // Use the original loader's tested cache opt-out. Generated filesystem code
@@ -77,14 +77,15 @@ export async function runFlushExecution(input, config) {
 
   const stream = (model, context) => {
     progress("model-stream-called");
-    const reply = activeReplies[replyIndex++];
+    const reply = planObserver ? planObserver.reply(model) : activeReplies[replyIndex++];
     if (!reply) throw Error("The fixture script exhausted its labelled model replies");
     const runContexts = [...(globalThis[Symbol.for("openclaw.agentRunRegistry.state")]?.contexts ?? [])]
       .filter(([, value]) => value.sessionKey?.includes(":internal-session-effects:"))
       .map(([runId, value]) => ({ runId, sessionId: value.sessionId, sessionKey: value.sessionKey,
         isControlUiVisible: value.isControlUiVisible, projectSessionMessages: value.projectSessionMessages }));
     modelCalls.push({ model: { id: model.id, provider: model.provider, api: model.api },
-      context: jsonValue(context), reply: jsonValue(reply), runContexts });
+      context: jsonValue(context), reply: jsonValue(reply), runContexts,
+      ...(planObserver && { files: planObserver.snapshot(workspace) }) });
     const content = reply.toolCalls?.length ? reply.toolCalls.map((call, index) => ({
       type: "toolCall", id: call.id ?? `fixture-${replyIndex}-${index}`, name: call.name,
       arguments: { ...call.arguments, ...(call.arguments.path === "@target" ? { path: target } : {}) },
@@ -146,14 +147,17 @@ export async function runFlushExecution(input, config) {
           reasoning: false, input: ["text"], contextWindow: 200000, maxTokens: 4096,
           cost: { input: 0, output: 0, cacheRead: 0, cacheWrite: 0 } }] } } },
     };
+    if (planObserver) await planObserver.setup(workspace, cfg, provider);
     const planCapability = { flushPlanResolver(params) {
       progress("plan-resolved");
-      const plan = originalPlanResolver({ ...params, nowMs });
+      const args = { ...params, nowMs };
+      const plan = originalPlanResolver(args);
+      if (planObserver) planObserver.plan(args, plan, originalPlanResolver);
       target = plan?.relativePath; return plan;
     } };
-    target = originalPlanResolver({ cfg, nowMs, contextWindowTokens: 200000 }).relativePath;
+    if (!planObserver) target = originalPlanResolver({ cfg, nowMs, contextWindowTokens: 200000 }).relativePath;
     if (input.target && input.target !== target) throw Error("The fixture target disagrees with the original native plan");
-    const targetFile = path.join(workspace, target);
+    const targetFile = target ? path.join(workspace, target) : undefined;
     if (input.initialText !== null && input.initialText !== undefined) {
       await fs.mkdir(path.dirname(targetFile), { recursive: true });
       await fs.writeFile(targetFile, input.initialText, "utf8");
@@ -224,8 +228,8 @@ export async function runFlushExecution(input, config) {
       if (Object.hasOwn(step, "externalText")) await fs.writeFile(targetFile, step.externalText, "utf8");
       registerMemoryCapability("memory-core", planCapability);
       activeController = new AbortController();
-      const deadline = setTimeout(() => activeController.abort(new Error("fixture execution deadline")), 45000);
-      deadline.unref();
+      const deadline = planObserver ? undefined : setTimeout(() => activeController.abort(new Error("fixture execution deadline")), 45000);
+      deadline?.unref();
       const followupRun = { prompt: "", summaryLine: "", enqueuedAt: nowMs,
         run: { agentId: "main", agentDir: path.join(directory, "agent"), sessionId: entry.sessionId, sessionKey,
           sessionFile: path.join(directory, "session.jsonl"), workspaceDir: workspace, config: cfg,
@@ -241,12 +245,17 @@ export async function runFlushExecution(input, config) {
       progress(`before-native-run:${step.label}`);
       const result = await runMemoryFlushIfNeeded({ cfg, followupRun, promptForEstimate: "", defaultModel: modelId,
         resolvedVerboseLevel: "off", sessionEntry: entry, sessionStore: { [sessionKey]: entry }, sessionKey, storePath,
-        isHeartbeat: false, abortSignal: activeController.signal,
+        isHeartbeat: step.isHeartbeat === true, abortSignal: activeController.signal,
         replyOperation: { abortSignal: activeController.signal, setPhase: (phase) => progress(`reply-phase:${phase}`) },
         onVisibleErrorPayloads: (payloads) => visibleErrors.push(...payloads) });
       clearTimeout(deadline);
       progress(`after-native-run:${step.label}`);
       entry = result.sessionEntry;
+      if (planObserver) {
+        await planObserver.finish({workspace, result, before, modelCalls, progress: progressRows, pluginRegistryProof,
+          visibleErrors, persisted: sessions.loadSessionEntry(sourceScope), source: sessions.loadTranscriptEventsSync(transcriptScope)});
+        continue;
+      }
       const firstRecall = input.warmIndex ? await queries() : null;
       manager.markMemoryWatchDirty();
       await manager.sync({ reason: "fixture-explicit-post-run-index-barrier" });
@@ -298,6 +307,6 @@ export async function runFlushExecution(input, config) {
     await scheduler.stop();
     if (previousJitiCache === undefined) delete process.env.JITI_FS_CACHE;
     else process.env.JITI_FS_CACHE = previousJitiCache;
-    await fs.writeFile(path.join(config.evidenceDirectory, "native-raw.json"), JSON.stringify(raw) + "\n");
+    if (!planObserver) await fs.writeFile(path.join(config.evidenceDirectory, "native-raw.json"), JSON.stringify(raw) + "\n");
   }
 }

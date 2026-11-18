@@ -199,3 +199,27 @@ def test_duplicate_task_names_get_stable_distinct_declarations(tmp_path):
     keys = {job.declaration_key for job in store.list_jobs()}
     assert len(keys) == 2
     assert store.read_scratch("main").content == ""
+
+
+def test_operator_job_edit_while_planning_refuses_the_complete_task_migration(tmp_path):
+    from dataclasses import replace
+
+    store = FileAutomationStore(tmp_path)
+    store.write_scratch("main", OPERATIONS, now_ms=NOW)
+    first = migrate_heartbeat_tasks(store, now_ms=NOW)
+    assert first.changes
+    store.write_scratch("main", OPERATIONS, now_ms=NOW + 5)
+    other = FileAutomationStore(tmp_path)
+    operator_edit = replace(first.jobs[0], text="Updated by the operator")
+
+    class EditingStore(FileAutomationStore):
+        def save_jobs(self, jobs, **kwargs):
+            if kwargs.get("expected_jobs"):
+                other.save_jobs([operator_edit])
+            return super().save_jobs(jobs, **kwargs)
+
+    result = migrate_heartbeat_tasks(EditingStore(tmp_path), now_ms=NOW + 10)
+    assert result.changes == ()
+    assert result.warnings == ('Agent "main" cron jobs changed during task migration; no changes were committed.',)
+    assert other.read_scratch("main").content == OPERATIONS
+    assert operator_edit in other.list_jobs()

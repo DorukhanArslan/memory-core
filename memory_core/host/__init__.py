@@ -7,7 +7,7 @@ docs/host_session_lifecycle.md and docs/host_kit.md.
 """
 
 from memory_core.host.flush import FlushOutcome, FlushRequest
-from memory_core.host.heartbeat_run import HeartbeatOutcome, HeartbeatRun
+from memory_core.host.heartbeat_run import HeartbeatDispatch, HeartbeatOutcome, HeartbeatRun, ScheduledHeartbeatWake
 from memory_core.host.kit import (
     DEFAULT_CONTEXT_WINDOW_TOKENS,
     MINIMAL_PROMPT_KINDS,
@@ -20,24 +20,37 @@ from memory_core.host.kit import (
 from memory_core.host.lifecycle import (
     HostModelResult,
     HostSessionRunner,
+    FlushModelExecutor,
+    FlushModelRoute,
+    FlushModelSelection,
+    FlushModelUnavailable,
     HostTurn,
     HostTurnFailure,
     HostTurnOutcome,
 )
+from memory_core.host.provider_overflow import ProviderSummaryRequest, ProviderTurnExecutor
 from memory_core.host.session import SessionState, TurnUsage
 from memory_core.host.tool_calls import ToolCallRepair
 from memory_core.host.turn import TurnState
 from memory_core.model_prompt import RuntimePromptInput
+from memory_core.history_replay import HistoryReplayContext
 
 __all__ = [
     "DEFAULT_CONTEXT_WINDOW_TOKENS",
     "MINIMAL_PROMPT_KINDS",
+    "FlushModelExecutor",
+    "FlushModelRoute",
+    "FlushModelSelection",
+    "FlushModelUnavailable",
     "FlushOutcome",
     "FlushRequest",
+    "HeartbeatDispatch",
     "HeartbeatOutcome",
     "HeartbeatRun",
     "HostKit",
     "HostModelResult",
+    "ProviderSummaryRequest",
+    "ProviderTurnExecutor",
     "HostSessionRunner",
     "HostTurn",
     "HostTurnFailure",
@@ -45,10 +58,12 @@ __all__ = [
     "NewSession",
     "ResetTurn",
     "SessionState",
+    "ScheduledHeartbeatWake",
     "ToolCallRepair",
     "TurnContext",
     "TurnRecord",
     "TurnState",
     "TurnUsage",
     "RuntimePromptInput",
+    "HistoryReplayContext",
 ]

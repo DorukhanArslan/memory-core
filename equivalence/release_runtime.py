@@ -336,6 +336,10 @@ def validate_release_sources(
         "dist/cli.runtime-CVRN4xUp.mjs",
         "dist/bundled/session-memory/handler.js",
         "dist/builtin-openclaw-D1Xfnzzr.mjs",
+        "dist/dreaming-phases-rmgXNBLP.mjs",
+        "dist/dreaming-dreams-file-BJzlZFlf.mjs",
+        "dist/dreaming-state-VYUvbU-n.mjs",
+        "dist/extensions/memory-core/index.js",
     }:
         raise ReleaseRuntimeError("The compiled reference requires a reviewed runtime entry.")
     required_key = required_entry if isinstance(required_entry, tuple) else ("node_modules/openclaw", required_entry)

@@ -57,6 +57,10 @@ jobs:
         run: >-
           uv run --frozen python -m equivalence.release_runtime
           --reference .reference/openclaw --destination .reference/release-runtime --install
+      - name: Prepare the pinned scheduled-task dependency
+        run: >-
+          uv run --frozen python -m equivalence.heartbeat_dependency
+          --reference .reference/openclaw --destination .reference/heartbeat-dependencies/archives
       - name: Compare the registered cases with actual OpenClaw
         run: >-
           uv run --frozen python scripts/check_equivalence.py
@@ -159,6 +163,11 @@ jobs:
             .equivalence-results/query-sync-outcomes/sdk-attempt-*/python-raw.json
             .equivalence-results/query-sync-outcomes/sdk-attempt-*/sdk-query-sync-*/sdk-host-raw.json
             .equivalence-results/query-sync-outcomes/sdk-attempt-*/sdk-query-sync-*/tool-*-envelope.json
+            .equivalence-results/automation-job-state/**
+            .equivalence-results/automation-job-outcomes/**
+            .equivalence-results/compaction-context-assembly/**
+            .equivalence-results/heartbeat-turn-outcomes/**
+            .equivalence-results/provider-overflow/**
             .equivalence-results/query-sync-cold-retry/**
             .equivalence-results/next-turn-notice/**
             .equivalence-results/query-sync-boundaries-acceptance/**

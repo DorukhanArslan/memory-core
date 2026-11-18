@@ -58,7 +58,8 @@ from memory_core.current_time import (
     format_current_time_line,
     resolve_date_timestamp_ms,
     resolve_user_timezone,
-    utc_and_local_instants,
+    calendar_instants,
+    year_of_era,
 )
 from memory_core.memory_paths import UnsafeMemoryPathError, validate_daily_memory_path
 from memory_core.runtime_identity import MEMORY_CORE_RUNTIME_IDENTITY, RuntimeIdentity
@@ -118,8 +119,8 @@ UnsafeMemoryFlushTargetError = UnsafeMemoryPathError
 class MemoryFlushPlan:
     """``MemoryFlushPlan`` of ``buildMemoryFlushPlan`` (flush-plan.ts)."""
 
-    soft_threshold_tokens: int
-    force_flush_transcript_bytes: int
+    soft_threshold_tokens: int | float
+    force_flush_transcript_bytes: int | float
     reserve_tokens_floor: int
     prompt: str
     system_prompt: str
@@ -256,9 +257,7 @@ def build_memory_flush_plan(
 
     ``now_ms`` follows ``resolveMemoryCoreNowMs`` (extensions/memory-core/src/time.ts): a
     missing, non-finite or out-of-``Date``-range (beyond ±8.64e15) value means the current
-    time. Deviation: a ``Date``-valid instant outside the years 1-9999 raises ``ValueError``
-    (Python dates stop there; upstream formats it), and before the year 1000 the unpadded
-    upstream stamp (``memory/999-01-01.md``) fails the daily-path check.
+    time. The generated filename uses the year width returned by Intl for that instant.
     """
     del workspace_dir
 
@@ -279,7 +278,9 @@ def build_memory_flush_plan(
     resolved_now_ms = resolve_date_timestamp_ms(now_ms)
     _, zone = resolve_user_timezone(timezone)
     date_stamp = _format_date_stamp_in_timezone(resolved_now_ms, zone)
-    relative_path = validate_daily_memory_target(f"memory/{date_stamp}.md")
+    # Only these calendar fields produce this path. The public user-supplied write
+    # validator keeps its four-digit daily-note contract.
+    relative_path = f"memory/{date_stamp}.md"
     time_line = format_current_time_line(resolved_now_ms, timezone, time_format)
 
     prompt_base = ensure_no_reply_hint(ensure_memory_flush_safety_hints(DEFAULT_MEMORY_FLUSH_PROMPT))
@@ -894,15 +895,17 @@ def _resolve_positive_token_count(value: Any) -> int | None:
     return math.floor(value)
 
 
-def _normalize_non_negative_int(value: Any) -> int | None:
+def _normalize_non_negative_int(value: Any) -> int | float | None:
     """``normalizeNonNegativeInt`` (flush-plan.ts): a finite number, floored, not negative."""
     if not _is_number(value) or not _is_finite_number(value):
         return None
+    if isinstance(value, float) and value == 0 and math.copysign(1, value) < 0:
+        return value  # Math.floor(-0) preserves the sign.
     number = math.floor(value)
     return number if number >= 0 else None
 
 
-def _parse_non_negative_byte_size(value: Any) -> int | None:
+def _parse_non_negative_byte_size(value: Any) -> int | float | None:
     """Port of ``parseNonNegativeByteSize`` (src/config/byte-size.ts).
 
     A number is floored and must be a safe integer that is not negative; a string is a byte
@@ -910,10 +913,8 @@ def _parse_non_negative_byte_size(value: Any) -> int | None:
     rejects, is ``None`` (the plan then keeps the default).
     """
     if _is_number(value):
-        if not _is_finite_number(value):
-            return None
-        integer = math.floor(value)
-        return integer if _is_safe_integer(integer) and integer >= 0 else None
+        integer = _normalize_non_negative_int(value)
+        return integer if integer is not None and _is_safe_integer(integer) else None
     if isinstance(value, str):
         trimmed = js_trim(value)
         if not trimmed:
@@ -955,7 +956,7 @@ def _parse_byte_size(raw: str, *, default_unit: str = "b") -> int:
 _MAX_SAFE_INTEGER = 2**53 - 1
 
 
-def _is_safe_integer(value: int) -> bool:
+def _is_safe_integer(value: int | float) -> bool:
     """``Number.isSafeInteger`` of an already integral value."""
     return -_MAX_SAFE_INTEGER <= value <= _MAX_SAFE_INTEGER
 
@@ -993,5 +994,5 @@ def _optional_text(value: Any) -> str | None:
 
 def _format_date_stamp_in_timezone(now_ms: int | float, zone: tzinfo) -> str:
     """``formatDateStampInTimezone`` (flush-plan.ts): en-US ``numeric`` year, 2-digit month/day."""
-    _, local = utc_and_local_instants(now_ms, zone)
-    return f"{local.year}-{local.month:02d}-{local.day:02d}"
+    _, local, year_offset = calendar_instants(now_ms, zone)
+    return f"{year_of_era(local.year + year_offset)}-{local.month:02d}-{local.day:02d}"

@@ -362,7 +362,7 @@
           "path": "memory_core/consolidation/daily_ingestion.py",
           "symbol": "read_daily_ingestion_state",
           "anchor": "def read_daily_ingestion_state(",
-          "line": 487
+          "line": 488
         }
       ],
       "implementation": "partial",
@@ -640,7 +640,7 @@
           "path": "memory_core/host/kit.py",
           "symbol": "HostKit",
           "anchor": "class HostKit:",
-          "line": 211
+          "line": 215
         },
         {
           "path": "memory_core/index/embedding_limits.py",
@@ -2552,7 +2552,7 @@
           "path": "memory_core/host/kit.py",
           "symbol": "HostKit.__init__",
           "anchor": "    def __init__(",
-          "line": 221
+          "line": 225
         },
         {
           "path": "memory_core/tools/memory_search.py",
@@ -3328,25 +3328,25 @@
           "path": "memory_core/session_catalog.py",
           "symbol": "MemorySessionCatalog.upsert_session",
           "anchor": "    def upsert_session(",
-          "line": 754
+          "line": 784
         },
         {
           "path": "memory_core/session_catalog.py",
           "symbol": "MemorySessionCatalog.snapshot",
           "anchor": "    def snapshot(",
-          "line": 1269
+          "line": 1353
         },
         {
           "path": "memory_core/session_catalog.py",
           "symbol": "MemorySessionCatalog.read_transcript",
           "anchor": "    def read_transcript(",
-          "line": 1356
+          "line": 1440
         },
         {
           "path": "memory_core/session_catalog.py",
           "symbol": "MemorySessionCatalog.record_archive",
           "anchor": "    def record_archive(",
-          "line": 1243
+          "line": 1327
         },
         {
           "path": "memory_core/session_visibility.py",
@@ -3370,19 +3370,19 @@
           "path": "memory_core/session_catalog.py",
           "symbol": "MemorySessionCatalog.record_participant",
           "anchor": "    def record_participant(",
-          "line": 1148
+          "line": 1232
         },
         {
           "path": "memory_core/session_catalog.py",
           "symbol": "MemorySessionCatalog.list_participants",
           "anchor": "    def list_participants(",
-          "line": 1215
+          "line": 1299
         },
         {
           "path": "memory_core/session_catalog.py",
           "symbol": "MemorySessionCatalog.load_session_metadata",
           "anchor": "    def load_session_metadata(",
-          "line": 1446
+          "line": 1530
         },
         {
           "path": "memory_core/session_visibility.py",
@@ -3550,13 +3550,13 @@
           "path": "memory_core/session_entry.py",
           "symbol": "build_session_entry",
           "anchor": "def build_session_entry(",
-          "line": 649
+          "line": 604
         },
         {
           "path": "memory_core/session_entry.py",
           "symbol": "parse_jsonl_records",
           "anchor": "def parse_jsonl_records(text: str) -> list[tuple[int, Any]]:",
-          "line": 633
+          "line": 588
         },
         {
           "path": "memory_core/consolidation/session_ingestion.py",
@@ -3586,7 +3586,7 @@
           "path": "memory_core/session_catalog.py",
           "symbol": "MemorySessionCatalog.read_transcript",
           "anchor": "    def read_transcript(",
-          "line": 1356
+          "line": 1440
         },
         {
           "path": "memory_core/session_corpus.py",
@@ -3712,7 +3712,7 @@
           "path": "memory_core/session_entry.py",
           "symbol": "resolve_session_reset_recall_cutoff",
           "anchor": "def resolve_session_reset_recall_cutoff(events: list[Any]) -> dict[str, Any]:",
-          "line": 569
+          "line": 524
         },
         {
           "path": "memory_core/session_visibility.py",
@@ -3766,25 +3766,25 @@
           "path": "memory_core/session_catalog.py",
           "symbol": "MemorySessionCatalog.read_transcript",
           "anchor": "    def read_transcript(",
-          "line": 1356
+          "line": 1440
         },
         {
           "path": "memory_core/session_catalog.py",
           "symbol": "MemorySessionCatalog.read_reset_cutoff",
           "anchor": "    def read_reset_cutoff(",
-          "line": 1384
+          "line": 1468
         },
         {
           "path": "memory_core/session_catalog.py",
           "symbol": "MemorySessionCatalog.snapshot",
           "anchor": "    def snapshot(",
-          "line": 1269
+          "line": 1353
         },
         {
           "path": "memory_core/session_catalog.py",
           "symbol": "MemorySessionCatalog.tombstone_session",
           "anchor": "    def tombstone_session(",
-          "line": 1258
+          "line": 1342
         },
         {
           "path": "memory_core/tools/memory_search.py",
@@ -3843,7 +3843,7 @@
           "path": "memory_core/host/kit.py",
           "symbol": "on_new_session",
           "anchor": "def on_new_session(",
-          "line": 763
+          "line": 776
         }
       ],
       "implementation": "partial",
@@ -4050,25 +4050,25 @@
           "path": "memory_core/session_catalog.py",
           "symbol": "MemorySessionCatalog.append_message",
           "anchor": "    def append_message(",
-          "line": 986
+          "line": 1034
         },
         {
           "path": "memory_core/session_catalog.py",
           "symbol": "MemorySessionCatalog.read_continuation",
           "anchor": "    def read_continuation(",
-          "line": 1390
+          "line": 1474
         },
         {
           "path": "memory_core/session_catalog.py",
           "symbol": "MemorySessionCatalog.read_anchor",
           "anchor": "    def read_anchor(",
-          "line": 1108
+          "line": 1192
         },
         {
           "path": "memory_core/session_catalog.py",
           "symbol": "MemorySessionCatalog.list_transcript_instances",
           "anchor": "    def list_transcript_instances(",
-          "line": 1290
+          "line": 1374
         },
         {
           "path": "memory_core/session_context.py",
@@ -4296,31 +4296,31 @@
           "path": "memory_core/current_time.py",
           "symbol": "format_current_time_line",
           "anchor": "def format_current_time_line(",
-          "line": 202
+          "line": 226
         },
         {
           "path": "memory_core/model_prompt.py",
           "symbol": "ModelPrompt",
           "anchor": "class ModelPrompt:",
-          "line": 257
+          "line": 268
         },
         {
           "path": "memory_core/host/lifecycle.py",
           "symbol": "HostTurn.model_request",
           "anchor": "    def model_request(self) -> dict[str, Any]:",
-          "line": 255
+          "line": 261
         },
         {
           "path": "memory_core/current_time.py",
           "symbol": "resolve_cron_style_now",
           "anchor": "def resolve_cron_style_now(",
-          "line": 216
+          "line": 240
         }
       ],
       "implementation": "partial",
       "notes": [
         "Runtime markers default to Memory Core identity; native marker behavior requires the explicit OpenClaw compatibility identity.",
-        "Current-time formatting accepts an explicit host 12/24-hour format; supplying host_timezone enables the native host fallback, while existing callers keep their UTC fallback. Python dates remain limited to years 1–9999.",
+        "Current-time formatting accepts an explicit host 12/24-hour format; supplying host_timezone enables the native host fallback, while existing callers keep their UTC fallback. Calendar formatting uses Gregorian cycles for extended JavaScript years.",
         "HostTurn.model_request applies production v3/v4 carrier projection before conversion, preserving the durable continuation API. Complete memory/runtime components and all actual model messages are compared; unrelated full-agent persona and tool definitions remain raw and are not a full-agent port claim."
       ]
     },
@@ -4354,6 +4354,120 @@
           "symbol": "sanitizeSessionHistory",
           "anchor": "export async function sanitizeSessionHistory(params: {",
           "line": 640
+        },
+        {
+          "path": "src/agents/embedded-agent-runner/run/attempt.ts",
+          "symbol": "runEmbeddedAttempt",
+          "anchor": "export async function runEmbeddedAttempt(",
+          "line": 64
+        },
+        {
+          "path": "src/agents/embedded-agent-runner/run/attempt-execution-phase.ts",
+          "symbol": "runEmbeddedAttemptExecutionPhase",
+          "anchor": "export async function runEmbeddedAttemptExecutionPhase(",
+          "line": 27
+        },
+        {
+          "path": "src/agents/embedded-agent-runner/run/attempt-history-prepare.ts",
+          "symbol": "prepareEmbeddedAttemptHistory",
+          "anchor": "export async function prepareEmbeddedAttemptHistory(",
+          "line": 30
+        },
+        {
+          "path": "src/agents/embedded-agent-runner/history.ts",
+          "symbol": "getHistoryLimitFromSessionKey",
+          "anchor": "export function getHistoryLimitFromSessionKey(",
+          "line": 106
+        },
+        {
+          "path": "src/agents/embedded-agent-runner/replay-history.ts",
+          "symbol": "validateReplayTurns",
+          "anchor": "export async function validateReplayTurns(params: {",
+          "line": 832
+        },
+        {
+          "path": "src/agents/transcript-policy.ts",
+          "symbol": "resolveTranscriptPolicy",
+          "anchor": "export function resolveTranscriptPolicy(params: {",
+          "line": 282
+        },
+        {
+          "path": "src/agents/transcript-policy.ts",
+          "symbol": "buildUnownedProviderTransportReplayFallback",
+          "anchor": "function buildUnownedProviderTransportReplayFallback(params: {",
+          "line": 95
+        },
+        {
+          "path": "src/agents/embedded-agent-runner/run/attempt-stream.ts",
+          "symbol": "installEmbeddedAttemptStreamGuards",
+          "anchor": "export function installEmbeddedAttemptStreamGuards(",
+          "line": 101
+        },
+        {
+          "path": "src/agents/embedded-agent-runner/run/attempt-tool-call-replay-sanitization.ts",
+          "symbol": "wrapStreamFnSanitizeMalformedToolCalls",
+          "anchor": "export function wrapStreamFnSanitizeMalformedToolCalls(",
+          "line": 357
+        },
+        {
+          "path": "src/agents/embedded-agent-runner/run/attempt-tool-call-replay-sanitization.ts",
+          "symbol": "sanitizeReplayToolCallInputs",
+          "anchor": "function sanitizeReplayToolCallInputs(",
+          "line": 117
+        },
+        {
+          "path": "src/agents/embedded-agent-runner/run/attempt-tool-call-replay-sanitization.ts",
+          "symbol": "sanitizeReplayToolCallIdsForStream",
+          "anchor": "export function sanitizeReplayToolCallIdsForStream(params: {",
+          "line": 332
+        },
+        {
+          "path": "src/agents/embedded-agent-runner/run/attempt-tool-call-replay-sanitization.ts",
+          "symbol": "sanitizeOpenAIResponsesReplayForStream",
+          "anchor": "export function sanitizeOpenAIResponsesReplayForStream(messages: AgentMessage[]): AgentMessage[] {",
+          "line": 352
+        },
+        {
+          "path": "src/agents/embedded-agent-helpers/openai.ts",
+          "symbol": "normalizeOpenAIResponsesToolCallIds",
+          "anchor": "export function normalizeOpenAIResponsesToolCallIds(messages: AgentMessage[]): AgentMessage[] {",
+          "line": 94
+        },
+        {
+          "path": "src/agents/embedded-agent-helpers/openai.ts",
+          "symbol": "downgradeOpenAIFunctionCallReasoningPairs",
+          "anchor": "export function downgradeOpenAIFunctionCallReasoningPairs(",
+          "line": 168
+        },
+        {
+          "path": "src/agents/embedded-agent-helpers/openai.ts",
+          "symbol": "dropStaleOpenAIReasoning",
+          "anchor": "export function dropStaleOpenAIReasoning(",
+          "line": 301
+        },
+        {
+          "path": "packages/ai/src/transports/openai-responses-tool-call-id-shape.ts",
+          "symbol": "normalizeOpenAIResponsesFunctionCallId",
+          "anchor": "export function normalizeOpenAIResponsesFunctionCallId(id: string): string {",
+          "line": 59
+        },
+        {
+          "path": "src/agents/embedded-agent-helpers/turns.ts",
+          "symbol": "validateGeminiTurns",
+          "anchor": "export function validateGeminiTurns(messages: AgentMessage[]): AgentMessage[] {",
+          "line": 383
+        },
+        {
+          "path": "src/agents/embedded-agent-helpers/turns.ts",
+          "symbol": "validateAnthropicTurns",
+          "anchor": "export function validateAnthropicTurns(",
+          "line": 427
+        },
+        {
+          "path": "src/shared/google-turn-ordering.ts",
+          "symbol": "sanitizeGoogleAssistantFirstOrdering",
+          "anchor": "export function sanitizeGoogleAssistantFirstOrdering(messages: AgentMessage[]): AgentMessage[] {",
+          "line": 6
         }
       ],
       "python": [
@@ -4361,7 +4475,7 @@
           "path": "memory_core/history.py",
           "symbol": "limit_history_turns",
           "anchor": "def limit_history_turns(messages: list[dict[str, Any]], limit: int | None) -> list[dict[str, Any]]:",
-          "line": 19
+          "line": 20
         },
         {
           "path": "memory_core/replay_repair.py",
@@ -4380,11 +4494,132 @@
           "symbol": "normalize_assistant_replay_content",
           "anchor": "def normalize_assistant_replay_content(messages: list[dict[str, Any]]) -> list[dict[str, Any]]:",
           "line": 27
+        },
+        {
+          "path": "memory_core/history_replay.py",
+          "symbol": "HistoryReplayContext",
+          "anchor": "class HistoryReplayContext:",
+          "line": 51
+        },
+        {
+          "path": "memory_core/history_replay.py",
+          "symbol": "resolve_history_replay_policy",
+          "anchor": "def resolve_history_replay_policy(model: ReplayModel) -> HistoryReplayPolicy:",
+          "line": 98
+        },
+        {
+          "path": "memory_core/history_replay.py",
+          "symbol": "HistoryReplay.prepare",
+          "anchor": "    def prepare(self, messages):",
+          "line": 289
+        },
+        {
+          "path": "memory_core/history_replay.py",
+          "symbol": "HistoryReplay.request",
+          "anchor": "    def request(self, messages):",
+          "line": 322
+        },
+        {
+          "path": "memory_core/model_prompt.py",
+          "symbol": "RuntimePromptInput",
+          "anchor": "class RuntimePromptInput:",
+          "line": 74
+        },
+        {
+          "path": "memory_core/model_prompt.py",
+          "symbol": "ModelPrompt.bind_current_user",
+          "anchor": "    def bind_current_user(self, canonical_user, position, *, prior_messages=()):",
+          "line": 330
+        },
+        {
+          "path": "memory_core/model_prompt.py",
+          "symbol": "ModelPrompt.request",
+          "anchor": "    def request(self, messages):",
+          "line": 343
+        },
+        {
+          "path": "memory_core/host/lifecycle.py",
+          "symbol": "HostSessionRunner._prepare_model_prompt",
+          "anchor": "    def _prepare_model_prompt(self, effective_prompt, options, context, user_key,",
+          "line": 1135
+        },
+        {
+          "path": "memory_core/host/lifecycle.py",
+          "symbol": "HostSessionRunner.run_turn",
+          "anchor": "    async def run_turn(self, user_message: str | Mapping[str, Any], *,",
+          "line": 916
+        },
+        {
+          "path": "memory_core/host/lifecycle.py",
+          "symbol": "HostTurn.model_request",
+          "anchor": "    def model_request(self) -> dict[str, Any]:",
+          "line": 261
+        },
+        {
+          "path": "memory_core/host/lifecycle.py",
+          "symbol": "HostTurn.record_message",
+          "anchor": "    def record_message(self, message: Mapping[str, Any]) -> dict[str, Any]:",
+          "line": 320
+        },
+        {
+          "path": "memory_core/history.py",
+          "symbol": "get_history_limit_from_session_key",
+          "anchor": "def get_history_limit_from_session_key(",
+          "line": 72
+        },
+        {
+          "path": "memory_core/history_stream_inputs.py",
+          "symbol": "sanitize_replay_tool_call_inputs",
+          "anchor": "def sanitize_replay_tool_call_inputs(",
+          "line": 180
+        },
+        {
+          "path": "memory_core/history_validation.py",
+          "symbol": "sanitize_google_turn_ordering",
+          "anchor": "def sanitize_google_turn_ordering(",
+          "line": 216
+        },
+        {
+          "path": "memory_core/history_validation.py",
+          "symbol": "validate_gemini_turns",
+          "anchor": "def validate_gemini_turns(messages: list[Any]) -> list[Any]:",
+          "line": 198
+        },
+        {
+          "path": "memory_core/history_validation.py",
+          "symbol": "validate_anthropic_turns",
+          "anchor": "def validate_anthropic_turns(",
+          "line": 208
+        },
+        {
+          "path": "memory_core/responses_history.py",
+          "symbol": "normalize_openai_responses_function_call_id",
+          "anchor": "def normalize_openai_responses_function_call_id(identifier: str) -> str:",
+          "line": 76
+        },
+        {
+          "path": "memory_core/responses_history.py",
+          "symbol": "normalize_openai_responses_tool_call_ids",
+          "anchor": "def normalize_openai_responses_tool_call_ids(messages: list[dict[str, Any]]) -> list[dict[str, Any]]:",
+          "line": 109
+        },
+        {
+          "path": "memory_core/responses_history.py",
+          "symbol": "downgrade_openai_function_call_reasoning_pairs",
+          "anchor": "def downgrade_openai_function_call_reasoning_pairs(",
+          "line": 167
+        },
+        {
+          "path": "memory_core/responses_history.py",
+          "symbol": "drop_stale_openai_reasoning",
+          "anchor": "def drop_stale_openai_reasoning(",
+          "line": 246
         }
       ],
       "implementation": "partial",
       "notes": [
-        "Windowing, call/result repair and replay normalization helpers exist. Python does not provide the native sanitizeSessionHistory provider pipeline as one orchestrated durable-transcript projection; hosts must select and order helpers without persisting repaired messages over the original transcript."
+        "HostSessionRunner prepares the prior transcript window from the registered tools, model, session key, channel configuration and route. Each provider callback receives the prepared prefix and current messages after replay repair. Original transcript events remain available when the catalog reopens.",
+        "The integrated policy covers unowned OpenAI completions and Responses transports. Bundled provider hooks, signed thinking, media conversion, compaction execution and the final transport encoding remain outside this mapping."
       ]
     },
     {
@@ -4418,26 +4653,32 @@
           "path": "memory_core/memory_flush.py",
           "symbol": "build_memory_flush_plan_from_config",
           "anchor": "def build_memory_flush_plan_from_config(",
-          "line": 301
+          "line": 302
         },
         {
           "path": "memory_core/memory_flush.py",
           "symbol": "validate_daily_memory_target",
           "anchor": "def validate_daily_memory_target(relative_path: str) -> str:",
-          "line": 213
+          "line": 214
         },
         {
           "path": "memory_core/memory_flush.py",
           "symbol": "ensure_memory_flush_target_file",
           "anchor": "def ensure_memory_flush_target_file(",
-          "line": 808
+          "line": 809
+        },
+        {
+          "path": "memory_core/host/lifecycle.py",
+          "symbol": "FlushModelExecutor",
+          "anchor": "class FlushModelExecutor:",
+          "line": 533
         }
       ],
       "implementation": "partial",
       "notes": [
         "Python target preparation intentionally refuses symlinked parents and symlink, hard-linked or non-regular targets beyond the native target preparation checks.",
-        "Host time-format/timezone fallback and Python supported-date range differ as documented in memory_core.current_time.",
-        "The complete retained native flush matrix executes original source owners. An additional 22-case target-helper comparison matches raising authority checkpoints, exact bytes and real descriptor closure, with covers: [] throughout. Dates below year 1000 or above 9999, documented host time-format/timezone boundaries and stricter Python filesystem admission still prevent complete plan/target acceptance.",
+        "The host supplies its timezone and clock format. A separately configured, invalid agent zone falls back to the host during automatic flush.",
+        "The 92 standalone plan and target cases retain zero credit. Thirteen automatic host cases compare full plans and prompts, file bytes, model selection and fallback at real candidate entry. Native transport retries are retained independently. Boundary credit stays open for filesystem admission differences.",
         "The public Python helper accepts optional assert_current, a prompt synchronous raising callback with ignored return value, before mkdir, after mkdir and after open. The opened descriptor closes in finally even when the last check raises; filesystem failures, including close failures, still propagate."
       ]
     },
@@ -4472,13 +4713,13 @@
           "path": "memory_core/host/kit.py",
           "symbol": "HostKit.prepare_flush",
           "anchor": "    def prepare_flush(",
-          "line": 613
+          "line": 621
         },
         {
           "path": "memory_core/memory_flush.py",
           "symbol": "resolve_memory_flush_runtime_accounting",
           "anchor": "def resolve_memory_flush_runtime_accounting(",
-          "line": 541
+          "line": 542
         },
         {
           "path": "memory_core/flush_token_estimation.py",
@@ -4490,25 +4731,25 @@
           "path": "memory_core/memory_flush.py",
           "symbol": "resolve_fresh_session_total_tokens",
           "anchor": "def resolve_fresh_session_total_tokens(entry: dict[str, Any] | None) -> int | float | None:",
-          "line": 370
+          "line": 371
         },
         {
           "path": "memory_core/memory_flush.py",
           "symbol": "explain_memory_flush_trigger",
           "anchor": "def explain_memory_flush_trigger(",
-          "line": 630
+          "line": 631
         },
         {
           "path": "memory_core/memory_flush.py",
           "symbol": "record_memory_flush_failure",
           "anchor": "def record_memory_flush_failure(",
-          "line": 772
+          "line": 773
         },
         {
           "path": "memory_core/host/kit.py",
           "symbol": "after_turn",
           "anchor": "def after_turn(",
-          "line": 563
+          "line": 571
         }
       ],
       "implementation": "present",
@@ -4568,13 +4809,13 @@
           "path": "memory_core/host/flush.py",
           "symbol": "dispatch",
           "anchor": "def dispatch(self, name: str, arguments: Mapping[str, Any] | str | None) -> dict[str, Any]:",
-          "line": 265
+          "line": 267
         },
         {
           "path": "memory_core/host/flush.py",
           "symbol": "complete",
           "anchor": "def complete(",
-          "line": 394
+          "line": 396
         },
         {
           "path": "memory_core/workspace.py",
@@ -4691,7 +4932,7 @@
           "path": "memory_core/context_engine_lifecycle.py",
           "symbol": "build_context_engine_conversation_snapshot",
           "anchor": "def build_context_engine_conversation_snapshot(",
-          "line": 34
+          "line": 37
         },
         {
           "path": "memory_core/compaction_replay.py",
@@ -4710,12 +4951,42 @@
           "symbol": "restore_cache_ttl_tool_result_projections",
           "anchor": "def restore_cache_ttl_tool_result_projections(",
           "line": 323
+        },
+        {
+          "path": "memory_core/host/lifecycle.py",
+          "symbol": "HostTurn.responses_input",
+          "anchor": "    def responses_input(self) -> list[Any]:",
+          "line": 299
+        },
+        {
+          "path": "memory_core/host/lifecycle.py",
+          "symbol": "HostTurn.responses_compaction_tracker",
+          "anchor": "    def responses_compaction_tracker(self, assistant:",
+          "line": 306
+        },
+        {
+          "path": "memory_core/history_replay.py",
+          "symbol": "HistoryReplay.prepare",
+          "anchor": "    def prepare(self, messages):",
+          "line": 289
+        },
+        {
+          "path": "memory_core/queued_user.py",
+          "symbol": "merge_text",
+          "anchor": "def merge_text(prompt, user):",
+          "line": 80
+        },
+        {
+          "path": "memory_core/tool_result_context_guard.py",
+          "symbol": "ToolResultContextGuard.transform_context",
+          "anchor": "    def transform_context(self, messages:",
+          "line": 433
         }
       ],
       "implementation": "partial",
       "notes": [
-        "Native assembleHarnessContextEngine preserves persisted runtime carriers when appendOnlyRuntimeContext is true, protecting signed replay prefixes. Python assemble_context_engine_messages always strips those carriers and exposes no append-only policy option.",
-        "Replay checkpoint and tool-result projection helpers exist, including restoration; the host still owns persistent active transcript revisions, actual summary/model compaction and restart restoration."
+        "Append-only context assembly preserves stored runtime carriers. The public SDK session runner binds Responses checkpoints and retained tool results to the actual session and forwarded authentication profile.",
+        "The restart family checks the original three database reopens. Three additional forked sessions compare the complete provider input for active checkpoint, summary and oversized-result controls, including a queued external user. Independent protected and integrated results determine acceptance."
       ]
     },
     {
@@ -4767,12 +5038,18 @@
           "path": "memory_core/tool_result_context_guard.py",
           "symbol": "ToolResultContextGuard",
           "anchor": "class ToolResultContextGuard:",
-          "line": 415
+          "line": 416
+        },
+        {
+          "path": "memory_core/host/provider_overflow.py",
+          "symbol": "ProviderTurnExecutor",
+          "anchor": "class ProviderTurnExecutor:",
+          "line": 157
         }
       ],
       "implementation": "partial",
       "notes": [
-        "Python exposes preflight and overflow decision objects; native recovery executes compact/truncate/retry against the current runtime session. A Python host must implement and count those dispatches, preserve replay-safe admission and persist the resulting transcript state."
+        "The public host executor uses the admitted model route, durable transcript and tool or summary callbacks for preflight, provider rejection and continuation. Its recovery writes are checked against the source session version."
       ]
     },
     {
@@ -4876,13 +5153,13 @@
           "path": "memory_core/consolidation/store.py",
           "symbol": "read_canonical_recall_store",
           "anchor": "def read_canonical_recall_store(",
-          "line": 262
+          "line": 286
         },
         {
           "path": "memory_core/consolidation/store.py",
           "symbol": "read_canonical_phase_signal_store",
           "anchor": "def read_canonical_phase_signal_store(",
-          "line": 271
+          "line": 295
         },
         {
           "path": "memory_core/consolidation/store_normalization.py",
@@ -5058,19 +5335,25 @@
           "path": "memory_core/consolidation/dreaming.py",
           "symbol": "run_dreaming_sweep",
           "anchor": "def run_dreaming_sweep(",
-          "line": 143
+          "line": 185
         },
         {
           "path": "memory_core/consolidation/dreaming.py",
           "symbol": "filter_recall_entries_within_lookback",
           "anchor": "def filter_recall_entries_within_lookback(",
-          "line": 81
+          "line": 82
+        },
+        {
+          "path": "memory_core/consolidation/light_phase.py",
+          "symbol": "prepare_light_phase",
+          "anchor": "def prepare_light_phase(",
+          "line": 205
         }
       ],
       "implementation": "partial",
       "notes": [
-        "Python ingests optional daily/session inputs, filters lookback and records light signals, but selects with promotion ranking rather than native last-recall ordering, snippet deduplication and recent-diary coverage.",
-        "Native selection and daily phase publication hold a workspace lock and validate live sources; Python light has no equivalent locked phase artifact publication or light-staged freshness lifecycle."
+        "The public sweep accepts resolved light options. It ingests recent signals, checks live sources, groups and orders candidates, prioritizes entries missing from the diary, publishes daily reports and updates the staged keys.",
+        "The host supplies session data and any narrative model. A call with light_options omitted uses the existing scored-promotion selection."
       ]
     },
     {
@@ -5101,22 +5384,28 @@
       ],
       "python": [
         {
-          "path": "memory_core/consolidation/dreaming.py",
-          "symbol": "run_dreaming_sweep",
-          "anchor": "def run_dreaming_sweep(",
-          "line": 143
+          "path": "memory_core/consolidation/rem_phase.py",
+          "symbol": "prepare_rem_phase",
+          "anchor": "def prepare_rem_phase(",
+          "line": 116
         },
         {
           "path": "memory_core/consolidation/dreaming.py",
-          "symbol": "_append_dreams_section",
-          "anchor": "def _append_dreams_section(",
-          "line": 323
+          "symbol": "run_dreaming_sweep",
+          "anchor": "def run_dreaming_sweep(",
+          "line": 185
+        },
+        {
+          "path": "memory_core/consolidation/dream_narrative.py",
+          "symbol": "run_rem_narrative",
+          "anchor": "def run_rem_narrative(",
+          "line": 113
         }
       ],
       "implementation": "partial",
       "notes": [
-        "Python REM ranks recall candidates, records phase signals and appends snippets; native REM evidence grouping, pattern strengths, candidate truths and optional narrative generation are not implemented by that path.",
-        "Python does not prefer and consume light-staged keys, recheck live sources under the publication lock, or publish the native daily REM phase block and narrative outcomes."
+        "Resolved REM options use the ordinary SDK sweep to prefer pending light signals, group evidence, write reports and record considered and selected keys under the workspace lock.",
+        "The host supplies an awaited narrative provider. Diary publication rechecks the contributing recall keys after the provider returns. Detached cron scheduling has a separate host owner."
       ]
     },
     {
@@ -5147,22 +5436,40 @@
       ],
       "python": [
         {
+          "path": "memory_core/consolidation/managed_dreaming.py",
+          "symbol": "run_managed_dreaming_turn",
+          "anchor": "def run_managed_dreaming_turn(",
+          "line": 151
+        },
+        {
+          "path": "memory_core/consolidation/dreaming_repair.py",
+          "symbol": "repair_dreaming_recall",
+          "anchor": "def repair_dreaming_recall(",
+          "line": 116
+        },
+        {
+          "path": "memory_core/consolidation/promotion.py",
+          "symbol": "run_short_term_promotion",
+          "anchor": "def run_short_term_promotion(",
+          "line": 320
+        },
+        {
           "path": "memory_core/consolidation/dreaming.py",
           "symbol": "run_dreaming_sweep",
           "anchor": "def run_dreaming_sweep(",
-          "line": 143
+          "line": 185
         },
         {
           "path": "memory_core/consolidation/dreaming.py",
           "symbol": "deep promotion invocation",
           "anchor": "promotion = run_short_term_promotion(",
-          "line": 288
+          "line": 368
         }
       ],
       "implementation": "partial",
       "notes": [
-        "Deep promotion and an optional host-injected consolidation model exist, including policy gates and origin inputs; Python accepts one explicit phase rather than composing native light then REM then repair/promotion in a workspace sweep.",
-        "Native per-workspace owner resolution, degraded/pending narrative receipts and report/fallback composition are not reproduced by run_dreaming_sweep; host orchestration must be compared separately."
+        "The managed turn accepts the host roster, queued heartbeat events and injected completion or cron queue. It composes light and REM, repairs recall artifacts, applies ranked candidates, writes the deep report and publishes the diary.",
+        "The original registered callback and the SDK turn are compared on a local UTC roster. The scope includes admitted and ignored triggers, source trust, failed publication, consolidation and detached diary settlement."
       ]
     },
     {
@@ -5196,19 +5503,19 @@
           "path": "memory_core/consolidation/dreaming.py",
           "symbol": "_append_dreams_section",
           "anchor": "def _append_dreams_section(",
-          "line": 323
+          "line": 403
         },
         {
           "path": "memory_core/consolidation/artifacts.py",
           "symbol": "update_dreams_file",
           "anchor": "def update_dreams_file(",
-          "line": 156
+          "line": 195
         },
         {
           "path": "memory_core/consolidation/artifacts.py",
           "symbol": "append_consolidation_summary",
           "anchor": "def append_consolidation_summary(",
-          "line": 179
+          "line": 219
         }
       ],
       "implementation": "partial",
@@ -5370,19 +5677,19 @@
           "path": "memory_core/redact.py",
           "symbol": "redact_sensitive_text",
           "anchor": "def redact_sensitive_text(",
-          "line": 1960
+          "line": 1955
         },
         {
           "path": "memory_core/redact.py",
           "symbol": "redact_model_visible_secrets",
           "anchor": "def redact_model_visible_secrets(",
-          "line": 2484
+          "line": 2483
         },
         {
           "path": "memory_core/redact.py",
           "symbol": "create_sensitive_text_redactor",
           "anchor": "def create_sensitive_text_redactor(",
-          "line": 2008
+          "line": 2003
         },
         {
           "path": "memory_core/session_transcript_append.py",
@@ -5628,13 +5935,13 @@
           "path": "memory_core/redact_user_patterns.py",
           "symbol": "compile_config_regex",
           "anchor": "def compile_config_regex(",
-          "line": 900
+          "line": 914
         },
         {
           "path": "memory_core/redact.py",
           "symbol": "configure_logging_redaction",
           "anchor": "def configure_logging_redaction(",
-          "line": 1874
+          "line": 1869
         },
         {
           "path": "memory_core/consolidation/artifact_provenance.py",
@@ -5646,7 +5953,7 @@
           "path": "memory_core/host/kit.py",
           "symbol": "HostKit.after_turn",
           "anchor": "    def after_turn(",
-          "line": 563
+          "line": 571
         },
         {
           "path": "memory_core/turn_trust.py",
@@ -5676,8 +5983,8 @@
       "implementation": "partial",
       "notes": [
         "Two actual AgentLoop/tool/write/stored-session flows establish the bounded owner/taint/provenance condition. One authenticated unchanged dependency-free original TypeScript taint owner is used explicitly with the official release; complete outer results and separate raw coding presentation/diagnostic hashes remain retained. This does not establish the regex/mode/full-context outcome condition.",
-        "Configured Unicode Letter properties use exact Node 24.16/ICU78.3/Unicode17 facts with a reproducible generator and Unicode notice. Mixed case-folding, repeated capture, general-category Lu and direct v-mode differences remain ordinary diagnostics; unsupported source behavior is not counted as a match.",
-        "Python accepts a supported subset of JavaScript regex behavior and explicitly rejects unsupported syntax; it cannot assume native RegExp acceptance for every configured source pattern.",
+        "Configured redaction uses an embedded ECMAScript RegExp with UTF-16 indices and capture reset. The exact single Letter-property fast paths use the original Unicode 17 inventory. The same safety check runs before every configured pattern is compiled.",
+        "The outcome gate requires the original source-level policy and durable session diagnostics, including mode overrides, full-context nested objects, configured Unicode patterns and direct v-mode compilation.",
         "Artifact hash/owner transitions exist, but the host supplies untrusted_turn and session metadata. Native sticky tool-result taint and persisted sender/owner state need a host adapter and end-to-end comparisons."
       ]
     },
@@ -5730,13 +6037,13 @@
           "path": "memory_core/automation.py",
           "symbol": "FileAutomationStore",
           "anchor": "class FileAutomationStore:",
-          "line": 429
+          "line": 501
         },
         {
           "path": "memory_core/heartbeat_migration.py",
           "symbol": "migrate_heartbeat_md",
           "anchor": "def migrate_heartbeat_md(",
-          "line": 754
+          "line": 757
         }
       ],
       "implementation": "partial",
@@ -5788,25 +6095,25 @@
           "path": "memory_core/heartbeat.py",
           "symbol": "resolve_heartbeat_preflight",
           "anchor": "def resolve_heartbeat_preflight(",
-          "line": 842
+          "line": 843
         },
         {
           "path": "memory_core/heartbeat.py",
           "symbol": "build_heartbeat_run_prompt",
           "anchor": "def build_heartbeat_run_prompt(",
-          "line": 882
+          "line": 886
         },
         {
           "path": "memory_core/heartbeat.py",
           "symbol": "decide_heartbeat_reply",
           "anchor": "def decide_heartbeat_reply(",
-          "line": 713
+          "line": 714
         },
         {
           "path": "memory_core/host/heartbeat_run.py",
           "symbol": "HeartbeatRun",
           "anchor": "class HeartbeatRun:",
-          "line": 39
+          "line": 72
         },
         {
           "path": "memory_core/session_corpus.py",
@@ -5858,31 +6165,55 @@
           "path": "memory_core/automation.py",
           "symbol": "compute_job_next_run_at_ms",
           "anchor": "def compute_job_next_run_at_ms(",
-          "line": 281
+          "line": 315
         },
         {
           "path": "memory_core/automation.py",
           "symbol": "is_job_due",
           "anchor": "def is_job_due(",
-          "line": 312
+          "line": 348
         },
         {
           "path": "memory_core/automation.py",
           "symbol": "record_automation_job_run",
           "anchor": "def record_automation_job_run(",
-          "line": 369
+          "line": 407
         },
         {
           "path": "memory_core/heartbeat_migration.py",
           "symbol": "migrate_heartbeat_tasks",
           "anchor": "def migrate_heartbeat_tasks(",
-          "line": 1105
+          "line": 1109
+        },
+        {
+          "path": "memory_core/host/kit.py",
+          "symbol": "HostKit.heartbeat_task_prompt",
+          "anchor": "    def heartbeat_task_prompt(",
+          "line": 896
+        },
+        {
+          "path": "memory_core/automation_schedule.py",
+          "symbol": "next_calendar_run",
+          "anchor": "def next_calendar_run(",
+          "line": 333
+        },
+        {
+          "path": "memory_core/host/kit.py",
+          "symbol": "run_heartbeat_task",
+          "anchor": "def run_heartbeat_task(",
+          "line": 919
+        },
+        {
+          "path": "memory_core/consolidation/dreaming_automation.py",
+          "symbol": "reconcile_dreaming_jobs",
+          "anchor": "def reconcile_dreaming_jobs(",
+          "line": 119
         }
       ],
       "implementation": "partial",
       "notes": [
-        "Python job scheduling supports recurring every intervals; native at/cron schedules, timezone/DST handling, staggering and stream schedule state are outside that implementation.",
-        "Python due decisions omit native active-run and forced-run branches, and run recording covers successful/skipped recurring runs rather than native error/backoff/deletion outcomes and durable run recovery."
+        "The SDK drives memory jobs explicitly, including recurring intervals, absolute times, cron calendars, forced runs and stored active reservations. The host owns timers and broader gateway admission, pacing and recovery policy.",
+        "The SDK carries legacy heartbeat timestamps into migrated jobs and separately reconciles managed dreaming declarations. Generated rows expose the command and storage identity of their producer."
       ]
     },
     {
@@ -5916,25 +6247,25 @@
           "path": "memory_core/consolidation/store.py",
           "symbol": "memory_workspace_lock",
           "anchor": "def memory_workspace_lock(",
-          "line": 194
+          "line": 220
         },
         {
           "path": "memory_core/consolidation/store.py",
           "symbol": "_acquire_workspace_lock",
           "anchor": "def _acquire_workspace_lock(",
-          "line": 112
+          "line": 115
         },
         {
           "path": "memory_core/consolidation/store.py",
           "symbol": "recall_store_lock",
           "anchor": "def recall_store_lock(",
-          "line": 81
+          "line": 84
         },
         {
           "path": "memory_core/consolidation/file_lock.py",
           "symbol": "with_file_lock",
           "anchor": "def with_file_lock(",
-          "line": 229
+          "line": 247
         },
         {
           "path": "memory_core/workspace.py",
@@ -5980,6 +6311,12 @@
           "symbol": "repairDreamingArtifacts",
           "anchor": "export async function repairDreamingArtifacts(params: {",
           "line": 244
+        },
+        {
+          "path": "extensions/memory-core/src/memory/manager.ts",
+          "symbol": "MemoryIndexManager.sync",
+          "anchor": "  async sync(params?: MemorySyncParams): Promise<void> {",
+          "line": 323
         }
       ],
       "python": [
@@ -5987,19 +6324,43 @@
           "path": "memory_core/consolidation/audit.py",
           "symbol": "audit_short_term_promotion_artifacts",
           "anchor": "def audit_short_term_promotion_artifacts(",
-          "line": 79
+          "line": 85
         },
         {
           "path": "memory_core/consolidation/audit.py",
           "symbol": "repair_short_term_promotion_artifacts",
           "anchor": "def repair_short_term_promotion_artifacts(",
-          "line": 158
+          "line": 167
+        },
+        {
+          "path": "memory_core/consolidation/dreaming_repair.py",
+          "symbol": "repair_workspace_recall",
+          "anchor": "def repair_workspace_recall(",
+          "line": 75
+        },
+        {
+          "path": "memory_core/consolidation/session_repair.py",
+          "symbol": "audit_dreaming_artifacts",
+          "anchor": "def audit_dreaming_artifacts(",
+          "line": 30
+        },
+        {
+          "path": "memory_core/consolidation/session_repair.py",
+          "symbol": "repair_dreaming_artifacts",
+          "anchor": "def repair_dreaming_artifacts(",
+          "line": 64
+        },
+        {
+          "path": "memory_core/index/sqlite_store.py",
+          "symbol": "reindex",
+          "anchor": "    def reindex(",
+          "line": 639
         }
       ],
       "implementation": "partial",
       "notes": [
-        "Python audit/repair covers the JSON recall file and stale lock only; native dangling/live-source checks, overflow repair, diary/session-corpus diagnostics and archive-based dreaming repair are absent.",
-        "Python repairs unreadable or malformed recall state by replacing it with an empty store; this reset differs from retaining and diagnosing valid recoverable state and must not be counted as successful parity."
+        "The compatibility audit distinguishes invalid, dangling and overflow recall rows and stale workspace locks. Whole unreadable SDK store bytes remain intact. The legacy SDK interface retains its own diagnostics.",
+        "Recovery drives independently damage full-text and provenance rows before forced reindex, as well as invalid recall rows, dangling sources, retention limits and lock state. The session corpus and its ingestion checkpoint can be archived with the diary. The original and SDK use different physical store locations."
       ]
     },
     {
@@ -6051,7 +6412,7 @@
           "path": "memory_core/consolidation/artifacts.py",
           "symbol": "write_dreams_file_atomic",
           "anchor": "def write_dreams_file_atomic(",
-          "line": 128
+          "line": 167
         },
         {
           "path": "memory_core/consolidation/forget.py",
@@ -6063,7 +6424,7 @@
           "path": "memory_core/host/kit.py",
           "symbol": "HostKit.after_turn",
           "anchor": "    def after_turn(",
-          "line": 563
+          "line": 571
         },
         {
           "path": "memory_core/index/sqlite_store.py",
@@ -6075,7 +6436,7 @@
       "implementation": "partial",
       "notes": [
         "Prepared index publication provides atomic chunks/FTS/source/identity/details/provenance/recall replacement and rollback before commit; a post-commit hook error preserves the committed revision. This covers one SQLite publication boundary, not a common recovery receipt across Markdown, recall, origins, provenance and index stores.",
-        "Python also has atomic-rename and rollback primitives, but no common durable operation receipt establishes next-open recovery across all required cuts. Native flush admission and visible failure policy are host state; Python REM directly appends DREAMS text and the Lab live session state is RAM, so interruption and retry outcomes still require host/process failure cases."
+        "Two guarded forget calls use SQLite abort triggers at marker insertion and at final origin deletion after the note rewrite. Reopened database images and durable note bytes identify the partial state and retry. The interruption outcome gate also requires the unchanged write, index, flush, consolidation and diary controls in the same comparison. Recovery after unknown operations and retry across the entire six-publisher scope remain open."
       ]
     },
     {
@@ -6098,6 +6459,12 @@
           "symbol": "promotion score rendering",
           "anchor": "candidate.score.toFixed(3)",
           "line": 86
+        },
+        {
+          "path": "extensions/memory-core/src/flush-plan.ts",
+          "symbol": "buildMemoryFlushPlan",
+          "anchor": "export function buildMemoryFlushPlan(",
+          "line": 63
         }
       ],
       "python": [
@@ -6118,11 +6485,23 @@
           "symbol": "_js_number",
           "anchor": "def _js_number(",
           "line": 192
+        },
+        {
+          "path": "memory_core/memory_flush.py",
+          "symbol": "build_memory_flush_plan_from_config",
+          "anchor": "def build_memory_flush_plan_from_config(",
+          "line": 302
+        },
+        {
+          "path": "memory_core/model_prompt.py",
+          "symbol": "serialize_model_tool_json",
+          "anchor": "def serialize_model_tool_json(value):",
+          "line": 38
         }
       ],
       "implementation": "partial",
       "notes": [
-        "Numeric coercion, formatting and promotion gates exist; exact V8/libm score-threshold equivalence still requires fresh boundary tests."
+        "Numeric plan fields and scalar serialization are observed at the public flush planner and model JSON renderer. Real promotion ranking reads stored adjacent binary64 scores and applies the configured gates. Diagnostic observations include signed zero and non-finite inputs. Markdown score formatting has a separate source counterpart."
       ],
       "acceptancePoints": [
         "engine.numeric-boundaries.outcomes",
@@ -6162,18 +6541,24 @@
           "path": "memory_core/bootstrap/_js.py",
           "symbol": "locale_compare",
           "anchor": "def locale_compare(",
-          "line": 292
+          "line": 254
         },
         {
           "path": "memory_core/consolidation/concepts.py",
           "symbol": "derive_concept_tags",
           "anchor": "def derive_concept_tags(",
-          "line": 282
+          "line": 283
+        },
+        {
+          "path": "memory_core/_icu.py",
+          "symbol": "word_tokens",
+          "anchor": "def word_tokens(",
+          "line": 157
         }
       ],
       "implementation": "partial",
       "notes": [
-        "UTF-16 helpers exist, but Python collation and regex-based segmentation do not establish all ICU/Intl.Segmenter outcomes."
+        "The SDK uses ICU 78.3 for default English ordering, word breaks and concept text normalization. Source locations establish implementation identity; the paired Unicode family measures behavior."
       ],
       "acceptancePoints": [
         "engine.unicode-collation.outcomes",
@@ -6206,6 +6591,18 @@
           "symbol": "configured RegExp normalization",
           "anchor": "pattern = new RegExp(raw.source, `${raw.flags}g`);",
           "line": 171
+        },
+        {
+          "path": "packages/memory-host-sdk/src/host/session-files.ts",
+          "symbol": "parseSessionTimestampMs",
+          "anchor": "function parseSessionTimestampMs(",
+          "line": 535
+        },
+        {
+          "path": "src/security/safe-regex.ts",
+          "symbol": "compileSafeRegexDetailed",
+          "anchor": "export function compileSafeRegexDetailed(",
+          "line": 328
         }
       ],
       "python": [
@@ -6213,7 +6610,7 @@
           "path": "memory_core/current_time.py",
           "symbol": "format_current_time_line",
           "anchor": "def format_current_time_line(",
-          "line": 202
+          "line": 226
         },
         {
           "path": "memory_core/consolidation/_util.py",
@@ -6225,12 +6622,25 @@
           "path": "memory_core/redact_user_patterns.py",
           "symbol": "compile_config_regex",
           "anchor": "def compile_config_regex(",
-          "line": 900
+          "line": 914
+        },
+        {
+          "path": "memory_core/_js_date.py",
+          "symbol": "date_parse_profile",
+          "anchor": "def date_parse_profile(",
+          "line": 26
+        },
+        {
+          "path": "memory_core/_icu_timezone.py",
+          "symbol": "named_time_zone",
+          "anchor": "def named_time_zone(",
+          "line": 36
         }
       ],
       "implementation": "partial",
       "notes": [
-        "Python implements selected timezone/date and JS-regex behavior; permissive Date.parse, host locale choice and unsupported regex syntax require explicit differential cases."
+        "Python implements selected timezone/date and JS-regex behavior; permissive Date.parse, host locale choice and unsupported regex syntax require explicit differential cases.",
+        "The saved transcript exposes each accepted or fallback timestamp. Known V8-only syntax retains the complete original/SDK discrepancy, and coincident rejected values still have uncovered grammar status. ICU supplies named zone admission and the configured regex security owner retains both terminal refusal reasons."
       ],
       "acceptancePoints": [
         "engine.datetime-regex.outcomes",
@@ -6324,7 +6734,7 @@
           "path": "memory_core/host/kit.py",
           "symbol": "HostKit.after_turn",
           "anchor": "    def after_turn(",
-          "line": 563
+          "line": 571
         },
         {
           "path": "demo/lab_chat.py",
@@ -6342,7 +6752,7 @@
           "path": "memory_core/host/lifecycle.py",
           "symbol": "HostSessionRunner.run_turn",
           "anchor": "    async def run_turn(",
-          "line": 783
+          "line": 916
         },
         {
           "path": "memory_core/host/managed_session.py",
@@ -6423,7 +6833,7 @@
           "path": "memory_core/host/kit.py",
           "symbol": "HostKit.on_new_session",
           "anchor": "    def on_new_session(",
-          "line": 763
+          "line": 776
         },
         {
           "path": "demo/lab_runtime.py",
@@ -6435,7 +6845,7 @@
           "path": "memory_core/host/lifecycle.py",
           "symbol": "HostSessionRunner._load",
           "anchor": "    def _load(",
-          "line": 647
+          "line": 780
         },
         {
           "path": "memory_core/host/managed_index.py",
@@ -6471,7 +6881,7 @@
           "path": "memory_core/session_catalog.py",
           "symbol": "MemorySessionCatalog.compare_and_patch_host_lifecycle",
           "anchor": "    def compare_and_patch_host_lifecycle(",
-          "line": 699
+          "line": 729
         },
         {
           "path": "memory_core/session_catalog.py",
@@ -6522,7 +6932,7 @@
           "path": "memory_core/host/kit.py",
           "symbol": "HostKit.dispatcher",
           "anchor": "    def dispatcher(",
-          "line": 424
+          "line": 432
         },
         {
           "path": "memory_core/live/__init__.py",
@@ -12163,6 +12573,268 @@
         "normalizeMessagesForCurrentPromptBoundary",
         "normalizeMessagesForLlmBoundary",
         "usesEscapedRuntimeContext"
+      ]
+    },
+    {
+      "path": "src/agents/embedded-agent-runner/run/attempt.ts",
+      "sha256": "dc29b5a469b2e84a43fedb67fdd690093d2842080a08246179de3d2680ae3781",
+      "sourceImports": [
+        "../../../context-engine/host-compat.js",
+        "../../../context-engine/registry.js",
+        "../../../shared/async-work-resources.js",
+        "../../../shared/async-work-scope.js",
+        "../../admitted-run-context.js",
+        "../../agent-bundle-lsp-runtime.js",
+        "../../agent-bundle-mcp-tools.js",
+        "../../agent-run-terminal-error.js",
+        "../../agent-run-terminal-outcome.js",
+        "../../agent-scope.js",
+        "../../exec-auto-review-transcript.js",
+        "../../run-cleanup-timeout.js",
+        "../../tool-search.js",
+        "../logger.js",
+        "../sandbox-skills.js",
+        "../skill-runtime.js",
+        "./attempt-bootstrap-prepare.js",
+        "./attempt-bundle-tools.js",
+        "./attempt-execution-phase.js",
+        "./attempt-finalize.js",
+        "./attempt-preparation.js",
+        "./attempt-prompt-support.js",
+        "./attempt-session-runtime-prepare.js",
+        "./attempt-session-settle.js",
+        "./attempt-sessions-yield.js",
+        "./attempt-setup.js",
+        "./attempt-stage-timing.js",
+        "./attempt-system-prompt-prepare.js",
+        "./attempt-tool-catalog.js",
+        "./attempt-tool-prepare.js",
+        "./attempt-transcript-lifecycle-prepare.js",
+        "./preparation-timing.js",
+        "./tool-activity-heartbeat.js",
+        "./types.js"
+      ],
+      "exportedDeclarations": [
+        "runEmbeddedAttempt"
+      ]
+    },
+    {
+      "path": "src/agents/embedded-agent-runner/run/attempt-execution-phase.ts",
+      "sha256": "8504ff1ff654f2b943fa9660e2bee0e57ce89a4647e701da3fba3516df6df7b8",
+      "sourceImports": [
+        "../../../config/sessions/transcript-write-context.js",
+        "../../../logging/diagnostic-run-activity.js",
+        "../../admitted-run-context.js",
+        "../../agent-run-terminal-outcome.js",
+        "../../sessions/agent-session-compaction.js",
+        "../logger.js",
+        "../runs.js",
+        "../wait-for-idle-before-flush.js",
+        "./abortable.js",
+        "./attempt-execution-types.js",
+        "./attempt-finalize.js",
+        "./attempt-history-prepare.js",
+        "./attempt-settle.js",
+        "./attempt-stream-prepare.js",
+        "./attempt-stream.js",
+        "./attempt-subscription-cleanup.js",
+        "./attempt-timeout-prepare.js",
+        "./types.js"
+      ],
+      "exportedDeclarations": [
+        "runEmbeddedAttemptExecutionPhase"
+      ]
+    },
+    {
+      "path": "src/agents/embedded-agent-runner/run/attempt-history-prepare.ts",
+      "sha256": "6ad004bb0ddbeb9338224b30a9f0208a5c78ec6479eeb9680e79e8607e8daff4",
+      "sourceImports": [
+        "../../../auto-reply/handoff-summarizer.js",
+        "../../../auto-reply/heartbeat-filter.js",
+        "../../../config/sessions/paths.js",
+        "../../../config/sessions/session-accessor.js",
+        "../../../context-engine/host-compat.js",
+        "../../../context-engine/types.js",
+        "../../../infra/heartbeat-summary.js",
+        "../../defaults.js",
+        "../../harness/context-engine-lifecycle.js",
+        "../../runtime/index.js",
+        "../../session-transcript-repair.js",
+        "../history.js",
+        "../logger.js",
+        "../replay-history.js",
+        "./attempt-execution-types.js",
+        "./attempt-transcript-helpers.js",
+        "./preemptive-compaction.js",
+        "@openclaw/ai/internal/shared",
+        "@openclaw/ai/transports"
+      ],
+      "exportedDeclarations": [
+        "prepareEmbeddedAttemptHistory"
+      ]
+    },
+    {
+      "path": "src/agents/transcript-policy.ts",
+      "sha256": "bf2bb906e44e8e8fc07b093456581021f0dc9baa22d593bbb1ba65e9fb31871c",
+      "sourceImports": [
+        "../config/types.openclaw.js",
+        "../plugins/plugin-control-plane-context.js",
+        "../plugins/provider-hook-runtime.js",
+        "../plugins/provider-replay-helpers.js",
+        "../plugins/provider-runtime-model.types.js",
+        "../plugins/types.js",
+        "./embedded-agent-helpers/anthropic-api.js",
+        "./embedded-agent-helpers/google.js",
+        "./tool-call-id.js",
+        "@openclaw/llm-core",
+        "@openclaw/model-catalog-core/provider-id",
+        "@openclaw/normalization-core/string-coerce"
+      ],
+      "exportedDeclarations": [
+        "TranscriptPolicy",
+        "resolveTranscriptPolicy"
+      ]
+    },
+    {
+      "path": "src/agents/embedded-agent-runner/run/attempt-stream.ts",
+      "sha256": "97a8459dbfe30f37767854bde6ce53ce280edbf3ffa8331fb6d31791f0bddd54",
+      "sourceImports": [
+        "../../../infra/diagnostic-llm-content.js",
+        "../../../infra/net/undici-global-dispatcher.js",
+        "../../../logging/diagnostic-run-activity.js",
+        "../../../plugins/provider-model-compat.js",
+        "../../../shared/async-work-scope.js",
+        "../../admitted-run-context.js",
+        "../../embedded-agent-helpers/turns.js",
+        "../../plugin-text-transforms.js",
+        "../../runtime/index.js",
+        "../../sessions/session-manager-write-admission.js",
+        "../../timeout.js",
+        "../../tool-loop-detection.js",
+        "../../transcript-code-mode-source.js",
+        "../../usage.js",
+        "../logger.js",
+        "../prompt-cache-request-observer.js",
+        "../thinking-replay-repair.js",
+        "../thinking.js",
+        "../tool-call-argument-decoding.js",
+        "./attempt-execution-types.js",
+        "./attempt-sessions-yield.js",
+        "./attempt-stop-reason-recovery.js",
+        "./attempt-tool-call-replay-sanitization.js",
+        "./attempt-tool-call-stream-normalization.js",
+        "./attempt-tool-call-text-promotion.js",
+        "./attempt.model-diagnostic-events.js",
+        "./attempt.tool-call-argument-repair.js",
+        "./llm-idle-timeout.js",
+        "./message-transform-stream-wrapper.js",
+        "./stream-wrapper.js",
+        "@openclaw/ai/transports"
+      ],
+      "exportedDeclarations": [
+        "installEmbeddedAttemptStreamGuards"
+      ]
+    },
+    {
+      "path": "src/agents/embedded-agent-runner/run/attempt-tool-call-replay-sanitization.ts",
+      "sha256": "67c04274eea92dce61cf6986cdd65106a8ab37e2ac767bf344724d7161657109",
+      "sourceImports": [
+        "../../embedded-agent-helpers/openai.js",
+        "../../embedded-agent-helpers/turns.js",
+        "../../runtime/index.js",
+        "../../session-transcript-repair.js",
+        "../../thinking-block.js",
+        "../../tool-call-id.js",
+        "../../tool-call-shared.js",
+        "../../transcript-policy.js",
+        "./attempt-tool-call-block-type.js",
+        "./attempt-tool-call-name-resolution.js",
+        "@openclaw/ai/transports",
+        "@openclaw/normalization-core/record-coerce",
+        "@openclaw/normalization-core/string-coerce",
+        "@openclaw/normalization-core/string-normalization"
+      ],
+      "exportedDeclarations": [
+        "sanitizeOpenAIResponsesReplayForStream",
+        "sanitizeReplayToolCallIdsForStream",
+        "shouldApplyReplayToolCallIdSanitizer",
+        "wrapStreamFnSanitizeMalformedToolCalls"
+      ]
+    },
+    {
+      "path": "src/agents/embedded-agent-helpers/openai.ts",
+      "sha256": "851d3ee9938222da28080daa4971aa5382060b6149decee4402985995fe09f90",
+      "sourceImports": [
+        "../runtime/index.js",
+        "../tool-call-id.js",
+        "@openclaw/ai/transports",
+        "@openclaw/normalization-core/number-coercion"
+      ],
+      "exportedDeclarations": [
+        "downgradeOpenAIFunctionCallReasoningPairs",
+        "dropStaleOpenAIReasoning",
+        "normalizeOpenAIResponsesToolCallIds"
+      ]
+    },
+    {
+      "path": "packages/ai/src/transports/openai-responses-tool-call-id-shape.ts",
+      "sha256": "28bd3f91f75eefbddc447b93f3722b92d63df1720ad19b9f62671e8992fcf06b",
+      "sourceImports": [
+        "./transport-utils.js"
+      ],
+      "exportedDeclarations": [
+        "OPENAI_RESPONSES_CALL_ID_RE",
+        "OPENAI_RESPONSES_FUNCTION_CALL_ITEM_ID_RE",
+        "OPENAI_RESPONSES_ID_MAX_LENGTH",
+        "normalizeOpenAIResponsesFunctionCallId",
+        "shouldNormalizeOpenAIResponsesToolCallId",
+        "splitOpenAIFunctionCallPairing"
+      ]
+    },
+    {
+      "path": "src/agents/embedded-agent-helpers/turns.ts",
+      "sha256": "09758eadf30d707b0b2440ba4156adfa5ddb6a5ff4d0e4806884045a48210a45",
+      "sourceImports": [
+        "../runtime/index.js",
+        "../thinking-block.js",
+        "../tool-call-id.js",
+        "../transcript-policy.js",
+        "./anthropic-api.js",
+        "@openclaw/model-catalog-core/provider-id",
+        "@openclaw/normalization-core/string-coerce"
+      ],
+      "exportedDeclarations": [
+        "mergeConsecutiveUserMessages",
+        "providerRequiresSignedThinking",
+        "shouldAllowProviderOwnedThinkingReplay",
+        "shouldMergeConsecutiveUserTurns",
+        "validateAnthropicTurns",
+        "validateGeminiTurns"
+      ]
+    },
+    {
+      "path": "src/shared/google-turn-ordering.ts",
+      "sha256": "c21220290c89de861d939573f38ec9081b935dc90db118508a58738f0316dd97",
+      "sourceImports": [
+        "../agents/runtime/index.js"
+      ],
+      "exportedDeclarations": [
+        "sanitizeGoogleAssistantFirstOrdering"
+      ]
+    },
+    {
+      "path": "src/security/safe-regex.ts",
+      "sha256": "0067759e19538ca8ffe3f95f3669a519d400243bfd0798bb5384ac84713342e5",
+      "sourceImports": [
+        "../infra/map-size.js",
+        "@openclaw/normalization-core"
+      ],
+      "exportedDeclarations": [
+        "SafeRegexCompileResult",
+        "SafeRegexRejectReason",
+        "compileSafeRegex",
+        "compileSafeRegexDetailed",
+        "testRegexWithBoundedInput"
       ]
     }
   ]

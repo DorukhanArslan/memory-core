@@ -696,6 +696,36 @@ class MemorySessionCatalog:
         """Current host activity time used by live catalog consumers."""
         return self._clock()
 
+    def clear_heartbeat_task_timestamps(self, session_key: str, names: Sequence[str]) -> None:
+        """Remove only migrated task names from the current session and its retained window."""
+        key = self._session_key(session_key)
+        with closing(self._connect()) as db, db:
+            db.execute("BEGIN IMMEDIATE")
+            row = db.execute("SELECT entry_json FROM memory_session_nodes WHERE agent=? AND session_key=?",
+                             (self.agent_id, key)).fetchone()
+            if row is None:
+                return
+            entry = json.loads(row[0])
+            current = entry.get("heartbeatTaskState", {})
+            remaining = {name: stamp for name, stamp in current.items() if name not in names}
+            if current == remaining:
+                return
+            def patched(metadata):
+                if remaining:
+                    metadata["heartbeatTaskState"] = remaining
+                else:
+                    metadata.pop("heartbeatTaskState", None)
+                return _json(metadata)
+            db.execute("UPDATE memory_session_nodes SET entry_json=? WHERE agent=? AND session_key=?",
+                       (patched(entry), self.agent_id, key))
+            session_id = entry.get("sessionId")
+            window = db.execute("SELECT entry_json FROM memory_session_windows WHERE agent=? AND session_id=? AND session_key=?",
+                                (self.agent_id, session_id, key)).fetchone()
+            if window:
+                db.execute("UPDATE memory_session_windows SET entry_json=? WHERE agent=? AND session_id=? AND session_key=?",
+                           (patched(json.loads(window[0])), self.agent_id, session_id, key))
+            self._changed(db)
+
     def compare_and_patch_host_lifecycle(
         self, *, expected_revision: int, updates: Mapping[str, Mapping[str, Any]],
     ) -> bool:
@@ -841,6 +871,7 @@ class MemorySessionCatalog:
     def _write_events(
         self, session_id: str, events: Sequence[object], *, replace: bool,
         updated_at_ms: float | None, session_key: str | None = None,
+        expected_version: Mapping[str, Any] | None = None,
     ) -> None:
         serialized = [_json(event) for event in events]
         if not serialized and not replace:
@@ -851,15 +882,31 @@ class MemorySessionCatalog:
         if catalog is not self:
             return catalog._write_events(
                 session_id, events, replace=replace, updated_at_ms=updated_at_ms,
-                session_key=session_key,
+                session_key=session_key, expected_version=expected_version,
             )
         session_key = self._session_key(session_key)
         with closing(self._connect()) as db, db:
+            if expected_version is not None:
+                # Serialize the source-version check and the branch append with other writers.
+                db.execute("BEGIN IMMEDIATE")
             window = db.execute("SELECT mutation_at,session_key,transcript_updated_at,transcript_observed_at "
                                 "FROM memory_session_windows WHERE agent=? AND session_id=?",
                                 (self.agent_id, session_id)).fetchone()
             if window is None:
                 raise ValueError("Transcript identity is not registered in this catalog")
+            if expected_version is not None:
+                record = db.execute("SELECT MAX(seq) FROM memory_session_events WHERE agent=? AND session_id=?",
+                                    (self.agent_id, session_id)).fetchone()[0]
+                state = db.execute("SELECT generation FROM memory_session_transcript_state WHERE agent=? AND session_id=?",
+                                   (self.agent_id, session_id)).fetchone()
+                active = db.execute("SELECT entry_json FROM memory_session_nodes WHERE agent=? AND session_key=?",
+                                    (self.agent_id, session_key)).fetchone()
+                actual_version = {"rawSeq": record - 1 if record is not None else None,
+                                  "generation": state[0] if state is not None else None,
+                                  "updatedAt": window["transcript_updated_at"]}
+                if (active is None or json.loads(active[0]).get("sessionId") != session_id
+                        or actual_version != expected_version):
+                    raise RuntimeError("The session or transcript changed before recovery could be published")
             if session_key is not None and window["session_key"] != session_key:
                 active = db.execute(
                     "SELECT entry_json FROM memory_session_nodes WHERE agent=? AND session_key=?",
@@ -943,10 +990,11 @@ class MemorySessionCatalog:
 
     def append_events(
         self, session_id: str, events: Sequence[object], *, updated_at_ms: float | None = None,
-        session_key: str | None = None,
+        session_key: str | None = None, expected_version: Mapping[str, Any] | None = None,
     ) -> None:
+        """Append events, optionally requiring the active continuation version from read_continuation."""
         self._write_events(session_id, events, replace=False, updated_at_ms=updated_at_ms,
-                           session_key=session_key)
+                           session_key=session_key, expected_version=expected_version)
 
     def replace_events(
         self, session_id: str, events: Sequence[object], *, updated_at_ms: float | None = None,
@@ -988,6 +1036,7 @@ class MemorySessionCatalog:
         event_id: str | None = None, parent_id: Any = UNSET, now_ms: float | None = None,
         cwd: str | None = None, append_intent: str | None = None,
         expected_mutation_at: Any = UNSET, logging_config: LoggingConfig | None = None,
+        detach_queued_user: str | None = None, admission_compactions: Sequence[Mapping[str, Any]] = (),
     ) -> dict[str, Any]:
         """Append one ordinary JSON agent message in a single durable transaction.
 
@@ -1003,7 +1052,8 @@ class MemorySessionCatalog:
             return catalog.append_message(
                 session_id, message, session_key=session_key, event_id=event_id,
                 parent_id=parent_id, now_ms=now_ms, cwd=cwd, append_intent=append_intent,
-                expected_mutation_at=expected_mutation_at, logging_config=logging_config,
+                expected_mutation_at=expected_mutation_at, logging_config=logging_config, detach_queued_user=detach_queued_user,
+                admission_compactions=admission_compactions,
             )
         if parent_id is not UNSET and parent_id is not None and not isinstance(parent_id, str):
             raise TypeError("parent_id must be a string, null, or omitted")
@@ -1080,6 +1130,40 @@ class MemorySessionCatalog:
                 insert({"type": "session", "version": 4, "id": session_id,
                         "timestamp": timestamp_ms_to_iso(clock), "cwd": cwd if cwd is not None else os.getcwd()})
             parent = resolve_message_append_parent(events, parent_id, append_intent)
+            suffix = ()
+            if detach_queued_user is not None:
+                from memory_core.queued_user import trailing_user
+
+                candidate = trailing_user(select_visible_transcript_events(events))
+                if not candidate or candidate[0].get("id") != detach_queued_user:
+                    raise SqliteTranscriptMutationConflictError(session_id)
+                older, suffix = candidate
+                parent = older.get("parentId")
+            if admission_compactions:
+                active = db.execute("SELECT entry_json FROM memory_session_nodes WHERE agent=? AND session_key=?",
+                                    (self.agent_id, session_key)).fetchone()
+                if expected_mutation_at is UNSET or active is None or json.loads(active[0]).get("sessionId") != session_id:
+                    raise SqliteTranscriptMutationConflictError(session_id)
+                known = {event["id"] for event in events if isinstance(event, dict) and "id" in event}
+                for checkpoint in admission_compactions:
+                    identity = checkpoint.get("id")
+                    if (checkpoint.get("type") != "compaction" or checkpoint.get("parentId") != parent
+                            or not isinstance(identity, str) or not identity or identity in known
+                            or checkpoint.get("firstKeptEntryId") not in known):
+                        raise SqliteTranscriptMutationConflictError(session_id)
+                    dirty |= not can_forward_project_event(events, checkpoint)
+                    insert(dict(checkpoint))
+                    known.add(identity)
+                    parent = identity
+            if suffix:
+                remapped = {}
+                for control in suffix:
+                    copy = {**control, "id": str(uuid4()), "parentId": parent, "timestamp": timestamp_ms_to_iso(clock)}
+                    if copy["type"] == "label" and copy.get("targetId") in remapped:
+                        copy["targetId"] = remapped[copy["targetId"]]
+                    dirty |= not can_forward_project_event(events, copy)
+                    insert(copy)
+                    remapped[control["id"]] = parent = copy["id"]
             event = {"type": "message", "id": identifier, "parentId": parent,
                      "timestamp": timestamp_ms_to_iso(now_ms if now_ms is not None else clock),
                      "message": persisted}

@@ -179,7 +179,7 @@ Its final complete catalog on clean `b27624d` validates the sessions-only
 source-coherence correction and confirms the same 70, with no additional point.
 Source inventory itself still awards no behavioral credit.
 
-The current inventory maps **239 upstream modules**, with 18 present and 46 partial
+The current inventory maps **249 upstream modules**, with 18 present and 46 partial
 Python counterparts. Durable catalog and session-runner owners now provide partial SDK
 counterparts for the three previously host-owned rows; this source classification adds no
 behavioral credit. Original Gateway host acceptance remains incomplete. The shared-deadline package maps the actual control,
@@ -198,6 +198,12 @@ owner and the SDK's `ModelPrompt`, `HostTurn.model_request` and complete clock r
 The production model projection keeps transient carriers separate from durable history.
 Explicit host timezone/format facts support the compatible clock profile; legacy clock
 callers retain UTC fallback. Mapping these entry points grants no acceptance credit.
+
+HostSessionRunner prepares the prior session history before admitting the current question.
+For unowned completions and Responses transports, it repairs call/result pairs for the
+model while preserving the original durable messages. The eight comparison cases specify
+UTC and a 24-hour clock and compare the complete ordered messages at each provider callback.
+The mapped boundary ends before provider wire encoding.
 
 The verified bounded index-identity boundary map now includes the original manager
 factory, constructor and published status, provider initialization, actual query
@@ -360,9 +366,9 @@ current limitations and retained first failures.
 | `prompt.bootstrap-discovery` | [ensureAgentWorkspace](https://github.com/openclaw/openclaw/blob/bcfc88812a35243893585dbeca87ca41b48272ca/src/agents/workspace.ts#L715) | [initialize_agent_workspace](../memory_core/bootstrap/lifecycle.py#L424) | partial |
 | `prompt.bootstrap-budget` | [buildBootstrapContextFiles](https://github.com/openclaw/openclaw/blob/bcfc88812a35243893585dbeca87ca41b48272ca/src/agents/embedded-agent-helpers/bootstrap.ts#L401) | [build_bootstrap_context_files](../memory_core/bootstrap/budget.py#L393) | present |
 | `prompt.runtime-context` | [buildMemoryPromptSection](https://github.com/openclaw/openclaw/blob/bcfc88812a35243893585dbeca87ca41b48272ca/extensions/memory-core/src/memory-tool-contract.ts#L131) | [build_prompt_section](../memory_core/prompt_section.py#L15) | partial |
-| `prompt.history-repair` | [limitHistoryTurns](https://github.com/openclaw/openclaw/blob/bcfc88812a35243893585dbeca87ca41b48272ca/src/agents/embedded-agent-runner/history.ts#L37) | [limit_history_turns](../memory_core/history.py#L19) | partial |
-| `flush.plan-target` | [buildMemoryFlushPlan](https://github.com/openclaw/openclaw/blob/bcfc88812a35243893585dbeca87ca41b48272ca/extensions/memory-core/src/flush-plan.ts#L63) | [build_memory_flush_plan_from_config](../memory_core/memory_flush.py#L301) | partial |
-| `flush.trigger-usage` | [runMemoryFlushIfNeeded](https://github.com/openclaw/openclaw/blob/bcfc88812a35243893585dbeca87ca41b48272ca/src/auto-reply/reply/agent-runner-memory.ts#L1117) | [HostKit.prepare_flush](../memory_core/host/kit.py#L622) | present |
+| `prompt.history-repair` | [prepareEmbeddedAttemptHistory](https://github.com/openclaw/openclaw/blob/bcfc88812a35243893585dbeca87ca41b48272ca/src/agents/embedded-agent-runner/run/attempt-history-prepare.ts#L30) | [HistoryReplay.prepare](../memory_core/history_replay.py#L281) | partial |
+| `flush.plan-target` | [buildMemoryFlushPlan](https://github.com/openclaw/openclaw/blob/bcfc88812a35243893585dbeca87ca41b48272ca/extensions/memory-core/src/flush-plan.ts#L63) | [build_memory_flush_plan_from_config](../memory_core/memory_flush.py#L302) | partial |
+| `flush.trigger-usage` | [runMemoryFlushIfNeeded](https://github.com/openclaw/openclaw/blob/bcfc88812a35243893585dbeca87ca41b48272ca/src/auto-reply/reply/agent-runner-memory.ts#L1117) | [HostKit.prepare_flush](../memory_core/host/kit.py#L621) | present |
 | `flush.execute-finalize` | [runMemoryFlushIfNeeded](https://github.com/openclaw/openclaw/blob/bcfc88812a35243893585dbeca87ca41b48272ca/src/auto-reply/reply/agent-runner-memory.ts#L1117) | [FlushRequest](../memory_core/host/flush.py#L191) | partial |
 | `compaction.memory-budget` | [compactMemoryForBudget](https://github.com/openclaw/openclaw/blob/bcfc88812a35243893585dbeca87ca41b48272ca/extensions/memory-core/src/memory-budget.ts#L180) | [compact_memory_for_budget](../memory_core/memory_budget.py#L204) | present |
 | `compaction.context-assembly` | [assembleHarnessContextEngine](https://github.com/openclaw/openclaw/blob/bcfc88812a35243893585dbeca87ca41b48272ca/src/agents/harness/context-engine-lifecycle.ts#L133) | [assemble_context_engine_messages](../memory_core/context_engine_lifecycle.py#L26) | partial |
@@ -371,24 +377,24 @@ current limitations and retained first failures.
 | `promotion.ranking-gates` | [rankShortTermPromotionCandidates](https://github.com/openclaw/openclaw/blob/bcfc88812a35243893585dbeca87ca41b48272ca/extensions/memory-core/src/short-term-promotion.ts#L80) | [rank_short_term_promotion_candidates](../memory_core/consolidation/promotion.py#L781) | partial |
 | `promotion.apply-reconcile` | [applyShortTermPromotions](https://github.com/openclaw/openclaw/blob/bcfc88812a35243893585dbeca87ca41b48272ca/extensions/memory-core/src/short-term-promotion-apply.ts#L184) | [run_short_term_promotion](../memory_core/consolidation/promotion.py#L319) | present |
 | `promotion.deep-consolidation` | [consolidateMemory](https://github.com/openclaw/openclaw/blob/bcfc88812a35243893585dbeca87ca41b48272ca/extensions/memory-core/src/dreaming-consolidation.ts#L396) | [consolidate_memory](../memory_core/consolidation/llm_consolidation.py#L534) | partial |
-| `dreaming.light` | [runLightDreaming](https://github.com/openclaw/openclaw/blob/bcfc88812a35243893585dbeca87ca41b48272ca/extensions/memory-core/src/dreaming-phases.ts#L1271) | [run_dreaming_sweep](../memory_core/consolidation/dreaming.py#L143) | partial |
-| `dreaming.rem` | [runRemDreaming](https://github.com/openclaw/openclaw/blob/bcfc88812a35243893585dbeca87ca41b48272ca/extensions/memory-core/src/dreaming-phases.ts#L1361) | [run_dreaming_sweep](../memory_core/consolidation/dreaming.py#L143) | partial |
-| `dreaming.deep` | [runShortTermDreamingPromotion](https://github.com/openclaw/openclaw/blob/bcfc88812a35243893585dbeca87ca41b48272ca/extensions/memory-core/src/dreaming.ts#L84) | [run_dreaming_sweep](../memory_core/consolidation/dreaming.py#L143) | partial |
-| `dreaming.diary-provenance` | [appendNarrativeEntry](https://github.com/openclaw/openclaw/blob/bcfc88812a35243893585dbeca87ca41b48272ca/extensions/memory-core/src/dreaming-dreams-file.ts#L445) | [_append_dreams_section](../memory_core/consolidation/dreaming.py#L323) | partial |
+| `dreaming.light` | [runLightDreaming](https://github.com/openclaw/openclaw/blob/bcfc88812a35243893585dbeca87ca41b48272ca/extensions/memory-core/src/dreaming-phases.ts#L1271) | [run_dreaming_sweep](../memory_core/consolidation/dreaming.py#L185) | partial |
+| `dreaming.rem` | [runRemDreaming](https://github.com/openclaw/openclaw/blob/bcfc88812a35243893585dbeca87ca41b48272ca/extensions/memory-core/src/dreaming-phases.ts#L1361) | [prepare_rem_phase](../memory_core/consolidation/rem_phase.py#L116) | partial |
+| `dreaming.deep` | [runShortTermDreamingPromotion](https://github.com/openclaw/openclaw/blob/bcfc88812a35243893585dbeca87ca41b48272ca/extensions/memory-core/src/dreaming.ts#L84) | [run_managed_dreaming_turn](../memory_core/consolidation/managed_dreaming.py#L151) | partial |
+| `dreaming.diary-provenance` | [appendNarrativeEntry](https://github.com/openclaw/openclaw/blob/bcfc88812a35243893585dbeca87ca41b48272ca/extensions/memory-core/src/dreaming-dreams-file.ts#L445) | [_append_dreams_section](../memory_core/consolidation/dreaming.py#L403) | partial |
 | `forget.lineage-tombstones` | [forgetMemoryEntries](https://github.com/openclaw/openclaw/blob/bcfc88812a35243893585dbeca87ca41b48272ca/extensions/memory-core/src/memory-forget.ts#L172) | [forget_memory_entries](../memory_core/consolidation/forget.py#L667) | partial |
 | `forget.index-fence` | [readMemoryDatabaseRevision](https://github.com/openclaw/openclaw/blob/bcfc88812a35243893585dbeca87ca41b48272ca/extensions/memory-core/src/memory/manager-db-kernel.ts#L36) | [IndexRevisionFence](../memory_core/consolidation/origins.py#L477) | partial |
 | `trust.secret-redaction` | [registerSecretValueForRedaction](https://github.com/openclaw/openclaw/blob/bcfc88812a35243893585dbeca87ca41b48272ca/src/logging/secret-redaction-registry.ts#L41) | [register_secret_value_for_redaction](../memory_core/secret_registry.py#L110) | partial |
-| `trust.configured-redaction` | [parsePattern](https://github.com/openclaw/openclaw/blob/bcfc88812a35243893585dbeca87ca41b48272ca/src/logging/redact.ts#L159) | [compile_config_regex](../memory_core/redact_user_patterns.py#L900) | partial |
+| `trust.configured-redaction` | [parsePattern](https://github.com/openclaw/openclaw/blob/bcfc88812a35243893585dbeca87ca41b48272ca/src/logging/redact.ts#L159) | [compile_config_regex](../memory_core/redact_user_patterns.py#L914) | partial |
 | `heartbeat.scratch` | [readCronJobScratchState](https://github.com/openclaw/openclaw/blob/bcfc88812a35243893585dbeca87ca41b48272ca/src/cron/scratch-store.ts#L76) | [apply_heartbeat_scratch_write](../memory_core/heartbeat_scratch.py#L208) | partial |
-| `heartbeat.turn-decisions` | [resolveHeartbeatPreflight](https://github.com/openclaw/openclaw/blob/bcfc88812a35243893585dbeca87ca41b48272ca/src/infra/heartbeat-runner-prompt.ts#L83) | [resolve_heartbeat_preflight](../memory_core/heartbeat.py#L842) | partial |
+| `heartbeat.turn-decisions` | [resolveHeartbeatPreflight](https://github.com/openclaw/openclaw/blob/bcfc88812a35243893585dbeca87ca41b48272ca/src/infra/heartbeat-runner-prompt.ts#L83) | [resolve_heartbeat_preflight](../memory_core/heartbeat.py#L843) | partial |
 | `automation.job-state` | [computeJobNextRunAtMs](https://github.com/openclaw/openclaw/blob/bcfc88812a35243893585dbeca87ca41b48272ca/src/cron/service/jobs-scheduling.ts#L317) | [compute_job_next_run_at_ms](../memory_core/automation.py#L281) | partial |
-| `concurrency.workspace-locks` | [withMemoryWorkspaceLock](https://github.com/openclaw/openclaw/blob/bcfc88812a35243893585dbeca87ca41b48272ca/extensions/memory-core/src/memory-workspace-lock.ts#L207) | [memory_workspace_lock](../memory_core/consolidation/store.py#L194) | partial |
+| `concurrency.workspace-locks` | [withMemoryWorkspaceLock](https://github.com/openclaw/openclaw/blob/bcfc88812a35243893585dbeca87ca41b48272ca/extensions/memory-core/src/memory-workspace-lock.ts#L207) | [memory_workspace_lock](../memory_core/consolidation/store.py#L220) | partial |
 | `recovery.repair-diagnostics` | [auditShortTermPromotionArtifacts](https://github.com/openclaw/openclaw/blob/bcfc88812a35243893585dbeca87ca41b48272ca/extensions/memory-core/src/short-term-promotion-artifacts.ts#L47) | [audit_short_term_promotion_artifacts](../memory_core/consolidation/audit.py#L79) | partial |
 | `recovery.failure-publication` | [publishMemoryDatabaseTables](https://github.com/openclaw/openclaw/blob/bcfc88812a35243893585dbeca87ca41b48272ca/extensions/memory-core/src/memory/manager-db-kernel.ts#L108) | [SQLiteMemoryStore.reindex](../memory_core/index/sqlite_store.py#L592) | partial |
 | `engine.numeric-boundaries` | [asFiniteNumber](https://github.com/openclaw/openclaw/blob/bcfc88812a35243893585dbeca87ca41b48272ca/packages/normalization-core/src/number-coercion.ts#L4) | [js_to_fixed](../memory_core/consolidation/_util.py#L70) | partial |
 | `engine.unicode-collation` | [sliceUtf16Safe](https://github.com/openclaw/openclaw/blob/bcfc88812a35243893585dbeca87ca41b48272ca/packages/normalization-core/src/utf16-slice.ts#L30) | [utf16_slice](../memory_core/bootstrap/_js.py#L96) | partial |
 | `engine.datetime-regex` | [resolveCronStyleNow](https://github.com/openclaw/openclaw/blob/bcfc88812a35243893585dbeca87ca41b48272ca/src/agents/current-time.ts#L23) | [format_current_time_line](../memory_core/current_time.py#L198) | partial |
-| `host.turn-barrier` | [beginForegroundSessionMaintenance](https://github.com/openclaw/openclaw/blob/bcfc88812a35243893585dbeca87ca41b48272ca/src/agents/session-maintenance/coordinator.ts#L181) | [HostKit.after_turn](../memory_core/host/kit.py#L572) | partial |
+| `host.turn-barrier` | [beginForegroundSessionMaintenance](https://github.com/openclaw/openclaw/blob/bcfc88812a35243893585dbeca87ca41b48272ca/src/agents/session-maintenance/coordinator.ts#L181) | [HostKit.after_turn](../memory_core/host/kit.py#L571) | partial |
 | `host.restart-recall` | [loadSessionStore](https://github.com/openclaw/openclaw/blob/bcfc88812a35243893585dbeca87ca41b48272ca/src/plugin-sdk/session-store-runtime.ts#L263) | [MemoryCoreSessionCorpus](../memory_core/session_corpus.py#L81) | partial |
 | `host.update-isolation` | [consolidateMemory](https://github.com/openclaw/openclaw/blob/bcfc88812a35243893585dbeca87ca41b48272ca/extensions/memory-core/src/dreaming-consolidation.ts#L396) | [MemoryCurator.replace_memory_entry](../memory_core/curation.py#L976) | partial |
 

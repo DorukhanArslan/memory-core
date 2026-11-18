@@ -33,6 +33,9 @@ for (const [operation, filename, name] of [
   ["index-publication", "index-publication.mjs", "runIndexPublication"],
   ["markdown-chunking", "markdown-chunking.mjs", "runMarkdownChunking"],
   ["flush-contract", "flush-contract.mjs", "runFlushContract"],
+  ["engine-datetime-clock", "datetime-clock.mjs", "runDatetimeClock"],
+  ["engine-unicode-collation", "engine-unicode-collation.mjs", "runEngineUnicodeCollation"],
+  ["engine-numeric-boundaries", "engine-numeric-boundaries.mjs", "runEngineNumericBoundaries"],
   ["flush-target", "flush-target.mjs", "runFlushTarget"],
   ["bootstrap-budget", "bootstrap-budget.mjs", "runBootstrapBudget"],
   ["session-projection", "session-projection.mjs", "runSessionProjection"],
@@ -198,7 +201,30 @@ const number = (value) => typeof value === "string"
   : value;
 
 const sourceDiagnostics = [];
+const numericSourceImports = {};
+const datetimeSourceImports = {};
+const unicodeSourceImports = {};
+const heartbeatCorpusSourceImports = {};
 async function execute(operation, input, id) {
+  const receipts = ({
+    "engine-datetime-clock": datetimeSourceImports,
+    "engine-numeric-boundaries": numericSourceImports,
+    "engine-unicode-collation": unicodeSourceImports,
+    "session-projection": input.reopenDatetimeCorpus ? datetimeSourceImports : input.reopenHeartbeatCorpus && heartbeatCorpusSourceImports,
+  })[operation];
+  if (receipts) {
+    const imports = new Set();
+    receipts[id] = [];
+    try {
+      return await adapters.get(operation)(input, async relative => {
+        const module = await import(sourceUrl(relative));
+        imports.add(relative);
+        return module;
+      });
+    } finally {
+      receipts[id] = [...imports].sort();
+    }
+  }
   if (adapters.has(operation)) return adapters.get(operation)(input, (relative) => import(sourceUrl(relative)), {
     recordDiagnostic: (record) => sourceDiagnostics.push({ id, ...record }),
   });
@@ -246,6 +272,13 @@ for (const testCase of request.cases) {
 process.stdout.write(JSON.stringify({
   results,
   sourceDiagnostics,
+  ...(Object.keys(heartbeatCorpusSourceImports).length ? { heartbeatCorpusSourceImports } : {}),
+  ...(Object.keys(datetimeSourceImports).length ? { datetimeSourceImports } : {}),
+  ...(Object.keys(unicodeSourceImports).length ? {
+    unicodeSourceImports,
+    unicodeRuntime: { icu: process.versions.icu, unicode: process.versions.unicode, locale: new Intl.Collator().resolvedOptions().locale },
+  } : {}),
+  ...(Object.keys(numericSourceImports).length ? { numericSourceImports } : {}),
   sources: [...sources].sort().map((relative) => ({
     path: relative,
     sha256: crypto.createHash("sha256").update(fs.readFileSync(path.join(root, relative))).digest("hex"),

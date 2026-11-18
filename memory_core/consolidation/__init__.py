@@ -26,6 +26,7 @@ module knows no web framework, UI or LLM client; the opt-in LLM consolidation st
 docs/parity_matrix.md.
 """
 
+from memory_core.consolidation.session_repair import audit_dreaming_artifacts, repair_dreaming_artifacts
 from memory_core.consolidation.audit import (
     ShortTermAuditIssue,
     ShortTermAuditSummary,
@@ -37,6 +38,7 @@ from memory_core.consolidation.artifacts import (
     append_consolidation_skipped_summary,
     append_consolidation_summary,
     read_memory_preimages,
+    read_recent_dream_diary_entries,
     store_memory_preimage,
 )
 from memory_core.consolidation.concepts import MAX_CONCEPT_TAGS, derive_concept_tags
@@ -45,10 +47,13 @@ from memory_core.consolidation.daily_ingestion import (
     ingest_daily_memory_signals,
     seed_historical_daily_memory_signals,
 )
+from memory_core.consolidation.dream_narrative import append_narrative_entry
 from memory_core.consolidation.dreaming import (
     DREAMING_PHASES,
     DREAMS_FILE_NAME,
     DreamingIngestion,
+    LightDreamingOptions,
+    RemDreamingOptions,
     DreamingSweepResult,
     run_dreaming_sweep,
 )
@@ -159,8 +164,15 @@ from memory_core.consolidation.store import (
 )
 from memory_core.memory_budget import DEFAULT_MEMORY_FILE_MAX_CHARS
 
+from memory_core.consolidation.managed_dreaming import (
+    DreamingWorkspace, ManagedDreamingOptions, run_managed_dreaming_turn,
+)
+
+
 __all__ = [
     "DreamingIngestion",
+    "LightDreamingOptions",
+    "RemDreamingOptions",
     "IndexRevisionFence",
     "MemoryForgetReport",
     "MemorySessionTarget",
@@ -200,6 +212,8 @@ __all__ = [
     "DeepConsolidation",
     "append_consolidation_skipped_summary",
     "append_consolidation_summary",
+    "append_narrative_entry",
+    "read_recent_dream_diary_entries",
     "read_memory_preimages",
     "store_memory_preimage",
     "CONSOLIDATION_SYSTEM_PROMPT",
@@ -246,6 +260,8 @@ __all__ = [
     "ShortTermLockResult",
     "ShortTermRepairResult",
     "acquire_short_term_promotion_lock",
+    "audit_dreaming_artifacts",
+    "repair_dreaming_artifacts",
     "audit_short_term_promotion_artifacts",
     "derive_concept_tags",
     "evaluate_short_term_promotion_candidates",
@@ -259,6 +275,9 @@ __all__ = [
     "repair_short_term_promotion_artifacts",
     "resolve_deep_dreaming_policy",
     "run_dreaming_sweep",
+    "run_managed_dreaming_turn",
+    "DreamingWorkspace",
+    "ManagedDreamingOptions",
     "run_short_term_promotion",
     "undecorate_search_results",
 ]

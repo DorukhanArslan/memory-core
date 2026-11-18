@@ -31,8 +31,7 @@ side passes it on, so both compare the full line.
 Other deviations: a blank or ``Intl``-invalid zone falls back to UTC unless the caller
 supplies the explicit ``host_timezone`` seam; upstream detects that host zone. Zones
 resolve through ``zoneinfo`` (IANA names) or as ECMA-402 offsets
-(``+03:00``), not through ICU; a ``Date``-valid instant outside the years 1-9999 raises
-``ValueError`` (Python dates stop there).
+(``+03:00``). Gregorian cycles extend calendar formatting across the JavaScript Date range.
 """
 
 from __future__ import annotations
@@ -43,7 +42,7 @@ import time
 from datetime import UTC, datetime, timedelta, tzinfo
 from datetime import timezone as fixed_offset_zone
 from typing import Any, Literal
-from zoneinfo import ZoneInfo, ZoneInfoNotFoundError
+from zoneinfo import ZoneInfo
 
 from memory_core.bootstrap._js import js_trim, js_trim_end
 
@@ -106,10 +105,11 @@ def resolve_user_timezone(timezone: str, *, host_timezone: str | None = None) ->
         offset = _offset_time_zone(trimmed)
         if offset is not None:
             return trimmed, offset
-        try:
-            return trimmed, ZoneInfo(trimmed)
-        except (ZoneInfoNotFoundError, ValueError):
-            pass
+        from memory_core._icu_timezone import named_time_zone
+
+        zone = named_time_zone(trimmed)
+        if zone is not None:
+            return trimmed, zone
     if host_timezone is not None:
         return resolve_user_timezone(host_timezone)
     return "UTC", ZoneInfo("UTC")
@@ -168,6 +168,30 @@ _EN_US_MONTHS = (
 )
 
 
+def calendar_instants(now_ms: int | float, zone: tzinfo) -> tuple[datetime, datetime, int]:
+    """Return representable dates and their year offset across the JavaScript Date range.
+
+    The Gregorian calendar repeats after 146097 days. For distant future dates, map
+    into a modern zoneinfo cycle so recurring DST rules still apply. For dates before
+    year one, use a cycle before recorded timezone transitions.
+    """
+    try:
+        instant, local = utc_and_local_instants(now_ms, zone)
+        return instant, local, 0
+    except ValueError:
+        anchor = datetime(2400 if now_ms > 0 else 401, 1, 1, tzinfo=UTC)
+        anchor_ms = (anchor - _EPOCH).days * 86_400_000
+        cycle_ms = 146_097 * 86_400_000
+        cycles, remainder = divmod(math.trunc(now_ms) - anchor_ms, cycle_ms)
+        instant, local = utc_and_local_instants(anchor_ms + remainder, zone)
+        return instant, local, 400 * cycles
+
+
+def year_of_era(year: int) -> int:
+    """The positive year rendered without an era by en-US Intl.DateTimeFormat."""
+    return year if year > 0 else 1 - year
+
+
 def _ordinal_suffix(day: int) -> str:
     if 11 <= day <= 13:
         return "th"
@@ -182,7 +206,7 @@ def _ordinal_suffix(day: int) -> str:
             return "th"
 
 
-def format_user_time(local: datetime, time_format: str = DEFAULT_TIME_FORMAT) -> str:
+def format_user_time(local: datetime, time_format: str = DEFAULT_TIME_FORMAT, *, year_offset: int = 0) -> str:
     """``formatUserTime`` (date-time.ts:247-290): en-US parts, ``h23`` or ``h12`` cycle.
 
     The names are fixed en-US strings (``strftime`` would follow the process locale).
@@ -195,7 +219,7 @@ def format_user_time(local: datetime, time_format: str = DEFAULT_TIME_FORMAT) ->
         time_part = f"{hour}:{local.minute:02d} {'AM' if local.hour < 12 else 'PM'}"
     return (
         f"{_EN_US_WEEKDAYS[local.weekday()]}, {_EN_US_MONTHS[local.month - 1]} "
-        f"{day}{_ordinal_suffix(day)}, {local.year} - {time_part}"
+        f"{day}{_ordinal_suffix(day)}, {year_of_era(local.year + year_offset)} - {time_part}"
     )
 
 
@@ -224,13 +248,13 @@ def resolve_cron_style_now(
     """
     resolved_format = resolve_time_format(time_format)
     label, zone = resolve_user_timezone(timezone, host_timezone=host_timezone)
-    instant, local = utc_and_local_instants(resolve_date_timestamp_ms(now_ms), zone)
-    # Date.prototype.toISOString sliced to minutes: a 4-digit zero-padded year.
-    utc_time = (
-        f"{instant.year:04d}-{instant.month:02d}-{instant.day:02d} "
-        f"{instant.hour:02d}:{instant.minute:02d} UTC"
-    )
-    formatted = format_user_time(local, resolved_format)
+    instant, local, year_offset = calendar_instants(resolve_date_timestamp_ms(now_ms), zone)
+    year = instant.year + year_offset
+    iso_year = f"{year:04d}" if 0 <= year <= 9999 else f"{year:+07d}"
+    # JS replaces T and slices the ISO string at 16 characters, including an extended year.
+    iso = f"{iso_year}-{instant.month:02d}-{instant.day:02d} {instant.hour:02d}:{instant.minute:02d}"
+    utc_time = iso[:16] + " UTC"
+    formatted = format_user_time(local, resolved_format, year_offset=year_offset)
     return {"userTimezone": label, "formattedTime": formatted,
             "timeLine": f"Current time: {formatted} ({label})\nReference UTC: {utc_time}"}
 

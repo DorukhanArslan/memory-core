@@ -14,10 +14,12 @@ const ownHash = crypto.createHash("sha256").update(fs.readFileSync(own)).digest(
 const contextKeys = ["schemaVersion", "kind", "runtime", "providerMode", "fetchPolicy", "approvedNodeRuntime",
   "promotionApplyFamilyProfile", "allowedLocal", "traceDirectory", "evidenceDirectory", "stateDirectory",
   "configPath", "approvedReferenceSources", "fixtureSourceCaptures"].sort().join();
-if (!profile || profile.kind !== "promotion-apply-family-development" ||
+const familyKind = profile?.operation === "deep-consolidation-runtime"
+  ? "deep-consolidation-family" : "promotion-apply-family-development";
+if (!profile || profile.kind !== familyKind ||
     Object.keys(context).sort().join() !== contextKeys ||
     Object.keys(profile).sort().join() !== ["kind", "operation", "casePath", "caseFileSha256", "caseWireSha256", "nodeRuntime", "acceptancePointsAwarded"].sort().join() ||
-    profile.operation !== "promotion-apply-family-runtime" || profile.acceptancePointsAwarded !== 0 ||
+    !["promotion-apply-family-runtime", "deep-consolidation-runtime"].includes(profile.operation) || profile.acceptancePointsAwarded !== 0 ||
     JSON.stringify(profile.nodeRuntime) !== JSON.stringify(context.approvedNodeRuntime) ||
     Object.keys(context).some(key => key.endsWith("Profile") && key !== "promotionApplyFamilyProfile") ||
     !context.allowedLocal?.some(entry => entry.path === own && entry.sha256 === ownHash) ||

@@ -21,6 +21,8 @@ Deviations from upstream (see docs/parity_matrix.md audit note 27):
 
 from __future__ import annotations
 
+from copy import deepcopy
+
 import copy
 import json
 import re
@@ -135,6 +137,14 @@ class TranscriptSessionManager:
         self.opaque_file_entries: list[dict[str, Any]] = []
         self._clear_navigation()
         self.pending_deliberate_append = False
+
+    @classmethod
+    def from_active_branch(cls, branch: list[dict[str, Any]], *, cwd: str = ".") -> TranscriptSessionManager:
+        """Build a private rewrite view of a catalog's already selected visible path."""
+        manager = cls(cwd)
+        manager.file_entries.extend(deepcopy([entry for entry in branch if entry.get("type") != "session"]))
+        manager._build_index()
+        return manager
 
     # --- navigation state (SessionEntryNavigation) ---------------------------------------
 

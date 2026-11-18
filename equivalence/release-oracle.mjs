@@ -20,6 +20,7 @@ const operations = {
   "forget-lineage-runtime": ["forget-lineage-runtime.mjs", "runForgetLineageRuntime"],
   "forget-boundaries-runtime": ["forget-lineage-runtime.mjs", "runForgetLineageRuntime"],
   "flush-trigger-runtime": ["flush-runtime.mjs", "runFlushRuntime"],
+  "flush-plan-target-runtime": ["flush-plan-target-runtime.mjs", "runFlushPlanTarget"],
   "flush-execution-runtime": ["flush-execution.mjs", "runFlushExecution"],
   "search-contract-runtime": ["search-contract-runtime.mjs", "runSearchContractRuntime"],
   "search-contract-helper-runtime": ["search-contract-runtime.mjs", "runSearchContractHelperRuntime"],
@@ -49,6 +50,14 @@ const operations = {
   "recall-signals-runtime": ["recall-signals-runtime.mjs", "runRecallSignalsRuntime"],
   "session-reset-boundaries-runtime": ["session-reset-boundaries-runtime.mjs", "runSessionResetBoundariesRuntime"],
   "prompt-runtime-context-runtime": ["prompt-runtime-context-runtime.mjs", "runPromptRuntimeContextRuntime"],
+  "prompt-history-repair-runtime": ["prompt-history-repair-runtime.mjs", "runPromptHistoryRepairRuntime"],
+  "dream-diary-publication-runtime": ["dream-diary-runtime.mjs", "runDreamDiaryRuntime"],
+  "recovery-artifact-repair-runtime": ["recovery-artifact-repair-runtime.mjs", "runRecoveryArtifactRepairRuntime"],
+  "recovery-forget-interruption-runtime": ["recovery-forget-interruption-runtime.mjs", "runRecoveryForgetInterruption"],
+  "recovery-index-repair-runtime": ["recovery-index-repair-runtime.mjs", "runRecoveryIndexRepairRuntime"],
+  "dream-light-runtime": ["dream-light-runtime.mjs", "runDreamLightRuntime"],
+  "dream-rem-runtime": ["dream-light-runtime.mjs", "runDreamRemRuntime"],
+  "dream-deep-runtime": ["dream-deep-runtime.mjs", "runDreamDeepRuntime"],
   "embed-cache-lifecycle-runtime": ["embedding-cache-lifecycle-runtime.mjs", "runEmbeddingCacheLifecycleRuntime"],
   "promotion-apply-reconcile-runtime": ["promotion-apply-runtime.mjs", "runPromotionApplyRuntime"],
 };
@@ -106,7 +115,9 @@ for (const testCase of request.cases) {
       context.promotionRankingProfile === undefined && context.promotionApplyProfile === undefined &&
       context.forgetLineageProfile === undefined && context.forgetBoundariesProfile === undefined &&
       context.recallSignalsProfile === undefined && context.embeddingCacheProfile === undefined &&
-      context.sessionResetBoundariesProfile === undefined && context.promptRuntimeContextProfile === undefined;
+      context.sessionResetBoundariesProfile === undefined && context.promptRuntimeContextProfile === undefined &&
+      context.promptHistoryRepairProfile === undefined && context.dreamPhaseProfile === undefined &&
+      context.flushPlanTargetProfile === undefined;
     if (modelAuthority !== Object.hasOwn(modelKinds, testCase.operation) ||
         modelAuthority && modelKinds[testCase.operation] !== null && testCase.input?.kind !== modelKinds[testCase.operation]) {
       throw Error("The model binary capability cannot execute another operation or input contract before import");
@@ -116,7 +127,7 @@ for (const testCase of request.cases) {
         mixedTurnSource && testCase.input?.kind !== "turn-trust") {
       throw Error("The single-source turn capability cannot execute another operation or input contract before import");
     }
-    if (((context.fixtureSourceCaptures ?? []).length !== 0) !== (testCase.operation === "flush-execution-runtime")) {
+    if (((context.fixtureSourceCaptures ?? []).length !== 0) !== ["flush-execution-runtime", "flush-plan-target-runtime"].includes(testCase.operation)) {
       throw Error("The fixture source capture capability cannot execute another operation before import");
     }
     const bootstrapProfile = context.bootstrapDiscoveryProfile;
@@ -184,6 +195,30 @@ for (const testCase of request.cases) {
         throw Error("The boundary caller received changed or substituted literal inputs");
       }
     }
+    const flushPlan = context.flushPlanTargetProfile;
+    if ((flushPlan !== undefined) !== (testCase.operation === "flush-plan-target-runtime")) {
+      throw Error("The automatic flush plan requires its own approved profile");
+    }
+    if (flushPlan !== undefined) {
+      const stable = x => Array.isArray(x) ? x.map(stable) : x && typeof x === "object"
+        ? Object.fromEntries(Object.keys(x).sort().map(k => [k, stable(x[k])])) : x;
+      if (flushPlan.caseId !== testCase.id || flushPlan.operation !== testCase.operation ||
+          crypto.createHash("sha256").update(JSON.stringify(stable(testCase.input))).digest("hex") !== flushPlan.inputSha256) {
+        throw Error("The automatic flush plan input changed after authorization");
+      }
+    }
+    const dreamPhase = context.dreamPhaseProfile;
+    if ((dreamPhase !== undefined) !== (["dream-light-runtime", "dream-rem-runtime", "dream-diary-publication-runtime", "dream-deep-runtime", "recovery-artifact-repair-runtime", "recovery-index-repair-runtime", "recovery-forget-interruption-runtime"].includes(testCase.operation))) {
+      throw Error("Only the frozen dreaming profile may execute its native sweep");
+    }
+    if (dreamPhase !== undefined) {
+      const stable = x => Array.isArray(x) ? x.map(stable) : x && typeof x === "object"
+        ? Object.fromEntries(Object.keys(x).sort().map(k => [k, stable(x[k])])) : x;
+      if (dreamPhase.caseId !== testCase.id || dreamPhase.operation !== testCase.operation ||
+          crypto.createHash("sha256").update(JSON.stringify(stable(testCase.input))).digest("hex") !== dreamPhase.inputSha256) {
+        throw Error("Dreaming received a different case from the one approved at startup");
+      }
+    }
     const recallProfile = context.recallSignalsProfile;
     if ((recallProfile !== undefined) !== (testCase.operation === "recall-signals-runtime")) {
       throw Error("The recall signals capability cannot borrow another operation");
@@ -226,6 +261,20 @@ for (const testCase of request.cases) {
         throw Error("The prompt runtime context caller received changed or substituted literal inputs");
       }
     }
+    const historyProfile = context.promptHistoryRepairProfile;
+    if ((historyProfile !== undefined) !== (testCase.operation === "prompt-history-repair-runtime")) {
+      throw Error("The prompt history repair capability cannot borrow another operation");
+    }
+    if (historyProfile !== undefined) {
+      const stable = value => Array.isArray(value) ? value.map(stable) : value !== null && typeof value === "object"
+        ? Object.fromEntries(Object.keys(value).sort().map(key => [key, stable(value[key])])) : value;
+      const wire = JSON.stringify(stable({id:testCase.id,operation:testCase.operation,input:testCase.input}));
+      if (historyProfile.caseId !== testCase.id || historyProfile.operation !== testCase.operation ||
+          historyProfile.inputKind !== testCase.input?.kind ||
+          crypto.createHash("sha256").update(wire).digest("hex") !== historyProfile.caseBindings[testCase.id]) {
+        throw Error("The prompt history repair caller received changed or substituted literal inputs");
+      }
+    }
     const embeddingProfile = context.embeddingCacheProfile;
     if ((embeddingProfile !== undefined) !== (testCase.operation === "embed-cache-lifecycle-runtime")) {
       throw Error("The embedding cache manager capability cannot borrow another operation");
@@ -255,6 +304,7 @@ for (const testCase of request.cases) {
     const adapter = await import(new URL(binding[0], import.meta.url).href);
     const result = await adapter[binding[1]](testCase.input, {
       ...context.runtime, evidenceDirectory,
+      retainConfiguredDatabases: testCase.id === "redaction-configured-session-captures",
       stateDirectory: context.stateDirectory, configPath: context.configPath,
       approvedReferenceSources: context.approvedReferenceSources ?? [],
       getReadRaceProfile: context.getReadRaceProfile,

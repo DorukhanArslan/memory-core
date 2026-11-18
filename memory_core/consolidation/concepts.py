@@ -10,14 +10,16 @@ from __future__ import annotations
 
 import math
 import re
-import unicodedata
 from pathlib import Path
+
+from memory_core._icu import character_category, lowercase, normalize_nfkc, script_name, word_tokens
+from memory_core.bootstrap._js import js_trim, utf16_len
 
 MAX_CONCEPT_TAGS = 8
 
 
 def _normalize_lowercase_string(value: str) -> str:
-    return " ".join(str(value).strip().lower().split())
+    return lowercase(js_trim(value))
 
 
 _LANGUAGE_STOP_WORDS = {
@@ -272,11 +274,10 @@ _PROTECTED_GLOSSARY = [
     "장애대응",
 ]
 _PROTECTED_GLOSSARY = [
-    _normalize_lowercase_string(unicodedata.normalize("NFKC", word))
+    _normalize_lowercase_string(normalize_nfkc(word))
     for word in _PROTECTED_GLOSSARY
 ]
-_COMPOUND_TOKEN_RE = re.compile(r"[^\W_]+(?:[._/-][^\W_]+)+", re.UNICODE)
-_SEGMENT_TOKEN_RE = re.compile(r"[^\W\d_]*[^\W_][^\W_]*(?:\.[^\W_]+)?", re.UNICODE)
+
 
 
 def derive_concept_tags(path: str, snippet: str, limit: int = MAX_CONCEPT_TAGS) -> list[str]:
@@ -295,7 +296,7 @@ def derive_concept_tags(path: str, snippet: str, limit: int = MAX_CONCEPT_TAGS) 
         _push_normalized_concept_tag(tags, raw_token, normalized_limit, from_glossary=True)
         if len(tags) >= normalized_limit:
             return tags
-    for raw_token in _collect_compound_tokens(source) + _collect_segment_tokens(source):
+    for raw_token in _collect_compound_tokens(source) + word_tokens(source):
         _push_normalized_concept_tag(tags, raw_token, normalized_limit)
         if len(tags) >= normalized_limit:
             break
@@ -312,7 +313,7 @@ def _includes_standalone_term(source: str, entry: str) -> bool:
         before = source[start - 1] if start > 0 else ""
         after_index = start + len(entry)
         after = source[after_index] if after_index < len(source) else ""
-        if (not before or not before.isalnum()) and (not after or not after.isalnum()):
+        if (not before or not _is_letter_or_number(before)) and (not after or not _is_letter_or_number(after)):
             return True
         start = source.find(entry, start + 1)
     return False
@@ -334,7 +335,7 @@ def _glossary_whole_word(entry: str) -> bool:
 
 
 def _collect_glossary_matches(source: str) -> list[str]:
-    normalized_source = _normalize_lowercase_string(unicodedata.normalize("NFKC", source))
+    normalized_source = _normalize_lowercase_string(normalize_nfkc(source))
     matches = []
     for entry in _PROTECTED_GLOSSARY:
         # Short glossary entries (e.g. "kv", "s3") bypass the min-length gate,
@@ -349,22 +350,30 @@ def _collect_glossary_matches(source: str) -> list[str]:
     return matches
 
 
+def _is_letter_or_number(char: str) -> bool:
+    category = character_category(char)
+    return 1 <= category <= 5 or 9 <= category <= 11
+
+
 def _collect_compound_tokens(source: str) -> list[str]:
-    return _COMPOUND_TOKEN_RE.findall(source)
-
-
-def _collect_segment_tokens(source: str) -> list[str]:
-    # Approximates Intl.Segmenter("und", {granularity: "word"}) word-like segments. A "."
-    # keeps a word together only between two letters or two digits (UAX #29 WB6/7, WB11/12):
-    # "0.76" and "e.g" stay whole, "26.md" (from a dated file name) splits into "26" and "md".
-    tokens: list[str] = []
-    for token in _SEGMENT_TOKEN_RE.findall(source):
-        head, dot, tail = token.partition(".")
-        if dot and head[-1].isdigit() != tail[0].isdigit():
-            tokens.extend((head, tail))
-        else:
-            tokens.append(token)
-    return tokens
+    # /[\p{L}\p{N}]+(?:[._/-][\p{L}\p{N}]+)+/gu on the pinned Unicode data.
+    found = []
+    index = 0
+    while index < len(source):
+        if not _is_letter_or_number(source[index]):
+            index += 1
+            continue
+        start = index
+        compound = False
+        while index < len(source) and _is_letter_or_number(source[index]):
+            index += 1
+            if (index + 1 < len(source) and source[index] in "._/-"
+                    and _is_letter_or_number(source[index + 1])):
+                compound = True
+                index += 1
+        if compound:
+            found.append(source[start:index])
+    return found
 
 
 def _push_normalized_concept_tag(
@@ -380,9 +389,9 @@ def _push_normalized_concept_tag(
 
 def _normalize_concept_token(raw_token: str, from_glossary: bool = False) -> str | None:
     normalized = _normalize_lowercase_string(
-        _strip_non_alnum_edges(unicodedata.normalize("NFKC", raw_token)).replace("_", "-")
+        _strip_non_alnum_edges(normalize_nfkc(raw_token)).replace("_", "-")
     )
-    if not normalized or not any(char.isalnum() for char in normalized) or len(normalized) > 32:
+    if not normalized or not any(_is_letter_or_number(char) for char in normalized) or utf16_len(normalized) > 32:
         return None
     if _is_numeric_compound(normalized) or re.fullmatch(
         r"\d{4}-\d{2}-\d{2}\.[^\W_]+", normalized, re.UNICODE
@@ -394,10 +403,10 @@ def _normalize_concept_token(raw_token: str, from_glossary: bool = False) -> str
     if (
         not from_glossary
         and normalized not in _PROTECTED_GLOSSARY
-        and len(normalized) < _minimum_token_length_for_script(script)
+        and utf16_len(normalized) < _minimum_token_length_for_script(script)
     ):
         return None
-    if _is_kana_only_token(normalized) and len(normalized) < 3:
+    if _is_kana_only_token(normalized) and utf16_len(normalized) < 3:
         return None
     if normalized in _CONCEPT_STOP_WORDS:
         return None
@@ -407,7 +416,7 @@ def _normalize_concept_token(raw_token: str, from_glossary: bool = False) -> str
 def _is_numeric_compound(value: str) -> bool:
     """``/^\\p{N}+(?:[./-]\\p{N}+)*$/u``: numbers, dates and versions are not concepts."""
     return bool(value) and all(
-        part and all(unicodedata.category(char).startswith("N") for char in part)
+        part and all(9 <= character_category(char) <= 11 for char in part)
         for part in re.split(r"[./-]", value)
     )
 
@@ -415,15 +424,15 @@ def _is_numeric_compound(value: str) -> bool:
 def _strip_non_alnum_edges(value: str) -> str:
     start = 0
     end = len(value)
-    while start < end and not value[start].isalnum():
+    while start < end and not _is_letter_or_number(value[start]):
         start += 1
-    while end > start and not value[end - 1].isalnum():
+    while end > start and not _is_letter_or_number(value[end - 1]):
         end -= 1
     return value[start:end]
 
 
 def _classify_concept_tag_script(tag: str) -> str:
-    normalized = unicodedata.normalize("NFKC", tag)
+    normalized = normalize_nfkc(tag)
     has_latin = any(_is_latin(char) for char in normalized)
     has_cjk = any(_is_cjk(char) for char in normalized)
     if has_latin and has_cjk:
@@ -436,41 +445,13 @@ def _classify_concept_tag_script(tag: str) -> str:
 
 
 def _is_latin(char: str) -> bool:
-    try:
-        return "LATIN" in unicodedata.name(char)
-    except ValueError:
-        return False
+    return script_name(char) == b"Latn"
 
 
 def _is_cjk(char: str) -> bool:
-    codepoint = ord(char)
-    return (
-        0x4E00 <= codepoint <= 0x9FFF
-        or 0x3400 <= codepoint <= 0x4DBF
-        or 0x3040 <= codepoint <= 0x309F
-        or 0x30A0 <= codepoint <= 0x30FF
-        or 0xAC00 <= codepoint <= 0xD7AF
-    )
+    return script_name(char) in {b"Hani", b"Hira", b"Kana", b"Hang"}
 
 
 def _is_kana_only_token(value: str) -> bool:
-    has_han_or_hangul = any(_is_han(char) or _is_hangul(char) for char in value)
-    has_kana = any(_is_hiragana(char) or _is_katakana(char) for char in value)
-    return not has_han_or_hangul and has_kana
-
-
-def _is_han(char: str) -> bool:
-    codepoint = ord(char)
-    return 0x4E00 <= codepoint <= 0x9FFF or 0x3400 <= codepoint <= 0x4DBF
-
-
-def _is_hiragana(char: str) -> bool:
-    return 0x3040 <= ord(char) <= 0x309F
-
-
-def _is_katakana(char: str) -> bool:
-    return 0x30A0 <= ord(char) <= 0x30FF
-
-
-def _is_hangul(char: str) -> bool:
-    return 0xAC00 <= ord(char) <= 0xD7AF
+    scripts = {script_name(char) for char in value}
+    return not scripts.intersection({b"Hani", b"Hang"}) and bool(scripts.intersection({b"Hira", b"Kana"}))

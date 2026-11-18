@@ -57,7 +57,13 @@ Comparisons must not normalize away behavior. A platform-specific path, generate
 Entries remain pending until their complete acceptance conditions are verified against `v2026.9.9`. Their detailed acceptance points and stable identifiers are in [scope.json](../equivalence/scope.json). A helper that already exists in Python still needs the new differential evidence. A known difference must stay visible until its implementation and tests agree. Bounded passing subsets are recorded below without closing the containing contract.
 
 <!-- CURRENT-VERIFICATION-START -->
-The latest complete assessment has **84/128 verified conditions (65.6%)**,
+The independent review verifies **118/128 conditions (92.2%)**, with **10 remaining**. All 84 previously verified conditions passed, and 34 more passed. Of 1,623 cases, 1,615 matched, 8 differed and 0 were blocked. 8 conditions lack a comparison and 2 have unresolved comparisons. The first assessment stopped while resolving the reference path. A separate assessor read the same retained report and evidence from the single measurement. The archive assessor completed all behavior checks and stopped when the SDK's serialized output changed for the still-open ranking case F14. Independent review reproduced both SDK outputs. Two timestamps gained a decimal suffix while keeping the same value, and both candidate lists were empty. F14 received zero credit. Both hosted assessments remain blocked. The independent count uses the original measurement and replay receipts. The full comparison exited with code 1. [Full run](https://github.com/DorukhanArslan/memory-core/actions/runs/44214324963) · [Archived replay evidence](https://github.com/DorukhanArslan/memory-core/actions/runs/44232754070/artifacts/14396301086) · [Independent acceptance decision](https://github.com/DorukhanArslan/memory-core/blob/34b52d79f6082e061b8f1ce47a6ca27d407fb391/independent-review/README.md)
+
+The archive review reopened 25 databases and 102 flush file instances. Timestamp checks in 22 cases and file identity checks in 7 diary cases use the original live measurements. ZIP extraction does not preserve those filesystem properties.
+
+Newly verified conditions are `prompt.history-repair.outcomes`, `prompt.history-repair.boundaries`, `flush.plan-target.outcomes`, `compaction.context-assembly.outcomes`, `compaction.context-assembly.boundaries`, `compaction.provider-overflow.outcomes`, `compaction.provider-overflow.boundaries`, `promotion.deep-consolidation.outcomes`, `promotion.deep-consolidation.boundaries`, `dreaming.light.outcomes`, `dreaming.light.boundaries`, `dreaming.rem.outcomes`, `dreaming.rem.boundaries`, `dreaming.deep.outcomes`, `dreaming.deep.boundaries`, `dreaming.diary-provenance.outcomes`, `dreaming.diary-provenance.boundaries`, `trust.secret-redaction.boundaries`, `trust.configured-redaction.outcomes`, `heartbeat.turn-decisions.outcomes`, `heartbeat.turn-decisions.boundaries`, `automation.job-state.outcomes`, `automation.job-state.boundaries`, `concurrency.workspace-locks.outcomes`, `concurrency.workspace-locks.boundaries`, `recovery.repair-diagnostics.outcomes`, `recovery.repair-diagnostics.boundaries`, `recovery.failure-publication.outcomes`, `engine.numeric-boundaries.outcomes`, `engine.numeric-boundaries.boundaries`, `engine.unicode-collation.outcomes`, `engine.unicode-collation.boundaries`, `engine.datetime-regex.outcomes`, `engine.datetime-regex.boundaries`.
+
+The preceding accepted assessment had **84/128 verified conditions (65.6%)**,
 with **44 conditions remaining**: **39 complete, six partial and 19 pending
 contracts**. This measures verified conditions, not effort or elapsed work.
 
@@ -332,10 +338,10 @@ reaching 66/128 before the update/isolation and natural next-turn packages.
 
 | Contract status | Contracts | Verified conditions | Remaining conditions |
 | --- | ---: | ---: | ---: |
-| Complete | 39 | 78 | 0 |
-| Partial | 6 | 6 | 6 |
-| Pending verification | 19 | 0 | 38 |
-| Total | 64 | 84 | 44 |
+| Complete | 55 | 110 | 0 |
+| Partial | 8 | 8 | 8 |
+| Pending verification | 1 | 0 | 2 |
+| Total | 64 | 118 | 10 |
 
 Pending verification can include existing implementation. Partial contracts retain one open
 condition. Infrastructure sections 1–3 remain **20/22 tasks completed**; infrastructure and
@@ -379,34 +385,34 @@ Current status of all 64 contracts:
 | 31 | `prompt.bootstrap-discovery` | Partial | 1/2 |
 | 32 | `prompt.bootstrap-budget` | Complete | 2/2 |
 | 33 | `prompt.runtime-context` | Complete | 2/2 |
-| 34 | `prompt.history-repair` | Pending verification | 0/2 |
-| 35 | `flush.plan-target` | Pending verification | 0/2 |
+| 34 | `prompt.history-repair` | Complete | 2/2 |
+| 35 | `flush.plan-target` | Partial | 1/2 |
 | 36 | `flush.trigger-usage` | Complete | 2/2 |
 | 37 | `flush.execute-finalize` | Partial | 1/2 |
 | 38 | `compaction.memory-budget` | Complete | 2/2 |
-| 39 | `compaction.context-assembly` | Pending verification | 0/2 |
-| 40 | `compaction.provider-overflow` | Pending verification | 0/2 |
+| 39 | `compaction.context-assembly` | Complete | 2/2 |
+| 40 | `compaction.provider-overflow` | Complete | 2/2 |
 | 41 | `promotion.recall-signals` | Complete | 2/2 |
 | 42 | `promotion.ranking-gates` | Partial | 1/2 |
 | 43 | `promotion.apply-reconcile` | Complete | 2/2 |
-| 44 | `promotion.deep-consolidation` | Pending verification | 0/2 |
-| 45 | `dreaming.light` | Pending verification | 0/2 |
-| 46 | `dreaming.rem` | Pending verification | 0/2 |
-| 47 | `dreaming.deep` | Pending verification | 0/2 |
-| 48 | `dreaming.diary-provenance` | Pending verification | 0/2 |
+| 44 | `promotion.deep-consolidation` | Complete | 2/2 |
+| 45 | `dreaming.light` | Complete | 2/2 |
+| 46 | `dreaming.rem` | Complete | 2/2 |
+| 47 | `dreaming.deep` | Complete | 2/2 |
+| 48 | `dreaming.diary-provenance` | Complete | 2/2 |
 | 49 | `forget.lineage-tombstones` | Complete | 2/2 |
 | 50 | `forget.index-fence` | Complete | 2/2 |
-| 51 | `trust.secret-redaction` | Pending verification | 0/2 |
-| 52 | `trust.configured-redaction` | Partial | 1/2 |
+| 51 | `trust.secret-redaction` | Partial | 1/2 |
+| 52 | `trust.configured-redaction` | Complete | 2/2 |
 | 53 | `heartbeat.scratch` | Pending verification | 0/2 |
-| 54 | `heartbeat.turn-decisions` | Pending verification | 0/2 |
-| 55 | `automation.job-state` | Pending verification | 0/2 |
-| 56 | `concurrency.workspace-locks` | Pending verification | 0/2 |
-| 57 | `recovery.repair-diagnostics` | Pending verification | 0/2 |
-| 58 | `recovery.failure-publication` | Pending verification | 0/2 |
-| 59 | `engine.numeric-boundaries` | Pending verification | 0/2 |
-| 60 | `engine.unicode-collation` | Pending verification | 0/2 |
-| 61 | `engine.datetime-regex` | Pending verification | 0/2 |
+| 54 | `heartbeat.turn-decisions` | Complete | 2/2 |
+| 55 | `automation.job-state` | Complete | 2/2 |
+| 56 | `concurrency.workspace-locks` | Complete | 2/2 |
+| 57 | `recovery.repair-diagnostics` | Complete | 2/2 |
+| 58 | `recovery.failure-publication` | Partial | 1/2 |
+| 59 | `engine.numeric-boundaries` | Complete | 2/2 |
+| 60 | `engine.unicode-collation` | Complete | 2/2 |
+| 61 | `engine.datetime-regex` | Complete | 2/2 |
 | 62 | `host.turn-barrier` | Complete | 2/2 |
 | 63 | `host.restart-recall` | Complete | 2/2 |
 | 64 | `host.update-isolation` | Complete | 2/2 |
@@ -476,7 +482,7 @@ pre-open race authority, full raw filesystem evidence and broader SDK-only limit
 - [ ] **`prompt.bootstrap-discovery` — Match workspace bootstrap selection.** Exercise setup states, session kinds, available files and compatibility layouts. Compare ensure decisions, selected files and their order under the same inputs.
 - [x] **`prompt.bootstrap-budget` — Match bootstrap clipping and notices.** Exercise per-file, USER.md and aggregate UTF-16 limits and exact boundary values. Compare clipping, omitted files, warning modes and once-per-session state.
 - [x] **`prompt.runtime-context` — Match memory and runtime prompt composition.** Compare memory guidance, tools, runtime markers and fixed clock/timezone fragments. Compare insertion order and isolation of untrusted or recalled text. Both original conditions are verified by the [complete runtime-context family](prompt_runtime_context_closeout.md) under its declared sequential manual, non-incognito profile. Actual composition and data labels are compared; model obedience and broader provider/lifecycle modes remain unproved.
-- [ ] **`prompt.history-repair` — Match history windowing and tool repair.** Exercise missing results, duplicate or invalid calls, failed turns and provider replay metadata. Compare repaired model-visible messages while preserving the original durable transcript.
+- [x] **`prompt.history-repair` — Match history windowing and tool repair.** Exercise missing results, duplicate or invalid calls, failed turns and provider replay metadata. Compare repaired model-visible messages while preserving the original durable transcript.
 
 ### Flush and compaction
 
@@ -484,22 +490,22 @@ pre-open race authority, full raw filesystem evidence and broader SDK-only limit
 - [x] **`flush.trigger-usage` — Match flush trigger accounting.** Feed fresh/stale usage, missing usage, transcript byte limits and compaction counters. Compare trigger decisions, heartbeat exclusions and retry/exhaustion state.
 - [ ] **`flush.execute-finalize` — Match flush execution and finalization.** Run the same labelled model/tool sequence through both hosts. Compare append-only writes, index readiness, provenance and successful or failed cycle stamps.
 - [x] **`compaction.memory-budget` — Match curated memory budget compaction.** Exercise promotion sections mixed with user text and exact size/loss limits. Compare preserved bytes, removed sections, deferral and reconciliation markers.
-- [ ] **`compaction.context-assembly` — Match context assembly and compaction replay.** Compare active transcript projections, summaries, checkpoints, tool-result bounds and replay decisions. Retain trailing required results and provider continuation data across restart.
-- [ ] **`compaction.provider-overflow` — Match overflow recovery behavior.** Drive preflight and mid-turn overflow, truncation, compact/retry and terminal failures. Compare dispatch counts, protected messages and exact continuation/admission decisions.
+- [x] **`compaction.context-assembly` — Match context assembly and compaction replay.** Compare active transcript projections, summaries, checkpoints, tool-result bounds and replay decisions. Retain trailing required results and provider continuation data across restart.
+- [x] **`compaction.provider-overflow` — Match overflow recovery behavior.** Drive preflight and mid-turn overflow, truncation, compact/retry and terminal failures. Compare dispatch counts, protected messages and exact continuation/admission decisions.
 
 ### Recall and promotion
 
 - [x] **`promotion.recall-signals` — Match recall recording.** Compare filtering, deduplication, query hashes, day boundaries, retention and recall events. Verify ground truth source ranges and origin recording before published recall state. Both original conditions are verified by all six frozen real-owner cases, including actual appender-produced ranges, durable origins and real origin-insert failure before recall publication.
 - [ ] **`promotion.ranking-gates` — Match promotion ranking and gates.** Compare scores, custom weights, tie order, diversity, age, trust and visibility gates. Include exact score thresholds and promoted-entry visibility.
 - [x] **`promotion.apply-reconcile` — Match promotion application and reconciliation.** Compare MEMORY.md/DREAMS.md, markers, authoritative candidates and applied/rejected receipts. Interleave candidate changes and verify lock-time rechecks and publication order. Verified through all eight frozen provider-free whole-operation families, complete callback envelopes, physical/API readbacks and live owner receipts; general model plans and origin-reservation behavior remain separate.
-- [ ] **`promotion.deep-consolidation` — Match model-assisted consolidation.** Feed identical deterministic model plans for added, merged, superseded and rejected entries. Compare preimages, loss safeguards, history, origin changes and deterministic fallback.
+- [x] **`promotion.deep-consolidation` — Match model-assisted consolidation.** Feed identical deterministic model plans for added, merged, superseded and rejected entries. Compare preimages, loss safeguards, history, origin changes and deterministic fallback.
 
 ### Dreaming phases
 
-- [ ] **`dreaming.light` — Match the complete light phase.** Compare ingestion, freshness, ordering, deduplication, evidence grouping and selection. Compare live-source checks, staged-key state, phase signals and published artifacts.
-- [ ] **`dreaming.rem` — Match the complete REM phase.** Compare narrative/evidence extraction and staged-key preference, consumption and freshness. Compare diary outputs, live-source checks and failure/publication semantics.
-- [ ] **`dreaming.deep` — Match the complete deep phase.** Compare eligibility, consolidation invocation, fallback and phase composition. Compare phase ordering, source provenance and all resulting memory/recall state.
-- [ ] **`dreaming.diary-provenance` — Match diary and phase publication.** Compare diary structure, coverage, evidence references, timestamps and artifact trust. Inject publisher failures and concurrent changes and compare locks and durable receipts.
+- [x] **`dreaming.light` — Match the complete light phase.** Compare ingestion, freshness, ordering, deduplication, evidence grouping and selection. Compare live-source checks, staged-key state, phase signals and published artifacts.
+- [x] **`dreaming.rem` — Match the complete REM phase.** Compare narrative/evidence extraction and staged-key preference, consumption and freshness. Compare diary outputs, live-source checks and failure/publication semantics.
+- [x] **`dreaming.deep` — Match the complete deep phase.** Compare eligibility, consolidation invocation, fallback and phase composition. Compare phase ordering, source provenance and all resulting memory/recall state.
+- [x] **`dreaming.diary-provenance` — Match diary and phase publication.** Compare diary structure, coverage, evidence references, timestamps and artifact trust. Inject publisher failures and concurrent changes and compare locks and durable receipts.
 
 ### Forget and provenance
 
@@ -509,25 +515,25 @@ pre-open race authority, full raw filesystem evidence and broader SDK-only limit
 ### Trust and redaction
 
 - [ ] **`trust.secret-redaction` — Match secret redaction policies.** Compare literal registered secrets, structured credentials and model/tool/transcript policies. Compare bounded chunks, sanitization order and failure diagnostics without leaking live credentials.
-- [ ] **`trust.configured-redaction` — Match configured patterns and trust transitions.** Compare supported JavaScript regex patterns, mode overrides and full-context walking. Compare owner/taint/provenance transitions at tool time and through stored session state.
+- [x] **`trust.configured-redaction` — Match configured patterns and trust transitions.** Compare supported JavaScript regex patterns, mode overrides and full-context walking. Compare owner/taint/provenance transitions at tool time and through stored session state.
 
 ### Heartbeat and automation
 
 - [ ] **`heartbeat.scratch` — Match heartbeat monitor scratch state.** Compare read/write/unset/delete, size limits, tombstones and doctor migrations. Compare persisted state and diagnostics after reconstruction.
-- [ ] **`heartbeat.turn-decisions` — Match heartbeat turn inputs and reply handling.** Compare skip/run decisions, prompt inputs, due tasks, NO_REPLY and HEARTBEAT_OK handling. Compare flush exclusion and removal from the session-memory corpus.
-- [ ] **`automation.job-state` — Match memory-related automation state.** Compare schedule parsing, due decisions, run recording and migration outcomes under a fixed clock. Drive jobs explicitly; compare observable memory inputs and outputs without cloning an OS scheduler.
+- [x] **`heartbeat.turn-decisions` — Match heartbeat turn inputs and reply handling.** Compare skip/run decisions, prompt inputs, due tasks, NO_REPLY and HEARTBEAT_OK handling. Compare flush exclusion and removal from the session-memory corpus.
+- [x] **`automation.job-state` — Match memory-related automation state.** Compare schedule parsing, due decisions, run recording and migration outcomes under a fixed clock. Drive jobs explicitly; compare observable memory inputs and outputs without cloning an OS scheduler.
 
 ### Concurrency and recovery
 
-- [ ] **`concurrency.workspace-locks` — Match workspace lock semantics.** Exercise simultaneous writers in separate processes, lock timeout, owner death and stale recovery. Compare exclusion, lease/reclaim behavior and absence of cross-workspace interference.
-- [ ] **`recovery.repair-diagnostics` — Match audit and repair outcomes.** Corrupt recall stores, indexes, provenance and lock artifacts independently. Compare diagnostic codes, retained valid state and repair effects without silently resetting data.
+- [x] **`concurrency.workspace-locks` — Match workspace lock semantics.** Exercise simultaneous writers in separate processes, lock timeout, owner death and stale recovery. Compare exclusion, lease/reclaim behavior and absence of cross-workspace interference.
+- [x] **`recovery.repair-diagnostics` — Match audit and repair outcomes.** Corrupt recall stores, indexes, provenance and lock artifacts independently. Compare diagnostic codes, retained valid state and repair effects without silently resetting data.
 - [ ] **`recovery.failure-publication` — Match interrupted operation recovery.** Interrupt write, index, flush, consolidation, forget and diary publication at defined boundaries. Compare next-open behavior, partial outcomes, unknown operations and retry policy.
 
 ### Cross-language boundaries
 
-- [ ] **`engine.numeric-boundaries` — Match numeric boundary behavior.** Exercise coercion, non-finite numbers, negative zero, integer limits and exact score gates. Compare decisions and serialization; document any operation-specific tolerance without masking inclusion changes.
-- [ ] **`engine.unicode-collation` — Match Unicode and collation behavior.** Exercise UTF-16 units, lone surrogates, case folding, segmentation and path ordering. Compare ordering and truncation for deterministic generated and named multilingual cases.
-- [ ] **`engine.datetime-regex` — Match date/time and regex edge behavior.** Compare supported date parsing, offsets, DST boundaries, locale-independent clocks and regex options. Classify unsupported source behavior as a mismatch or uncovered requirement, never an implicit match.
+- [x] **`engine.numeric-boundaries` — Match numeric boundary behavior.** Exercise coercion, non-finite numbers, negative zero, integer limits and exact score gates. Compare decisions and serialization; document any operation-specific tolerance without masking inclusion changes.
+- [x] **`engine.unicode-collation` — Match Unicode and collation behavior.** Exercise UTF-16 units, lone surrogates, case folding, segmentation and path ordering. Compare ordering and truncation for deterministic generated and named multilingual cases.
+- [x] **`engine.datetime-regex` — Match date/time and regex edge behavior.** Compare supported date parsing, offsets, DST boundaries, locale-independent clocks and regex options. Classify unsupported source behavior as a mismatch or uncovered requirement, never an implicit match.
 
 ### Host lifecycle acceptance
 

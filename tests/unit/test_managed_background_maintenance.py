@@ -6,12 +6,13 @@ from copy import deepcopy
 import gc
 import json
 import os
+import sys
 
 import pytest
 
 from memory_core.config import MemoryConfig
 from memory_core.flags import FeatureFlags
-from memory_core.host.lifecycle import HostModelResult
+from memory_core.host.lifecycle import FlushModelExecutor, FlushModelUnavailable, HostModelResult
 from memory_core.host.managed_maintenance import schedule_optional
 from memory_core.host.managed_session import ManagedHostSession
 from memory_core.host.session import SessionState, TurnUsage
@@ -28,7 +29,7 @@ STATE = SessionState.new(session_key=KEY, session_id=ID)
 FACT = "The maintenance calibration token is SAFFRON-673.\n"
 
 
-def _owner(tmp_path, *, maintenance="background"):
+def _owner(tmp_path, *, maintenance="background", flush_config=None):
     root = tmp_path / "workspace"
     root.mkdir(exist_ok=True)
     catalog = MemorySessionCatalog(tmp_path / "catalog.sqlite", clock_ms=lambda: NOW)
@@ -36,7 +37,7 @@ def _owner(tmp_path, *, maintenance="background"):
                           flags=FeatureFlags(vector_search=False, temporal_decay=False))
     policy = resolve_memory_search_source_policy(["memory"], remember_across_conversations=False)
     return ManagedHostSession.open(root, catalog=catalog, config=config, source_policy=policy,
-        maintenance=maintenance, memory_publication="on-search", timezone="UTC", now_ms=lambda: NOW,
+        maintenance=maintenance, memory_publication="on-search", timezone="UTC", now_ms=lambda: NOW, flush_config=flush_config,
         identity=OPENCLAW_COMPAT_RUNTIME_IDENTITY)
 
 
@@ -609,6 +610,45 @@ def test_cancelled_caller_keeps_cancellation_after_actual_transport_failure_sett
         finally:
             release.set()
             os.close(write_end)
+            await owner.aclose()
+
+    asyncio.run(scenario())
+
+@pytest.mark.parametrize(("configured", "routes", "exact"), [
+    (None, [("conversation", "primary"), ("other", "backup")], False),
+    ("maintenance", [("conversation", "maintenance")], True),
+    ("local/unavailable", [("local", "unavailable")], True),
+])
+def test_automatic_flush_dispatches_real_model_candidates(tmp_path, configured, routes, exact):
+    async def scenario():
+        owner = _owner(tmp_path, maintenance="inline", flush_config={"model": configured})
+        script = tmp_path / "model.py"
+        script.write_text(
+            "import json, os, sys\n"
+            "with open(sys.argv[1], 'a') as out:\n"
+            "    print(json.dumps([os.getpid(), *sys.argv[2:]]), file=out)\n"
+            "sys.exit(75 if sys.argv[3] in ('primary', 'unavailable') else 0)\n"
+        )
+        log = tmp_path / "candidate-calls.jsonl"
+        selections = []
+
+        async def execute_candidate(turn, route, selection):
+            selections.append((selection.requested_route_resolution, selection.fallbacks_override))
+            assert turn.flush_request is not None
+            process = await asyncio.create_subprocess_exec(sys.executable, str(script), str(log), route.provider, route.model)
+            if await process.wait():
+                raise FlushModelUnavailable("Local test transport exhausted")
+            return None
+
+        try:
+            executor = FlushModelExecutor("conversation", "primary", ["other/backup"], execute_candidate)
+            outcome = await owner.runner(STATE).run_turn("Save this fact.", execute=_due, execute_flush=executor)
+            calls = [json.loads(line) for line in log.read_text().splitlines()]
+            assert all(pid != os.getpid() for pid, _, _ in calls)
+            assert [(provider, model) for _, provider, model in calls] == routes
+            assert selections == [(("raw", ()) if exact else (None, None))] * len(routes)
+            assert bool(outcome.failures) is (configured == "local/unavailable")
+        finally:
             await owner.aclose()
 
     asyncio.run(scenario())

@@ -3,8 +3,9 @@
 Use the [plain-language parity completion tracker](parity-completion-checklist.md)
 to follow the acceptance score, remaining comparison differences and final finish criteria.
 
-The [active checklist](full-equivalence-checklist.md) records the latest complete
-measurement: **84/128 verified conditions, 44 remaining**, with **39 complete,
+The independent review verifies **118/128 conditions (92.2%)**, with **10 remaining**. All 84 previously verified conditions passed, and 34 more passed. Of 1,623 cases, 1,615 matched, 8 differed and 0 were blocked. 8 conditions lack a comparison and 2 have unresolved comparisons. The first assessment stopped while resolving the reference path. A separate assessor read the same retained report and evidence from the single measurement. The archive assessor completed all behavior checks and stopped when the SDK's serialized output changed for the still-open ranking case F14. Independent review reproduced both SDK outputs. Two timestamps gained a decimal suffix while keeping the same value, and both candidate lists were empty. F14 received zero credit. Both hosted assessments remain blocked. The independent count uses the original measurement and replay receipts. The 64 contracts include 55 complete, 8 partial and 1 pending. The current product is `160c7c2`. [Full run](https://github.com/DorukhanArslan/memory-core/actions/runs/44214324963) · [Reviewed summary](https://github.com/DorukhanArslan/memory-core/actions/runs/44232754070/artifacts/14396301086) · [Independent acceptance decision](https://github.com/DorukhanArslan/memory-core/blob/34b52d79f6082e061b8f1ce47a6ca27d407fb391/independent-review/README.md) · [Active checklist](full-equivalence-checklist.md)
+
+The preceding accepted comparison recorded this measurement: **84/128 verified conditions, 44 remaining**, with **39 complete,
 six partial and 19 pending contracts**. The authenticated
 [second full comparison](https://github.com/DorukhanArslan/memory-core/actions/runs/44137396647)
 measures approved product source `907944e` through clean comparison head

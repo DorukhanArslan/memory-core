@@ -25,7 +25,8 @@ A Python application can use that code through a bridge or a separate service.
 This SDK offers direct Python memory APIs inside the application you already run.
 You keep your existing model calls, workflow, session store, and deployment.
 
-The core requires Python **3.11 or newer**, with `httpx`, `wcmatch` and `bracex`.
+The core requires Python **3.11 or newer**, with `httpx`, `icu4py`, `wcmatch` and `bracex`.
+The published `icu4py` wheels bundle ICU 78.3 for Unicode sorting and word segmentation.
 Python versions before 3.14 also use `zstandard` for compressed transcript archives.
 It uses Python's `sqlite3` module. Normal SDK use needs no Node.js, running OpenClaw instance, or separate vector database.
 Node.js is needed for the upstream oracle tests.

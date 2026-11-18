@@ -90,10 +90,10 @@ def iso_ms(now_ms: int) -> str:
 
 
 def parse_ms(value: str, fallback: int) -> int:
-    try:
-        return int(datetime.fromisoformat(value.replace("Z", "+00:00")).timestamp() * 1000)
-    except ValueError:
-        return fallback
+    from memory_core._js_date import js_date_parse
+
+    parsed = js_date_parse(value)
+    return int(parsed) if math.isfinite(parsed) else fallback
 
 
 def parse_day_ms(value: str) -> int | None:

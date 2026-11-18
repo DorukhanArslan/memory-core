@@ -19,9 +19,12 @@ from typing import Any, Literal, get_args
 
 from memory_core._memory_flush_constants import CONVERSATION_CONTEXT_HEADER
 from memory_core.automation import (
+    AutomationJob,
     AutomationStore,
     FileAutomationStore,
     due_automation_jobs,
+    is_heartbeat_task_job,
+    record_automation_job_run,
     heartbeat_scheduled_tasks,
 )
 from memory_core.bootstrap import (
@@ -48,14 +51,15 @@ from memory_core.bootstrap.files import (
 from memory_core.client import Memory
 from memory_core.config import MemoryConfig
 from memory_core.consolidation.artifact_provenance import MemoryArtifactProvenanceStore
-from memory_core.current_time import DEFAULT_TIME_FORMAT, TimeFormat, resolve_time_format
+from memory_core.current_time import DEFAULT_TIME_FORMAT, TimeFormat, resolve_time_format, resolve_user_timezone
 from memory_core.curation import CurationPolicy, MemoryCurator
 from memory_core.embeddings.base import EmbeddingProvider
 from memory_core.heartbeat import prepare_heartbeat_turn, resolve_message_text
+from memory_core.heartbeat_events import HeartbeatSystemEvent
 from memory_core.heartbeat_scratch import resolve_heartbeat_store_scratch
 from memory_core.host._calls import ToolCallRefused, read_tool_call, tool_error
 from memory_core.host.flush import FlushRequest
-from memory_core.host.heartbeat_run import HeartbeatRun
+from memory_core.host.heartbeat_run import HeartbeatRun, ScheduledHeartbeatWake
 from memory_core.host.session import SessionState, TurnUsage, apply_turn_usage
 from memory_core.host.tool_calls import ToolCallRepair, repair_tool_calls
 from memory_core.memory_write_provenance import MemoryWriteProvenanceObserver
@@ -239,6 +243,7 @@ class HostKit:
         on_event: Callable[[dict[str, Any]], None] | None = None,
         artifact_provenance: MemoryArtifactProvenanceStore | None = None,
         flush_config: Mapping[str, Any] | None = None,
+        flush_timezone: str | None = None,
         flush_read_tool: Mapping[str, Any] | None = None,
         flush_read_dispatch: Callable[[Mapping[str, Any]], dict[str, Any]] | None = None,
         active_project_keys: Sequence[str] | None = None,
@@ -272,6 +277,9 @@ class HostKit:
             else layout.bootstrap_file in (self._templates or {})
         )
         self._timezone = timezone
+        # Native flush plans use the agent's configured zone, falling back to the host.
+        self._flush_timezone = (timezone if flush_timezone is None else
+                                resolve_user_timezone(flush_timezone, host_timezone=timezone)[0])
         self._flush_config = deepcopy(dict(flush_config)) if flush_config is not None else {}
         if (flush_read_tool is None) != (flush_read_dispatch is None):
             raise ValueError("flush_read_tool and flush_read_dispatch must be supplied together")
@@ -665,6 +673,11 @@ class HostKit:
         recorded = replace(recorded, entry=entry)
         if not decision.should_flush:
             return TurnRecord(session=recorded, flush_plan=plan, flush_decision=decision)
+        # Re-resolve the date at preparation. Admission and the write may straddle midnight.
+        plan = self._flush_plan(window)
+        if plan is None:
+            return TurnRecord(session=recorded, flush_plan=None,
+                              flush_decision=MemoryFlushTriggerDecision(False, "disabled"))
         authority_error: BaseException | None = None
 
         def check_current() -> None:
@@ -847,6 +860,13 @@ class HostKit:
         offer_tools: bool = True,
         schedule_now_ms: int | None = None,
         ensure: bool = True,
+        every: str | None = None,
+        main_queue_size: int = 0,
+        pending_events: Sequence[HeartbeatSystemEvent] = (),
+        can_relay_to_user: bool = False,
+        scheduled_every_ms: int | None = None,
+        prompt: str | None = None,
+        use_response_tool: bool = False,
     ) -> HeartbeatRun:
         """Prepare one heartbeat run the host's scheduler decided to start now.
 
@@ -856,19 +876,106 @@ class HostKit:
         monitor scratch (its ``Current time:`` line uses the kit clock). Unless the turn is
         skipped, the context is :meth:`before_turn` with run kind ``heartbeat`` (upstream runs
         heartbeats in the main session under that run kind), ``offer_tools`` and ``ensure``
-        (``False`` for a preview that never completes the run: no workspace write). Tool calls of
+        (``False`` for a preview that never completes the run: no workspace write). For host-owned
+        queues pass their main-lane size, selected session occurrences and any scheduled cadence.
+        The run can dispatch the host model and transport. On completion remove only the returned
+        occurrence IDs from that session. Tool calls of
         the run go through :meth:`dispatch` with ``run.session``.
         """
         agent_id = self._memory.config.agent_id
         started_at = schedule_now_ms if schedule_now_ms is not None else self._clock()
+        due = due_automation_jobs(self._automation_store.list_jobs(agent_id=agent_id), started_at)
+        return self._prepare_heartbeat_run(
+            session, due=due, started_at=started_at, source=source, reason=reason, context_mode=context_mode,
+            runtime_context=runtime_context, offer_tools=offer_tools, ensure=ensure,
+            every=every, main_queue_size=main_queue_size, pending_events=pending_events,
+            can_relay_to_user=can_relay_to_user, scheduled_every_ms=scheduled_every_ms,
+            prompt=prompt, use_response_tool=use_response_tool,
+        )
+
+    def heartbeat_task_prompt(
+        self, session: SessionState, job_id: str, *, schedule_now_ms: int | None = None,
+        ensure: bool = True,
+    ) -> HeartbeatRun | None:
+        """Prepare the individually scheduled memory task if its stored job is due.
+
+        Hosts calling from a single-job scheduler receive just that task, even when
+        another task is due at the same instant. Use the returned run's session for
+        tool dispatch, then call its ``complete`` after the model settles. The host
+        retains ownership of scheduler admission and of concurrent executions.
+        """
+        started_at = self._clock() if schedule_now_ms is None else schedule_now_ms
+        jobs = self._automation_store.list_jobs(agent_id=self._memory.config.agent_id)
+        due = [job for job in due_automation_jobs(jobs, started_at)
+               if job.id == job_id and is_heartbeat_task_job(job)]
+        if not due:
+            return None
+        wake = ScheduledHeartbeatWake(due[0])
+        return self._prepare_heartbeat_run(
+            session, due=due, started_at=started_at, source="interval", reason=wake.reason, context_mode="full",
+            runtime_context=None, offer_tools=True, ensure=ensure, scheduled_wake=wake,
+        )
+
+    def run_heartbeat_task(
+        self, session: SessionState, job_id: str, heartbeat: Callable[[HeartbeatRun], Mapping[str, Any]], *,
+        forced: bool = False, schedule_now_ms: int | None = None, ensure: bool = True,
+    ) -> dict[str, Any]:
+        """Reserve an explicit task and pass its prepared turn to the host heartbeat runner.
+
+        The host returns a settlement with status ran, skipped or failed. A
+        skipped/failed settlement includes its reason. This method owns recording
+        the completion, including the future slot of a forced one-shot run.
+        """
+        store = self._automation_store
+        if not hasattr(store, "claim_heartbeat_task") or not hasattr(store, "complete_claimed_job"):
+            raise TypeError("the automation store must support durable heartbeat task reservations")
+        at = self._clock() if schedule_now_ms is None else schedule_now_ms
+        claim = store.claim_heartbeat_task(self._memory.config.agent_id, job_id, at, forced=forced)
+        if isinstance(claim, str):
+            return {"ok": True, "ran": False, "reason": claim}
+        wake = ScheduledHeartbeatWake(claim)
+        try:
+            run = self._prepare_heartbeat_run(
+                session, due=[claim], started_at=at, source="interval", reason=wake.reason, context_mode="full",
+                runtime_context=None, offer_tools=True, ensure=ensure, scheduled_wake=wake,
+            )
+            result = heartbeat(run)
+            disposition = result["status"]
+            if disposition not in {"ran", "skipped", "failed"}:
+                raise ValueError("invalid heartbeat settlement")
+            state = {"ran": "ok", "skipped": "skipped", "failed": "error"}[disposition]
+            error = None if disposition == "ran" else f"heartbeat {disposition}: {result['reason']}"
+        except Exception as exc:
+            state, error = "error", str(exc)
+        ended = self._clock() if schedule_now_ms is None else at
+        completed = record_automation_job_run(claim, started_at_ms=at, ended_at_ms=ended, status=state,
+                                               error=error, forced=forced)
+        store.complete_claimed_job(claim, completed)
+        return {"ok": True, "ran": True}
+
+    def _prepare_heartbeat_run(
+        self, session: SessionState, *, due: list[AutomationJob], started_at: int,
+        source: str | None, reason: str | None, context_mode: BootstrapContextMode,
+        runtime_context: str | None, offer_tools: bool, ensure: bool,
+        scheduled_wake: ScheduledHeartbeatWake | None = None,
+        every: str | None = None,
+        main_queue_size: int = 0,
+        pending_events: Sequence[HeartbeatSystemEvent] = (),
+        can_relay_to_user: bool = False,
+        scheduled_every_ms: int | None = None,
+        prompt: str | None = None,
+        use_response_tool: bool = False,
+    ) -> HeartbeatRun:
+        agent_id = self._memory.config.agent_id
         store = self._automation_store
         scratch, scratch_owner = resolve_heartbeat_store_scratch(store, agent_id)
-        due = due_automation_jobs(store.list_jobs(agent_id=agent_id), started_at)
         turn = prepare_heartbeat_turn(
             now_ms=self._clock(),
             scratch=scratch,
             scheduled_tasks=heartbeat_scheduled_tasks(due),
-            source=source,
+            source=source, every=every, main_queue_size=main_queue_size,
+            pending_events=pending_events, can_relay_to_user=can_relay_to_user,
+            scheduled_every_ms=scheduled_every_ms, prompt=prompt, use_response_tool=use_response_tool,
             reason=reason,
             timezone=self._timezone,
             time_format=self._time_format,
@@ -897,6 +1004,7 @@ class HostKit:
             store=store,
             agent_id=agent_id,
             scratch_owner=scratch_owner,
+            scheduled_wake=scheduled_wake,
             scratch_revision=scratch.current_revision,
             owned_scratch=bool(getattr(store, "heartbeat_ownership_enabled", False)),
         )
@@ -906,7 +1014,7 @@ class HostKit:
             workspace_dir=self._root,
             now_ms=self._clock(),
             cfg={"agents": {"defaults": {
-                "userTimezone": self._timezone,
+                "userTimezone": self._flush_timezone,
                 "compaction": {"memoryFlush": self._flush_config},
             }}},
             context_window_tokens=context_window_tokens,
@@ -932,6 +1040,7 @@ class HostKit:
             session_id=session.session_id,
             compaction_count=0 if count is None else count,
             target=plan.relative_path,
+            model=plan.model,
             reason=reason,
             messages=messages,
             provenance=self._artifact_provenance,

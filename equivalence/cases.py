@@ -8,6 +8,7 @@ side imports the pinned upstream TypeScript implementations at execution time.
 from __future__ import annotations
 
 from dataclasses import asdict, dataclass
+from pathlib import Path
 import math
 import random
 from typing import Any
@@ -319,6 +320,82 @@ def build_cases(*, include_prospective: bool = False) -> list[dict[str, Any]]:
     from equivalence.prompt_runtime_context import build_cases as build_prompt_runtime_context
 
     cases.extend(build_prompt_runtime_context())
+    from equivalence.prompt_history_repair import build_cases as build_prompt_history_repair
+
+    cases.extend(build_prompt_history_repair())
+    from equivalence.engine_numeric_family import build_cases as build_engine_numeric_cases
+
+    cases.extend(build_engine_numeric_cases())
+
+    from equivalence.deep_consolidation import build_cases as build_deep_consolidation
+
+    cases.extend(build_deep_consolidation())
+
+    from equivalence.dream_phase_family import FAMILIES
+
+    for family in FAMILIES.values():
+        cases.extend(family.build_cases())
+
+    from equivalence.automation_job_state import build_cases as build_automation_jobs
+
+    cases.extend(build_automation_jobs())
+
+    from equivalence.workspace_lock_cases import build_cases as build_workspace_locks
+
+    cases.extend(build_workspace_locks())
+
+    from equivalence.automation_job_outcomes import build_cases as build_automation_outcomes
+
+    cases.extend(build_automation_outcomes())
+
+    from equivalence.heartbeat_turn_boundaries import build_cases as build_heartbeat_exclusions
+    from equivalence.heartbeat_turn_outcomes import build_cases as build_heartbeat_outcomes
+
+    cases.extend(build_heartbeat_exclusions())
+
+    from equivalence.compaction_assembly import build_cases as build_compaction_restarts
+
+    cases.extend(build_compaction_restarts())
+
+    from equivalence.recovery_repair import build_cases as build_repair_cases
+
+    cases.extend(build_repair_cases())
+
+    from equivalence.flush_plan_target import build_cases as build_flush_plan_targets
+
+    cases.extend(build_flush_plan_targets())
+    cases.extend(build_heartbeat_outcomes())
+
+    from equivalence.recovery_failure import build_cases as build_failure_cases
+
+    cases.extend(build_failure_cases())
+    from equivalence.compaction_active_history import build_cases as build_active_history
+
+    cases.extend(build_active_history())
+
+    from equivalence.datetime_regex_family import build_cases as build_datetime_regex
+
+    cases.extend(build_datetime_regex())
+    from equivalence.engine_unicode_collation import build_cases as build_unicode_cases
+
+    cases.extend(build_unicode_cases())
+
+    from equivalence.secret_boundary_inputs import build_cases as build_secret_boundaries
+
+    cases.extend(build_secret_boundaries())
+
+    from equivalence.configured_redaction import build_cases as build_configured_redaction
+
+    cases.extend(build_configured_redaction())
+
+    from equivalence.provider_overflow_cases import build_cases as build_provider_overflow
+
+    cases.extend(build_provider_overflow())
+
+    from equivalence.datetime_boundary_cases import build_cases as build_datetime_boundaries
+
+    cases.extend(build_datetime_boundaries())
+
     if include_prospective:
         from equivalence.flush_contract import build_prospective_flush_contract_cases
         from equivalence.session_projection import build_prospective_session_projection_cases
@@ -334,6 +411,52 @@ def build_cases(*, include_prospective: bool = False) -> list[dict[str, Any]]:
 def run_python(case: dict[str, Any]) -> Any:
     """Execute the installed Python implementation; never manufacture a match."""
     operation, arguments = case["operation"], case["input"]
+    if operation in {"automation-job-outcomes-runtime", "compaction-assembly-restart-runtime"}:
+        from tempfile import TemporaryDirectory
+        exact = dict(case)
+        directory = exact.pop("_diagnosticDirectory", None)
+        if operation == "compaction-assembly-restart-runtime":
+            from equivalence.compaction_assembly import check_case
+            from equivalence.compaction_assembly_sdk import run_sdk
+            check_case(exact)
+        else:
+            from equivalence.automation_job_outcomes import run_python as run_sdk
+        if directory is None:
+            with TemporaryDirectory() as temp:
+                return run_sdk(exact, Path(temp))
+        return run_sdk(exact, directory)
+    if operation in {"automation-job-state-runtime", "heartbeat-turn-outcomes-runtime", "provider-overflow-host-runtime"}:
+        if operation == "provider-overflow-host-runtime":
+            from equivalence.provider_overflow_sdk import run_sdk
+        elif operation == "heartbeat-turn-outcomes-runtime":
+            from equivalence.heartbeat_turn_outcomes_sdk import run_sdk
+        else:
+            from equivalence.automation_job_state_sdk import run_sdk
+
+        case = dict(case)
+        diagnostic = case.pop("_diagnosticDirectory", None)
+        if diagnostic is None:
+            from tempfile import TemporaryDirectory
+            with TemporaryDirectory() as directory:
+                return run_sdk(case, Path(directory))
+        return run_sdk(case, diagnostic)
+
+    if operation == "workspace-lock-process-runtime":
+        from equivalence.workspace_lock_evidence import run_sdk_case
+
+        return run_sdk_case(case)
+    if operation == "engine-datetime-clock":
+        from equivalence.datetime_regex_family import run_clock
+
+        return run_clock(arguments)
+    if operation == "engine-unicode-collation":
+        from equivalence.engine_unicode_collation import run_sdk
+
+        return run_sdk(arguments)
+    if operation == "engine-numeric-boundaries":
+        from equivalence.engine_numeric_boundaries import run_engine_numeric_boundaries
+
+        return run_engine_numeric_boundaries(arguments)
     if operation in {"atomic-commit-runtime", "atomic-append-runtime", "atomic-bootstrap-runtime"}:
         from equivalence.atomic_publication_runtime import run_atomic_publication
 
@@ -346,7 +469,7 @@ def run_python(case: dict[str, Any]) -> Any:
         from equivalence.promotion_apply_runtime import run_promotion_apply_reconcile
 
         return run_promotion_apply_reconcile(arguments, evidence_directory=case.get("_diagnosticDirectory"))
-    if operation == "promotion-apply-family-runtime":
+    if operation in {"promotion-apply-family-runtime", "deep-consolidation-runtime"}:
         from equivalence.promotion_apply_family_sdk import run_family_sdk
 
         return run_family_sdk(case, evidence_directory=case.get("_diagnosticDirectory"))
@@ -401,6 +524,38 @@ def run_python(case: dict[str, Any]) -> Any:
 
         validate_prompt_context_case({key: value for key, value in case.items() if key != "_diagnosticDirectory"})
         return run_prompt_runtime_context(arguments, evidence_directory=case.get("_diagnosticDirectory"))
+    if operation == "dream-diary-publication-runtime":
+        from equivalence.dream_diary_sdk import run_sdk
+        return run_sdk({k: v for k, v in case.items() if k != "_diagnosticDirectory"}, case.get("_diagnosticDirectory"))
+    if operation == "recovery-forget-interruption-runtime":
+        from equivalence.recovery_failure_sdk import run_interrupted_forget
+        if case.get("_diagnosticDirectory") is None:
+            from tempfile import TemporaryDirectory
+            with TemporaryDirectory() as directory:
+                return run_interrupted_forget(case, directory)
+        return run_interrupted_forget(case, case["_diagnosticDirectory"])
+    if operation in {"recovery-artifact-repair-runtime", "recovery-index-repair-runtime"}:
+        from equivalence.recovery_repair import ARTIFACT, validate_case
+        validate_case(case)
+        if operation == ARTIFACT:
+            from equivalence.recovery_artifact_sdk import run_sdk
+        else:
+            from equivalence.recovery_index_repair import run_recovery_index_repair as run_sdk
+        return run_sdk(arguments, evidence_directory=case["_diagnosticDirectory"])
+    if operation == "dream-deep-runtime":
+        from equivalence.dream_deep_sdk import run_sdk
+
+        return run_sdk(case, case.get("_diagnosticDirectory"))
+    if operation in {"dream-light-runtime", "dream-rem-runtime"}:
+        from equivalence.dream_light_sdk import run_sdk
+
+        return run_sdk(case, case.get("_diagnosticDirectory"))
+    if operation == "prompt-history-repair-runtime":
+        from equivalence.prompt_history_repair import validate_case as validate_history_repair_case
+        from equivalence.prompt_history_repair_sdk import run_prompt_history_repair
+
+        validate_history_repair_case({key: value for key, value in case.items() if key != "_diagnosticDirectory"})
+        return run_prompt_history_repair(arguments, evidence_directory=case.get("_diagnosticDirectory"))
     if operation == "recall-signals-runtime":
         from equivalence.recall_signals import validate_case as validate_recall_signals_case
         from equivalence.recall_signals_sdk import run_recall_signals
@@ -456,8 +611,14 @@ def run_python(case: dict[str, Any]) -> Any:
     if operation in {"redaction-policy-source", "model-session-runtime", "model-tool-result-runtime"}:
         from equivalence.redaction_sdk import run_redaction_policy, run_model_sessions, run_model_tool_result
 
+        if operation == "model-session-runtime" and "trust.secret-redaction.boundaries" in case.get("covers", ()):
+            return run_model_sessions(arguments, evidence_directory=case.get("_diagnosticDirectory"), retain_database=True)
         runner = {"redaction-policy-source": run_redaction_policy, "model-session-runtime": run_model_sessions,
                   "model-tool-result-runtime": run_model_tool_result}[operation]
+        from equivalence.configured_redaction import IDS as configured_ids
+
+        if case["id"] == configured_ids[1]:
+            return run_model_sessions(arguments, evidence_directory=case.get("_diagnosticDirectory"), retain_phase_images=True)
         return runner(arguments, evidence_directory=case.get("_diagnosticDirectory"))
     if operation == "trust-worker-runtime":
         from equivalence.trust_worker_profile import run_trust_worker
@@ -551,6 +712,12 @@ def run_python(case: dict[str, Any]) -> Any:
         from equivalence.flush_runtime import run_flush_runtime
 
         return run_flush_runtime(arguments, evidence_directory=case.get("_diagnosticDirectory"))
+    if operation == "flush-plan-target-runtime":
+        from equivalence.flush_plan_target_sdk import run_sdk
+
+        registered = dict(case)
+        directory = registered.pop("_diagnosticDirectory", None)
+        return run_sdk(registered, directory)
     if operation == "flush-execution-runtime":
         from equivalence.flush_execution import run_flush_execution
 

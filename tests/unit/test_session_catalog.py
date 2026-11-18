@@ -115,3 +115,52 @@ def test_archive_binding_is_a_persisted_identity_not_a_filename_guess(tmp_path):
         "session_id": "recorded-id", "session_key": "agent:main:main",
         "path": tmp_path / "artifact", "agent_id": "main",
     }
+
+
+def test_queued_turn_repair_replays_metadata_once_and_rejects_stale_parent(tmp_path):
+    from memory_core.session_transcript_append import SqliteTranscriptMutationConflictError
+
+    catalog = MemorySessionCatalog(tmp_path / "catalog.sqlite", clock_ms=lambda: 1000)
+    session_id, key = "test-repair", "agent:main:main"
+    catalog.upsert_session(key, {"sessionId": session_id, "updatedAt": 1000})
+    catalog.append_message(session_id, {"role": "assistant", "content": []}, session_key=key, event_id="answer")
+    catalog.append_message(session_id, {"role": "user", "content": "queued"}, session_key=key, event_id="queued")
+    controls = [{"type": "custom", "id": "first", "customType": "note", "data": "keep", "parentId": "queued"},
+                {"type": "label", "id": "second", "parentId": "first", "targetId": "first", "label": "pinned"}]
+    catalog.append_events(session_id, controls, session_key=key)
+    current = {"role": "user", "content": "queued and current", "idempotencyKey": "new-turn"}
+    checked = catalog.append_message(session_id, current, session_key=key, event_id="current", detach_queued_user="queued")
+    before = catalog.read_transcript(session_id).events
+    replay = catalog.append_message(session_id, current, session_key=key, event_id="current", detach_queued_user="queued")
+    assert checked["appended"] and not replay["appended"] and checked["messageId"] == replay["messageId"]
+    [new_note, new_label, new_user] = before[-3:]
+    assert new_note["id"] != "first" and new_note["parentId"] == "answer" and new_note["data"] == "keep"
+    assert new_label["targetId"] == new_label["parentId"] == new_note["id"]
+    assert new_user["parentId"] == new_label["id"]
+    visible = catalog.read_continuation(session_id, session_key=key)["visibleEvents"]
+    assert not {"queued", "first", "second"} & {event["id"] for event in visible}
+    with pytest.raises(SqliteTranscriptMutationConflictError):
+        catalog.append_message(session_id, {"role": "user", "content": "racing turn"},
+                               session_key=key, event_id="late", detach_queued_user="queued")
+    assert catalog.read_transcript(session_id).events == before
+
+
+def test_versioned_publication_cannot_overwrite_a_concurrent_branch_or_rotated_session(tmp_path):
+    path = tmp_path / "sessions.sqlite"
+    key, session = "agent:main:main", "before"
+    owner = MemorySessionCatalog(path, clock_ms=lambda: 1000)
+    concurrent = MemorySessionCatalog(path, clock_ms=lambda: 1000)
+    owner.upsert_session(key, {"sessionId": session})
+    owner.append_events(session, [_message("first", entry_id="first")], session_key=key)
+    version = owner.read_continuation(session, session_key=key)["version"]
+    concurrent.append_events(session, [_message("other writer", entry_id="other")], session_key=key)
+    with pytest.raises(RuntimeError, match="changed"):
+        owner.append_events(session, [_message("stale", entry_id="stale")], session_key=key, expected_version=version)
+
+    version = owner.read_continuation(session, session_key=key)["version"]
+    owner.append_events(session, [_message("current", entry_id="current")], session_key=key, expected_version=version)
+    version = owner.read_continuation(session, session_key=key)["version"]
+    concurrent.upsert_session(key, {"sessionId": "after"})
+    with pytest.raises(RuntimeError, match="changed"):
+        owner.append_events(session, [_message("retired", entry_id="retired")], session_key=key, expected_version=version)
+    assert [event["id"] for event in owner.read_transcript(session).events] == ["first", "other", "current"]

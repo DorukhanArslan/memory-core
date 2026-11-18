@@ -359,6 +359,9 @@ def build_cases(*, include_prospective: bool = False) -> list[dict[str, Any]]:
     from equivalence.recovery_repair import build_cases as build_repair_cases
 
     cases.extend(build_repair_cases())
+    from equivalence.compaction_active_history import build_cases as build_active_history
+
+    cases.extend(build_active_history())
     if include_prospective:
         from equivalence.flush_contract import build_prospective_flush_contract_cases
         from equivalence.session_projection import build_prospective_session_projection_cases

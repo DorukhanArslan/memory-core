@@ -4,6 +4,7 @@ import json
 from pathlib import Path
 
 from equivalence.automation_job_state import wire
+from equivalence import compaction_active_history
 from equivalence.compaction_assembly_inputs import inputs
 
 POINT = "compaction.context-assembly.boundaries"
@@ -32,11 +33,12 @@ def build_cases():
 
 
 def family_rows(rows):
-    return [r for r in rows if r.get("operation") == OPERATION or POINT in r.get("covers", ())
-            or r["id"].startswith("compaction-assembly-")]
+    return [r for r in rows if not compaction_active_history.active_case(r) and (r.get("operation") == OPERATION
+            or POINT in r.get("covers", ()) or r["id"].startswith("compaction-assembly-"))]
 
 
 def validate_registration(cases):
+    compaction_active_history.validate_registration(cases)
     selected = family_rows(cases)
     if selected and wire(selected) != wire(build_cases()):
         raise ValueError("Retained, evicted and different-model restarts must be measured together")
@@ -54,7 +56,7 @@ def family_complete(rows):
 
 
 def check_case(case):
-    if wire(case) not in [wire(row) for row in build_cases()]:
+    if wire(case) not in [wire(row) for row in [*build_cases(), *compaction_active_history.build_cases()]]:
         raise ValueError("Unregistered compaction restart")
 
 
@@ -89,6 +91,8 @@ def review_pair(case, original, sdk, diagnostic, sdk_hash, directory, implementa
 
 def verify_public(case, public):
     """These controls distinguish a usable checkpoint, a stale checkpoint and a real trailing result."""
+    if compaction_active_history.active_case(case):
+        return compaction_active_history.verify_public(case, public)
     v = case["input"]
     before, after = public["retainedBefore"], public["retainedAfter"]
     if (before != after or before["result"]["details"] != public["tool"]
@@ -117,7 +121,7 @@ def replay(packet, root):
     from equivalence.compaction_assembly_sdk import read_sdk
     from equivalence.automation_job_outcomes_replay import read_checked
 
-    [case] = [r for r in build_cases() if r["id"] == packet["id"]]
+    [case] = [r for r in [*build_cases(), *compaction_active_history.build_cases()] if r["id"] == packet["id"]]
     actuals = []
     for side, prefix, folder, reader in (("native", "native-attempt-", "native-raw.json", read_native),
                                          ("sdk", "sdk-attempt-", "python-raw.json", read_sdk)):

@@ -23,11 +23,13 @@ izler; yeni kabul koşulu veya puan eklemez. **128/128 tek başına bitiş deği
 sonuçlarının onarılması 8/8, sayı sınırları 4/4, birleştirilen notların içeriği
 ve kaynağı 7/7 örnekte eşleşti. Toplam 1.519 örneğin 1.495'i eşleşti, 14 eski
 fark görüldü ve daha önce geçen 10 sohbet örneğinde kanıt doğrulaması durdu.
-Koşu çıkış kodu 2 ile bitti. Son kabul edilen ölçüm **84/128**.
+Koşu çıkış kodu 2 ile bitti. Sorun, yeni bir sohbet seçeneğinin eski
+senaryolarda kapalı olduğunu denetleyen satırın eksik olmasıydı. Son kabul
+edilen ölçüm **84/128**.
 [Genel karşılaştırma](https://github.com/DorukhanArslan/memory-core/actions/runs/44189169478) · [PR #30](https://github.com/DorukhanArslan/memory-core/pull/30)
 
-**Birleşik hedef 84 → 107, toplam +23 koşul.** Yukarıdaki 19 örnek altı
-koşulu kapsıyor. Aşağıdaki 69 örnek kendi karşılaştırmalarında geçti ve 17
+**Birleşik hedef 84 → 108, toplam +24 koşul.** Yukarıdaki 19 örnek altı
+koşulu kapsıyor. Aşağıdaki 73 örnek kendi karşılaştırmalarında geçti ve 18
 koşulu kapsıyor. Genel ölçümde önceki sohbet örneklerinin de geçmesi gerekiyor.
 
 | İş | İki sistemde denenen örnek | Eşleşme | Hedef artış |
@@ -39,6 +41,7 @@ koşulu kapsıyor. Genel ölçümde önceki sohbet örneklerinin de geçmesi ger
 | Zamanlanmış görevin sınırları | Zamanı gelince güncel notu oku ve yeniden başlatınca aynı işi tekrarlama | 1/1, yedi adım | +1 |
 | Zamanlanmış görevin sonucu | Başarısız denemeyi, yeniden deneme zamanını ve görevin geri yüklenmesini karşılaştır | 3/3 | +1 |
 | Otomatik yoklama | Normal konuşma not yazabilir. Otomatik yoklama yazmaz ve sonradan anı diye listelenmez | 4/4 | +1 |
+| Otomatik bildirimin teslimi | Aynı uyarıyı iki kez gönderme. Sessiz saatte bekle ve yeni uyarıyı izin verilen hedefe ilet | 4/4 | +1 |
 | Ortak nota yazma | İkinci yazar beklesin ve kapanan yazarın kilidi süre dolunca devralınsın | 7/7 | +2 |
 | Sohbeti yeniden açma | Son araç cevabı ve sohbet özeti, açılan sohbetin ilk model isteğine doğru sırayla girsin | 3/3 | +1 |
 | Bozuk bellek kaydını onarma | Bozulmuş arama kaydını düzelt. İkinci onarımda sağlam kaydı koru | 9/9 | +2 |

@@ -3843,7 +3843,7 @@
           "path": "memory_core/host/kit.py",
           "symbol": "on_new_session",
           "anchor": "def on_new_session(",
-          "line": 766
+          "line": 775
         }
       ],
       "implementation": "partial",
@@ -4296,7 +4296,7 @@
           "path": "memory_core/current_time.py",
           "symbol": "format_current_time_line",
           "anchor": "def format_current_time_line(",
-          "line": 202
+          "line": 225
         },
         {
           "path": "memory_core/model_prompt.py",
@@ -4314,13 +4314,13 @@
           "path": "memory_core/current_time.py",
           "symbol": "resolve_cron_style_now",
           "anchor": "def resolve_cron_style_now(",
-          "line": 216
+          "line": 239
         }
       ],
       "implementation": "partial",
       "notes": [
         "Runtime markers default to Memory Core identity; native marker behavior requires the explicit OpenClaw compatibility identity.",
-        "Current-time formatting accepts an explicit host 12/24-hour format; supplying host_timezone enables the native host fallback, while existing callers keep their UTC fallback. Python dates remain limited to years 1–9999.",
+        "Current-time formatting accepts an explicit host 12/24-hour format; supplying host_timezone enables the native host fallback, while existing callers keep their UTC fallback. Calendar formatting uses Gregorian cycles for extended JavaScript years.",
         "HostTurn.model_request applies production v3/v4 carrier projection before conversion, preserving the durable continuation API. Complete memory/runtime components and all actual model messages are compared; unrelated full-agent persona and tool definitions remain raw and are not a full-agent port claim."
       ]
     },
@@ -4541,13 +4541,13 @@
           "path": "memory_core/host/lifecycle.py",
           "symbol": "HostSessionRunner._prepare_model_prompt",
           "anchor": "    def _prepare_model_prompt(self, effective_prompt, options, context, user_key):",
-          "line": 1035
+          "line": 1119
         },
         {
           "path": "memory_core/host/lifecycle.py",
           "symbol": "HostSessionRunner.run_turn",
           "anchor": "    async def run_turn(self, user_message: str | Mapping[str, Any], *,",
-          "line": 816
+          "line": 900
         },
         {
           "path": "memory_core/host/lifecycle.py",
@@ -4653,26 +4653,32 @@
           "path": "memory_core/memory_flush.py",
           "symbol": "build_memory_flush_plan_from_config",
           "anchor": "def build_memory_flush_plan_from_config(",
-          "line": 301
+          "line": 302
         },
         {
           "path": "memory_core/memory_flush.py",
           "symbol": "validate_daily_memory_target",
           "anchor": "def validate_daily_memory_target(relative_path: str) -> str:",
-          "line": 213
+          "line": 214
         },
         {
           "path": "memory_core/memory_flush.py",
           "symbol": "ensure_memory_flush_target_file",
           "anchor": "def ensure_memory_flush_target_file(",
-          "line": 808
+          "line": 809
+        },
+        {
+          "path": "memory_core/host/lifecycle.py",
+          "symbol": "FlushModelExecutor",
+          "anchor": "class FlushModelExecutor:",
+          "line": 517
         }
       ],
       "implementation": "partial",
       "notes": [
         "Python target preparation intentionally refuses symlinked parents and symlink, hard-linked or non-regular targets beyond the native target preparation checks.",
-        "Host time-format/timezone fallback and Python supported-date range differ as documented in memory_core.current_time.",
-        "The complete retained native flush matrix executes original source owners. An additional 22-case target-helper comparison matches raising authority checkpoints, exact bytes and real descriptor closure, with covers: [] throughout. Dates below year 1000 or above 9999, documented host time-format/timezone boundaries and stricter Python filesystem admission still prevent complete plan/target acceptance.",
+        "The host supplies its timezone and clock format. A separately configured, invalid agent zone falls back to the host during automatic flush.",
+        "The 92 standalone plan and target cases retain zero credit. Thirteen automatic host cases compare full plans and prompts, file bytes, model selection and fallback at real candidate entry. Native transport retries are retained independently. Boundary credit stays open for filesystem admission differences.",
         "The public Python helper accepts optional assert_current, a prompt synchronous raising callback with ignored return value, before mkdir, after mkdir and after open. The opened descriptor closes in finally even when the last check raises; filesystem failures, including close failures, still propagate."
       ]
     },
@@ -4707,13 +4713,13 @@
           "path": "memory_core/host/kit.py",
           "symbol": "HostKit.prepare_flush",
           "anchor": "    def prepare_flush(",
-          "line": 616
+          "line": 620
         },
         {
           "path": "memory_core/memory_flush.py",
           "symbol": "resolve_memory_flush_runtime_accounting",
           "anchor": "def resolve_memory_flush_runtime_accounting(",
-          "line": 541
+          "line": 542
         },
         {
           "path": "memory_core/flush_token_estimation.py",
@@ -4725,25 +4731,25 @@
           "path": "memory_core/memory_flush.py",
           "symbol": "resolve_fresh_session_total_tokens",
           "anchor": "def resolve_fresh_session_total_tokens(entry: dict[str, Any] | None) -> int | float | None:",
-          "line": 370
+          "line": 371
         },
         {
           "path": "memory_core/memory_flush.py",
           "symbol": "explain_memory_flush_trigger",
           "anchor": "def explain_memory_flush_trigger(",
-          "line": 630
+          "line": 631
         },
         {
           "path": "memory_core/memory_flush.py",
           "symbol": "record_memory_flush_failure",
           "anchor": "def record_memory_flush_failure(",
-          "line": 772
+          "line": 773
         },
         {
           "path": "memory_core/host/kit.py",
           "symbol": "after_turn",
           "anchor": "def after_turn(",
-          "line": 566
+          "line": 570
         }
       ],
       "implementation": "present",
@@ -4803,13 +4809,13 @@
           "path": "memory_core/host/flush.py",
           "symbol": "dispatch",
           "anchor": "def dispatch(self, name: str, arguments: Mapping[str, Any] | str | None) -> dict[str, Any]:",
-          "line": 265
+          "line": 267
         },
         {
           "path": "memory_core/host/flush.py",
           "symbol": "complete",
           "anchor": "def complete(",
-          "line": 394
+          "line": 396
         },
         {
           "path": "memory_core/workspace.py",
@@ -5428,6 +5434,18 @@
           "symbol": "run_short_term_promotion",
           "anchor": "def run_short_term_promotion(",
           "line": 320
+        },
+        {
+          "path": "memory_core/consolidation/dreaming.py",
+          "symbol": "run_dreaming_sweep",
+          "anchor": "def run_dreaming_sweep(",
+          "line": 185
+        },
+        {
+          "path": "memory_core/consolidation/dreaming.py",
+          "symbol": "deep promotion invocation",
+          "anchor": "promotion = run_short_term_promotion(",
+          "line": 368
         }
       ],
       "implementation": "partial",
@@ -5917,7 +5935,7 @@
           "path": "memory_core/host/kit.py",
           "symbol": "HostKit.after_turn",
           "anchor": "    def after_turn(",
-          "line": 566
+          "line": 570
         },
         {
           "path": "memory_core/turn_trust.py",
@@ -6153,7 +6171,7 @@
           "path": "memory_core/host/kit.py",
           "symbol": "HostKit.heartbeat_task_prompt",
           "anchor": "    def heartbeat_task_prompt(",
-          "line": 873
+          "line": 882
         },
         {
           "path": "memory_core/automation_schedule.py",
@@ -6165,7 +6183,7 @@
           "path": "memory_core/host/kit.py",
           "symbol": "run_heartbeat_task",
           "anchor": "def run_heartbeat_task(",
-          "line": 896
+          "line": 905
         },
         {
           "path": "memory_core/consolidation/dreaming_automation.py",
@@ -6388,7 +6406,7 @@
           "path": "memory_core/host/kit.py",
           "symbol": "HostKit.after_turn",
           "anchor": "    def after_turn(",
-          "line": 566
+          "line": 570
         },
         {
           "path": "memory_core/index/sqlite_store.py",
@@ -6454,7 +6472,7 @@
           "path": "memory_core/memory_flush.py",
           "symbol": "build_memory_flush_plan_from_config",
           "anchor": "def build_memory_flush_plan_from_config(",
-          "line": 301
+          "line": 302
         },
         {
           "path": "memory_core/model_prompt.py",
@@ -6556,7 +6574,7 @@
           "path": "memory_core/current_time.py",
           "symbol": "format_current_time_line",
           "anchor": "def format_current_time_line(",
-          "line": 202
+          "line": 225
         },
         {
           "path": "memory_core/consolidation/_util.py",
@@ -6667,7 +6685,7 @@
           "path": "memory_core/host/kit.py",
           "symbol": "HostKit.after_turn",
           "anchor": "    def after_turn(",
-          "line": 566
+          "line": 570
         },
         {
           "path": "demo/lab_chat.py",
@@ -6685,7 +6703,7 @@
           "path": "memory_core/host/lifecycle.py",
           "symbol": "HostSessionRunner.run_turn",
           "anchor": "    async def run_turn(",
-          "line": 816
+          "line": 900
         },
         {
           "path": "memory_core/host/managed_session.py",
@@ -6766,7 +6784,7 @@
           "path": "memory_core/host/kit.py",
           "symbol": "HostKit.on_new_session",
           "anchor": "    def on_new_session(",
-          "line": 766
+          "line": 775
         },
         {
           "path": "demo/lab_runtime.py",
@@ -6778,7 +6796,7 @@
           "path": "memory_core/host/lifecycle.py",
           "symbol": "HostSessionRunner._load",
           "anchor": "    def _load(",
-          "line": 680
+          "line": 764
         },
         {
           "path": "memory_core/host/managed_index.py",
@@ -6865,7 +6883,7 @@
           "path": "memory_core/host/kit.py",
           "symbol": "HostKit.dispatcher",
           "anchor": "    def dispatcher(",
-          "line": 427
+          "line": 431
         },
         {
           "path": "memory_core/live/__init__.py",

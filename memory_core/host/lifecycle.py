@@ -483,6 +483,90 @@ def _consume(future: asyncio.Future) -> None:
         future.exception()
 
 
+@dataclass(frozen=True)
+class FlushModelRoute:
+    """One host-owned provider and model candidate for a maintenance run."""
+
+    provider: str
+    model: str
+
+
+@dataclass(frozen=True)
+class FlushModelSelection(FlushModelRoute):
+    """The requested route and fallback policy before candidates are attempted."""
+
+    requested_route_resolution: str | None
+    fallbacks_override: tuple[str, ...] | None
+
+
+class FlushModelUnavailable(Exception):
+    """The host exhausted this candidate's transport retries and permits a fallback."""
+
+
+def _flush_model_route(reference: str, active_provider: str) -> FlushModelRoute:
+    # The maintenance model follows the pinned first-slash rule. A partially
+    # qualified reference remains the complete model name on the active provider.
+    reference = js_trim(reference)
+    provider, slash, model = reference.partition("/")
+    if slash and js_trim(provider) and js_trim(model):
+        return FlushModelRoute(js_trim(provider), js_trim(model))
+    return FlushModelRoute(active_provider, reference)
+
+
+@dataclass(frozen=True)
+class FlushModelExecutor:
+    """A route-aware ``execute_flush`` callback for both foreground and detached runners.
+
+    Supply the conversation's resolved provider, model and configured fallback list.
+    An explicit session-level fallback override takes precedence over that list. The
+    host executes and retries each candidate's transport inside ``execute_candidate``.
+    Raising ``FlushModelUnavailable`` lets an inherited route try the next candidate.
+    """
+
+    provider: str
+    model: str
+    fallbacks: Sequence[str]
+    execute_candidate: Callable[
+        [HostTurn, FlushModelRoute, FlushModelSelection], Awaitable[HostModelResult | None]
+    ]
+    requested_route_resolution: str | None = None
+    fallbacks_override: tuple[str, ...] | None = None
+
+    def __post_init__(self):
+        if isinstance(self.fallbacks, str) or isinstance(self.fallbacks_override, str):
+            raise TypeError("Flush fallbacks must be a sequence of model references")
+        object.__setattr__(self, "fallbacks", tuple(self.fallbacks))
+        if self.fallbacks_override is not None:
+            object.__setattr__(self, "fallbacks_override", tuple(self.fallbacks_override))
+
+    def selection_for(self, request: FlushRequest) -> FlushModelSelection:
+        override = request.model
+        if override and js_trim(override):
+            route = _flush_model_route(override, self.provider)
+            return FlushModelSelection(route.provider, route.model, "raw", ())
+        return FlushModelSelection(
+            self.provider, self.model, self.requested_route_resolution, self.fallbacks_override
+        )
+
+    async def __call__(self, turn: HostTurn) -> HostModelResult | None:
+        if turn.flush_request is None:
+            raise ValueError("A routed flush requires a maintenance turn")
+        selection = self.selection_for(turn.flush_request)
+        fallback_refs = self.fallbacks if selection.fallbacks_override is None else selection.fallbacks_override
+        routes = [FlushModelRoute(selection.provider, selection.model)]
+        for reference in fallback_refs:
+            route = _flush_model_route(reference, self.provider)
+            if route.model and route not in routes:
+                routes.append(route)
+        # Let the final unavailable exception reach ordinary flush completion and error recording.
+        for route in routes[:-1]:
+            try:
+                return await self.execute_candidate(turn, route, selection)
+            except FlushModelUnavailable:
+                continue
+        return await self.execute_candidate(turn, routes[-1], selection)
+
+
 class HostSessionRunner:
     """One reusable host session with durable context and a publication barrier.
 

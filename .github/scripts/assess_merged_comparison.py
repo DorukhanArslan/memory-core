@@ -19,6 +19,7 @@ from equivalence.harness import _adapter_identity, _implementation_identity, _sa
 from equivalence.strict_report_reader import Reader, _constant, _finite, _object  # noqa: E402
 
 from followup_datetime import SOURCE_OWNERS as DATETIME_SOURCE_OWNERS
+from equivalence.engine_unicode_collation import DIAGNOSTIC as UNICODE_TIE_ID, OWNERS as UNICODE_SOURCE_OWNERS
 from followup_families import FAMILIES, REPORT_FIELDS, family_key, replay_followup
 from followup_heartbeat import CORPUS_OWNERS
 from followup_seal import (CATALOG_SHA, EXPECTED_RESOLUTIONS, PREVIOUS_CASES, PREVIOUS_CATALOG_SHA, PREVIOUS_COMPARISON,
@@ -132,7 +133,7 @@ def project(path, host_ids, lineage_ids, boundary_ids, recall_ids, cache_ids, re
             "engineNumericFamilyComplete", "numericSourceImports", "promotionRankingRuntimeBindings", "promotionRankingProfile",
             "deepConsolidationFamilyComplete", "deepConsolidationBindings", "promotionApplyFamilyBindings", "promotionApplyFamilyNode"}
     kept.update(REPORT_FIELDS)
-    result = {"followupRows": {}, "datetimeSources": [], "heartbeatSources": [], "followupReleaseSources": [], "cases": [], "hostPairs": {}, "hostDiagnostics": {},
+    result = {"followupRows": {}, "unicodeSources": [], "datetimeSources": [], "heartbeatSources": [], "followupReleaseSources": [], "cases": [], "hostPairs": {}, "hostDiagnostics": {},
               "lineagePairs": {}, "lineageDiagnostics": {}, "lineageTraces": {},
               "boundaryPairs": {}, "boundaryDiagnostics": {}, "boundaryTraces": {},
               "recallPairs": {}, "recallDiagnostics": {}, "recallTraces": {},
@@ -149,6 +150,8 @@ def project(path, host_ids, lineage_ids, boundary_ids, recall_ids, cache_ids, re
             if key in kept:
                 result.setdefault(key, [])
             return
+        if key == "sources" and value["path"] in UNICODE_SOURCE_OWNERS:
+            result["unicodeSources"].append(value)
         if key == "sources" and value["path"] in DATETIME_SOURCE_OWNERS:
             result["datetimeSources"].append(value)
         if key == "sources" and value["path"] in CORPUS_OWNERS:
@@ -173,6 +176,8 @@ def project(path, host_ids, lineage_ids, boundary_ids, recall_ids, cache_ids, re
                 pair = {side: value[side] for side in ("openclaw", "python")}
                 row["publicValueSha256"] = {side: hashlib.sha256(canonical(item)).hexdigest()
                                            for side, item in pair.items()}
+                if value["id"] == UNICODE_TIE_ID:
+                    result["unicodeTiePair"] = pair
                 if value["id"] in host_ids:
                     result["hostPairs"][value["id"]] = pair
                 if value["id"] in lineage_ids:

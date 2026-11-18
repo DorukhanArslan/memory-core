@@ -6614,18 +6614,24 @@
           "path": "memory_core/bootstrap/_js.py",
           "symbol": "locale_compare",
           "anchor": "def locale_compare(",
-          "line": 292
+          "line": 254
         },
         {
           "path": "memory_core/consolidation/concepts.py",
           "symbol": "derive_concept_tags",
           "anchor": "def derive_concept_tags(",
-          "line": 282
+          "line": 283
+        },
+        {
+          "path": "memory_core/_icu.py",
+          "symbol": "word_tokens",
+          "anchor": "def word_tokens(",
+          "line": 157
         }
       ],
       "implementation": "partial",
       "notes": [
-        "UTF-16 helpers exist, but Python collation and regex-based segmentation do not establish all ICU/Intl.Segmenter outcomes."
+        "The SDK uses ICU 78.3 for default English ordering, word breaks and concept text normalization. Source locations establish implementation identity; the paired Unicode family measures behavior."
       ],
       "acceptancePoints": [
         "engine.unicode-collation.outcomes",

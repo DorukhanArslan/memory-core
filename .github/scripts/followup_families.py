@@ -8,6 +8,8 @@ from equivalence.release_runtime import prepare_release_runtime
 from followup_compaction import replay_active_history, replay_compaction
 from equivalence import compaction_active_history
 from equivalence import datetime_regex_family
+from equivalence import engine_unicode_collation
+from followup_unicode import replay_unicode
 from followup_datetime import replay_datetime
 from followup_diary import replay_diary
 from followup_dreams import replay_dreams
@@ -25,6 +27,7 @@ from followup_locks import replay_locks
 
 
 FAMILIES = {
+    engine_unicode_collation.OPERATION: (engine_unicode_collation, "engineUnicodeFamilyComplete", replay_unicode),
     recovery_failure.OPERATION: (recovery_failure, "recoveryInterruptionFamilyComplete", replay_interrupted_publication),
     datetime_regex_family.REQUIREMENT: (datetime_regex_family, "datetimeRegexFamilyComplete", replay_datetime),
     flush_plan_target.OPERATION: (flush_plan_target, "flushPlanTargetFamilyComplete", replay_flush),
@@ -42,6 +45,7 @@ FAMILIES = {
     workspace_lock_cases.OPERATION: (workspace_lock_cases, "workspaceLockFamilyComplete", replay_locks),
 }
 REPORT_FIELDS = {field for _, field, _ in FAMILIES.values()} | {
+    "unicodeSourceImports", "unicodeRuntime", "unicodeSdkRuntime",
     "datetimeSourceImports", "modelNodeAuthority", "redactionPolicySourceBindings",
     "recoveryInterruptionBindings", "recoveryInterruptionNode", "recoveryArtifactBindings", "recoveryArtifactNode", "recoveryIndexBindings", "recoveryIndexNode",
     "heartbeatCorpusSourceImports", "flushExecutionBindings", "flushPlanTargetNode", "dreamLightBindings", "dreamLightNode", "dreamRemBindings", "dreamRemNode", "dreamDiaryBindings", "dreamDiaryNode", "dreamDeepBindings", "dreamDeepNode", "workspaceLockBindings"}
@@ -70,6 +74,8 @@ def replay_followup(data, definitions, args, metrics, replay_rank):
         if case["id"] not in rows:
             continue
         required = {"case"} if (family_key(case) == HEARTBEAT_GATE and case["operation"] == "session-projection") else {"case", "native", "python", "trace"}
+        if case["operation"] == engine_unicode_collation.OPERATION:
+            required = {"case"}
         if family_key(case) == datetime_regex_family.REQUIREMENT:
             if case["operation"] == datetime_regex_family.CLOCK:
                 required = {"case"}

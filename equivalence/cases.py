@@ -379,6 +379,9 @@ def build_cases(*, include_prospective: bool = False) -> list[dict[str, Any]]:
     from equivalence.datetime_regex_family import build_cases as build_datetime_regex
 
     cases.extend(build_datetime_regex())
+    from equivalence.engine_unicode_collation import build_cases as build_unicode_cases
+
+    cases.extend(build_unicode_cases())
     if include_prospective:
         from equivalence.flush_contract import build_prospective_flush_contract_cases
         from equivalence.session_projection import build_prospective_session_projection_cases
@@ -434,6 +437,10 @@ def run_python(case: dict[str, Any]) -> Any:
         from equivalence.datetime_regex_family import run_clock
 
         return run_clock(arguments)
+    if operation == "engine-unicode-collation":
+        from equivalence.engine_unicode_collation import run_sdk
+
+        return run_sdk(arguments)
     if operation == "engine-numeric-boundaries":
         from equivalence.engine_numeric_boundaries import run_engine_numeric_boundaries
 

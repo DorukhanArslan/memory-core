@@ -1,6 +1,6 @@
-name: Compare the remaining OpenClaw memory contracts
+name: Compare 1,623 cases for the OpenClaw memory contract
 # One frozen full measurement; retain the first result without retrying.
-# The retained 1,592 definitions and previous complete-family gates are included.
+# The 1,592-case prefix and the last accepted 84/128 measurement are independently pinned.
 
 on:
   push:

@@ -28,6 +28,7 @@ from memory_core.host.kit import HostKit, TurnContext
 from memory_core.host.session import SessionState, TurnUsage, apply_turn_usage
 from memory_core.memory_write_provenance import _observe_memory_write_entry
 from memory_core.model_prompt import ModelPrompt, RuntimePromptInput, serialize_model_tool_json
+from memory_core.queued_user import merge_text as merge_queued_user_text, trailing_user
 from memory_core.responses_converter import build_responses_transport_input
 from memory_core.session_catalog import MemorySessionCatalog, normalize_session_agent_id
 from memory_core.session_transcript_append import resolve_message_append_parent, timestamp_ms_to_iso
@@ -202,7 +203,7 @@ class HostTurn:
                  trust: TurnTrust, *, flush: FlushRequest | None = None,
                  publication_turn_id: str | None = None,
                  projection_messages: Sequence[Mapping[str, Any]] | None = None,
-                 model_prompt: ModelPrompt | None = None) -> None:
+                 model_prompt: ModelPrompt | None = None, context_window_tokens: int | None = None) -> None:
         self._runner = runner
         self.turn_id = turn_id
         self._publication_turn_id = publication_turn_id or turn_id
@@ -214,6 +215,7 @@ class HostTurn:
         self._messages = list(deepcopy(messages))
         self._projection_messages = list(deepcopy(projection_messages if projection_messages is not None else messages))
         self._model_prompt = model_prompt
+        self._context_window_tokens = context_window_tokens
         self._appends: list[dict[str, Any]] = []
         self._receipts: list[dict[str, Any]] = []
         self._guard = threading.RLock()
@@ -269,7 +271,7 @@ class HostTurn:
                 if self.context is None:
                     raise RuntimeError("A maintenance callback has no ordinary model prompt")
                 self._model_prompt = self._runner._prepare_model_prompt(
-                    "", RuntimePromptInput(), self.context, self.turn_id)
+                    "", RuntimePromptInput(), self.context, self.turn_id, self._context_window_tokens)
             return self._model_prompt.request(self._projection_messages)
 
     def _responses_history(self):
@@ -1116,7 +1118,7 @@ class HostSessionRunner:
             failures.append(_failure("publication", error, committed=True))
         return index_status
 
-    def _prepare_model_prompt(self, effective_prompt, options, context, user_key):
+    def _prepare_model_prompt(self, effective_prompt, options, context, user_key, context_window_tokens=None):
         options = replace(options,
             host_timezone=options.host_timezone if options.host_timezone is not None else self.kit._timezone,
             host_time_format=options.host_time_format if options.host_time_format is not None else self.kit._time_format)
@@ -1128,6 +1130,7 @@ class HostSessionRunner:
             workspace_prompt=context.workspace.prompt_text, citations_mode=self.kit.memory.config.citation_mode,
             identity=self.kit._identity, now_ms=self._clock(), session_version=version, user_key=user_key,
             session_key=self.session.session_key, session_id=self.session.session_id,
+            context_window_tokens=context_window_tokens,
             history_events=select_visible_transcript_events(list(snapshot.events)) if snapshot else ())
         self.last_model_prompt = prompt
         return prompt
@@ -1196,20 +1199,34 @@ class HostSessionRunner:
             user.setdefault("timestamp", self._clock())
             user.setdefault("idempotencyKey", turn_id)
             prompt_owner = None
+            queued_append = {}
             if prompt_context is not None:
                 if not isinstance(user.get("content"), str):
                     raise TypeError("RuntimePromptInput requires the current prompt as string text")
-                prompt_owner = self._prepare_model_prompt(user["content"], prompt_context, context, turn_id)
+                prompt_owner = self._prepare_model_prompt(user["content"], prompt_context, context, turn_id, context_window_tokens)
                 if prompt_owner.prompt_submission.get("runtimeOnly"):
                     # A runtime-only event has no persisted source user whose
                     # idempotency identity could be carried to the model.
                     user.pop("idempotencyKey", None)
+                if prompt_context.history_replay is not None and not prompt_context.suppress_next_user_message_persistence:
+                    last_turn = continuation["instanceEntry"].get(_STATE, {}).get("lastTurnId")
+                    queued = trailing_user(continuation["visibleEvents"], last_turn)
+                    if queued and not prompt_owner.skip_submission and not prompt_owner.prompt_submission.get("runtimeOnly"):
+                        queued_append["expected_mutation_at"] = continuation["version"]["updatedAt"]
+                        previous = queued[0]["message"]
+                        prompt_owner.session_prompt = merge_queued_user_text(prompt_owner.session_prompt, previous)
+                        prompt_owner.model_prompt = merge_queued_user_text(prompt_owner.model_prompt, previous)
+                        origin = user.get("provenance")
+                        if not (isinstance(origin, Mapping) and origin.get("kind") == "internal_system" and
+                                str(origin.get("sourceTool", "")).lower() == "main_session_restart_recovery"):
+                            queued_append["detach_queued_user"] = queued[0]["id"]
                 user = {**user, "content": prompt_owner.session_prompt}
             skip = prompt_owner is not None and prompt_owner.skip_submission
             suppress = prompt_context is not None and prompt_context.suppress_next_user_message_persistence
             if not skip and not suppress:
                 saved = self.catalog.append_message(state.session_id, user, session_key=state.session_key,
-                    event_id=f"{turn_id}:user", now_ms=self._clock(), cwd=str(self.kit.memory.workspace.root))
+                    event_id=f"{turn_id}:user", now_ms=self._clock(), cwd=str(self.kit.memory.workspace.root),
+                    **queued_append)
                 appends.append(saved)
                 if not saved["appended"]:
                     raise RuntimeError("This request was already admitted; no model turn was repeated")
@@ -1230,7 +1247,7 @@ class HostSessionRunner:
                 prompt_owner.history_replay.prepare(projection_messages)
                 self._append_model_snapshot(prompt_owner)
             turn = HostTurn(self, turn_id, state, context, model_messages, trust,
-                projection_messages=projection_messages, model_prompt=prompt_owner)
+                projection_messages=projection_messages, model_prompt=prompt_owner, context_window_tokens=context_window_tokens)
             self._active_turn = turn
             phase = "model"
             try:

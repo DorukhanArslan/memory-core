@@ -9,6 +9,7 @@ import sqlite3
 import subprocess
 import tempfile
 
+from equivalence.compaction_active_history import branch_facts, build_cases as active_cases, source_text
 from equivalence.compaction_assembly_inputs import inputs
 from equivalence.heartbeat_runtime_bindings import REFERENCE_COMMIT
 from equivalence.model_runtime_authority import prepare_model_node_authority
@@ -26,6 +27,11 @@ SOURCE_OWNERS = (
     "packages/ai/src/providers/openai-responses.ts", "packages/ai/src/providers/openai-provider-client.ts",
     "packages/ai/src/transports/openai-responses-compaction-replay.ts", "packages/ai/src/transports/provider-compaction-replay.ts",
     "extensions/openai/index.ts", "extensions/memory-core/src/tools.ts", "extensions/memory-core/src/memory-read-tool.ts",
+)
+ACTIVE_SOURCE_OWNERS = (
+    "src/config/sessions/session-transcript-reconcile.ts", "src/agents/embedded-agent-runner/run/attempt-orphan-repair.ts",
+    "src/agents/embedded-agent-runner/run/attempt-prompt-helpers.ts", "src/agents/embedded-agent-runner/run/attempt-setup.ts",
+    "src/agents/embedded-agent-runner/tool-result-context-guard.ts", "src/agents/tool-result-limits.ts",
 )
 HARN = "dist/builtin-openclaw-D1Xfnzzr.mjs"
 SQL = "dist/session-accessor-CiKKTlbe.mjs"
@@ -51,11 +57,19 @@ def _artifact(root, recorded, original):
 
 
 def _rows(path, session_id):
+    from equivalence.prompt_runtime_context_evidence import _event_payload
     with sqlite3.connect(path.as_uri() + "?mode=ro&immutable=1", uri=True) as db:
-        rows = db.execute("SELECT seq,event_json,event_zstd FROM transcript_events WHERE session_id=? ORDER BY seq", (session_id,)).fetchall()
-    if not rows or any(i != seq or compressed is not None or not text for i, (seq, text, compressed) in enumerate(rows)):
+        db.row_factory = sqlite3.Row
+        rows = db.execute("SELECT seq,event_json,event_zstd,event_utf8_bytes FROM transcript_events WHERE session_id=? ORDER BY seq", (session_id,)).fetchall()
+    if not rows or any(row["seq"] != i for i, row in enumerate(rows)):
         raise ValueError("Unexpected physical original assembly transcript")
-    return [json.loads(text) for _, text, _ in rows]
+    events = []
+    for row in rows:
+        data = dict(row)
+        if data["event_zstd"] is not None:
+            data["event_zstd"] = {"type": "bytes", "hex": data["event_zstd"].hex()}
+        events.append(_event_payload(data))
+    return events
 
 
 def _facts(events, definition):
@@ -104,7 +118,7 @@ def _check_trace(directory, rows, phases, node, context_sha):
 
 
 def run_native(case, *, checkout: Path, runtime_root: Path, node: Path, evidence_directory: Path, runtime=None):
-    if case["input"] not in inputs().values():
+    if case["input"] not in inputs().values() and case not in active_cases():
         raise ValueError("Unreviewed context assembly configuration")
     root = runtime_root.resolve(strict=True)
     checkout = checkout.resolve(strict=True)
@@ -115,7 +129,7 @@ def run_native(case, *, checkout: Path, runtime_root: Path, node: Path, evidence
     node = node.resolve(strict=True)
     authority = prepare_model_node_authority(node)
     sources = []
-    for name in SOURCE_OWNERS:
+    for name in (*SOURCE_OWNERS, *(ACTIVE_SOURCE_OWNERS if "activeHistory" in case["input"] else ())):
         committed = subprocess.check_output(["git", "-C", str(checkout), "show", REFERENCE_COMMIT + ":" + name])
         if (checkout / name).read_bytes() != committed:
             raise ValueError("Changed assembly source owner: " + name)
@@ -167,7 +181,7 @@ def read_native(case, raw, recorded_root, retained_root, trace):
     original = Path(raw["directory"])
     record_base, retained = Path(recorded_root), Path(retained_root).resolve(strict=True)
     value = case["input"]
-    if (value not in inputs().values() or raw["driverSha256"] != digest(DRIVER.read_bytes())
+    if ((value not in inputs().values() and case not in active_cases()) or raw["driverSha256"] != digest(DRIVER.read_bytes())
             or raw["preloadSha256"] != digest(PRELOAD.read_bytes())):
         raise ValueError("Unrecognized original compaction authority")
     names = {"request.json", "seed.json", "reopen.json", "seed.sqlite", "reopen.sqlite", "loaded-modules.json",
@@ -177,7 +191,7 @@ def read_native(case, raw, recorded_root, retained_root, trace):
     files = {name: _artifact(retained, record_base, original / name) for name in names}
     if any(digest(files[name].read_bytes()) != expected for name, expected in raw["artifacts"].items()):
         raise ValueError("Original assembly evidence bytes changed")
-    if json.loads(files["request.json"].read_bytes()) != case or files["workspace/" + value["file"]["path"]].read_bytes() != value["file"]["text"].encode():
+    if json.loads(files["request.json"].read_bytes()) != case or files["workspace/" + value["file"]["path"]].read_bytes() != source_text(value).encode():
         raise ValueError("The original assembly did not use the declared common input")
     table = json.loads(files["loaded-modules.json"].read_bytes())
     if (digest(files["loaded-modules.json"].read_bytes()) != trace["moduleTableSha256"]
@@ -246,6 +260,18 @@ def read_native(case, raw, recorded_root, retained_root, trace):
     stage = {s["stage"]: s for s in stages if s["runId"] == "assembly-reopen"}
     if not {"session:loaded", "session:sanitized", "session:limited", "prompt:before", "stream:context", "session:after"} <= stage.keys():
         raise ValueError("Missing original context-preparation or transport-stage evidence")
+    if active := value.get("activeHistory"):
+        branch = branch_facts(before, active)
+        if (reopen["call"]["contextTokenBudget"] != active["contextTokenBudget"]
+                or not isinstance(seed.get("reconcile", {}).get("reconciledSessions"), int)):
+            raise ValueError("The original did not use the selected durable fork and model budget")
+        loaded = stage["session:loaded"]["messages"]
+        if (any(m.get("content") == active["inactive"] for m in loaded)
+                or [m.get("summary") for m in loaded if m["role"] == "compactionSummary"] !=
+                ([active["summary"]] if active["compact"] else [])):
+            raise ValueError("The embedded agent reopened the wrong durable branch")
+        return {"input": request["input"], "tool": seed["tool"]["details"], "branchBefore": branch, "branchAfter": branch_facts(after, active, reopened=True),
+                "retainedBefore": facts, "retainedAfter": kept}
     if len(stage["session:limited"]["messages"]) >= len(stage["session:loaded"]["messages"]):
         raise ValueError("Original history limit did not truncate the active transcript")
     visible = request["input"]

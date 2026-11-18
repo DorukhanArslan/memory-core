@@ -12,6 +12,7 @@ import subprocess
 import sys
 
 from equivalence.automation_job_state import wire
+from equivalence.compaction_active_history import branch_facts, source_text
 from memory_core.compaction_replay import ReplayModel
 from memory_core.config import MemoryConfig
 from memory_core.flags import FeatureFlags
@@ -67,7 +68,7 @@ async def drive(case, directory, phase):
     db_path = directory / "catalog.sqlite"
     if phase == "seed":
         workspace.mkdir()
-        (workspace / value["file"]["path"]).write_text(value["file"]["text"], encoding="utf8")
+        (workspace / value["file"]["path"]).write_text(source_text(value), encoding="utf8")
     elif not db_path.is_file():
         raise ValueError("The reopened SDK session must already exist")
     catalog = MemorySessionCatalog(db_path, clock_ms=lambda: clock)
@@ -110,11 +111,24 @@ async def drive(case, directory, phase):
                     raw["tool"] = turn.dispatch(call["id"], call["name"], call["arguments"])
             return HostModelResult()
         outcome = await runner.run_turn(prompt, execute=execute, prompt_context=options,
+                                        context_window_tokens=value.get("activeHistory", {}).get("contextTokenBudget"),
                                         request_id=f"assembly-{phase}-{index}")
         if not outcome.ready:
             raise ValueError(f"SDK {phase} failed: {outcome.failures}")
         raw["hostCalls"].append({"request": prompt, "ready": outcome.ready,
             "transcriptCommitted": outcome.transcript_committed, "turnId": outcome.turn_id})
+    if phase == "seed" and (active := value.get("activeHistory")):
+        events = catalog.read_transcript(value["sessionId"], session_key=value["sessionKey"]).events
+        head = next(e["id"] for e in reversed(events) if e.get("id") and e.get("type") == "message")
+        kept = next(e["id"] for e in events if e.get("message", {}).get("content") == "Recent turn")
+        for label in ("inactive", "recent"):
+            catalog.append_message(value["sessionId"], {"role": "user", "content": active[label], "timestamp": clock},
+                session_key=value["sessionKey"], event_id="assembly-branch-" + label, parent_id=head, now_ms=clock)
+        if active["compact"]:
+            catalog.append_events(value["sessionId"], [{"type": "compaction", "id": "assembly-compacted",
+                "parentId": "assembly-branch-recent", "timestamp": "2023-09-06T11:33:20.000Z",
+                "firstKeptEntryId": kept, "summary": active["summary"], "tokensBefore": 2000}],
+                session_key=value["sessionKey"], updated_at_ms=clock)
     return raw
 
 
@@ -175,12 +189,18 @@ def read_sdk(case, raw, recorded_root, retained_root):
         executions.append(result)
     before, after = [read_events(directory / name, value["sessionId"]) for name in ("seed.sqlite", "catalog.sqlite")]
     if (after[:len(before)] != before or len(after) <= len(before)
-            or (directory / "workspace" / value["file"]["path"]).read_text() != value["file"]["text"]):
+            or (directory / "workspace" / value["file"]["path"]).read_text() != source_text(value)):
         raise ValueError("The SDK did not reopen its durable seed state")
     facts = retained(after)
     if facts["result"]["details"] != executions[0]["tool"]:
         raise ValueError("Persisted tool result disagrees with the actual memory tool")
     stages = {r["stage"]: r["messages"] for r in executions[1]["stages"]}
+    if active := value.get("activeHistory"):
+        branch = branch_facts(before, active)
+        if after[-1].get("message", {}).get("responseId") != value["attemptResponseId"]:
+            raise ValueError("The SDK did not complete a model turn on the selected active branch")
+        return {"input": executions[1]["wireInput"], "tool": executions[0]["tool"], "branchBefore": branch, "branchAfter": branch_facts(after, active, reopened=True),
+                "retainedBefore": retained(before), "retainedAfter": facts}
     if len(stages["session:limited"]) >= len(stages["session:validated"]):
         raise ValueError("The SDK did not apply the configured history limit")
     if value["checkpointAfterUser"] == 0:

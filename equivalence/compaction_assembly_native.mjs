@@ -11,6 +11,7 @@ if (!["seed", "reopen"].includes(phase)) throw Error("Unknown assembly phase");
 const workspace = path.join(directory, "workspace"), agentDir = path.join(directory, "agent");
 const storePath = path.join(directory, "sessions.json"), tracePath = path.join(directory, "cache.jsonl");
 const scope = { sessionId: input.sessionId, sessionKey: input.sessionKey, agentId: "main", storePath };
+const active = input.activeHistory;
 const model = { ...input.model, id: phase === "seed" ? input.model.id : input.attemptModelId };
 const clock = phase === "seed" ? input.seedMs : input.attemptMs;
 const config = {
@@ -65,7 +66,7 @@ const user = text => ({ role: "user", content: text, timestamp: Date.now() });
 try {
   if (phase === "seed") {
     const filePath = path.join(workspace, input.file.path);
-    await fs.writeFile(filePath, input.file.text);
+    await fs.writeFile(filePath, active ? 'START ' + active.repeat.repeat(active.repeatCount) + ' END legacy file bytes.\n' : input.file.text);
     const history = [];
     for (const [index, text] of input.users.entries()) {
       history.push(user(text));
@@ -89,6 +90,19 @@ try {
       ...history.map((message, i) => ({ type: "message", id: "assembly-entry-" + i, parentId: i ? "assembly-entry-" + (i - 1) : null,
         timestamp: new Date(clock + i * 1000).toISOString(), message }))];
     await sessions.replaceTranscriptEvents(scope, raw.events);
+    if (active) {
+      const { t: SessionManager } = await imp("session-manager-a8MFS1Kk.mjs");
+      const manager = SessionManager.open(scope, workspace);
+      const origin = manager.getLeafId();
+      manager.appendMessage(user(active.inactive));
+      manager.branch(origin);
+      manager.appendMessage(user(active.recent));
+      if (active.compact) manager.appendCompaction(active.summary, "assembly-entry-2", 2000);
+      const reconcile = await imp("session-transcript-reconcile-CUGsfxWk.mjs");
+      await reconcile.i({agentId: "main", path: raw.databasePath});
+      raw.reconcile = await reconcile.n({agentId: "main", path: raw.databasePath, sessionIds: [input.sessionId]});
+      raw.events = sessions.loadTranscriptEventsSync(scope);
+    }
     raw.persisted = sessions.loadTranscriptEventsSync(scope);
   } else {
     raw.before = sessions.loadTranscriptEventsSync(scope);
@@ -118,7 +132,7 @@ try {
           agentDir, config, prompt: input.prompt, runtimeContextFragments: [], agentAccountId: "default",
           conversationRoutePeerId: "assembly-peer", chatType: "direct", timeoutMs: 30000, runId,
           provider: model.provider, modelId: model.id, model, authProfileStore: { version: 1, profiles: {} },
-          thinkLevel: "off", contextTokenBudget: model.contextWindow, disableToolSearch: true, disableTrajectory: true,
+          thinkLevel: "off", contextTokenBudget: active?.contextTokenBudget ?? model.contextWindow, disableToolSearch: true, disableTrajectory: true,
           disableMessageTool: true, promptMode: "minimal", trigger: "user", skillsSnapshot: { prompt: "", skills: [] } };
         raw.call = params;
         raw.result = await createHarness().runAttempt({ ...params, admittedRunContext: await admission.admit("embedded"),

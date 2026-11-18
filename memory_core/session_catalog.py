@@ -1018,6 +1018,7 @@ class MemorySessionCatalog:
         event_id: str | None = None, parent_id: Any = UNSET, now_ms: float | None = None,
         cwd: str | None = None, append_intent: str | None = None,
         expected_mutation_at: Any = UNSET, logging_config: LoggingConfig | None = None,
+        detach_queued_user: str | None = None,
     ) -> dict[str, Any]:
         """Append one ordinary JSON agent message in a single durable transaction.
 
@@ -1033,7 +1034,7 @@ class MemorySessionCatalog:
             return catalog.append_message(
                 session_id, message, session_key=session_key, event_id=event_id,
                 parent_id=parent_id, now_ms=now_ms, cwd=cwd, append_intent=append_intent,
-                expected_mutation_at=expected_mutation_at, logging_config=logging_config,
+                expected_mutation_at=expected_mutation_at, logging_config=logging_config, detach_queued_user=detach_queued_user,
             )
         if parent_id is not UNSET and parent_id is not None and not isinstance(parent_id, str):
             raise TypeError("parent_id must be a string, null, or omitted")
@@ -1110,6 +1111,22 @@ class MemorySessionCatalog:
                 insert({"type": "session", "version": 4, "id": session_id,
                         "timestamp": timestamp_ms_to_iso(clock), "cwd": cwd if cwd is not None else os.getcwd()})
             parent = resolve_message_append_parent(events, parent_id, append_intent)
+            if detach_queued_user is not None:
+                from memory_core.queued_user import trailing_user
+
+                candidate = trailing_user(select_visible_transcript_events(events))
+                if not candidate or candidate[0].get("id") != detach_queued_user:
+                    raise SqliteTranscriptMutationConflictError(session_id)
+                older, suffix = candidate
+                parent = older.get("parentId")
+                remapped = {}
+                for control in suffix:
+                    copy = {**control, "id": str(uuid4()), "parentId": parent, "timestamp": timestamp_ms_to_iso(clock)}
+                    if copy["type"] == "label" and copy.get("targetId") in remapped:
+                        copy["targetId"] = remapped[copy["targetId"]]
+                    dirty |= not can_forward_project_event(events, copy)
+                    insert(copy)
+                    remapped[control["id"]] = parent = copy["id"]
             event = {"type": "message", "id": identifier, "parentId": parent,
                      "timestamp": timestamp_ms_to_iso(now_ms if now_ms is not None else clock),
                      "message": persisted}

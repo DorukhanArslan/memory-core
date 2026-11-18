@@ -42,7 +42,7 @@ import time
 from datetime import UTC, datetime, timedelta, tzinfo
 from datetime import timezone as fixed_offset_zone
 from typing import Any, Literal
-from zoneinfo import ZoneInfo, ZoneInfoNotFoundError
+from zoneinfo import ZoneInfo
 
 from memory_core.bootstrap._js import js_trim, js_trim_end
 
@@ -105,10 +105,11 @@ def resolve_user_timezone(timezone: str, *, host_timezone: str | None = None) ->
         offset = _offset_time_zone(trimmed)
         if offset is not None:
             return trimmed, offset
-        try:
-            return trimmed, ZoneInfo(trimmed)
-        except (ZoneInfoNotFoundError, ValueError):
-            pass
+        from memory_core._icu_timezone import named_time_zone
+
+        zone = named_time_zone(trimmed)
+        if zone is not None:
+            return trimmed, zone
     if host_timezone is not None:
         return resolve_user_timezone(host_timezone)
     return "UTC", ZoneInfo("UTC")

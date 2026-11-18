@@ -80,13 +80,14 @@ def read_corpus(value):
 
     with TemporaryDirectory(prefix="heartbeat-corpus-") as temporary:
         root = Path(temporary)
-        relative = Path("agents/main/sessions/heartbeat.jsonl")
+        filename = "calendar.jsonl" if value.get("reopenDatetimeCorpus") else "heartbeat.jsonl"
+        relative = Path("agents/main/sessions", filename)
         path = root / relative
         path.parent.mkdir(parents=True)
         path.write_bytes(value["jsonl"].encode())
         ns = value["mtimeMs"] * 1_000_000
         os.utime(path, ns=(ns, ns))
-        file = SessionCorpusFile("sessions/main/heartbeat.jsonl", path, session_kind="unknown")
+        file = SessionCorpusFile(f"sessions/main/{filename}", path, session_kind="unknown")
         reads = []
         for _ in range(2):
             observed = []

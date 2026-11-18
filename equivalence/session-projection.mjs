@@ -11,8 +11,8 @@ export async function runSessionProjection(input, importReference) {
   const native = await importReference("packages/memory-host-sdk/src/host/session-files.ts");
   const directory = await fs.mkdtemp(path.join(os.tmpdir(), "memory-core-session-projection-"));
   try {
-    if (input.reopenHeartbeatCorpus) {
-      const relative = "agents/main/sessions/heartbeat.jsonl";
+    if (input.reopenHeartbeatCorpus || input.reopenDatetimeCorpus) {
+      const relative = input.reopenDatetimeCorpus ? "agents/main/sessions/calendar.jsonl" : "agents/main/sessions/heartbeat.jsonl";
       const filename = path.join(directory, relative);
       await fs.mkdir(path.dirname(filename), { recursive: true });
       await fs.writeFile(filename, input.jsonl, "utf8");

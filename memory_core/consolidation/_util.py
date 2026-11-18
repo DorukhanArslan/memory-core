@@ -12,11 +12,9 @@ import difflib
 import hashlib
 import math
 import os
-import re
 import secrets
 from datetime import UTC, datetime
 from decimal import ROUND_HALF_UP, Decimal
-from email.utils import parsedate_to_datetime
 from pathlib import Path
 from typing import Any
 
@@ -91,24 +89,11 @@ def iso_ms(now_ms: int) -> str:
     return dt.isoformat(timespec="milliseconds").replace("+00:00", "Z")
 
 
-# Date.parse accepts the English form emitted by Date.prototype.toUTCString.
-# Limit the email parser to this grammar so unrelated text retains its fallback.
-_UTC_DATE = re.compile(
-    r"(?:Mon|Tue|Wed|Thu|Fri|Sat|Sun), [0-9]{2} "
-    r"(?:Jan|Feb|Mar|Apr|May|Jun|Jul|Aug|Sep|Oct|Nov|Dec) [0-9]{4} "
-    r"[0-9]{2}:[0-9]{2}:[0-9]{2} GMT"
-)
-
-
 def parse_ms(value: str, fallback: int) -> int:
-    try:
-        if _UTC_DATE.fullmatch(value):
-            parsed = parsedate_to_datetime(value)
-        else:
-            parsed = datetime.fromisoformat(value.replace("Z", "+00:00"))
-        return int(parsed.timestamp() * 1000)
-    except ValueError:
-        return fallback
+    from memory_core._js_date import js_date_parse
+
+    parsed = js_date_parse(value)
+    return int(parsed) if math.isfinite(parsed) else fallback
 
 
 def parse_day_ms(value: str) -> int | None:

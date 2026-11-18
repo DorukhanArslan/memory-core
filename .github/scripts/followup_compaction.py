@@ -9,7 +9,7 @@ def _digest(data):
     return hashlib.sha256(data).hexdigest()
 
 
-def _actors(trace, table, folder, raw, executable, *, active_history=False):
+def _actors(trace, table, folder, raw, executable, *, active_history=False, queued_user=False):
     from equivalence.compaction_assembly_native import AI, DRIVER, HARN, SQL
 
     roots = {item["phase"]: item["pid"] for item in raw["launches"]}
@@ -24,6 +24,8 @@ def _actors(trace, table, folder, raw, executable, *, active_history=False):
         workers["seed"].update({"dist/config/sessions/session-transcript-reconcile.worker.js",
             "dist/infra/sqlite-store.worker.js", "dist/config/sessions/session-transcript.worker.js",
             "dist/config/sessions/session-accessor.sqlite-archive.worker.js"})
+    if queued_user:
+        workers["reopen"].add("dist/config/sessions/session-transcript-reconcile.worker.js")
     identities = {(entry["pid"], entry["threadId"]): entry for entry in trace["bootstraps"]}
     files = sorted(folder.glob("trace-*.jsonl"))
     if len(identities) != len(trace["bootstraps"]) or len(files) != len(identities):
@@ -85,7 +87,7 @@ def _replay(data, cases, args, runtime, *, expected, active_history):
     known = {(p["location"], f["path"]): f["sha256"] for p in runtime["packages"] for f in p["files"]}
     listed = {(f["package"], f["path"]): f["sha256"] for f in data["followupReleaseSources"]}
     owners = []
-    for name in original.SOURCE_OWNERS:
+    for name in (*original.SOURCE_OWNERS, *(original.ACTIVE_SOURCE_OWNERS if active_history else ())):
         committed = subprocess.run(["git", "show", REFERENCE_COMMIT + ":" + name], cwd=args.reference,
                                    capture_output=True, timeout=10, check=True).stdout
         if (args.reference / name).read_bytes() != committed:
@@ -140,7 +142,8 @@ def _replay(data, cases, args, runtime, *, expected, active_history):
                 verified = known.get(identity) == listed.get(identity) == item["sha256"]
             if not verified:
                 raise ValueError("Compaction imported an unverified module")
-        _actors(trace, table, native_dir, raw, raw["nodeRuntime"]["execPath"], active_history=active_history)
+        _actors(trace, table, native_dir, raw, raw["nodeRuntime"]["execPath"], active_history=active_history,
+                queued_user=active_history and not definition["input"]["activeHistory"]["compact"])
         n, s = family.replay(packet, root)
         if not wire(n) == wire(s) == wire(row["openclaw"]) == wire(row["python"]):
             raise ValueError("Compaction physical replay diverges from the declared full result")

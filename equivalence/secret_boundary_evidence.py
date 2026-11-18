@@ -38,7 +38,10 @@ def _read_child(record, request, coordinator):
     wire = record["requestJson"].encode()
     _require(record["request"] == json.loads(wire) == request
              and hashlib.sha256(wire).hexdigest() == record["requestSha256"], "SDK caller request changed")
-    _require(record["exit"] == {"code": 0, "signal": None}
+    # The memory tools' child records subprocess.returncode directly. The
+    # redaction and session children also store a separate signal field.
+    expected_exit = {"code": 0, "signal": None} if "operation" in request else {"code": 0}
+    _require(record["exit"] == expected_exit
              and int(record["finishedAtNs"]) > int(record["startedAtNs"]), "SDK child did not complete")
     packet = json.loads(record["stdout"])
     raw = packet["raw"]

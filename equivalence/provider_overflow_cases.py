@@ -7,7 +7,8 @@ import json
 REQUIREMENT = "compaction.provider-overflow"
 OPERATION = "provider-overflow-host-runtime"
 POINTS = (REQUIREMENT + ".outcomes", REQUIREMENT + ".boundaries")
-DIGEST = "77b7bd35784aae65eebd31c37fc1a47fb8a8c64a1d0de671bec0684b8dfe2160"
+INITIAL_SIX = "77b7bd35784aae65eebd31c37fc1a47fb8a8c64a1d0de671bec0684b8dfe2160"
+DIGEST = "01ada926fda02fa67ac56d666cfebe52900abe0015789403aedc8f3cfef493c1"
 NOW = 1_777_824_000_000
 ERROR = "Context length exceeded: requested 70000 tokens, maximum is 64000 tokens."
 
@@ -46,6 +47,8 @@ def _definitions():
                                  "prompt": "Reopen the orchard boundary. ", "promptRepeat": 4200,
                                  "sequence": []},
     }
+    inputs["canonical-recover"] = {**inputs["canonical-checkpoint"], "outerRecovery": True,
+                                   "sequence": [{"text": "Ready."}, {"text": "Ready."}, {"text": "Ready."}]}
     return [{"id": "provider-overflow-" + name, "requirement": REQUIREMENT, "operation": OPERATION,
              "covers": list(POINTS), "input": {**common, **value},
              "driverScope": "Pinned original embedded run with a real transcript, model transport, compaction, "
@@ -60,7 +63,7 @@ def _definitions():
 
 def build_cases():
     cases = _definitions()
-    if sha256(wire(cases)).hexdigest() != DIGEST:
+    if sha256(wire(cases[:-1])).hexdigest() != INITIAL_SIX or sha256(wire(cases)).hexdigest() != DIGEST:
         raise ValueError("The complete ordered provider overflow inputs changed")
     return cases
 

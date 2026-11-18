@@ -22,7 +22,7 @@ import tempfile
 import time
 from typing import Any, Callable
 
-from equivalence import flush_plan_target
+from equivalence import flush_plan_target, secret_boundary_evidence, secret_boundary_inputs
 from equivalence.workspace_case_families import FAMILIES as WORKSPACE_FAMILIES, evidence_family, prepare_bindings, report_key, sdk_validator
 
 
@@ -315,6 +315,7 @@ def _validate_scope(scope: Any, cases: Any) -> tuple[list[dict], dict[str, set[s
     from equivalence.heartbeat_turn_boundaries import validate_registration as validate_heartbeat_exclusions
     from equivalence.heartbeat_turn_outcomes import validate_registration as validate_heartbeat_outcomes
     try:
+        secret_boundary_evidence.validate_registration(cases)
         validate_numeric_registration(cases)
         validate_heartbeat_exclusions(cases)
         validate_heartbeat_outcomes(cases)
@@ -2128,7 +2129,7 @@ def run_suite(*, checkout: Path, node: Path, smoke: bool = False,
                     native_comparison = native["result"]
                     python_case = deepcopy(case)
                     if case in python_diagnostic_cases:
-                        if "trust.secret-redaction.boundaries" in case["covers"]:
+                        if secret_boundary_inputs.POINTS[0] in case["covers"]:
                             retained = ROOT / ".equivalence-results" / "secret-redaction"
                             retained.mkdir(parents=True, exist_ok=True)
                             directory = Path(tempfile.mkdtemp(prefix="sdk-attempt-", dir=retained))
@@ -2191,6 +2192,13 @@ def run_suite(*, checkout: Path, node: Path, smoke: bool = False,
                             snapshots = [snapshots]
                         if not isinstance(snapshots, list):
                             raise ValueError("Runtime diagnostics must retain raw snapshot rows.")
+                        if secret_boundary_inputs.POINTS[0] in case["covers"]:
+                            if len(snapshots) != 1:
+                                raise ValueError("The secret boundary caller requires one actual SDK capture")
+                            replayed, _ = secret_boundary_evidence.replay_sdk(case, snapshots[0], directory)
+                            if not _same_json(replayed, python):
+                                raise ValueError("SDK output differs from its reopened process and session")
+                            row.update(secretBoundaryEvidenceValidated=True, openclaw=native_comparison, python=python)
                         if case["operation"] in {"automation-job-outcomes-runtime", "compaction-assembly-restart-runtime"}:
                             if case["operation"] == "compaction-assembly-restart-runtime":
                                 from equivalence.compaction_assembly import review_pair
@@ -2594,6 +2602,8 @@ def run_suite(*, checkout: Path, node: Path, smoke: bool = False,
         report["promptHistoryRepairFamilyComplete"] = history_complete
         flush_plan_complete = flush_plan_target.family_complete(report["cases"])
         report["flushPlanTargetFamilyComplete"] = flush_plan_complete
+        secret_boundaries_complete = secret_boundary_evidence.family_complete(report["cases"])
+        report["secretRedactionBoundariesComplete"] = secret_boundaries_complete
         dream_points = {}
         for op, family in WORKSPACE_FAMILIES.items():
             complete = family.family_complete(report["cases"])
@@ -2681,6 +2691,7 @@ def run_suite(*, checkout: Path, node: Path, smoke: bool = False,
                                                       and (point["id"] != heartbeat_boundary or heartbeat_complete)
                                                       and (point["id"] != restart_point or restarts_complete)
                                                       and (point["id"] not in flush_plan_target.POINTS or flush_plan_complete)
+                                                      and (point["id"] not in secret_boundary_inputs.POINTS or secret_boundaries_complete)
                                                       and (point["id"] != heartbeat_outcome or heartbeat_outcomes)
                                                       and dream_points.get(point["id"], True)
                                                       and (point["id"] not in numeric_points or numeric_complete)

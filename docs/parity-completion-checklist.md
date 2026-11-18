@@ -25,10 +25,9 @@ kaynağının korunması 7/7 örnekte eşleşti. **84 → 90** hedefi için bu 1
 örnek önceki 1.500 örnekle birlikte çalıştırılıyor.
 [Genel karşılaştırma](https://github.com/DorukhanArslan/memory-core/actions/runs/44189169478) · [PR #30](https://github.com/DorukhanArslan/memory-core/pull/30)
 
-**Sonraki paketin hedefi +13 koşul.** Aşağıdaki 44 örnek kendi
-karşılaştırmalarında geçti. İki günlük yazma grubunun 14 örneği, değişiklikler
-birleştirildikten sonra da birlikte geçti. İlk paket 90'a ulaşırsa bu paketin
-hedefi **103/128**. Resmî puan genel karşılaştırmayla güncellenir.
+**Sonraki paketin hedefi +17 koşul.** Aşağıdaki 69 örnek kendi
+karşılaştırmalarında geçti. İlk paket 90'a ulaşırsa bu paketin hedefi
+**107/128**. Puan, tüm eski ve yeni örneklerin birlikte ölçülmesiyle güncellenir.
 
 | İş | İki sistemde denenen örnek | Eşleşme | Hedef artış |
 | --- | --- | ---: | ---: |
@@ -40,6 +39,9 @@ hedefi **103/128**. Resmî puan genel karşılaştırmayla güncellenir.
 | Zamanlanmış görevin sonucu | Başarısız denemeyi, yeniden deneme zamanını ve görevin geri yüklenmesini karşılaştır | 3/3 | +1 |
 | Otomatik yoklama | Normal konuşma not yazabilir. Otomatik yoklama yazmaz ve sonradan anı diye listelenmez | 4/4 | +1 |
 | Ortak nota yazma | İkinci yazar beklesin ve kapanan yazarın kilidi süre dolunca devralınsın | 7/7 | +2 |
+| Sohbeti yeniden açma | Son araç cevabı ve sohbet özeti, açılan sohbetin ilk model isteğine doğru sırayla girsin | 3/3 | +1 |
+| Bozuk bellek kaydını onarma | Bozulmuş arama kaydını düzelt. İkinci onarımda sağlam kaydı koru | 9/9 | +2 |
+| Notun kaydedileceği yeri seçme | Gün değiştiğinde doğru tarihli dosyayı seç. Hedef hazırlanamazsa modele istek gönderme | 13/13 | +1 |
 
 84/128, kabul koşullarının %65,6'sıdır; harcanan işin veya genel parity'nin
 %65,6'sı anlamına gelmez. **44 koşul ve 14 fark toplanmaz:** farklı ölçülerdir.

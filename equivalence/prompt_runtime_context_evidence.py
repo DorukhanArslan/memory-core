@@ -796,7 +796,7 @@ def validate_pair(case, native_raw, sdk_raw, native_public, sdk_public, sdk_dire
             "offered_tool_names": specification["tools"], "citations_mode": specification["citationsMode"],
             "timezone": specification.get("timezone"), "host_timezone": HOST_TIMEZONE,
             "host_time_format": HOST_TIME_FORMAT, "include_clock": specification["includeClock"],
-            "append_only_runtime_context": False, "tool_call_id_mode": "strict"},
+            "append_only_runtime_context": False, "tool_call_id_mode": "strict", "history_replay": None},
               "an actual SDK prompt owner input was rewritten")
         registered = operation["registeredTools"]
         _same(registered, sdk_raw["registeredTools"], "an actual SDK registered tool definition changed")

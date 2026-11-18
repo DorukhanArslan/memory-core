@@ -11,6 +11,8 @@ from followup_dreams import replay_dreams
 from followup_flush import replay_flush
 from equivalence import flush_plan_target
 from followup_heartbeat import HEARTBEAT_GATE, replay_heartbeat
+from followup_heartbeat_outcomes import replay_heartbeat_outcomes
+from equivalence import heartbeat_turn_outcomes
 from equivalence import heartbeat_turn_boundaries
 from equivalence import recovery_repair
 from followup_recovery import replay_recovery
@@ -21,6 +23,7 @@ from followup_locks import replay_locks
 FAMILIES = {
     flush_plan_target.OPERATION: (flush_plan_target, "flushPlanTargetFamilyComplete", replay_flush),
     recovery_repair.REQUIREMENT: (recovery_repair, "recoveryRepairFamilyComplete", replay_recovery),
+    heartbeat_turn_outcomes.OPERATION: (heartbeat_turn_outcomes, "heartbeatTurnOutcomesComplete", replay_heartbeat_outcomes),
     HEARTBEAT_GATE: (heartbeat_turn_boundaries, "heartbeatExclusionsComplete", replay_heartbeat),
     dream_light.OPERATION: (dream_light, "dreamLightFamilyComplete", replay_dreams),
     dream_rem.OPERATION: (dream_rem, "dreamRemFamilyComplete", replay_dreams),

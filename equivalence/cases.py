@@ -386,6 +386,11 @@ def build_cases(*, include_prospective: bool = False) -> list[dict[str, Any]]:
     from equivalence.secret_boundary_inputs import build_cases as build_secret_boundaries
 
     cases.extend(build_secret_boundaries())
+
+    from equivalence.configured_redaction import build_cases as build_configured_redaction
+
+    cases.extend(build_configured_redaction())
+
     if include_prospective:
         from equivalence.flush_contract import build_prospective_flush_contract_cases
         from equivalence.session_projection import build_prospective_session_projection_cases
@@ -627,6 +632,10 @@ def run_python(case: dict[str, Any]) -> Any:
             return run_model_sessions(arguments, evidence_directory=case.get("_diagnosticDirectory"), retain_database=True)
         runner = {"redaction-policy-source": run_redaction_policy, "model-session-runtime": run_model_sessions,
                   "model-tool-result-runtime": run_model_tool_result}[operation]
+        from equivalence.configured_redaction import IDS as configured_ids
+
+        if case["id"] == configured_ids[1]:
+            return run_model_sessions(arguments, evidence_directory=case.get("_diagnosticDirectory"), retain_phase_images=True)
         return runner(arguments, evidence_directory=case.get("_diagnosticDirectory"))
     if operation == "trust-worker-runtime":
         from equivalence.trust_worker_profile import run_trust_worker

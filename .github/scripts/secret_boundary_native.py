@@ -63,8 +63,7 @@ def _source(case, public, record, reference, node):
             "originalCalls": len(frame["calls"]), "straddlingInnocuousMarkerVisible": "BOUNDARY-1234" in masked}
 
 
-def _runtime_actors(trace, node, adapters, runtime, release_sources):
-    carriers = trace["secretBoundaryTransport"]["rawProcessWorkerTraces"]
+def runtime_actors(trace, carriers, node, adapters, runtime, release_sources):
     allowed = {(p["location"], f["path"]): f["sha256"] for p in runtime["packages"] for f in p["files"]}
     actual = {(p["package"], p["path"]): p["sha256"] for p in release_sources}
     require(len(release_sources) == len(actual), "Duplicate actual released source")
@@ -162,7 +161,8 @@ def check_native(case, public, *, source_policy=None, native=None, trace=None, r
     snapshots = _json(raw.decode("utf-8"))
     require(native["nativeRawBytes"] == len(raw) and native["sha256"] == digest(raw)
             and _same_json(snapshots, native["rawSnapshots"]), "Changed native capture")
-    actors = _runtime_actors(trace, executable, adapters, release_runtime, release_sources)
+    actors = runtime_actors(trace, trace["secretBoundaryTransport"]["rawProcessWorkerTraces"],
+                            executable, adapters, release_runtime, release_sources)
     record, = snapshots
     owner = validate_model_session_raw if case["id"] == SESSION_ID else validate_model_tool_error_raw
     owner(row, case, snapshots, Path(record["fixtureBase"]).parent, runtime_root=release_runtime["runtimeRoot"], **actors)

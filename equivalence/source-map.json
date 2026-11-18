@@ -640,7 +640,7 @@
           "path": "memory_core/host/kit.py",
           "symbol": "HostKit",
           "anchor": "class HostKit:",
-          "line": 214
+          "line": 215
         },
         {
           "path": "memory_core/index/embedding_limits.py",
@@ -2552,7 +2552,7 @@
           "path": "memory_core/host/kit.py",
           "symbol": "HostKit.__init__",
           "anchor": "    def __init__(",
-          "line": 224
+          "line": 225
         },
         {
           "path": "memory_core/tools/memory_search.py",
@@ -3843,7 +3843,7 @@
           "path": "memory_core/host/kit.py",
           "symbol": "on_new_session",
           "anchor": "def on_new_session(",
-          "line": 766
+          "line": 767
         }
       ],
       "implementation": "partial",
@@ -4707,7 +4707,7 @@
           "path": "memory_core/host/kit.py",
           "symbol": "HostKit.prepare_flush",
           "anchor": "    def prepare_flush(",
-          "line": 616
+          "line": 617
         },
         {
           "path": "memory_core/memory_flush.py",
@@ -4743,7 +4743,7 @@
           "path": "memory_core/host/kit.py",
           "symbol": "after_turn",
           "anchor": "def after_turn(",
-          "line": 566
+          "line": 567
         }
       ],
       "implementation": "present",
@@ -5899,7 +5899,7 @@
           "path": "memory_core/host/kit.py",
           "symbol": "HostKit.after_turn",
           "anchor": "    def after_turn(",
-          "line": 566
+          "line": 567
         },
         {
           "path": "memory_core/turn_trust.py",
@@ -6041,25 +6041,25 @@
           "path": "memory_core/heartbeat.py",
           "symbol": "resolve_heartbeat_preflight",
           "anchor": "def resolve_heartbeat_preflight(",
-          "line": 842
+          "line": 843
         },
         {
           "path": "memory_core/heartbeat.py",
           "symbol": "build_heartbeat_run_prompt",
           "anchor": "def build_heartbeat_run_prompt(",
-          "line": 882
+          "line": 886
         },
         {
           "path": "memory_core/heartbeat.py",
           "symbol": "decide_heartbeat_reply",
           "anchor": "def decide_heartbeat_reply(",
-          "line": 713
+          "line": 714
         },
         {
           "path": "memory_core/host/heartbeat_run.py",
           "symbol": "HeartbeatRun",
           "anchor": "class HeartbeatRun:",
-          "line": 59
+          "line": 72
         },
         {
           "path": "memory_core/session_corpus.py",
@@ -6135,7 +6135,7 @@
           "path": "memory_core/host/kit.py",
           "symbol": "HostKit.heartbeat_task_prompt",
           "anchor": "    def heartbeat_task_prompt(",
-          "line": 873
+          "line": 887
         },
         {
           "path": "memory_core/automation_schedule.py",
@@ -6147,7 +6147,7 @@
           "path": "memory_core/host/kit.py",
           "symbol": "run_heartbeat_task",
           "anchor": "def run_heartbeat_task(",
-          "line": 896
+          "line": 910
         },
         {
           "path": "memory_core/consolidation/dreaming_automation.py",
@@ -6340,7 +6340,7 @@
           "path": "memory_core/host/kit.py",
           "symbol": "HostKit.after_turn",
           "anchor": "    def after_turn(",
-          "line": 566
+          "line": 567
         },
         {
           "path": "memory_core/index/sqlite_store.py",
@@ -6619,7 +6619,7 @@
           "path": "memory_core/host/kit.py",
           "symbol": "HostKit.after_turn",
           "anchor": "    def after_turn(",
-          "line": 566
+          "line": 567
         },
         {
           "path": "demo/lab_chat.py",
@@ -6718,7 +6718,7 @@
           "path": "memory_core/host/kit.py",
           "symbol": "HostKit.on_new_session",
           "anchor": "    def on_new_session(",
-          "line": 766
+          "line": 767
         },
         {
           "path": "demo/lab_runtime.py",
@@ -6817,7 +6817,7 @@
           "path": "memory_core/host/kit.py",
           "symbol": "HostKit.dispatcher",
           "anchor": "    def dispatcher(",
-          "line": 427
+          "line": 428
         },
         {
           "path": "memory_core/live/__init__.py",

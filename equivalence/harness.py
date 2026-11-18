@@ -310,11 +310,12 @@ def _validate_scope(scope: Any, cases: Any) -> tuple[list[dict], dict[str, set[s
     from equivalence.automation_job_outcomes import validate_registration as validate_job_outcomes
     from equivalence.automation_job_state import validate_registration as validate_jobs_registration
     from equivalence.engine_numeric_family import validate_registration as validate_numeric_registration
+    from equivalence.heartbeat_turn_boundaries import validate_registration as validate_heartbeat_exclusions
+    from equivalence.heartbeat_turn_outcomes import validate_registration as validate_heartbeat_outcomes
     try:
-        from equivalence.heartbeat_turn_boundaries import validate_registration as validate_heartbeat_exclusions
-
         validate_numeric_registration(cases)
         validate_heartbeat_exclusions(cases)
+        validate_heartbeat_outcomes(cases)
         validate_jobs_registration(cases)
         validate_job_outcomes(cases)
     except (ValueError, KeyError, TypeError) as error:
@@ -455,6 +456,21 @@ def _oracle(node: Path, script: Path, checkout: Path, cases: list[dict], timeout
             return run_original(cases[0], node, checkout, release_runtime, attempt)
         except Exception as error:
             failure = HarnessError("automation-job-outcomes-evidence-invalid", str(error))
+            failure.rejected_evidence = {"caseIds": [cases[0]["id"]], "coverageCredit": False,
+                                         "retainedDirectory": str(attempt), "reason": str(error)}
+            raise failure from error
+    if len(cases) == 1 and cases[0]["operation"] == "heartbeat-turn-outcomes-runtime":
+        from equivalence.heartbeat_turn_outcomes_replay import run_original
+
+        if release_runtime is None:
+            raise HarnessError("release-runtime-unavailable", "Heartbeat outcome runs require the pinned release.")
+        retained = ROOT / ".equivalence-results" / "heartbeat-turn-outcomes"
+        retained.mkdir(parents=True, exist_ok=True)
+        attempt = Path(tempfile.mkdtemp(prefix="native-attempt-", dir=retained))
+        try:
+            return run_original(cases[0], node, checkout, release_runtime, attempt)
+        except Exception as error:
+            failure = HarnessError("heartbeat-outcomes-evidence-invalid", str(error))
             failure.rejected_evidence = {"caseIds": [cases[0]["id"]], "coverageCredit": False,
                                          "retainedDirectory": str(attempt), "reason": str(error)}
             raise failure from error
@@ -1356,6 +1372,7 @@ def run_suite(*, checkout: Path, node: Path, smoke: bool = False,
             "prompt-history-repair-runtime",
             *DREAM_FAMILIES,
             "embed-cache-lifecycle-runtime", "automation-job-state-runtime", "automation-job-outcomes-runtime",
+            "heartbeat-turn-outcomes-runtime",
         }
         runtime_cases = [case for case in cases if case["operation"] in runtime_operations]
         source_cases = [case for case in cases if case["operation"] not in runtime_operations]
@@ -2065,11 +2082,12 @@ def run_suite(*, checkout: Path, node: Path, smoke: bool = False,
                     native_comparison = native["result"]
                     python_case = deepcopy(case)
                     if case in python_diagnostic_cases:
-                        if case["operation"] in {"automation-job-outcomes-runtime", "workspace-lock-process-runtime", "automation-job-state-runtime", "index-identity-boundaries-runtime", "query-sync-outcomes-runtime", "query-sync-boundaries-runtime", "forget-lineage-runtime", "forget-boundaries-runtime", "recall-signals-runtime", "embed-cache-lifecycle-runtime", "session-reset-boundaries-runtime", "prompt-runtime-context-runtime", "prompt-history-repair-runtime", "deep-consolidation-runtime", *DREAM_FAMILIES}:
+                        if case["operation"] in {"heartbeat-turn-outcomes-runtime", "automation-job-outcomes-runtime", "workspace-lock-process-runtime", "automation-job-state-runtime", "index-identity-boundaries-runtime", "query-sync-outcomes-runtime", "query-sync-boundaries-runtime", "forget-lineage-runtime", "forget-boundaries-runtime", "recall-signals-runtime", "embed-cache-lifecycle-runtime", "session-reset-boundaries-runtime", "prompt-runtime-context-runtime", "prompt-history-repair-runtime", "deep-consolidation-runtime", *DREAM_FAMILIES}:
                             # Keep the original child paths and bytes for the post-run
                             # semantic replay, including failed SDK captures.
                             family = ("deep-consolidation" if case["operation"] == "deep-consolidation-runtime" else
                                       evidence_family(case["operation"]) if case["operation"] in DREAM_FAMILIES else
+                                      "heartbeat-turn-outcomes" if case["operation"] == "heartbeat-turn-outcomes-runtime" else
                                       "automation-job-outcomes" if case["operation"] == "automation-job-outcomes-runtime" else
                                       "automation-job-state" if case["operation"] == "automation-job-state-runtime" else
                                       "workspace-locks" if case["operation"] == "workspace-lock-process-runtime" else
@@ -2127,6 +2145,15 @@ def run_suite(*, checkout: Path, node: Path, smoke: bool = False,
                                             if d["side"] == "native" and d["id"] == case["id"])
                             native_comparison, python = review_pair(case, native_comparison, python, original,
                                 hashlib.sha256(raw).hexdigest(), directory, report["implementation"])
+                            row.update(runtimeEvidenceValidated=True, openclaw=native_comparison, python=python,
+                                       sdkEvidenceDirectory=str(directory))
+                        if case["operation"] == "heartbeat-turn-outcomes-runtime":
+                            from equivalence.heartbeat_turn_outcomes_replay import review_pair
+
+                            original = next(d for d in report["runtimeDiagnostics"]
+                                            if d["side"] == "native" and d["id"] == case["id"])
+                            review_pair(case, original, native_comparison, python, directory, hashlib.sha256(raw).hexdigest(),
+                                        report["implementation"])
                             row.update(runtimeEvidenceValidated=True, openclaw=native_comparison, python=python,
                                        sdkEvidenceDirectory=str(directory))
                         if case["operation"] == "automation-job-state-runtime":
@@ -2520,6 +2547,10 @@ def run_suite(*, checkout: Path, node: Path, smoke: bool = False,
 
         heartbeat_complete = heartbeat_exclusions_complete(report["cases"])
         report["heartbeatExclusionsComplete"] = heartbeat_complete
+        from equivalence.heartbeat_turn_outcomes import family_complete as heartbeat_outcomes_complete, POINT as heartbeat_outcome
+
+        heartbeat_outcomes = heartbeat_outcomes_complete(report["cases"])
+        report["heartbeatTurnOutcomesComplete"] = heartbeat_outcomes
         numeric_complete = numeric_family_complete(report["cases"])
         report["engineNumericFamilyComplete"] = numeric_complete
 
@@ -2585,6 +2616,7 @@ def run_suite(*, checkout: Path, node: Path, smoke: bool = False,
                                                       and (point["id"] != jobs_point or jobs_complete)
                                                       and (point["id"] != job_outcome_point or outcomes_complete)
                                                       and (point["id"] != heartbeat_boundary or heartbeat_complete)
+                                                      and (point["id"] != heartbeat_outcome or heartbeat_outcomes)
                                                       and dream_points.get(point["id"], True)
                                                       and (point["id"] not in numeric_points or numeric_complete)
                                                       and (point["id"] not in deep_points or deep_complete)

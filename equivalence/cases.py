@@ -349,8 +349,10 @@ def build_cases(*, include_prospective: bool = False) -> list[dict[str, Any]]:
     cases.extend(build_automation_outcomes())
 
     from equivalence.heartbeat_turn_boundaries import build_cases as build_heartbeat_exclusions
+    from equivalence.heartbeat_turn_outcomes import build_cases as build_heartbeat_outcomes
 
     cases.extend(build_heartbeat_exclusions())
+    cases.extend(build_heartbeat_outcomes())
     if include_prospective:
         from equivalence.flush_contract import build_prospective_flush_contract_cases
         from equivalence.session_projection import build_prospective_session_projection_cases
@@ -376,8 +378,11 @@ def run_python(case: dict[str, Any]) -> Any:
             with TemporaryDirectory() as temp:
                 return run_job_outcomes(exact, Path(temp))
         return run_job_outcomes(exact, directory)
-    if operation == "automation-job-state-runtime":
-        from equivalence.automation_job_state_sdk import run_sdk
+    if operation in {"automation-job-state-runtime", "heartbeat-turn-outcomes-runtime"}:
+        if operation == "heartbeat-turn-outcomes-runtime":
+            from equivalence.heartbeat_turn_outcomes_sdk import run_sdk
+        else:
+            from equivalence.automation_job_state_sdk import run_sdk
 
         case = dict(case)
         diagnostic = case.pop("_diagnosticDirectory", None)

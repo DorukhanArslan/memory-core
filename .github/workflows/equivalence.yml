@@ -165,6 +165,7 @@ jobs:
             .equivalence-results/query-sync-outcomes/sdk-attempt-*/sdk-query-sync-*/tool-*-envelope.json
             .equivalence-results/automation-job-state/**
             .equivalence-results/automation-job-outcomes/**
+            .equivalence-results/heartbeat-turn-outcomes/**
             .equivalence-results/query-sync-cold-retry/**
             .equivalence-results/next-turn-notice/**
             .equivalence-results/query-sync-boundaries-acceptance/**

@@ -55,6 +55,7 @@ from memory_core.current_time import DEFAULT_TIME_FORMAT, TimeFormat, resolve_ti
 from memory_core.curation import CurationPolicy, MemoryCurator
 from memory_core.embeddings.base import EmbeddingProvider
 from memory_core.heartbeat import prepare_heartbeat_turn, resolve_message_text
+from memory_core.heartbeat_events import HeartbeatSystemEvent
 from memory_core.heartbeat_scratch import resolve_heartbeat_store_scratch
 from memory_core.host._calls import ToolCallRefused, read_tool_call, tool_error
 from memory_core.host.flush import FlushRequest
@@ -850,6 +851,13 @@ class HostKit:
         offer_tools: bool = True,
         schedule_now_ms: int | None = None,
         ensure: bool = True,
+        every: str | None = None,
+        main_queue_size: int = 0,
+        pending_events: Sequence[HeartbeatSystemEvent] = (),
+        can_relay_to_user: bool = False,
+        scheduled_every_ms: int | None = None,
+        prompt: str | None = None,
+        use_response_tool: bool = False,
     ) -> HeartbeatRun:
         """Prepare one heartbeat run the host's scheduler decided to start now.
 
@@ -859,7 +867,10 @@ class HostKit:
         monitor scratch (its ``Current time:`` line uses the kit clock). Unless the turn is
         skipped, the context is :meth:`before_turn` with run kind ``heartbeat`` (upstream runs
         heartbeats in the main session under that run kind), ``offer_tools`` and ``ensure``
-        (``False`` for a preview that never completes the run: no workspace write). Tool calls of
+        (``False`` for a preview that never completes the run: no workspace write). For host-owned
+        queues pass their main-lane size, selected session occurrences and any scheduled cadence.
+        The run can dispatch the host model and transport. On completion remove only the returned
+        occurrence IDs from that session. Tool calls of
         the run go through :meth:`dispatch` with ``run.session``.
         """
         agent_id = self._memory.config.agent_id
@@ -868,6 +879,9 @@ class HostKit:
         return self._prepare_heartbeat_run(
             session, due=due, started_at=started_at, source=source, reason=reason, context_mode=context_mode,
             runtime_context=runtime_context, offer_tools=offer_tools, ensure=ensure,
+            every=every, main_queue_size=main_queue_size, pending_events=pending_events,
+            can_relay_to_user=can_relay_to_user, scheduled_every_ms=scheduled_every_ms,
+            prompt=prompt, use_response_tool=use_response_tool,
         )
 
     def heartbeat_task_prompt(
@@ -935,6 +949,13 @@ class HostKit:
         source: str | None, reason: str | None, context_mode: BootstrapContextMode,
         runtime_context: str | None, offer_tools: bool, ensure: bool,
         scheduled_wake: ScheduledHeartbeatWake | None = None,
+        every: str | None = None,
+        main_queue_size: int = 0,
+        pending_events: Sequence[HeartbeatSystemEvent] = (),
+        can_relay_to_user: bool = False,
+        scheduled_every_ms: int | None = None,
+        prompt: str | None = None,
+        use_response_tool: bool = False,
     ) -> HeartbeatRun:
         agent_id = self._memory.config.agent_id
         store = self._automation_store
@@ -943,7 +964,9 @@ class HostKit:
             now_ms=self._clock(),
             scratch=scratch,
             scheduled_tasks=heartbeat_scheduled_tasks(due),
-            source=source,
+            source=source, every=every, main_queue_size=main_queue_size,
+            pending_events=pending_events, can_relay_to_user=can_relay_to_user,
+            scheduled_every_ms=scheduled_every_ms, prompt=prompt, use_response_tool=use_response_tool,
             reason=reason,
             timezone=self._timezone,
             time_format=self._time_format,

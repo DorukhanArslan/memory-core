@@ -17,6 +17,17 @@ OTHER_PUBLISHERS = {
     "consolidation": ("deep-consolidation-concurrent-edit", "dream-deep-report-publication-failure"),
     "diary": ("dream-diary-publisher-failure",),
 }
+DEPENDENCY_SHA256 = {
+    'publication-commit-failure-reader-snapshot': 'c73939fab1468a2e5162cc286de334fd52c2dd70045ba2b4f5cb5f54583ea3e3',
+    'publication-post-commit-failure': '036938a280d58f1bc3d47aabd05b68ed427dd67a8bda889efc363d49267aa2d9',
+    'flush-execution-cancel-before-write': 'b4282e2df3421240297bc8763f6e8d6038f472de67e3a7cd0e1245dcbe0f3fec',
+    'flush-execution-cancel-after-write': '9a3fbb83f3b493546c176d44594967a5bde118a2cbd1b0d178cbbe0dfec03287',
+    'storage.atomic-writes.temp-file-fsync-eio': '267a123ed0a7afbd06972ee2efe85803f3fb3b1d73b07affccecf67b1e02065e',
+    'storage.atomic-writes.rename-mutates-then-rejects': '407a01622c2bab12832f14ff836e844208310a59f4f5a6ed9126c7abd941bc37',
+    'deep-consolidation-concurrent-edit': 'dca9c810666db373f9b97946bb50789fd5554af91be43754cb7d4966c7ab3de3',
+    'dream-diary-publisher-failure': '3d6bbccafb7912f2cbddf1694db36efd6e6e2262ce30d4d0b696b8cfba969cd9',
+    'dream-deep-report-publication-failure': '5a2f5a37a6f1e0408eccd822260053d3594052261859eac2a3276d4b3e41a5a2',
+}
 MEMORY = ("# Notes\n\n<!-- openclaw-memory-promotion:key-a -->\n- A saved shell collection.\n"
           "<!-- openclaw-memory-promotion:key-b -->\n- B owns the workshop.\n")
 OPS = ["seed", "arm", "forget", "reopen", "disarm", "retry", "reopen", "repeat"]
@@ -66,7 +77,12 @@ def family_complete(rows):
             return False
         for ident in [r["id"] for r in _own(rows)] + [ident for group in OTHER_PUBLISHERS.values() for ident in group]:
             row = seen[ident]
-            if row.get("status") != "matched" or canonical(row["openclaw"]) != canonical(row["python"]):
+            if row.get("status") != "matched":
+                return False
+            if "openclaw" in row and canonical(row["openclaw"]) != canonical(row["python"]):
+                return False
+            if ident in DEPENDENCY_SHA256 and sha256(canonical({k:row[k] for k in
+                    ("id","requirement","operation","input","covers")})).hexdigest()!=DEPENDENCY_SHA256[ident]:
                 return False
             if row["operation"] != "index-publication" and row.get("referenceMode") != "authenticated-official-release":
                 return False

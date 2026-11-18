@@ -20,6 +20,7 @@ headers = {
 metadata = json.load(
     urllib.request.urlopen(urllib.request.Request(api, headers=headers), timeout=30)
 )
+assert metadata["name"] == "memory-contract-remainder-summary"
 assert metadata["workflow_run"]["id"] == int(os.environ["GITHUB_RUN_ID"])
 assert metadata["workflow_run"]["head_sha"] == os.environ["GITHUB_SHA"]
 assert metadata["digest"].split(":")[-1] == expected
@@ -40,8 +41,9 @@ except urllib.error.HTTPError as error:
     assert urlsplit(target).scheme == "https"
     response = urllib.request.urlopen(target, timeout=30)
 with response:
-    archive = response.read(1000001)
-assert len(archive) == metadata["size_in_bytes"] and len(archive) <= 1000000
+    archive_limit = 1_440_000
+    archive = response.read(archive_limit + 1)
+assert len(archive) == metadata["size_in_bytes"] and 0 < len(archive) <= archive_limit
 assert hashlib.sha256(archive).hexdigest() == expected
 part = int(os.environ["REPORT_PART"])
 assert 0 <= part < 16

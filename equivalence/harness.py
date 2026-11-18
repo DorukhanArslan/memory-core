@@ -20,6 +20,7 @@ import subprocess
 import sys
 import tempfile
 import time
+import traceback
 from typing import Any, Callable
 
 from equivalence import flush_plan_target, secret_boundary_evidence, secret_boundary_inputs
@@ -3250,6 +3251,26 @@ def run_suite(*, checkout: Path, node: Path, smoke: bool = False,
             # Diagnostics only: successful trace/source/coverage fields stay
             # empty and the validator rejection remains a blocked report.
             report.setdefault("rejectedRuntimeEvidence", []).append(error.rejected_evidence)
+        if "failedReferenceCaseId" in report:
+            cause = error.__cause__ or error
+            frames = [frame for frame in traceback.extract_tb(cause.__traceback__)
+                      if Path(frame.filename).is_relative_to(ROOT / "equivalence")]
+            report["referenceFailure"] = {
+                "caseId": report["failedReferenceCaseId"], "code": error.code,
+                "exception": type(cause).__name__,
+                "guards": [{"path": str(Path(frame.filename).relative_to(ROOT)), "line": frame.lineno,
+                            "statement": (frame.line or "")[:240]} for frame in frames[-2:]],
+            }
+            # Only publish a cause string when an owned guard spells it out. Runtime
+            # substitutions may be numbers; model output and subprocess streams stay raw.
+            reason = str(cause)
+            if len(reason) <= 240 and "\n" not in reason and reason:
+                normalized = re.sub(r"[0-9]+", "#", reason)
+                for frame in frames[-2:]:
+                    template = re.sub(r"\{[A-Za-z_]\w*\}|[0-9]+", "#", frame.line or "")
+                    if f'"{normalized}"' in template or f"'{normalized}'" in template:
+                        report["referenceFailure"]["reason"] = reason
+                        break
     except Exception:
         report["errors"].append({"code": "harness-failed", "message": "The acceptance harness could not complete."})
     finally:

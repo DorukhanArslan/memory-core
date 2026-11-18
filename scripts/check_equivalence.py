@@ -52,6 +52,7 @@ def main() -> int:
         return 2
     print(json.dumps({"mode": report["mode"], "status": report["status"],
                       "summary": report.get("summary", {}), "errors": report["errors"],
+                      **({"referenceFailure": report["referenceFailure"]} if "referenceFailure" in report else {}),
                       "mismatchedCaseIds": [row["id"] for row in report.get("cases", [])
                                             if row.get("status") == "mismatched"],
                       "blockedCaseIds": [row["id"] for row in report.get("cases", [])

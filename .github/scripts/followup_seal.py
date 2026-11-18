@@ -1,4 +1,4 @@
-"""Source identities are filled only after approval of the preceding hosted measurement."""
+"""Pin the accepted baseline separately from the catalog of the intervening blocked run."""
 import re
 
 
@@ -21,7 +21,10 @@ def check_seal():
             and isinstance(PREVIOUS_COMPARISON, dict) and type(PREVIOUS_COMPARISON.get("runId")) is int
             and type(PREVIOUS_COMPARISON.get("verified")) is int
             and isinstance(PREVIOUS_COMPARISON.get("familyGates"), dict)
-            and len(PREVIOUS_COMPARISON["familyGates"]) == 17
+            and PREVIOUS_COMPARISON["runId"] == 44137396647
+            and PREVIOUS_COMPARISON["verified"] == 84
+            and PREVIOUS_COMPARISON.get("registeredCases") == 1500
+            and len(PREVIOUS_COMPARISON["familyGates"]) == 14
             and all(type(v) is bool for v in PREVIOUS_COMPARISON["familyGates"].values())
             and all(isinstance(PREVIOUS_COMPARISON.get(k), str) and re.fullmatch("[0-9a-f]{64}", PREVIOUS_COMPARISON[k])
                     for k in ("reportSha256", "assessmentSha256", "warmFlushNativeSha256"))):

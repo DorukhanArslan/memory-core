@@ -1644,9 +1644,11 @@ def assess(args, result):
     result["comparisonProcess"] = process
     public = {row["id"]: row.get("publicValueSha256") for row in data["cases"]}
     require(set(PREVIOUS_MISMATCH_PUBLIC_SHA256) <= set(public), "A previous mismatch case disappeared")
-    prior_gates = {name: value for name, value in metrics["families"].items() if name not in FAMILIES}
-    require(len(prior_gates) == 17 and _same_json(prior_gates, PREVIOUS_COMPARISON["familyGates"]),
-            "The earlier seventeen family gates differ from their retained assessment")
+    earlier = PREVIOUS_COMPARISON["familyGates"]
+    newly_measured = {"prompt-history-repair-runtime", "engine.numeric-boundaries", "deep-consolidation-runtime"}
+    require(set(metrics["families"]) == set(earlier) | newly_measured | set(FAMILIES)
+            and all(metrics["families"][name] is passed for name, passed in earlier.items()),
+            "The fourteen previously accepted family gates differ from their retained assessment")
     previous_hashes = dict(PREVIOUS_MISMATCH_PUBLIC_SHA256)
     previous_hashes["flush-execution-warm-index-first-recall"] = {
         **previous_hashes["flush-execution-warm-index-first-recall"],

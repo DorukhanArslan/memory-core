@@ -30,7 +30,8 @@ edilen ölçüm **84/128**.
 
 **Birleşik hedef 84 → 108, toplam +24 koşul.** Yukarıdaki 19 örnek altı
 koşulu kapsıyor. Aşağıdaki 73 örnek kendi karşılaştırmalarında geçti ve 18
-koşulu kapsıyor. Genel ölçümde önceki sohbet örneklerinin de geçmesi gerekiyor.
+koşulu kapsıyor. Düzeltilen 10 eski ve 8 yeni sohbet örneği birlikte geçti.
+1.592 örneğin tümünü içeren [genel karşılaştırma](https://github.com/DorukhanArslan/memory-core/actions/runs/44206756377) başladı.
 
 | İş | İki sistemde denenen örnek | Eşleşme | Hedef artış |
 | --- | --- | ---: | ---: |
@@ -41,7 +42,7 @@ koşulu kapsıyor. Genel ölçümde önceki sohbet örneklerinin de geçmesi ger
 | Zamanlanmış görevin sınırları | Zamanı gelince güncel notu oku ve yeniden başlatınca aynı işi tekrarlama | 1/1, yedi adım | +1 |
 | Zamanlanmış görevin sonucu | Başarısız denemeyi, yeniden deneme zamanını ve görevin geri yüklenmesini karşılaştır | 3/3 | +1 |
 | Otomatik yoklama | Normal konuşma not yazabilir. Otomatik yoklama yazmaz ve sonradan anı diye listelenmez | 4/4 | +1 |
-| Otomatik bildirimin teslimi | Aynı uyarıyı iki kez gönderme. Sessiz saatte bekle ve yeni uyarıyı izin verilen hedefe ilet | 4/4 | +1 |
+| Otomatik bildirimin teslimi | Aynı uyarıyı iki kez gönderme. Kontrol bildirilecek bir şey bulmadığında sessiz kal | 4/4 | +1 |
 | Ortak nota yazma | İkinci yazar beklesin ve kapanan yazarın kilidi süre dolunca devralınsın | 7/7 | +2 |
 | Sohbeti yeniden açma | Son araç cevabı ve sohbet özeti, açılan sohbetin ilk model isteğine doğru sırayla girsin | 3/3 | +1 |
 | Bozuk bellek kaydını onarma | Bozulmuş arama kaydını düzelt. İkinci onarımda sağlam kaydı koru | 9/9 | +2 |

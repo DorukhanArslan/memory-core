@@ -28,6 +28,17 @@ if (context.dreamPhaseProfile !== undefined) {
     throw Error("Unapproved dreaming process authority");
   }
 }
+if (context.flushPlanTargetProfile !== undefined) {
+  const profile = context.flushPlanTargetProfile;
+  if (!profile || Object.keys(profile).sort().join() !== "caseId,inputSha256,nodeRuntime,operation" ||
+      profile.operation !== "flush-plan-target-runtime" || !profile.caseId?.startsWith("flush-plan-target-") ||
+      !/^[a-f0-9]{64}$/.test(profile.inputSha256) ||
+      JSON.stringify(profile.nodeRuntime) !== JSON.stringify(context.approvedNodeRuntime) ||
+      Object.keys(context).some(k => k.endsWith("Profile") && k !== "flushPlanTargetProfile") ||
+      (context.fixtureSourceCaptures ?? []).length !== 1 || (context.approvedReferenceSources ?? []).length) {
+    throw Error("Unapproved automatic flush plan process authority");
+  }
+}
 const historyMode = context.promptHistoryRepairProfile !== undefined;
 const expectedProviderMode = embeddingMode ? "deterministic-embedding-fixture" : "none";
 if (context.schemaVersion !== 1 || context.providerMode !== expectedProviderMode || context.fetchPolicy !== "deny") {
@@ -349,6 +360,7 @@ trace({ event: "bootstrap", isMainThread, ppid: process.ppid, contextSha256: has
         ...(context.promotionApplyProfile ? { promotionApplyProfile: context.promotionApplyProfile } : {}),
         ...(context.forgetLineageProfile ? { forgetLineageProfile: context.forgetLineageProfile } : {}),
         ...(context.forgetBoundariesProfile ? { forgetBoundariesProfile: context.forgetBoundariesProfile } : {}),
+        ...(context.flushPlanTargetProfile ? {flushPlanTargetProfile: context.flushPlanTargetProfile} : {}),
         ...(context.dreamPhaseProfile ? {dreamPhaseProfile: context.dreamPhaseProfile} : {}),
         ...(context.recallSignalsProfile ? { recallSignalsProfile: context.recallSignalsProfile } : {}),
         ...(context.sessionResetBoundariesProfile ? { sessionResetBoundariesProfile: context.sessionResetBoundariesProfile } : {}),

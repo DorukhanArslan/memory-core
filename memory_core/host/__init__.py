@@ -20,6 +20,10 @@ from memory_core.host.kit import (
 from memory_core.host.lifecycle import (
     HostModelResult,
     HostSessionRunner,
+    FlushModelExecutor,
+    FlushModelRoute,
+    FlushModelSelection,
+    FlushModelUnavailable,
     HostTurn,
     HostTurnFailure,
     HostTurnOutcome,
@@ -33,6 +37,10 @@ from memory_core.history_replay import HistoryReplayContext
 __all__ = [
     "DEFAULT_CONTEXT_WINDOW_TOKENS",
     "MINIMAL_PROMPT_KINDS",
+    "FlushModelExecutor",
+    "FlushModelRoute",
+    "FlushModelSelection",
+    "FlushModelUnavailable",
     "FlushOutcome",
     "FlushRequest",
     "HeartbeatOutcome",

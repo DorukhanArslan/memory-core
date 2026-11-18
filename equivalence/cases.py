@@ -362,6 +362,10 @@ def build_cases(*, include_prospective: bool = False) -> list[dict[str, Any]]:
     from equivalence.recovery_repair import build_cases as build_repair_cases
 
     cases.extend(build_repair_cases())
+
+    from equivalence.flush_plan_target import build_cases as build_flush_plan_targets
+
+    cases.extend(build_flush_plan_targets())
     if include_prospective:
         from equivalence.flush_contract import build_prospective_flush_contract_cases
         from equivalence.session_projection import build_prospective_session_projection_cases
@@ -676,6 +680,12 @@ def run_python(case: dict[str, Any]) -> Any:
         from equivalence.flush_runtime import run_flush_runtime
 
         return run_flush_runtime(arguments, evidence_directory=case.get("_diagnosticDirectory"))
+    if operation == "flush-plan-target-runtime":
+        from equivalence.flush_plan_target_sdk import run_sdk
+
+        registered = dict(case)
+        directory = registered.pop("_diagnosticDirectory", None)
+        return run_sdk(registered, directory)
     if operation == "flush-execution-runtime":
         from equivalence.flush_execution import run_flush_execution
 

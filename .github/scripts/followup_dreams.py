@@ -8,7 +8,8 @@ import re
 from equivalence.dream_light_bindings import prepare_dream_light_bindings
 from equivalence.dream_light_evidence import validate_dream_light_native
 from equivalence.dream_light_sdk_evidence import validate_sdk
-from equivalence.dream_phase_family import FAMILIES, PHASES, evidence_family, report_key
+from equivalence.dream_phase_family import FAMILIES, PHASES
+from equivalence.workspace_case_families import evidence_family, report_key
 from equivalence.harness import ROOT, _adapter_identity, _json, _same_json
 from equivalence.model_runtime_authority import prepare_model_node_authority
 from equivalence.promotion_ranking_bindings import PROMOTION_WORKER_ROUTE
@@ -57,9 +58,13 @@ def capture(diagnostic, case_id, side, family_root, used_paths):
 def loaded_sources(case, trace, raw, profile, runtime, adapters, global_sources):
     operation = case["operation"]
     transport = trace[report_key(operation, "Transport")]
+    index_repair = operation == "recovery-index-repair-runtime"
+    worker_count = trace["protectedWorkerThreads"] if index_repair else 1
+    require(type(worker_count) is int and worker_count >= 1, "Invalid protected worker count")
+    worker_routes = []
     require(trace["id"] == case["id"] and trace["kind"] == "authenticated-process-thread-trace"
             and trace["networkFetchDenied"] is True and trace["provider"] == "none"
-            and trace["protectedWorkerThreads"] == 1 and len(transport["traceFiles"]) == 2
+            and trace["protectedWorkerThreads"] == worker_count and len(transport["traceFiles"]) == worker_count+1
             and _same_json(transport["profile"], profile), "Dreaming process profile or SQLite worker changed")
     files, bootstraps, locals_loaded = {}, [], set()
     observed_contexts = set()
@@ -71,6 +76,10 @@ def loaded_sources(case, trace, raw, profile, runtime, adapters, global_sources)
         events = [_json(row.decode("utf-8")) for row in stream.splitlines()]
         first = events[0]
         thread = first["threadId"]
+        if operation == "recovery-artifact-repair-runtime" and not bootstraps:
+            require(type(first["pid"]) is int and first["pid"]>0 and type(first["ppid"]) is int and first["ppid"]>0,
+                    "Missing original recovery process identity")
+            raw = dict(raw, pid=first["pid"], ppid=first["ppid"])
         is_main = first["isMainThread"]
         require(first["event"] == "bootstrap" and type(is_main) is bool and type(thread) is int
                 and thread >= 0 and is_main == (thread == 0) and thread not in seen_threads
@@ -112,7 +121,10 @@ def loaded_sources(case, trace, raw, profile, runtime, adapters, global_sources)
                 if not is_main and key[0] == "node_modules/openclaw":
                     worker_paths.add(key[1])
         if not is_main:
-            require(set(PROMOTION_WORKER_ROUTE) <= worker_paths, "Missing original SQLite worker in dreaming trace")
+            if index_repair:
+                worker_routes.append(worker_paths)
+            else:
+                require(set(PROMOTION_WORKER_ROUTE) <= worker_paths, "Missing original SQLite worker in dreaming trace")
     entry_module = "dist/dreaming-phases-rmgXNBLP.mjs"
     drivers = {"release-oracle.mjs", "dream-light-runtime.mjs"}
     if operation == "dream-rem-runtime":
@@ -123,6 +135,18 @@ def loaded_sources(case, trace, raw, profile, runtime, adapters, global_sources)
     elif operation == "dream-deep-runtime":
         drivers.add("dream-deep-runtime.mjs")
         entry_module = "dist/extensions/memory-core/index.js"
+    elif operation == "recovery-artifact-repair-runtime":
+        drivers.add("recovery-artifact-repair-runtime.mjs")
+        entry_module = "dist/dreaming-state-VYUvbU-n.mjs"
+    elif index_repair:
+        drivers = {"release-oracle.mjs", "recovery-index-repair-runtime.mjs", "entry-provenance-runtime.mjs"}
+        entry_module = "dist/extensions/memory-core/manager-runtime.js"
+        required_routes = [set(PROMOTION_WORKER_ROUTE), {"dist/extensions/memory-core/memory-index.worker.js"},
+                           {"dist/extensions/memory-core/memory-publication.worker.js"},
+                           {"dist/state/openclaw-agent-execution.worker.js"}]
+        require(all(any(route <= worker for worker in worker_routes) for route in required_routes)
+                and all(any(route <= worker for route in required_routes) for worker in worker_routes),
+                "Missing or unreviewed original index recovery worker")
     require(0 in seen_threads and len(observed_contexts) == 1 and _same_json(bootstraps, trace["threads"])
             and len(files) == trace["loadedReleaseFiles"] and drivers <= locals_loaded,
             "Dreaming traces disagree with their case receipt")

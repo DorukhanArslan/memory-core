@@ -12,12 +12,15 @@ from followup_flush import replay_flush
 from equivalence import flush_plan_target
 from followup_heartbeat import HEARTBEAT_GATE, replay_heartbeat
 from equivalence import heartbeat_turn_boundaries
+from equivalence import recovery_repair
+from followup_recovery import replay_recovery
 from followup_jobs import replay_jobs
 from followup_locks import replay_locks
 
 
 FAMILIES = {
     flush_plan_target.OPERATION: (flush_plan_target, "flushPlanTargetFamilyComplete", replay_flush),
+    recovery_repair.REQUIREMENT: (recovery_repair, "recoveryRepairFamilyComplete", replay_recovery),
     HEARTBEAT_GATE: (heartbeat_turn_boundaries, "heartbeatExclusionsComplete", replay_heartbeat),
     dream_light.OPERATION: (dream_light, "dreamLightFamilyComplete", replay_dreams),
     dream_rem.OPERATION: (dream_rem, "dreamRemFamilyComplete", replay_dreams),
@@ -29,10 +32,13 @@ FAMILIES = {
     workspace_lock_cases.OPERATION: (workspace_lock_cases, "workspaceLockFamilyComplete", replay_locks),
 }
 REPORT_FIELDS = {field for _, field, _ in FAMILIES.values()} | {
+    "recoveryArtifactBindings", "recoveryArtifactNode", "recoveryIndexBindings", "recoveryIndexNode",
     "heartbeatCorpusSourceImports", "flushExecutionBindings", "flushPlanTargetNode", "dreamLightBindings", "dreamLightNode", "dreamRemBindings", "dreamRemNode", "dreamDiaryBindings", "dreamDiaryNode", "dreamDeepBindings", "dreamDeepNode", "workspaceLockBindings"}
 
 
 def family_key(case):
+    if case["operation"] in {recovery_repair.ARTIFACT, recovery_repair.INDEX}:
+        return recovery_repair.REQUIREMENT
     if HEARTBEAT_GATE in case.get("covers", ()):
         return HEARTBEAT_GATE
     return case["operation"]

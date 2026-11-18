@@ -397,6 +397,7 @@ class MidTurnPrecheckOptions:
     get_system_prompt: Callable[[], str | None] | None = None
     get_pre_prompt_message_count: Callable[[], int | float | None] | None = None
     on_mid_turn_precheck: Callable[[MidTurnPrecheckRequest], None] | None = None
+    observe_decision: Callable[[PreemptiveCompactionDecision], None] | None = None
 
 
 def _js_clamp_fence(length: int, last_seen: int | float | None, fallback: Callable[[], Any] | None) -> int | float:
@@ -454,6 +455,8 @@ class ToolResultContextGuard:
                     reserve_tokens=options.reserve_tokens(),
                     tool_result_max_chars=options.tool_result_max_chars,
                 )
+                if options.observe_decision is not None:
+                    options.observe_decision(precheck)
                 request = to_mid_turn_precheck_request(precheck)
                 if self._log_debug is not None:
                     self._log_debug(

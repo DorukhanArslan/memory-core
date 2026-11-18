@@ -311,11 +311,13 @@ def _validate_scope(scope: Any, cases: Any) -> tuple[list[dict], dict[str, set[s
     from equivalence.compaction_assembly import validate_registration as validate_compaction_restarts
     from equivalence.automation_job_outcomes import validate_registration as validate_job_outcomes
     from equivalence.automation_job_state import validate_registration as validate_jobs_registration
+    from equivalence.datetime_regex_family import validate_registration as validate_datetime_registration
     from equivalence.engine_numeric_family import validate_registration as validate_numeric_registration
     from equivalence.heartbeat_turn_boundaries import validate_registration as validate_heartbeat_exclusions
     from equivalence.heartbeat_turn_outcomes import validate_registration as validate_heartbeat_outcomes
     try:
         validate_numeric_registration(cases)
+        validate_datetime_registration(cases)
         validate_heartbeat_exclusions(cases)
         validate_heartbeat_outcomes(cases)
         validate_jobs_registration(cases)
@@ -2442,6 +2444,8 @@ def run_suite(*, checkout: Path, node: Path, smoke: bool = False,
         heartbeat_source_imports = oracle.get("heartbeatCorpusSourceImports", {})
         if heartbeat_source_imports:
             report["heartbeatCorpusSourceImports"] = heartbeat_source_imports
+        if oracle.get("datetimeSourceImports"):
+            report["datetimeSourceImports"] = oracle["datetimeSourceImports"]
         numeric_source_imports = oracle.get("numericSourceImports", {})
         if numeric_source_imports:
             report["numericSourceImports"] = numeric_source_imports
@@ -2905,6 +2909,12 @@ def run_suite(*, checkout: Path, node: Path, smoke: bool = False,
                                 "id": case["id"], "side": "python", "sha256": hashlib.sha256(raw).hexdigest(),
                                 "rawSnapshots": snapshots,
                             })
+                    if case["requirement"] == "engine.datetime-regex":
+                        from equivalence.datetime_regex_evidence import validate_pair as validate_datetime_pair
+
+                        row.update(openclaw=native_comparison, python=python)
+                        validate_datetime_pair(case, report, native_comparison, python)
+                        row["datetimeRegexValidated"] = True
                     if case["requirement"] == "engine.numeric-boundaries" and case["operation"] == "promotion-ranking-runtime":
                         from equivalence.engine_numeric_rank import validate_numeric_rank
 
@@ -2936,6 +2946,8 @@ def run_suite(*, checkout: Path, node: Path, smoke: bool = False,
                         row.update(operation=case["operation"], input=case["input"],
                                    python=python, openclaw=native_comparison)
                 except Exception as error:
+                    if case["requirement"] == "engine.datetime-regex":
+                        row["evidenceError"] = {"name": type(error).__name__, "message": str(error)}
                     if case["requirement"] == "engine.numeric-boundaries":
                         row["numericError"] = {"type": type(error).__name__, "message": str(error)}
                     row.update(status="blocked", code="python-case-failed")
@@ -3026,6 +3038,9 @@ def run_suite(*, checkout: Path, node: Path, smoke: bool = False,
 
         heartbeat_outcomes = heartbeat_outcomes_complete(report["cases"])
         report["heartbeatTurnOutcomesComplete"] = heartbeat_outcomes
+        from equivalence.datetime_regex_family import POINTS as datetime_points, family_complete as datetime_family_complete
+        datetime_complete = datetime_family_complete(report["cases"])
+        report["datetimeRegexFamilyComplete"] = datetime_complete
         numeric_complete = numeric_family_complete(report["cases"])
         report["engineNumericFamilyComplete"] = numeric_complete
 
@@ -3107,6 +3122,7 @@ def run_suite(*, checkout: Path, node: Path, smoke: bool = False,
                                                       and (point["id"] not in flush_plan_target.POINTS or flush_plan_complete)
                                                       and (point["id"] != heartbeat_outcome or heartbeat_outcomes)
                                                       and dream_points.get(point["id"], True)
+                                                      and (point["id"] not in datetime_points or datetime_complete)
                                                       and (point["id"] not in numeric_points or numeric_complete)
                                                       and (point["id"] not in deep_points or deep_complete)
                                                       and (point["id"] not in lock_points or locks_complete)]})

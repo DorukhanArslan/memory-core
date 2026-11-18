@@ -34,7 +34,9 @@ PRE_INTERRUPTION_CASES = 1592
 PRE_INTERRUPTION_CATALOG_SHA256 = "d0a2b6324abc29306c635f600a46f2105b8c02585f39d9aa88e87100fddab030"
 PRE_ACTIVE_HISTORY_CASES = 1594
 PRE_ACTIVE_HISTORY_CATALOG_SHA256 = "86783a5b594ff4b07e14df34015ed96b2b9648500e132460841b96c7fc115880"
-REGISTERED_CASES = 1597
+PRE_DATETIME_CASES = 1597
+PRE_DATETIME_CATALOG_SHA256 = "fd5f81e5f1223d6b257d4281c23aec9c816d85908133eab5e4255f7035267293"
+REGISTERED_CASES = 1602
 
 # PR22 changes these three policy texts, not the thirteen cases' business inputs,
 # order, coverage or other fields. Reversing only the exact reviewed fragments
@@ -126,7 +128,7 @@ def definition_authority(cases, *, fif_version):
                                   BOUNDARY_REGISTERED_CASES, RECALL_REGISTERED_CASES,
                                   CACHE_REGISTERED_CASES, RESET_REGISTERED_CASES, PROMPT_REGISTERED_CASES,
                                   HISTORY_REGISTERED_CASES, NUMERIC_REGISTERED_CASES, DEEP_REGISTERED_CASES, PRE_RECOVERY_CASES, PRE_FLUSH_PLAN_CASES,
-                                  PRE_HEARTBEAT_OUTCOME_CASES, PRE_INTERRUPTION_CASES, PRE_ACTIVE_HISTORY_CASES, REGISTERED_CASES}
+                                  PRE_HEARTBEAT_OUTCOME_CASES, PRE_INTERRUPTION_CASES, PRE_ACTIVE_HISTORY_CASES, PRE_DATETIME_CASES, REGISTERED_CASES}
             or fif_version == "v5" and len(cases) != HISTORICAL_REGISTERED_CASES):
         raise ValueError("Catalog migration requires one complete exact registered definition set")
     frozen = families[fif_version]
@@ -233,6 +235,11 @@ def definition_authority(cases, *, fif_version):
         if len(cases) > PRE_ACTIVE_HISTORY_CASES:
             from equivalence.compaction_active_history import build_cases as build_active_history
             expected.extend(build_active_history())
+        if len(cases) >= PRE_DATETIME_CASES and _sha(cases[:PRE_DATETIME_CASES]) != PRE_DATETIME_CATALOG_SHA256:
+            raise ValueError("The first 1597 case definitions changed")
+        if len(cases) > PRE_DATETIME_CASES:
+            from equivalence.datetime_regex_family import build_cases as build_date_regex_cases
+            expected.extend(build_date_regex_cases())
         if _sha(cases[:DEEP_REGISTERED_CASES]) != DEEP_CATALOG_SHA256 or _sha(maintenance) != _sha(expected):
             raise ValueError("Maintenance cases must follow the exact prior 1519 definitions")
     frozen.validate_registration(cases)

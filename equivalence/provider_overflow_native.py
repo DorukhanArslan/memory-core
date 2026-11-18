@@ -8,6 +8,7 @@ from pathlib import Path
 import re
 import sqlite3
 import subprocess
+import sys
 import tempfile
 from contextlib import closing
 from hashlib import sha256
@@ -52,7 +53,11 @@ def _file(directory, name):
 
 
 def _rows(database, session):
-    from zstandard import ZstdDecompressor
+    if sys.version_info >= (3, 14):
+        from compression.zstd import ZstdFile as open_zstd
+    else:
+        from zstandard import ZstdDecompressor
+        open_zstd = ZstdDecompressor().stream_reader
 
     with closing(sqlite3.connect(database.as_uri() + "?mode=ro&immutable=1", uri=True)) as connection:
         values = connection.execute(
@@ -63,7 +68,7 @@ def _rows(database, session):
         if seq != index or (text is None) == (compressed is None):
             raise ValueError("Original transcript has missing or ambiguous physical rows")
         if compressed is not None:
-            with ZstdDecompressor().stream_reader(io.BytesIO(compressed)) as stream:
+            with open_zstd(io.BytesIO(compressed)) as stream:
                 text = stream.read(8 * 1024 * 1024 + 1)
             if len(text) > 8 * 1024 * 1024:
                 raise ValueError("Unexpectedly large original transcript event")

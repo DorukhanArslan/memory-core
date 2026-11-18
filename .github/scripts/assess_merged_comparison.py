@@ -1556,6 +1556,25 @@ def assess(args, result):
                        load(ROOT / "equivalence/reference.json"))), "The pinned release, executable or source tree changed")
     require(data["paidProviderCalls"] == 0 and data["providerCredentialsForwarded"] is False, "Unexpected provider access")
     metrics = recompute(data, definitions, load(ROOT / "equivalence/scope.json")["requirements"])
+    # Keep the second review reproducible without duplicating every literal input
+    # or requiring reviewers to download the original process captures.
+    compact_rows = []
+    observed_definitions = []
+    for row, definition in zip(data["cases"], definitions, strict=True):
+        observed = {key: row[key] for key in definition if key in row}
+        observed_definitions.append(observed)
+        receipt = {key: value for key, value in row.items()
+                   if key in {"id", "status", "publicValueSha256"} or key.endswith("EvidenceValidated")}
+        omitted = sorted(definition.keys() - observed.keys())
+        if omitted:
+            receipt["omittedDefinitionFields"] = omitted
+        compact_rows.append(receipt)
+    result["projection"].update(
+        cases=compact_rows, requirements=data["requirements"],
+        observedDefinitionsSha256=hashlib.sha256(canonical(observed_definitions)).hexdigest(),
+        casesSha256=data["casesSha256"], errors=data["errors"], kind=data["kind"],
+        catalogFamilyGates={key: value for key, value in data.items()
+                            if key.endswith("Complete") and type(value) is bool})
     replay_sha = digest(args.fif_replay)
     replay = load(args.fif_replay)
     fif_ids = [case["id"] for case in definitions if case["operation"] == "forget-index-fence-v6-runtime"]

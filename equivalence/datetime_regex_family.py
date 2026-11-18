@@ -105,7 +105,13 @@ def family_complete(cases):
 
 def run_clock(arguments):
     from datetime import UTC, datetime, timedelta
-    from memory_core.current_time import append_cron_style_current_time_line, format_user_time, resolve_cron_style_now, resolve_user_timezone, utc_and_local_instants
+    from memory_core.current_time import (
+        append_cron_style_current_time_line,
+        format_user_time,
+        resolve_cron_style_now,
+        resolve_user_timezone,
+        utc_and_local_instants,
+    )
     epoch = datetime(1970, 1, 1, tzinfo=UTC)
     observations = []
     for instant in arguments["instants"]:

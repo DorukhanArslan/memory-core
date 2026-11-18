@@ -1214,6 +1214,7 @@ class HostSessionRunner:
             user.setdefault("idempotencyKey", turn_id)
             prompt_owner = None
             queued_append = {}
+            queued_history = None
             if prompt_context is not None:
                 if not isinstance(user.get("content"), str):
                     raise TypeError("RuntimePromptInput requires the current prompt as string text")
@@ -1227,6 +1228,7 @@ class HostSessionRunner:
                     queued = trailing_user(continuation["visibleEvents"], last_turn)
                     if queued and not prompt_owner.skip_submission and not prompt_owner.prompt_submission.get("runtimeOnly"):
                         queued_append["expected_mutation_at"] = continuation["version"]["updatedAt"]
+                        queued_history = continuation["visibleEvents"]
                         previous = queued[0]["message"]
                         prompt_owner.session_prompt = merge_queued_user_text(prompt_owner.session_prompt, previous)
                         prompt_owner.model_prompt = merge_queued_user_text(prompt_owner.model_prompt, previous)
@@ -1234,18 +1236,25 @@ class HostSessionRunner:
                         if not (isinstance(origin, Mapping) and origin.get("kind") == "internal_system" and
                                 str(origin.get("sourceTool", "")).lower() == "main_session_restart_recovery"):
                             queued_append["detach_queued_user"] = queued[0]["id"]
+                            queued_history = queued_history[:-(1 + len(queued[1]))]
                 user = {**user, "content": prompt_owner.session_prompt}
             from memory_core.host.provider_overflow import ProviderTurnExecutor
             if isinstance(execute, ProviderTurnExecutor) and not (prompt_owner is not None and prompt_owner.skip_submission):
                 if prompt_owner is None:
                     prompt_owner = self._prepare_model_prompt(user["content"], RuntimePromptInput(), context, turn_id)
-                preflight = await execute.prepare_admission(self, state, turn_id, user["content"], prompt_owner.system_prompt)
+                preflight, checkpoints = await execute.prepare_admission(
+                    self, state, turn_id, user["content"], prompt_owner.system_prompt, queued_history=queued_history
+                )
                 if preflight.skip_prompt_submission:
                     prior = self.catalog.read_continuation(state.session_id, session_key=state.session_key)
                     execute._emit("terminal", {"kind":"precheck","text":None})
                     failures.append(_failure("precheck", preflight.prompt_error or RuntimeError("Preflight skipped the provider request")))
                     return HostTurnOutcome(turn_id, state, tuple(prior["llmMessages"]), (), (), False, False,
                                            "not-run", tuple(failures))
+                if checkpoints:
+                    if self._cancel_requested.is_set():
+                        raise RuntimeError("The provider turn was cancelled before publishing recovery")
+                    queued_append["admission_compactions"] = checkpoints
             skip = prompt_owner is not None and prompt_owner.skip_submission
             suppress = prompt_context is not None and prompt_context.suppress_next_user_message_persistence
             if not skip and not suppress:
@@ -1255,6 +1264,9 @@ class HostSessionRunner:
                 appends.append(saved)
                 if not saved["appended"]:
                     raise RuntimeError("This request was already admitted; no model turn was repeated")
+                for checkpoint in queued_append.get("admission_compactions", ()):
+                    execute._emit("compacted", {"firstKeptEntryId": checkpoint["firstKeptEntryId"],
+                                                "summary": checkpoint["summary"]})
             accepted = True
             capture.accepted = True
             self._persist(state, needs_index=True, turn_id=turn_id, index_scope="transcript")

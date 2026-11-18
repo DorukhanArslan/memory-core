@@ -1036,7 +1036,7 @@ class MemorySessionCatalog:
         event_id: str | None = None, parent_id: Any = UNSET, now_ms: float | None = None,
         cwd: str | None = None, append_intent: str | None = None,
         expected_mutation_at: Any = UNSET, logging_config: LoggingConfig | None = None,
-        detach_queued_user: str | None = None,
+        detach_queued_user: str | None = None, admission_compactions: Sequence[Mapping[str, Any]] = (),
     ) -> dict[str, Any]:
         """Append one ordinary JSON agent message in a single durable transaction.
 
@@ -1053,6 +1053,7 @@ class MemorySessionCatalog:
                 session_id, message, session_key=session_key, event_id=event_id,
                 parent_id=parent_id, now_ms=now_ms, cwd=cwd, append_intent=append_intent,
                 expected_mutation_at=expected_mutation_at, logging_config=logging_config, detach_queued_user=detach_queued_user,
+                admission_compactions=admission_compactions,
             )
         if parent_id is not UNSET and parent_id is not None and not isinstance(parent_id, str):
             raise TypeError("parent_id must be a string, null, or omitted")
@@ -1129,6 +1130,7 @@ class MemorySessionCatalog:
                 insert({"type": "session", "version": 4, "id": session_id,
                         "timestamp": timestamp_ms_to_iso(clock), "cwd": cwd if cwd is not None else os.getcwd()})
             parent = resolve_message_append_parent(events, parent_id, append_intent)
+            suffix = ()
             if detach_queued_user is not None:
                 from memory_core.queued_user import trailing_user
 
@@ -1137,6 +1139,23 @@ class MemorySessionCatalog:
                     raise SqliteTranscriptMutationConflictError(session_id)
                 older, suffix = candidate
                 parent = older.get("parentId")
+            if admission_compactions:
+                active = db.execute("SELECT entry_json FROM memory_session_nodes WHERE agent=? AND session_key=?",
+                                    (self.agent_id, session_key)).fetchone()
+                if expected_mutation_at is UNSET or active is None or json.loads(active[0]).get("sessionId") != session_id:
+                    raise SqliteTranscriptMutationConflictError(session_id)
+                known = {event["id"] for event in events if isinstance(event, dict) and "id" in event}
+                for checkpoint in admission_compactions:
+                    identity = checkpoint.get("id")
+                    if (checkpoint.get("type") != "compaction" or checkpoint.get("parentId") != parent
+                            or not isinstance(identity, str) or not identity or identity in known
+                            or checkpoint.get("firstKeptEntryId") not in known):
+                        raise SqliteTranscriptMutationConflictError(session_id)
+                    dirty |= not can_forward_project_event(events, checkpoint)
+                    insert(dict(checkpoint))
+                    known.add(identity)
+                    parent = identity
+            if suffix:
                 remapped = {}
                 for control in suffix:
                     copy = {**control, "id": str(uuid4()), "parentId": parent, "timestamp": timestamp_ms_to_iso(clock)}

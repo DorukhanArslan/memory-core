@@ -3334,19 +3334,19 @@
           "path": "memory_core/session_catalog.py",
           "symbol": "MemorySessionCatalog.snapshot",
           "anchor": "    def snapshot(",
-          "line": 1334
+          "line": 1353
         },
         {
           "path": "memory_core/session_catalog.py",
           "symbol": "MemorySessionCatalog.read_transcript",
           "anchor": "    def read_transcript(",
-          "line": 1421
+          "line": 1440
         },
         {
           "path": "memory_core/session_catalog.py",
           "symbol": "MemorySessionCatalog.record_archive",
           "anchor": "    def record_archive(",
-          "line": 1308
+          "line": 1327
         },
         {
           "path": "memory_core/session_visibility.py",
@@ -3370,19 +3370,19 @@
           "path": "memory_core/session_catalog.py",
           "symbol": "MemorySessionCatalog.record_participant",
           "anchor": "    def record_participant(",
-          "line": 1213
+          "line": 1232
         },
         {
           "path": "memory_core/session_catalog.py",
           "symbol": "MemorySessionCatalog.list_participants",
           "anchor": "    def list_participants(",
-          "line": 1280
+          "line": 1299
         },
         {
           "path": "memory_core/session_catalog.py",
           "symbol": "MemorySessionCatalog.load_session_metadata",
           "anchor": "    def load_session_metadata(",
-          "line": 1511
+          "line": 1530
         },
         {
           "path": "memory_core/session_visibility.py",
@@ -3586,7 +3586,7 @@
           "path": "memory_core/session_catalog.py",
           "symbol": "MemorySessionCatalog.read_transcript",
           "anchor": "    def read_transcript(",
-          "line": 1421
+          "line": 1440
         },
         {
           "path": "memory_core/session_corpus.py",
@@ -3766,25 +3766,25 @@
           "path": "memory_core/session_catalog.py",
           "symbol": "MemorySessionCatalog.read_transcript",
           "anchor": "    def read_transcript(",
-          "line": 1421
+          "line": 1440
         },
         {
           "path": "memory_core/session_catalog.py",
           "symbol": "MemorySessionCatalog.read_reset_cutoff",
           "anchor": "    def read_reset_cutoff(",
-          "line": 1449
+          "line": 1468
         },
         {
           "path": "memory_core/session_catalog.py",
           "symbol": "MemorySessionCatalog.snapshot",
           "anchor": "    def snapshot(",
-          "line": 1334
+          "line": 1353
         },
         {
           "path": "memory_core/session_catalog.py",
           "symbol": "MemorySessionCatalog.tombstone_session",
           "anchor": "    def tombstone_session(",
-          "line": 1323
+          "line": 1342
         },
         {
           "path": "memory_core/tools/memory_search.py",
@@ -4056,19 +4056,19 @@
           "path": "memory_core/session_catalog.py",
           "symbol": "MemorySessionCatalog.read_continuation",
           "anchor": "    def read_continuation(",
-          "line": 1455
+          "line": 1474
         },
         {
           "path": "memory_core/session_catalog.py",
           "symbol": "MemorySessionCatalog.read_anchor",
           "anchor": "    def read_anchor(",
-          "line": 1173
+          "line": 1192
         },
         {
           "path": "memory_core/session_catalog.py",
           "symbol": "MemorySessionCatalog.list_transcript_instances",
           "anchor": "    def list_transcript_instances(",
-          "line": 1355
+          "line": 1374
         },
         {
           "path": "memory_core/session_context.py",
@@ -5044,7 +5044,7 @@
           "path": "memory_core/host/provider_overflow.py",
           "symbol": "ProviderTurnExecutor",
           "anchor": "class ProviderTurnExecutor:",
-          "line": 140
+          "line": 157
         }
       ],
       "implementation": "partial",

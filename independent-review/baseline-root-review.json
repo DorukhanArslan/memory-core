@@ -1,0 +1,59 @@
+{
+  "kind": "root-independent-128-point-prompt-runtime-context-review",
+  "runId": 44137396647,
+  "comparisonCommit": "a27ec473f04b7f36d4bf68b28397223d805583cf",
+  "productSourceCommit": "907944efb61245208812e81b5555560051ae11cc",
+  "sourceAndExitBindingsVerified": true,
+  "rootReviewScriptSha256": "179f593f2da134da6bb4724f55103b6a97742a3570d943345d5baeb92777836e",
+  "completeReportEofParsedInFrozenCiAssessor": true,
+  "localFullReportDownloaded": false,
+  "originalEnginesExecutedByReview": false,
+  "reportSha256": "080d8a69437fcc44db824583b5a7fb3b834be1c575220a7a000a5a28455a2dd4",
+  "verified": 84,
+  "remaining": 44,
+  "netGain": 2,
+  "uncovered": 42,
+  "registeredUnresolved": 2,
+  "contracts": {
+    "complete": 39,
+    "partial": 6,
+    "pending": 19
+  },
+  "pointChanges": [
+    {
+      "id": "prompt.runtime-context.outcomes",
+      "before": false,
+      "after": true
+    },
+    {
+      "id": "prompt.runtime-context.boundaries",
+      "before": false,
+      "after": true
+    }
+  ],
+  "previous14WholePublicPairHashChanges": {
+    "flush-execution-warm-index-first-recall": {
+      "before": {
+        "openclaw": "cb844e6214b8fd7526c42e6e3dd968c97ea9963230260e4c29ce178f0fb94ec5",
+        "python": "f5f748474b212ead4420d77fe1a6c3ba3425db777e1f15c318be567057925802"
+      },
+      "after": {
+        "openclaw": "4cdb2aa71ea06ed46a094e47e3739276fae9238c4480d82a6eee896d6451b569",
+        "python": "f5f748474b212ead4420d77fe1a6c3ba3425db777e1f15c318be567057925802"
+      }
+    }
+  },
+  "previous14SdkWholePublicHashChanges": {},
+  "fullScopePassed": false,
+  "allSummaryFileHashes": {
+    "source-after.json": "bf02df759cc897979644940855f56112d0a6069e3fbbe3e2499b4750870d08c2",
+    "comparison.stderr.log": "7b80482d78d44e2800ce627ebc5eaa83504ac344ccbdab6ceff6d206b747572a",
+    "launch.json": "a28081b2692af43dc91686d3e8d5c150f082b200c0d86b543b053c9e4db84b30",
+    "os-exit.json": "e925ec6cc90a016362046735f47f1390568367979a6dae23015252308de8f9a9",
+    "capacity.json": "d97392ac59b3608e2be276e778010bca296d2170c7206fffc4ce607456776887",
+    "run-summary.json": "3fdce0e404f44ef0f5a3a29ce7e6e2a3a430341bdc4f0ed888ee521f1ccf897c",
+    "source-seal.json": "b544348f2f77dcb94c845c7d064f47018bce6a5fd9647ae276901178c5aaaff6",
+    "forget-family-replay.json": "aa0f5c91618a41324b2179a352047cda765ebe1eec519fd5d3015a8d84b81950",
+    "assessment.json": "20af968622ab7a29339d6a11bd9cf4c363099f1bba87d3907328b64b1f9cd701"
+  }
+}

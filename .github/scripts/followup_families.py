@@ -5,7 +5,8 @@ from equivalence import automation_job_outcomes, automation_job_state, compactio
 from equivalence.harness import _same_json
 from equivalence.release_runtime import prepare_release_runtime
 
-from followup_compaction import replay_compaction
+from followup_compaction import replay_active_history, replay_compaction
+from equivalence import compaction_active_history
 from followup_diary import replay_diary
 from followup_dreams import replay_dreams
 from followup_flush import replay_flush
@@ -33,6 +34,7 @@ FAMILIES = {
     dream_diary.OPERATION: (dream_diary, "dreamDiaryFamilyComplete", replay_diary),
     automation_job_state.OPERATION: (automation_job_state, "automationJobStateBoundariesComplete", replay_jobs),
     automation_job_outcomes.OPERATION: (automation_job_outcomes, "automationJobOutcomesComplete", replay_jobs),
+    compaction_active_history.POINT: (compaction_active_history, "compactionActiveHistoryComplete", replay_active_history),
     compaction_assembly.OPERATION: (compaction_assembly, "compactionAssemblyRestartComplete", replay_compaction),
     workspace_lock_cases.OPERATION: (workspace_lock_cases, "workspaceLockFamilyComplete", replay_locks),
 }
@@ -42,6 +44,8 @@ REPORT_FIELDS = {field for _, field, _ in FAMILIES.values()} | {
 
 
 def family_key(case):
+    if compaction_active_history.active_case(case):
+        return compaction_active_history.POINT
     if case["operation"] in {recovery_repair.ARTIFACT, recovery_repair.INDEX}:
         return recovery_repair.REQUIREMENT
     if HEARTBEAT_GATE in case.get("covers", ()):

@@ -9,7 +9,7 @@ def _digest(data):
     return hashlib.sha256(data).hexdigest()
 
 
-def _actors(trace, table, folder, raw, executable):
+def _actors(trace, table, folder, raw, executable, *, active_history=False):
     from equivalence.compaction_assembly_native import AI, DRIVER, HARN, SQL
 
     roots = {item["phase"]: item["pid"] for item in raw["launches"]}
@@ -20,6 +20,10 @@ def _actors(trace, table, folder, raw, executable):
         "reopen": {"dist/infra/sqlite-store.worker.js", "dist/config/sessions/session-transcript.worker.js",
                    "dist/agents/embedded-agent-runner/provider-prompt-state.worker.js"},
     }
+    if active_history:
+        workers["seed"].update({"dist/config/sessions/session-transcript-reconcile.worker.js",
+            "dist/infra/sqlite-store.worker.js", "dist/config/sessions/session-transcript.worker.js",
+            "dist/config/sessions/session-accessor.sqlite-archive.worker.js"})
     identities = {(entry["pid"], entry["threadId"]): entry for entry in trace["bootstraps"]}
     files = sorted(folder.glob("trace-*.jsonl"))
     if len(identities) != len(trace["bootstraps"]) or len(files) != len(identities):
@@ -42,6 +46,8 @@ def _actors(trace, table, folder, raw, executable):
             original = {"dist/tools-DotaQGXh.mjs"} if phase == "seed" else {
                 HARN, "dist/admitted-run-context-hIkojwNE.mjs", "dist/context-engine-lifecycle-DC_XP7J3.mjs",
                 "dist/extensions/memory-core/index.js", "dist/extensions/openai/index.js"}
+            if active_history and phase == "seed":
+                original.update({"dist/session-manager-a8MFS1Kk.mjs", "dist/session-transcript-reconcile-CUGsfxWk.mjs"})
             required.update(("node_modules/openclaw", name) for name in original)
             if Path(head["entry"]).name != DRIVER.name or not required <= names:
                 raise ValueError("An original context, model transport, memory callback or harness owner is absent")
@@ -54,13 +60,23 @@ def _actors(trace, table, folder, raw, executable):
         raise ValueError("Missing original durable or provider preparation workers")
 
 
+def replay_active_history(data, cases, args, runtime):
+    from equivalence.compaction_active_history import build_cases
+    return _replay(data, cases, args, runtime, expected=build_cases(), active_history=True)
+
+
 def replay_compaction(data, cases, args, runtime):
+    from equivalence.compaction_assembly import build_cases
+    return _replay(data, cases, args, runtime, expected=build_cases(), active_history=False)
+
+
+def _replay(data, cases, args, runtime, *, expected, active_history):
     from equivalence import compaction_assembly as family, compaction_assembly_native as original
     from equivalence.heartbeat_runtime_bindings import REFERENCE_COMMIT
     from equivalence.model_runtime_authority import prepare_model_node_authority
 
     wire = family.wire
-    if wire(cases) != wire(family.build_cases()):
+    if wire(cases) != wire(expected):
         raise ValueError("Missing frozen positive, cropped or wrong-model compaction control")
     root = args.report.resolve().parent / family.FAMILY
     authority = prepare_model_node_authority(args.node)
@@ -124,10 +140,15 @@ def replay_compaction(data, cases, args, runtime):
                 verified = known.get(identity) == listed.get(identity) == item["sha256"]
             if not verified:
                 raise ValueError("Compaction imported an unverified module")
-        _actors(trace, table, native_dir, raw, raw["nodeRuntime"]["execPath"])
+        _actors(trace, table, native_dir, raw, raw["nodeRuntime"]["execPath"], active_history=active_history)
         n, s = family.replay(packet, root)
         if not wire(n) == wire(s) == wire(row["openclaw"]) == wire(row["python"]):
             raise ValueError("Compaction physical replay diverges from the declared full result")
+        if active_history:
+            facts = n["branchAfter"]
+            if (facts["queuedUserMerged"] != (not definition["input"]["activeHistory"]["compact"])
+                    or _digest(wire(n["retainedBefore"])) != _digest(wire(n["retainedAfter"]))):
+                raise ValueError("The physical active branch, queued user or durable tool response changed")
         results.append({"id": cid, "publicMatch": True, "nativeRawSha256": native["sha256"], "sdkRawSha256": sdk["sha256"],
                         "releaseModules": len(trace["loaded"]), "providerInputItems": len(n["input"])})
     return results

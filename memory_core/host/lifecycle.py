@@ -1131,8 +1131,8 @@ class HostSessionRunner:
                         previous = queued[0]["message"]
                         prompt_owner.session_prompt = merge_queued_user_text(prompt_owner.session_prompt, previous)
                         prompt_owner.model_prompt = merge_queued_user_text(prompt_owner.model_prompt, previous)
-                        origin = user.get("provenance") or {}
-                        if not (origin.get("kind") == "internal_system" and
+                        origin = user.get("provenance")
+                        if not (isinstance(origin, Mapping) and origin.get("kind") == "internal_system" and
                                 str(origin.get("sourceTool", "")).lower() == "main_session_restart_recovery"):
                             queued_user = queued[0]["id"]
                 user = {**user, "content": prompt_owner.session_prompt}
@@ -1141,7 +1141,7 @@ class HostSessionRunner:
             if not skip and not suppress:
                 saved = self.catalog.append_message(state.session_id, user, session_key=state.session_key,
                     event_id=f"{turn_id}:user", now_ms=self._clock(), cwd=str(self.kit.memory.workspace.root),
-                    detach_queued_user=queued_user)
+                    **({"detach_queued_user": queued_user} if queued_user is not None else {}))
                 appends.append(saved)
                 if not saved["appended"]:
                     raise RuntimeError("This request was already admitted; no model turn was repeated")

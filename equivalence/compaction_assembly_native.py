@@ -28,6 +28,11 @@ SOURCE_OWNERS = (
     "packages/ai/src/transports/openai-responses-compaction-replay.ts", "packages/ai/src/transports/provider-compaction-replay.ts",
     "extensions/openai/index.ts", "extensions/memory-core/src/tools.ts", "extensions/memory-core/src/memory-read-tool.ts",
 )
+ACTIVE_SOURCE_OWNERS = (
+    "src/config/sessions/session-transcript-reconcile.ts", "src/agents/embedded-agent-runner/run/attempt-orphan-repair.ts",
+    "src/agents/embedded-agent-runner/run/attempt-prompt-helpers.ts", "src/agents/embedded-agent-runner/run/attempt-setup.ts",
+    "src/agents/embedded-agent-runner/tool-result-context-guard.ts", "src/agents/tool-result-limits.ts",
+)
 HARN = "dist/builtin-openclaw-D1Xfnzzr.mjs"
 SQL = "dist/session-accessor-CiKKTlbe.mjs"
 AI = "dist/openai-responses-cNWyKDF8.mjs"
@@ -124,7 +129,7 @@ def run_native(case, *, checkout: Path, runtime_root: Path, node: Path, evidence
     node = node.resolve(strict=True)
     authority = prepare_model_node_authority(node)
     sources = []
-    for name in SOURCE_OWNERS:
+    for name in (*SOURCE_OWNERS, *(ACTIVE_SOURCE_OWNERS if "activeHistory" in case["input"] else ())):
         committed = subprocess.check_output(["git", "-C", str(checkout), "show", REFERENCE_COMMIT + ":" + name])
         if (checkout / name).read_bytes() != committed:
             raise ValueError("Changed assembly source owner: " + name)

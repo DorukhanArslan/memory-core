@@ -7,6 +7,8 @@ from equivalence.release_runtime import prepare_release_runtime
 
 from followup_compaction import replay_active_history, replay_compaction
 from equivalence import compaction_active_history
+from equivalence import datetime_regex_family
+from followup_datetime import replay_datetime
 from followup_diary import replay_diary
 from followup_dreams import replay_dreams
 from followup_flush import replay_flush
@@ -24,6 +26,7 @@ from followup_locks import replay_locks
 
 FAMILIES = {
     recovery_failure.OPERATION: (recovery_failure, "recoveryInterruptionFamilyComplete", replay_interrupted_publication),
+    datetime_regex_family.REQUIREMENT: (datetime_regex_family, "datetimeRegexFamilyComplete", replay_datetime),
     flush_plan_target.OPERATION: (flush_plan_target, "flushPlanTargetFamilyComplete", replay_flush),
     recovery_repair.REQUIREMENT: (recovery_repair, "recoveryRepairFamilyComplete", replay_recovery),
     heartbeat_turn_outcomes.OPERATION: (heartbeat_turn_outcomes, "heartbeatTurnOutcomesComplete", replay_heartbeat_outcomes),
@@ -39,6 +42,7 @@ FAMILIES = {
     workspace_lock_cases.OPERATION: (workspace_lock_cases, "workspaceLockFamilyComplete", replay_locks),
 }
 REPORT_FIELDS = {field for _, field, _ in FAMILIES.values()} | {
+    "datetimeSourceImports", "modelNodeAuthority", "redactionPolicySourceBindings",
     "recoveryInterruptionBindings", "recoveryInterruptionNode", "recoveryArtifactBindings", "recoveryArtifactNode", "recoveryIndexBindings", "recoveryIndexNode",
     "heartbeatCorpusSourceImports", "flushExecutionBindings", "flushPlanTargetNode", "dreamLightBindings", "dreamLightNode", "dreamRemBindings", "dreamRemNode", "dreamDiaryBindings", "dreamDiaryNode", "dreamDeepBindings", "dreamDeepNode", "workspaceLockBindings"}
 
@@ -46,6 +50,8 @@ REPORT_FIELDS = {field for _, field, _ in FAMILIES.values()} | {
 def family_key(case):
     if compaction_active_history.active_case(case):
         return compaction_active_history.POINT
+    if case.get("requirement") == datetime_regex_family.REQUIREMENT:
+        return datetime_regex_family.REQUIREMENT
     if case["operation"] in {recovery_repair.ARTIFACT, recovery_repair.INDEX}:
         return recovery_repair.REQUIREMENT
     if HEARTBEAT_GATE in case.get("covers", ()):
@@ -53,7 +59,7 @@ def family_key(case):
     return case["operation"]
 
 
-def replay_followup(data, definitions, args, metrics):
+def replay_followup(data, definitions, args, metrics, replay_rank):
     runtime = prepare_release_runtime(args.reference, args.release_runtime, download=False)
     results = {}
     expected = [case["id"] for case in definitions if family_key(case) in FAMILIES]
@@ -64,13 +70,21 @@ def replay_followup(data, definitions, args, metrics):
         if case["id"] not in rows:
             continue
         required = {"case"} if (family_key(case) == HEARTBEAT_GATE and case["operation"] == "session-projection") else {"case", "native", "python", "trace"}
+        if family_key(case) == datetime_regex_family.REQUIREMENT:
+            if case["operation"] == datetime_regex_family.CLOCK:
+                required = {"case"}
+            elif case["operation"] == "redaction-policy-source":
+                required = {"case", "python", "sourcePolicy"}
         if set(rows[case["id"]]) != required:
             raise ValueError("An appended case, process trace or complete diagnostic is missing")
     for op, (family, field, replay) in FAMILIES.items():
         cases = [c for c in definitions if family_key(c) == op]
         if not _same_json(cases, family.build_cases()):
             raise ValueError("The registered ordered family differs from its frozen definitions")
-        evidence = replay(data, cases, args, runtime)
+        if op == datetime_regex_family.REQUIREMENT:
+            evidence = replay(data, cases, args, runtime, replay_rank)
+        else:
+            evidence = replay(data, cases, args, runtime)
         if [r["id"] for r in evidence] != [case["id"] for case in cases]:
             raise ValueError("Physical replay omitted or substituted a case")
         passed = all(r["publicMatch"] is True for r in evidence)

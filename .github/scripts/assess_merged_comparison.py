@@ -18,6 +18,7 @@ from equivalence.catalog_migration import definition_authority  # noqa: E402
 from equivalence.harness import _adapter_identity, _implementation_identity, _same_json  # noqa: E402
 from equivalence.strict_report_reader import Reader, _constant, _finite, _object  # noqa: E402
 
+from followup_datetime import SOURCE_OWNERS as DATETIME_SOURCE_OWNERS
 from followup_families import FAMILIES, REPORT_FIELDS, family_key, replay_followup
 from followup_heartbeat import CORPUS_OWNERS
 from followup_seal import (CATALOG_SHA, PREVIOUS_CASES, PREVIOUS_CATALOG_SHA, PREVIOUS_COMPARISON,
@@ -131,7 +132,7 @@ def project(path, host_ids, lineage_ids, boundary_ids, recall_ids, cache_ids, re
             "engineNumericFamilyComplete", "numericSourceImports", "promotionRankingRuntimeBindings", "promotionRankingProfile",
             "deepConsolidationFamilyComplete", "deepConsolidationBindings", "promotionApplyFamilyBindings", "promotionApplyFamilyNode"}
     kept.update(REPORT_FIELDS)
-    result = {"followupRows": {}, "heartbeatSources": [], "followupReleaseSources": [], "cases": [], "hostPairs": {}, "hostDiagnostics": {},
+    result = {"followupRows": {}, "datetimeSources": [], "heartbeatSources": [], "followupReleaseSources": [], "cases": [], "hostPairs": {}, "hostDiagnostics": {},
               "lineagePairs": {}, "lineageDiagnostics": {}, "lineageTraces": {},
               "boundaryPairs": {}, "boundaryDiagnostics": {}, "boundaryTraces": {},
               "recallPairs": {}, "recallDiagnostics": {}, "recallTraces": {},
@@ -148,12 +149,14 @@ def project(path, host_ids, lineage_ids, boundary_ids, recall_ids, cache_ids, re
             if key in kept:
                 result.setdefault(key, [])
             return
+        if key == "sources" and value["path"] in DATETIME_SOURCE_OWNERS:
+            result["datetimeSources"].append(value)
         if key == "sources" and value["path"] in CORPUS_OWNERS:
             result["heartbeatSources"].append(value)
         if key == "releaseSources":
             result["followupReleaseSources"].append(value)
-        if key in {"cases", "releaseTraces", "runtimeDiagnostics"} and value.get("id") in followup_ids:
-            name = {"cases": "case", "releaseTraces": "trace"}.get(key)
+        if key in {"cases", "releaseTraces", "runtimeDiagnostics", "sourcePolicyDiagnostics"} and value.get("id") in followup_ids:
+            name = {"cases": "case", "releaseTraces": "trace", "sourcePolicyDiagnostics": "sourcePolicy"}.get(key)
             if key == "runtimeDiagnostics":
                 name = value.get("side")
                 require(name in {"native", "python"}, "Unknown appended diagnostic side")
@@ -1241,7 +1244,7 @@ def replay_deep(data, cases, args):
     return results
 
 
-def replay_numeric_rank(case, pair, native, sdk, trace, release_sources, bindings, profile, args, runtime):
+def replay_persisted_rank(case, pair, native, sdk, trace, release_sources, bindings, profile, args, runtime):
     from equivalence.engine_numeric_rank import RANK_ID, validate_numeric_rank, validate_rank_case
     from equivalence.promotion_ranking_bindings import (
         COMPILED_HASHES, prepare_promotion_ranking_bindings, prepare_promotion_ranking_profile,
@@ -1250,8 +1253,15 @@ def replay_numeric_rank(case, pair, native, sdk, trace, release_sources, binding
     from equivalence.runtime_oracle import MAX_SINGLE_TRACE_BYTES, MAX_DIAGNOSTIC_BYTES
 
     cid = case["id"]
-    validate_rank_case(case)
-    require(cid == RANK_ID and set(pair) == {"openclaw", "python"}, "Missing complete numeric ranking pair")
+    if cid == RANK_ID:
+        validate_rank_case(case)
+        validate_pair = validate_numeric_rank
+    else:
+        from equivalence.datetime_regex_family import build_cases as date_cases
+        from equivalence.datetime_regex_evidence import validate_rank as validate_pair
+        [fixed] = [c for c in date_cases() if c["operation"] == "promotion-ranking-runtime"]
+        require(_same_json(case, fixed), "Unregistered persisted ranking case")
+    require(set(pair) == {"openclaw", "python"}, "Missing complete persisted ranking pair")
     for packet, side in ((native, "native"), (sdk, "python")):
         require(packet["id"] == cid and packet["side"] == side
                 and re.fullmatch(r"[a-f0-9]{64}", packet["sha256"])
@@ -1351,7 +1361,7 @@ def replay_numeric_rank(case, pair, native, sdk, trace, release_sources, binding
         runtime_root=root, bootstrap=bootstrap, release_by_pid={pid: release_loaded},
         local_by_pid={pid: locals_loaded}, worker_imports=worker_imports,
         process_parents={pid: ppid}, adapter_root=ROOT)
-    validate_numeric_rank(case, pair["openclaw"], pair["python"], native["rawSnapshots"], sdk["rawSnapshots"])
+    validate_pair(case, pair["openclaw"], pair["python"], native["rawSnapshots"], sdk["rawSnapshots"])
     return {"id": cid, "validated": True, "publicMatch": _same_json(pair["openclaw"], pair["python"]),
             "sdkRawSha256": sdk["sha256"], "nativeCollectorRawSha256": native["sha256"],
             "rawWireHashesReproduced": True, "nativeOnDiskRawReopened": False,
@@ -1397,7 +1407,7 @@ def replay_numeric(data, cases, args):
         cid = case["id"]
         pair = data["numericPairs"][cid]
         if cid == RANK_ID:
-            results.append(replay_numeric_rank(case, pair, data["numericDiagnostics"][cid + "--native"],
+            results.append(replay_persisted_rank(case, pair, data["numericDiagnostics"][cid + "--native"],
                                                data["numericDiagnostics"][cid + "--python"], data["numericTraces"][cid],
                                                data["numericReleaseSources"], bindings, profile, args, runtime))
         else:
@@ -1639,7 +1649,7 @@ def assess(args, result):
             is metrics["families"]["deep-consolidation-runtime"]
             is all(row["publicMatch"] for row in result["deepConsolidationReplays"]),
             "Consolidation replay contradicts the complete point calculation")
-    result["appendedFamilyReplays"] = replay_followup(data, definitions, args, metrics)
+    result["appendedFamilyReplays"] = replay_followup(data, definitions, args, metrics, replay_persisted_rank)
     process = verify_process_exit(args, data)
     result["comparisonProcess"] = process
     public = {row["id"]: row.get("publicValueSha256") for row in data["cases"]}

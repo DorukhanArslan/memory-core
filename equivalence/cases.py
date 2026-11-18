@@ -379,6 +379,10 @@ def build_cases(*, include_prospective: bool = False) -> list[dict[str, Any]]:
     from equivalence.engine_unicode_collation import build_cases as build_unicode_cases
 
     cases.extend(build_unicode_cases())
+
+    from equivalence.secret_boundary_inputs import build_cases as build_secret_boundaries
+
+    cases.extend(build_secret_boundaries())
     if include_prospective:
         from equivalence.flush_contract import build_prospective_flush_contract_cases
         from equivalence.session_projection import build_prospective_session_projection_cases
@@ -592,6 +596,8 @@ def run_python(case: dict[str, Any]) -> Any:
     if operation in {"redaction-policy-source", "model-session-runtime", "model-tool-result-runtime"}:
         from equivalence.redaction_sdk import run_redaction_policy, run_model_sessions, run_model_tool_result
 
+        if operation == "model-session-runtime" and "trust.secret-redaction.boundaries" in case.get("covers", ()):
+            return run_model_sessions(arguments, evidence_directory=case.get("_diagnosticDirectory"), retain_database=True)
         runner = {"redaction-policy-source": run_redaction_policy, "model-session-runtime": run_model_sessions,
                   "model-tool-result-runtime": run_model_tool_result}[operation]
         return runner(arguments, evidence_directory=case.get("_diagnosticDirectory"))

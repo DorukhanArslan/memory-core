@@ -1,6 +1,7 @@
 """Fresh-process calls to actual SDK redaction, settlement and storage owners."""
 from __future__ import annotations
 
+from contextlib import nullcontext
 from copy import deepcopy
 from dataclasses import asdict
 import hashlib
@@ -309,13 +310,18 @@ def run_model_tool_result(arguments: dict, *, evidence_directory: Path | None = 
     return _one("model-tool-result-runtime", arguments, evidence_directory)
 
 
-def run_model_sessions(arguments: dict, *, evidence_directory: Path | None = None) -> dict:
+def run_model_sessions(arguments: dict, *, evidence_directory: Path | None = None,
+                       retain_database: bool = False) -> dict:
     if arguments.get("kind") != "model-session" or [phase.get("label") for phase in arguments.get("phases", [])] != ["write", "continue", "verify"]:
         raise ValueError("The model session needs exactly three fresh ordered phases")
     raw = {"kind": "model-session", "coordinatorPid": os.getpid(), "input": deepcopy(arguments), "phases": []}
     common = {key: deepcopy(value) for key, value in arguments.items() if key not in ("kind", "phases")}
     outputs = []
-    with tempfile.TemporaryDirectory(prefix="python-model-session-") as temporary:
+    if retain_database and evidence_directory is None:
+        raise ValueError("A retained session requires an owned evidence directory")
+    fixture = (nullcontext(evidence_directory / "session") if retain_database
+               else tempfile.TemporaryDirectory(prefix="python-model-session-"))
+    with fixture as temporary:
         root = Path(temporary)
         raw["fixtureBase"] = str(root)
         try:

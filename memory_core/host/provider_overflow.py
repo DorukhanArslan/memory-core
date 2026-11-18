@@ -35,6 +35,7 @@ from memory_core.tool_result_context_guard import (
     ToolResultContextGuard,
 )
 from memory_core.tool_result_projection import resolve_tool_result_budgets, session_context_entries
+from memory_core.session_context import build_session_context
 from memory_core.transcript_rewrite import (
     TranscriptSessionManager,
     rewrite_transcript_entries_in_session_manager,
@@ -87,6 +88,22 @@ class _RecoverySession:
         )
         if self.restore is not None:
             self.restore(self.read())
+
+
+@dataclass
+class _QueuedAdmissionRecovery:
+    """Stage checkpoints against the branch that the next admitted message will actually see."""
+
+    turn_id: str
+    entries: list
+    checkpoints: list = field(default_factory=list)
+
+    def read(self):
+        return {"visibleEvents": self.entries, "context": build_session_context(self.entries)}
+
+    def commit(self, _snapshot, additions):
+        self.entries.extend(additions)
+        self.checkpoints.extend(additions)
 
 
 def _truncate(session, budget, max_chars, *, protect_trailing=False):
@@ -222,8 +239,10 @@ class ProviderTurnExecutor:
         self._emit("preflight", {"route": route, "admitted": not state.skip_prompt_submission})
         return state
 
-    async def prepare_admission(self, runner, session, turn_id, prompt, system_prompt):
-        branch = _RecoverySession(runner, session, turn_id)
+    async def prepare_admission(self, runner, session, turn_id, prompt, system_prompt, *, queued_history=None):
+        branch = (_QueuedAdmissionRecovery(turn_id, list(queued_history)) if queued_history is not None
+                  else _RecoverySession(runner, session, turn_id))
+        staged = branch.checkpoints if isinstance(branch, _QueuedAdmissionRecovery) else []
         attempts = 0
         while True:
             current = branch.read()
@@ -235,7 +254,7 @@ class ProviderTurnExecutor:
                 now_ms=runner._clock(),
             )
             if not preflight.skip_prompt_submission or preflight.preflight_recovery is None:
-                return preflight
+                return preflight, staged
             decision = decide_provider_overflow_recovery(
                 error_text=str(preflight.prompt_error),
                 context_tokens=self.context_window_tokens,
@@ -245,14 +264,14 @@ class ProviderTurnExecutor:
                 prompt_error_source=preflight.prompt_error_source,
             )
             if not decision.should_compact:
-                return preflight
+                return preflight, staged
             attempts = decision.next_overflow_compaction_attempts
             self._emit("compaction-attempt", {"attempt": attempts})
             ok, _reason = await self._compact(
                 branch, foreground=prompt, mid_turn=False, before_admission=True, system_prompt=system_prompt
             )
             if not ok:
-                return preflight
+                return preflight, staged
 
     async def _compact(self, session, *, foreground, mid_turn, before_admission=False, system_prompt=""):
         snapshot = session.read()
@@ -340,7 +359,8 @@ class ProviderTurnExecutor:
         )
         [entry] = [e for e in manager.get_persisted_entries() if e.get("id") == manager.get_leaf_id()]
         session.commit(snapshot, [entry])
-        self._emit("compacted", {"firstKeptEntryId": first, "summary": summary})
+        if not isinstance(session, _QueuedAdmissionRecovery):
+            self._emit("compacted", {"firstKeptEntryId": first, "summary": summary})
         return True, None
 
     async def __call__(self, turn: HostTurn) -> HostModelResult:

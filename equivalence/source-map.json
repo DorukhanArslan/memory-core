@@ -3334,19 +3334,19 @@
           "path": "memory_core/session_catalog.py",
           "symbol": "MemorySessionCatalog.snapshot",
           "anchor": "    def snapshot(",
-          "line": 1299
+          "line": 1316
         },
         {
           "path": "memory_core/session_catalog.py",
           "symbol": "MemorySessionCatalog.read_transcript",
           "anchor": "    def read_transcript(",
-          "line": 1386
+          "line": 1403
         },
         {
           "path": "memory_core/session_catalog.py",
           "symbol": "MemorySessionCatalog.record_archive",
           "anchor": "    def record_archive(",
-          "line": 1273
+          "line": 1290
         },
         {
           "path": "memory_core/session_visibility.py",
@@ -3370,19 +3370,19 @@
           "path": "memory_core/session_catalog.py",
           "symbol": "MemorySessionCatalog.record_participant",
           "anchor": "    def record_participant(",
-          "line": 1178
+          "line": 1195
         },
         {
           "path": "memory_core/session_catalog.py",
           "symbol": "MemorySessionCatalog.list_participants",
           "anchor": "    def list_participants(",
-          "line": 1245
+          "line": 1262
         },
         {
           "path": "memory_core/session_catalog.py",
           "symbol": "MemorySessionCatalog.load_session_metadata",
           "anchor": "    def load_session_metadata(",
-          "line": 1476
+          "line": 1493
         },
         {
           "path": "memory_core/session_visibility.py",
@@ -3586,7 +3586,7 @@
           "path": "memory_core/session_catalog.py",
           "symbol": "MemorySessionCatalog.read_transcript",
           "anchor": "    def read_transcript(",
-          "line": 1386
+          "line": 1403
         },
         {
           "path": "memory_core/session_corpus.py",
@@ -3766,25 +3766,25 @@
           "path": "memory_core/session_catalog.py",
           "symbol": "MemorySessionCatalog.read_transcript",
           "anchor": "    def read_transcript(",
-          "line": 1386
+          "line": 1403
         },
         {
           "path": "memory_core/session_catalog.py",
           "symbol": "MemorySessionCatalog.read_reset_cutoff",
           "anchor": "    def read_reset_cutoff(",
-          "line": 1414
+          "line": 1431
         },
         {
           "path": "memory_core/session_catalog.py",
           "symbol": "MemorySessionCatalog.snapshot",
           "anchor": "    def snapshot(",
-          "line": 1299
+          "line": 1316
         },
         {
           "path": "memory_core/session_catalog.py",
           "symbol": "MemorySessionCatalog.tombstone_session",
           "anchor": "    def tombstone_session(",
-          "line": 1288
+          "line": 1305
         },
         {
           "path": "memory_core/tools/memory_search.py",
@@ -4056,19 +4056,19 @@
           "path": "memory_core/session_catalog.py",
           "symbol": "MemorySessionCatalog.read_continuation",
           "anchor": "    def read_continuation(",
-          "line": 1420
+          "line": 1437
         },
         {
           "path": "memory_core/session_catalog.py",
           "symbol": "MemorySessionCatalog.read_anchor",
           "anchor": "    def read_anchor(",
-          "line": 1138
+          "line": 1155
         },
         {
           "path": "memory_core/session_catalog.py",
           "symbol": "MemorySessionCatalog.list_transcript_instances",
           "anchor": "    def list_transcript_instances(",
-          "line": 1320
+          "line": 1337
         },
         {
           "path": "memory_core/session_context.py",
@@ -4302,13 +4302,13 @@
           "path": "memory_core/model_prompt.py",
           "symbol": "ModelPrompt",
           "anchor": "class ModelPrompt:",
-          "line": 267
+          "line": 268
         },
         {
           "path": "memory_core/host/lifecycle.py",
           "symbol": "HostTurn.model_request",
           "anchor": "    def model_request(self) -> dict[str, Any]:",
-          "line": 259
+          "line": 261
         },
         {
           "path": "memory_core/current_time.py",
@@ -4523,43 +4523,43 @@
           "path": "memory_core/model_prompt.py",
           "symbol": "RuntimePromptInput",
           "anchor": "class RuntimePromptInput:",
-          "line": 73
+          "line": 74
         },
         {
           "path": "memory_core/model_prompt.py",
           "symbol": "ModelPrompt.bind_current_user",
           "anchor": "    def bind_current_user(self, canonical_user, position, *, prior_messages=()):",
-          "line": 326
+          "line": 330
         },
         {
           "path": "memory_core/model_prompt.py",
           "symbol": "ModelPrompt.request",
           "anchor": "    def request(self, messages):",
-          "line": 339
+          "line": 343
         },
         {
           "path": "memory_core/host/lifecycle.py",
           "symbol": "HostSessionRunner._prepare_model_prompt",
-          "anchor": "    def _prepare_model_prompt(self, effective_prompt, options, context, user_key):",
-          "line": 1035
+          "anchor": "    def _prepare_model_prompt(self, effective_prompt, options, context, user_key,",
+          "line": 1037
         },
         {
           "path": "memory_core/host/lifecycle.py",
           "symbol": "HostSessionRunner.run_turn",
           "anchor": "    async def run_turn(self, user_message: str | Mapping[str, Any], *,",
-          "line": 816
+          "line": 818
         },
         {
           "path": "memory_core/host/lifecycle.py",
           "symbol": "HostTurn.model_request",
           "anchor": "    def model_request(self) -> dict[str, Any]:",
-          "line": 259
+          "line": 261
         },
         {
           "path": "memory_core/host/lifecycle.py",
           "symbol": "HostTurn.record_message",
           "anchor": "    def record_message(self, message: Mapping[str, Any]) -> dict[str, Any]:",
-          "line": 304
+          "line": 306
         },
         {
           "path": "memory_core/history.py",
@@ -4950,25 +4950,37 @@
           "path": "memory_core/host/lifecycle.py",
           "symbol": "HostTurn.responses_input",
           "anchor": "    def responses_input(self) -> list[Any]:",
-          "line": 283
+          "line": 285
         },
         {
           "path": "memory_core/host/lifecycle.py",
           "symbol": "HostTurn.responses_compaction_tracker",
           "anchor": "    def responses_compaction_tracker(self, assistant:",
-          "line": 290
+          "line": 292
         },
         {
           "path": "memory_core/history_replay.py",
           "symbol": "HistoryReplay.prepare",
           "anchor": "    def prepare(self, messages):",
           "line": 289
+        },
+        {
+          "path": "memory_core/queued_user.py",
+          "symbol": "merge_text",
+          "anchor": "def merge_text(prompt, user):",
+          "line": 80
+        },
+        {
+          "path": "memory_core/tool_result_context_guard.py",
+          "symbol": "ToolResultContextGuard.transform_context",
+          "anchor": "    def transform_context(self, messages:",
+          "line": 432
         }
       ],
       "implementation": "partial",
       "notes": [
         "Append-only context assembly preserves stored runtime carriers. The public SDK session runner binds Responses checkpoints and retained tool results to the actual session and forwarded authentication profile.",
-        "The restart comparison exercises the published embedded agent and SDK provider input after three real database reopens. Active summary creation, the provider overflow policy and complete compaction replay outcomes still require independent observations."
+        "The restart family checks the original three database reopens. Three additional forked sessions compare the complete provider input for active checkpoint, summary and oversized-result controls, including a queued external user. Independent protected and integrated results determine acceptance."
       ]
     },
     {
@@ -6460,7 +6472,7 @@
           "path": "memory_core/model_prompt.py",
           "symbol": "serialize_model_tool_json",
           "anchor": "def serialize_model_tool_json(value):",
-          "line": 37
+          "line": 38
         }
       ],
       "implementation": "partial",
@@ -6685,7 +6697,7 @@
           "path": "memory_core/host/lifecycle.py",
           "symbol": "HostSessionRunner.run_turn",
           "anchor": "    async def run_turn(",
-          "line": 816
+          "line": 818
         },
         {
           "path": "memory_core/host/managed_session.py",
@@ -6778,7 +6790,7 @@
           "path": "memory_core/host/lifecycle.py",
           "symbol": "HostSessionRunner._load",
           "anchor": "    def _load(",
-          "line": 680
+          "line": 682
         },
         {
           "path": "memory_core/host/managed_index.py",

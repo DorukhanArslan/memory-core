@@ -3046,6 +3046,10 @@ def run_suite(*, checkout: Path, node: Path, smoke: bool = False,
 
         from equivalence.compaction_assembly import family_complete as compaction_restarts_complete, POINT as restart_point
 
+        from equivalence.compaction_active_history import family_complete as active_history_complete, POINT as active_history_point
+
+        active_history_verified = active_history_complete(report["cases"])
+        report["compactionActiveHistoryComplete"] = active_history_verified
         restarts_complete = compaction_restarts_complete(report["cases"])
         report["compactionAssemblyRestartComplete"] = restarts_complete
 
@@ -3099,6 +3103,7 @@ def run_suite(*, checkout: Path, node: Path, smoke: bool = False,
                                                       and (point["id"] != job_outcome_point or outcomes_complete)
                                                       and (point["id"] != heartbeat_boundary or heartbeat_complete)
                                                       and (point["id"] != restart_point or restarts_complete)
+                                                      and (point["id"] != active_history_point or active_history_verified)
                                                       and (point["id"] not in flush_plan_target.POINTS or flush_plan_complete)
                                                       and (point["id"] != heartbeat_outcome or heartbeat_outcomes)
                                                       and dream_points.get(point["id"], True)

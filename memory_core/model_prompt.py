@@ -16,6 +16,7 @@ from memory_core._intl_zone_names import en_us_short_time_zone_name
 from memory_core.bootstrap._js import js_json_stringify, js_trim
 from memory_core.compaction_replay import _js_number_to_string
 from memory_core.current_time import resolve_cron_style_now, resolve_user_timezone, utc_and_local_instants
+from memory_core.tool_result_context_guard import ToolResultContextGuard
 from memory_core.history_replay import HistoryReplay, HistoryReplayContext
 from memory_core.prompt_section import build_prompt_section
 from memory_core.replay_history import normalize_assistant_replay_content
@@ -268,8 +269,11 @@ class ModelPrompt:
     """One admitted prompt's transient carrier and actual assembly receipts."""
 
     def __init__(self, effective_prompt, options, *, tools, workspace_prompt, citations_mode,
-                 identity, now_ms, session_version, user_key, session_key=None, history_events=(), session_id=None):
+                 identity, now_ms, session_version, user_key, session_key=None, history_events=(), session_id=None,
+                 context_window_tokens=None):
         self.options, self.identity, self.session_version = options, identity, session_version
+        self._tool_result_guard = (ToolResultContextGuard(context_window_tokens=context_window_tokens)
+                                   if context_window_tokens is not None and context_window_tokens > 0 else None)
         self.user_key, self.closed = user_key, False
         self.now_ms = now_ms
         self.canonical_user = self.runtime_user = None
@@ -378,6 +382,8 @@ class ModelPrompt:
         projected = normalize_model_messages(source, session_version=self.session_version,
             append_only_runtime_context=self.options.append_only_runtime_context,
             timezone=self.timezone, retained_carrier=self.carrier, identity=self.identity)
+        if self._tool_result_guard is not None:
+            projected = self._tool_result_guard.transform_context(projected)
         if self.history_replay is not None:
             projected = self.history_replay.request(projected)
         return {"systemPrompt": self.system_prompt, "tools": deepcopy(self.tools), "messages": projected}

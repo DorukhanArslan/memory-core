@@ -135,6 +135,31 @@ def test_the_tree_passes_the_name_check():
     assert result.returncode == 0, result.stdout + result.stderr
 
 
+def test_dreaming_job_protocol_preserves_only_the_upstream_spellings():
+    old = rename_project.ProjectName(UPSTREAM_COMPONENT, UPSTREAM_COMPONENT)
+    new = rename_project.ProjectName(PROBE_DIST, PROBE_DISPLAY)
+    fixed = [
+        "memory-core:memory-dreaming-promotion",
+        "[managed-by=memory-core.dreaming.light]",
+        "__openclaw_memory_core_rem_sleep__",
+        '_mapping(_mapping(config.get("plugins")).get("entries")).get("memory-core")',
+        "memory-core: short-term dreaming processed",
+        "memory-core: removed 3 managed dreaming cron job(s).",
+    ]
+    for text in fixed:
+        assert rename_project.rewrite_text(text, old, new, python=False) == text
+    for text in (
+        "memory-core:memory-dreaming-promotion-v2", "[managed-by=memory-core.dreaming.custom]",
+        "__openclaw_memory_core_rem_sleep__extra", 'settings.get("memory-core")',
+        "memory-core: short-term dreaming processed asynchronously", "memory-core: removed 3 user jobs.",
+    ):
+        assert rename_project.rewrite_text(text, old, new, python=False) != text
+    notice = "memory-core: historical dreaming cron jobs require repair; run memory_core.tools.repair()."
+    assert rename_project.rewrite_text(notice, old, new, python=False) == notice.replace(
+        "memory_core.tools", "probe_kit.tools"
+    )
+
+
 def test_a_rename_preserves_locked_dependencies_with_an_empty_offline_uv_cache(tmp_path, monkeypatch):
     tree = _copy_tracked_tree(tmp_path / "tree")
     original = tomllib.loads((tree / rename_project.LOCKFILE).read_text(encoding="utf-8"))

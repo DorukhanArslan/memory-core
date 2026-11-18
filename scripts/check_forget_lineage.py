@@ -23,6 +23,7 @@ from equivalence.harness import (  # noqa: E402
     _adapter_identity, _implementation_identity, _oracle, _validate_reference, HarnessError,
 )
 from equivalence.release_runtime import prepare_release_runtime  # noqa: E402
+from memory_core.project_name import ENV_PREFIX  # noqa: E402
 
 
 def write(path, value):
@@ -53,8 +54,8 @@ def main():
     if shutil.disk_usage(out).free < 512 * 1024**2:
         raise ValueError("Not enough owned free space; no original engine was started")
     for key in ("OPENAI_API_KEY", "OPENAI_MODEL", "ANTHROPIC_API_KEY", "OPENROUTER_API_KEY",
-                "MEMORY_CORE_LIVE_OPENAI", "MEMORY_CORE_DEMO_OPENAI_API_KEY",
-                "MEMORY_CORE_DEMO_OPENAI_EMBEDDING_API_KEY", "OPENCLAW_ORACLE_REPO"):
+                ENV_PREFIX + "LIVE_OPENAI", ENV_PREFIX + "DEMO_OPENAI_API_KEY",
+                ENV_PREFIX + "DEMO_OPENAI_EMBEDDING_API_KEY", "OPENCLAW_ORACLE_REPO"):
         os.environ[key] = ""
     report = {"kind": "forget-lineage-first-baseline", "startedAt": datetime.now(timezone.utc).isoformat(),
               "implementation": source, "adapters": adapters, "reference": reference,

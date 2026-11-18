@@ -133,7 +133,7 @@ def main():
                   "rawArtifact":artifact(RAW),"summaryArtifact":artifact(SUMMARY),"report":REPORT,
                   "summaryFiles":originals,"assessorSha256":sha(frozen),"comparisonReturnCode":exit_record["actualReturnCode"]},
                   "review":{"runId":run,"head":head,"assessorReturnCode":code,"assessmentSha256":sha(output),
-                  "argv":invocation,"assessorArgv":argv,"restoration":scratch,"recoveryReferenceModes":modes,
+                  "argv":invocation,"assessorArgv":[sys.executable,*argv],"assessorInvocation":"in-process","restoration":scratch,"recoveryReferenceModes":modes,
                   "sourceSha256":review_sources,"reusedOriginalStages":used,
                   "archiveAdapters":["dream-light-runtime","dream-rem-runtime","dream-deep-runtime",
                                      "dream-diary-publication-runtime",flush_plan_target.OPERATION]}}

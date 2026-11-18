@@ -13,6 +13,7 @@ WHOLE_ID = "secret-boundary-whole-utf16"
 CHUNKED_ID = "secret-boundary-chunked-utf16"
 SESSION_ID = "secret-boundary-session-reopen"
 ERROR_ID = "secret-boundary-failed-tools"
+ERROR_INPUT_SHA256 = "f2d2068951f109c0f7cd23ca8ae0b20788869d75ab191a8155d2d1cb620b786f"
 DEFINITION_SHA256 = "7969049b80e2706edf99739fa86cae0faacd3420b7bd6d1805a473b51d695425"
 
 

@@ -2117,7 +2117,12 @@ def run_suite(*, checkout: Path, node: Path, smoke: bool = False,
                     native_comparison = native["result"]
                     python_case = deepcopy(case)
                     if case in python_diagnostic_cases:
-                        if case["operation"] in {"heartbeat-turn-outcomes-runtime", "compaction-assembly-restart-runtime", "automation-job-outcomes-runtime", "workspace-lock-process-runtime", "automation-job-state-runtime", "index-identity-boundaries-runtime", "query-sync-outcomes-runtime", "query-sync-boundaries-runtime", "forget-lineage-runtime", "forget-boundaries-runtime", "recall-signals-runtime", "embed-cache-lifecycle-runtime", "session-reset-boundaries-runtime", "prompt-runtime-context-runtime", "prompt-history-repair-runtime", "deep-consolidation-runtime", flush_plan_target.OPERATION, *WORKSPACE_FAMILIES}:
+                        if "trust.secret-redaction.boundaries" in case["covers"]:
+                            retained = ROOT / ".equivalence-results" / "secret-redaction"
+                            retained.mkdir(parents=True, exist_ok=True)
+                            directory = Path(tempfile.mkdtemp(prefix="sdk-attempt-", dir=retained))
+                            row["sdkEvidenceDirectory"] = str(directory)
+                        elif case["operation"] in {"heartbeat-turn-outcomes-runtime", "compaction-assembly-restart-runtime", "automation-job-outcomes-runtime", "workspace-lock-process-runtime", "automation-job-state-runtime", "index-identity-boundaries-runtime", "query-sync-outcomes-runtime", "query-sync-boundaries-runtime", "forget-lineage-runtime", "forget-boundaries-runtime", "recall-signals-runtime", "embed-cache-lifecycle-runtime", "session-reset-boundaries-runtime", "prompt-runtime-context-runtime", "prompt-history-repair-runtime", "deep-consolidation-runtime", flush_plan_target.OPERATION, *WORKSPACE_FAMILIES}:
                             # Keep the original child paths and bytes for the post-run
                             # semantic replay, including failed SDK captures.
                             family = ("deep-consolidation" if case["operation"] == "deep-consolidation-runtime" else

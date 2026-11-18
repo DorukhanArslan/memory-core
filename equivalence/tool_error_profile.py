@@ -38,8 +38,12 @@ def build_tool_error_cases():
 
 
 def validate_tool_error_input(value):
-    if type(value) is not dict or not any(value == case["input"] for case in _cases()):
-        raise ValueError("Only the four declared synthetic formatter/tool error inputs are admitted")
+    from equivalence.secret_boundary_inputs import canonical, ERROR_INPUT_SHA256
+
+    if type(value) is dict and (any(value == case["input"] for case in _cases())
+                                or hashlib.sha256(canonical(value)).hexdigest() == ERROR_INPUT_SHA256):
+        return
+    raise ValueError("Only the declared synthetic formatter/tool error inputs are admitted")
 
 
 def assert_synthetic_error_registry(values):

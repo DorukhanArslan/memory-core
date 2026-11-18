@@ -2247,7 +2247,7 @@ def run_suite(*, checkout: Path, node: Path, smoke: bool = False,
                                      max(timeout_seconds, 240 if case["operation"] == flush_plan_target.OPERATION
                                          and "unavailable" in case["input"]["responses"].values() else
                                          180 if case["operation"] in {"host-turn-barrier-boundaries-runtime", "query-sync-boundaries-runtime", "forget-index-fence-v6-runtime"} else
-                                         120 if case["operation"] in {"host-turn-barrier-runtime", "index-identity-boundaries-runtime", "query-sync-outcomes-runtime", "prompt-runtime-context-runtime", "prompt-history-repair-runtime", flush_plan_target.OPERATION, *WORKSPACE_FAMILIES} else 60),
+                                         120 if case["operation"] in {"host-turn-barrier-runtime", "host-turn-barrier-v4-runtime", "index-identity-boundaries-runtime", "query-sync-outcomes-runtime", "prompt-runtime-context-runtime", "prompt-history-repair-runtime", flush_plan_target.OPERATION, *WORKSPACE_FAMILIES} else 60),
                                      release_runtime=runtime_config)
                 except HarnessError:
                     report["failedReferenceCaseId"] = case["id"]

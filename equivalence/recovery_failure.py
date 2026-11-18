@@ -70,6 +70,8 @@ def validate_registration(rows):
 
 
 def family_complete(rows):
+    from equivalence.harness import _same_json
+
     try:
         validate_registration(rows)
         seen = {r["id"]:r for r in rows}
@@ -79,7 +81,7 @@ def family_complete(rows):
             row = seen[ident]
             if row.get("status") != "matched":
                 return False
-            if "openclaw" in row and canonical(row["openclaw"]) != canonical(row["python"]):
+            if "openclaw" in row and not _same_json(row["openclaw"], row["python"]):
                 return False
             if ident in DEPENDENCY_SHA256 and sha256(canonical({k:row[k] for k in
                     ("id","requirement","operation","input","covers")})).hexdigest()!=DEPENDENCY_SHA256[ident]:

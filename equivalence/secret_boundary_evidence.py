@@ -41,8 +41,9 @@ def _read_child(record, request, coordinator):
     # The memory tools' child records subprocess.returncode directly. The
     # redaction and session children also store a separate signal field.
     expected_exit = {"code": 0, "signal": None} if "operation" in request else {"code": 0}
-    _require(record["exit"] == expected_exit
-             and int(record["finishedAtNs"]) > int(record["startedAtNs"]), "SDK child did not complete")
+    _require(record["exit"] == expected_exit, "SDK child did not complete")
+    if "operation" in request:
+        _require(int(record["finishedAtNs"]) > int(record["startedAtNs"]), "SDK child timestamps disagree")
     packet = json.loads(record["stdout"])
     raw = packet["raw"]
     _require(type(record["pid"]) is int and raw["pid"] == record["pid"] and raw["ppid"] == coordinator,

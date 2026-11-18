@@ -20,7 +20,7 @@ headers = {
 metadata = json.load(
     urllib.request.urlopen(urllib.request.Request(api, headers=headers), timeout=30)
 )
-assert metadata["name"] == "memory-contract-remainder-summary"
+assert metadata["name"] == "memory-contract-remainder-reviewed-summary"
 assert metadata["workflow_run"]["id"] == int(os.environ["GITHUB_RUN_ID"])
 assert metadata["workflow_run"]["head_sha"] == os.environ["GITHUB_SHA"]
 assert metadata["digest"].split(":")[-1] == expected

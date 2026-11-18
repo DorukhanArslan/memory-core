@@ -56,7 +56,7 @@ def _sdk_state(case, raw, public, directory):
             serial += 1
             queue.append({"id": str(serial), "text": event["text"], "context_key": event["contextKey"]})
 
-    for step, raw_turn, row in zip(case["input"]["steps"], raw["drives"], public, strict=True):
+    for index, (step, raw_turn, row) in enumerate(zip(case["input"]["steps"], raw["drives"], public, strict=True)):
         label = step["label"]
         result = raw_turn["result"]
         calls = raw_turn["calls"]
@@ -105,8 +105,15 @@ def _sdk_state(case, raw, public, directory):
                 equal(job["state"].get("lastRunAtMs"), case["input"]["nowMs"] if job["id"] in due else None,
                       "persisted scheduled run")
         if "scratch" in step:
-            equal(json.loads(raw_turn["storeBefore"])["jobs"][0]["state"]["scratch"]["content"], step["scratch"],
-                  "stored monitor instructions")
+            ownership = json.loads(raw_turn["storeBefore"])["heartbeatOwnership"]
+            active = ownership["agents"]["main"]
+            owner = ownership["owners"][active["jobId"]]
+            equal(owner, {"agentId": "main", "active": True, "generation": active["generation"]},
+                  "active monitor owner")
+            scratch = ownership["scratch"][active["jobId"]]
+            equal(scratch["content"], step["scratch"], "stored monitor instructions")
+            equal(scratch["updatedAtMs"], case["input"]["nowMs"] + 60_000 * index,
+                  "stored monitor update time")
     equal(json.loads(read_bytes(directory / raw["files"]["session"])), session, "final physical session")
     equal(read_bytes(directory / raw["files"]["recipient"]).decode(), raw["drives"][-1]["recipientAfter"],
           "final local recipient file")

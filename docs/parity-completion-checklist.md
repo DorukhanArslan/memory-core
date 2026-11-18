@@ -19,15 +19,16 @@ izler; yeni kabul koşulu veya puan eklemez. **128/128 tek başına bitiş deği
 | Engellenen örnekler / koşu hataları | 0 / 0 | 0 / 0 |
 | Tam eşdeğerlik kapısı | Geçmedi; gerçek çıkış kodu 1 | `fullScopePassed: true`, çıkış kodu 0 |
 
-**Devam eden paket (18 Kasım).** Eksik araç sonuçlarının sohbeti bozmadan
-onarılması 8/8, sayı sınırları 4/4, birleşen notların önceki içeriği ve
-kaynağının korunması 7/7 örnekte eşleşti. **84 → 90** hedefi için bu 19
-örnek önceki 1.500 örnekle birlikte çalıştırılıyor.
+**18 Kasım'daki ilk genel karşılaştırma puanı değiştirmedi.** Eksik araç
+sonuçlarının onarılması 8/8, sayı sınırları 4/4, birleştirilen notların içeriği
+ve kaynağı 7/7 örnekte eşleşti. Toplam 1.519 örneğin 1.495'i eşleşti, 14 eski
+fark görüldü ve daha önce geçen 10 sohbet örneğinde kanıt doğrulaması durdu.
+Koşu çıkış kodu 2 ile bitti. Son kabul edilen ölçüm **84/128**.
 [Genel karşılaştırma](https://github.com/DorukhanArslan/memory-core/actions/runs/44189169478) · [PR #30](https://github.com/DorukhanArslan/memory-core/pull/30)
 
-**Sonraki paketin hedefi +17 koşul.** Aşağıdaki 69 örnek kendi
-karşılaştırmalarında geçti. İlk paket 90'a ulaşırsa bu paketin hedefi
-**107/128**. Puan, tüm eski ve yeni örneklerin birlikte ölçülmesiyle güncellenir.
+**Birleşik hedef 84 → 107, toplam +23 koşul.** Yukarıdaki 19 örnek altı
+koşulu kapsıyor. Aşağıdaki 69 örnek kendi karşılaştırmalarında geçti ve 17
+koşulu kapsıyor. Genel ölçümde önceki sohbet örneklerinin de geçmesi gerekiyor.
 
 | İş | İki sistemde denenen örnek | Eşleşme | Hedef artış |
 | --- | --- | ---: | ---: |

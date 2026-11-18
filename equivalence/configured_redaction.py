@@ -7,6 +7,14 @@ from equivalence.redaction_fixtures import model_session_fixtures, source_policy
 
 POINT = "trust.configured-redaction.outcomes"
 IDS = ("redaction-configured-structured-captures", "redaction-configured-session-captures")
+RESOLVED_IDS = (
+    "redaction-policy-letter-mixed-i-engine-diagnostic",
+    "redaction-policy-letter-repeated-capture-engine-diagnostic",
+    "redaction-policy-unsupported-valid-general-property",
+    "redaction-policy-unsupported-valid-v-direct-compiler",
+    "model-session-configured-letter-mixed-i-engine-diagnostic",
+    "model-session-configured-letter-capture-reset-engine-diagnostic",
+)
 CASE_SHA = ('c4a24dda69e129f8d3fe85c7f27cb9f33c6791a8131e16f2373845d36059ed3b', 'da471386d5a8edfdfb6309989636ae2a1d844b38ec71b12726c6b3f0cf013204')
 
 

@@ -569,6 +569,10 @@ def run_python(case: dict[str, Any]) -> Any:
 
         runner = {"redaction-policy-source": run_redaction_policy, "model-session-runtime": run_model_sessions,
                   "model-tool-result-runtime": run_model_tool_result}[operation]
+        from equivalence.configured_redaction import IDS as configured_ids
+
+        if case["id"] == configured_ids[1]:
+            return run_model_sessions(arguments, evidence_directory=case.get("_diagnosticDirectory"), retain_databases=True)
         return runner(arguments, evidence_directory=case.get("_diagnosticDirectory"))
     if operation == "trust-worker-runtime":
         from equivalence.trust_worker_profile import run_trust_worker

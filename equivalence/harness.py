@@ -23,6 +23,8 @@ import time
 from typing import Any, Callable
 
 from equivalence import flush_plan_target
+from equivalence.configured_redaction import IDS as CONFIGURED_IDS, RESOLVED_IDS as CONFIGURED_RESOLVED
+from equivalence.configured_redaction_evidence import retain_capture as retain_configured_capture
 from equivalence.workspace_case_families import FAMILIES as WORKSPACE_FAMILIES, evidence_family, prepare_bindings, report_key, sdk_validator
 
 
@@ -927,6 +929,11 @@ def _oracle(node: Path, script: Path, checkout: Path, cases: list[dict], timeout
             except (OSError, ValueError):
                 raise HarnessError("redaction-source-evidence-invalid",
                                    "The isolated all-source policy caller lost its actual owner, runtime or complete output evidence.") from None
+            if cases[0]["id"] == CONFIGURED_IDS[0]:
+                result["configuredRecording"] = {
+                    **retain_configured_capture(cases[0]["id"], "source", stdout.encode("utf-8")),
+                    "pid": process.pid, "ppid": os.getpid(), "fixtureRoot": str(source_root),
+                    "stderrSha256": hashlib.sha256(stderr.encode("utf-8")).hexdigest()}
         if execution is not None:
             try:
                 result = execution.collect(result, cases)
@@ -1472,7 +1479,8 @@ def run_suite(*, checkout: Path, node: Path, smoke: bool = False,
                     report["failedReferenceCaseId"] = case["id"]
                     raise
                 oracle["results"].extend(native["results"])
-                report["sourcePolicyDiagnostics"].append({"id": case["id"], "sourceExecution": native["sourceExecution"]})
+                report["sourcePolicyDiagnostics"].append({"id": case["id"], "sourceExecution": native["sourceExecution"],
+                    **({"configuredRecording": native["configuredRecording"]} if case["id"]==CONFIGURED_IDS[0] else {})})
                 for entry in native["sources"]:
                     if entry["path"] in source_members and source_members[entry["path"]] != entry:
                         raise HarnessError("source-changed", "An isolated source owner changed between cases.")
@@ -2511,6 +2519,13 @@ def run_suite(*, checkout: Path, node: Path, smoke: bool = False,
                             for public in (native_comparison, python):
                                 validate_corpus(case, public, report["sources"], heartbeat_source_imports.get(case["id"]))
                         row["heartbeatExclusionEvidenceValidated"] = True
+                    if case["id"] in CONFIGURED_IDS or case["id"] in CONFIGURED_RESOLVED:
+                        row.update(openclaw=native_comparison, python=python)
+                    if case["id"] in CONFIGURED_IDS:
+                        sdk_record=next(d for d in reversed(report["runtimeDiagnostics"])
+                                        if d["id"]==case["id"] and d["side"]=="python")
+                        sdk_record["configuredRecording"]=retain_configured_capture(case["id"],"python",raw,
+                            image_root=directory if case["id"]==CONFIGURED_IDS[1] else None)
                     # Reject non-JSON outputs and non-finite values explicitly.
                     python = _json(json.dumps(python, ensure_ascii=False, allow_nan=False))
                     row["status"] = "matched" if _same_json(python, native_comparison) else "mismatched"

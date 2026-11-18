@@ -245,6 +245,10 @@ def _child(request: dict) -> dict:
         value = _session_phase(request)
     else:
         raise ValueError("An ordinary redaction operation is required")
+    if "patterns" in request["input"]:
+        from equivalence.configured_redaction_evidence import engine_identity
+
+        value["raw"]["configuredRegexEngine"] = engine_identity()
     value["raw"].update(pid=os.getpid(), ppid=os.getppid(),
         implementationRoot=str(Path(memory_core.__file__).resolve().parents[1]), request=deepcopy(request))
     return value
@@ -309,7 +313,7 @@ def run_model_tool_result(arguments: dict, *, evidence_directory: Path | None = 
     return _one("model-tool-result-runtime", arguments, evidence_directory)
 
 
-def run_model_sessions(arguments: dict, *, evidence_directory: Path | None = None) -> dict:
+def run_model_sessions(arguments: dict, *, evidence_directory: Path | None = None, retain_databases: bool = False) -> dict:
     if arguments.get("kind") != "model-session" or [phase.get("label") for phase in arguments.get("phases", [])] != ["write", "continue", "verify"]:
         raise ValueError("The model session needs exactly three fresh ordered phases")
     raw = {"kind": "model-session", "coordinatorPid": os.getpid(), "input": deepcopy(arguments), "phases": []}
@@ -325,6 +329,10 @@ def run_model_sessions(arguments: dict, *, evidence_directory: Path | None = Non
                 result, record = _spawn({"operation": "model-session-runtime", "input": identity,
                                         "phase": deepcopy(phase), "directory": str(root)}, root)
                 raw["phases"].append(record)
+                if retain_databases and evidence_directory is not None:
+                    from equivalence.configured_redaction_evidence import save_sqlite_image
+
+                    save_sqlite_image(root / "session-catalog.sqlite", Path(evidence_directory) / ("configured-" + phase["label"] + ".sqlite"))
                 outputs.append(result)
         except RedactionChildError as error:
             raw["phases"].append(error.record)

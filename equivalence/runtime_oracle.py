@@ -19,6 +19,8 @@ import traceback
 from typing import Any
 
 from equivalence import flush_plan_target
+from equivalence.configured_redaction import IDS as CONFIGURED_IDS
+from equivalence.configured_redaction_evidence import retain_capture as retain_configured_capture
 from equivalence.workspace_case_families import FAMILIES as WORKSPACE_FAMILIES, evidence_family, report_key, native_validator
 from equivalence.release_runtime import ReleaseRuntimeError, validate_release_sources
 from equivalence.entry_provenance_profile import ENTRY_PROVENANCE_PROFILES, validate_entry_provenance_profile
@@ -1433,7 +1435,7 @@ class ReleaseOracleExecution:
             if filename is None:
                 raise RuntimeOracleError("A release thread trace has an invalid identity.")
             raw = _regular(trace, MAX_SINGLE_TRACE_BYTES)
-            if self.flush_plan_target_profile is not None or self.dream_phase_profile is not None or self.entry_profile is not None or self.memory_budget_profile is not None or self.promotion_profile is not None or self.promotion_apply_profile is not None or self.forget_lineage_profile is not None or self.forget_boundaries_profile is not None or self.recall_signals_profile is not None or self.embedding_cache_profile is not None or self.session_reset_boundaries_profile is not None or self.prompt_runtime_context_profile is not None or self.prompt_history_repair_profile is not None:
+            if case["id"]==CONFIGURED_IDS[1] or self.flush_plan_target_profile is not None or self.dream_phase_profile is not None or self.entry_profile is not None or self.memory_budget_profile is not None or self.promotion_profile is not None or self.promotion_apply_profile is not None or self.forget_lineage_profile is not None or self.forget_boundaries_profile is not None or self.recall_signals_profile is not None or self.embedding_cache_profile is not None or self.session_reset_boundaries_profile is not None or self.prompt_runtime_context_profile is not None or self.prompt_history_repair_profile is not None:
                 entry_trace_files.append({"name": trace.name, "bytes": len(raw), "sha256": _digest(raw),
                                           "text": raw.decode("utf-8")})
             if self.bootstrap_profile is not None:
@@ -2180,6 +2182,9 @@ class ReleaseOracleExecution:
             answer["releaseTrace"]["flushPlanTargetTransport"] = {
                 "profile": deepcopy(self.flush_plan_target_profile), "traceFiles": entry_trace_files,
                 "fixtureSourceCaptures": [captures[key] for key in sorted(captures)]}
+        if case["id"] == CONFIGURED_IDS[1]:
+            answer["runtimeDiagnostics"][0]["configuredRecording"] = retain_configured_capture(case["id"],"native",raw,image_root=evidence.parent)
+            answer["releaseTrace"]["configuredModelTraceFiles"] = entry_trace_files
         if operation in WORKSPACE_FAMILIES:
             answer["runtimeDiagnostics"][0].update(self._retain_dream_capture(case["id"], raw))
             answer["runtimeDiagnostics"][0]["validationStatus"] = "verified"

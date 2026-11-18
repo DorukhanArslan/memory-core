@@ -272,6 +272,20 @@ class HostTurn:
                     "", RuntimePromptInput(), self.context, self.turn_id)
             return self._model_prompt.request(self._projection_messages)
 
+    def _restore_provider_context(self, continuation):
+        """Switch the active request to the newly committed branch while retaining admitted tool IDs."""
+        with self._guard:
+            self._messages = deepcopy(continuation["llmMessages"])
+            self._projection_messages = deepcopy(continuation["context"]["messages"])
+            owner = self._model_prompt
+            if owner is not None and owner.canonical_user is not None:
+                positions = [i for i, row in enumerate(self._projection_messages) if row == owner.canonical_user]
+                if len(positions) != 1:
+                    raise RuntimeError("Recovery lost the admitted user message")
+                owner.bound_user_index = positions[0]
+                if owner.history_replay is not None:
+                    owner.history_replay.prepare(self._projection_messages[:positions[0]])
+
     def _responses_history(self):
         if not self._open:
             raise RuntimeError("The host turn is closed")
@@ -1205,6 +1219,17 @@ class HostSessionRunner:
                     # idempotency identity could be carried to the model.
                     user.pop("idempotencyKey", None)
                 user = {**user, "content": prompt_owner.session_prompt}
+            from memory_core.host.provider_overflow import ProviderTurnExecutor
+            if isinstance(execute, ProviderTurnExecutor) and not (prompt_owner is not None and prompt_owner.skip_submission):
+                if prompt_owner is None:
+                    prompt_owner = self._prepare_model_prompt(user["content"], RuntimePromptInput(), context, turn_id)
+                preflight = await execute.prepare_admission(self, state, turn_id, user["content"], prompt_owner.system_prompt)
+                if preflight.skip_prompt_submission:
+                    prior = self.catalog.read_continuation(state.session_id, session_key=state.session_key)
+                    execute._emit("terminal", {"kind":"precheck","text":None})
+                    failures.append(_failure("precheck", preflight.prompt_error or RuntimeError("Preflight skipped the provider request")))
+                    return HostTurnOutcome(turn_id, state, tuple(prior["llmMessages"]), (), (), False, False,
+                                           "not-run", tuple(failures))
             skip = prompt_owner is not None and prompt_owner.skip_submission
             suppress = prompt_context is not None and prompt_context.suppress_next_user_message_persistence
             if not skip and not suppress:

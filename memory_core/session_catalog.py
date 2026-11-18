@@ -871,6 +871,7 @@ class MemorySessionCatalog:
     def _write_events(
         self, session_id: str, events: Sequence[object], *, replace: bool,
         updated_at_ms: float | None, session_key: str | None = None,
+        expected_version: Mapping[str, Any] | None = None,
     ) -> None:
         serialized = [_json(event) for event in events]
         if not serialized and not replace:
@@ -881,15 +882,31 @@ class MemorySessionCatalog:
         if catalog is not self:
             return catalog._write_events(
                 session_id, events, replace=replace, updated_at_ms=updated_at_ms,
-                session_key=session_key,
+                session_key=session_key, expected_version=expected_version,
             )
         session_key = self._session_key(session_key)
         with closing(self._connect()) as db, db:
+            if expected_version is not None:
+                # Serialize the source-version check and the branch append with other writers.
+                db.execute("BEGIN IMMEDIATE")
             window = db.execute("SELECT mutation_at,session_key,transcript_updated_at,transcript_observed_at "
                                 "FROM memory_session_windows WHERE agent=? AND session_id=?",
                                 (self.agent_id, session_id)).fetchone()
             if window is None:
                 raise ValueError("Transcript identity is not registered in this catalog")
+            if expected_version is not None:
+                record = db.execute("SELECT MAX(seq) FROM memory_session_events WHERE agent=? AND session_id=?",
+                                    (self.agent_id, session_id)).fetchone()[0]
+                state = db.execute("SELECT generation FROM memory_session_transcript_state WHERE agent=? AND session_id=?",
+                                   (self.agent_id, session_id)).fetchone()
+                active = db.execute("SELECT entry_json FROM memory_session_nodes WHERE agent=? AND session_key=?",
+                                    (self.agent_id, session_key)).fetchone()
+                actual_version = {"rawSeq": record - 1 if record is not None else None,
+                                  "generation": state[0] if state is not None else None,
+                                  "updatedAt": window["transcript_updated_at"]}
+                if (active is None or json.loads(active[0]).get("sessionId") != session_id
+                        or actual_version != expected_version):
+                    raise RuntimeError("The session or transcript changed before recovery could be published")
             if session_key is not None and window["session_key"] != session_key:
                 active = db.execute(
                     "SELECT entry_json FROM memory_session_nodes WHERE agent=? AND session_key=?",
@@ -973,10 +990,11 @@ class MemorySessionCatalog:
 
     def append_events(
         self, session_id: str, events: Sequence[object], *, updated_at_ms: float | None = None,
-        session_key: str | None = None,
+        session_key: str | None = None, expected_version: Mapping[str, Any] | None = None,
     ) -> None:
+        """Append events, optionally requiring the active continuation version from read_continuation."""
         self._write_events(session_id, events, replace=False, updated_at_ms=updated_at_ms,
-                           session_key=session_key)
+                           session_key=session_key, expected_version=expected_version)
 
     def replace_events(
         self, session_id: str, events: Sequence[object], *, updated_at_ms: float | None = None,

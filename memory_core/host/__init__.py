@@ -28,6 +28,7 @@ from memory_core.host.lifecycle import (
     HostTurnFailure,
     HostTurnOutcome,
 )
+from memory_core.host.provider_overflow import ProviderSummaryRequest, ProviderTurnExecutor
 from memory_core.host.session import SessionState, TurnUsage
 from memory_core.host.tool_calls import ToolCallRepair
 from memory_core.host.turn import TurnState
@@ -48,6 +49,8 @@ __all__ = [
     "HeartbeatRun",
     "HostKit",
     "HostModelResult",
+    "ProviderSummaryRequest",
+    "ProviderTurnExecutor",
     "HostSessionRunner",
     "HostTurn",
     "HostTurnFailure",

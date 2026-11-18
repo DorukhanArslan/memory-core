@@ -14,13 +14,15 @@ from followup_heartbeat import HEARTBEAT_GATE, replay_heartbeat
 from followup_heartbeat_outcomes import replay_heartbeat_outcomes
 from equivalence import heartbeat_turn_outcomes
 from equivalence import heartbeat_turn_boundaries
-from equivalence import recovery_repair
+from equivalence import recovery_failure, recovery_repair
+from followup_interrupted_publication import replay_interrupted_publication
 from followup_recovery import replay_recovery
 from followup_jobs import replay_jobs
 from followup_locks import replay_locks
 
 
 FAMILIES = {
+    recovery_failure.OPERATION: (recovery_failure, "recoveryInterruptionFamilyComplete", replay_interrupted_publication),
     flush_plan_target.OPERATION: (flush_plan_target, "flushPlanTargetFamilyComplete", replay_flush),
     recovery_repair.REQUIREMENT: (recovery_repair, "recoveryRepairFamilyComplete", replay_recovery),
     heartbeat_turn_outcomes.OPERATION: (heartbeat_turn_outcomes, "heartbeatTurnOutcomesComplete", replay_heartbeat_outcomes),
@@ -35,7 +37,7 @@ FAMILIES = {
     workspace_lock_cases.OPERATION: (workspace_lock_cases, "workspaceLockFamilyComplete", replay_locks),
 }
 REPORT_FIELDS = {field for _, field, _ in FAMILIES.values()} | {
-    "recoveryArtifactBindings", "recoveryArtifactNode", "recoveryIndexBindings", "recoveryIndexNode",
+    "recoveryInterruptionBindings", "recoveryInterruptionNode", "recoveryArtifactBindings", "recoveryArtifactNode", "recoveryIndexBindings", "recoveryIndexNode",
     "heartbeatCorpusSourceImports", "flushExecutionBindings", "flushPlanTargetNode", "dreamLightBindings", "dreamLightNode", "dreamRemBindings", "dreamRemNode", "dreamDiaryBindings", "dreamDiaryNode", "dreamDeepBindings", "dreamDeepNode", "workspaceLockBindings"}
 
 

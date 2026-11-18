@@ -59,7 +59,8 @@ def loaded_sources(case, trace, raw, profile, runtime, adapters, global_sources)
     operation = case["operation"]
     transport = trace[report_key(operation, "Transport")]
     index_repair = operation == "recovery-index-repair-runtime"
-    worker_count = trace["protectedWorkerThreads"] if index_repair else 1
+    worker_count = (trace["protectedWorkerThreads"] if index_repair else
+                    3 if operation == "recovery-forget-interruption-runtime" else 1)
     require(type(worker_count) is int and worker_count >= 1, "Invalid protected worker count")
     worker_routes = []
     require(trace["id"] == case["id"] and trace["kind"] == "authenticated-process-thread-trace"
@@ -138,6 +139,9 @@ def loaded_sources(case, trace, raw, profile, runtime, adapters, global_sources)
     elif operation == "recovery-artifact-repair-runtime":
         drivers.add("recovery-artifact-repair-runtime.mjs")
         entry_module = "dist/dreaming-state-VYUvbU-n.mjs"
+    elif operation == "recovery-forget-interruption-runtime":
+        drivers = {"release-oracle.mjs", "recovery-forget-interruption-runtime.mjs"}
+        entry_module = "dist/cli.runtime-CVRN4xUp.mjs"
     elif index_repair:
         drivers = {"release-oracle.mjs", "recovery-index-repair-runtime.mjs", "entry-provenance-runtime.mjs"}
         entry_module = "dist/extensions/memory-core/manager-runtime.js"

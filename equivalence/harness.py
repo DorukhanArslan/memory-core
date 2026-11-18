@@ -121,7 +121,7 @@ def _reference_bindings(checkout: Path, *, cache: bool, publication: bool,
             )] for key in ("allowedResolutions", "projectionEvidence")}
         for key in ("allowedResolutions", "projectionEvidence"):
             bindings.setdefault(key, []).extend(extension[key])
-    if reuse_operations & {"hybrid-scoring", "exact-path-priority", "importance-project"}:
+    if reuse_operations & {"engine-unicode-collation", "hybrid-scoring", "exact-path-priority", "importance-project"}:
         from equivalence.hybrid_bindings import prepare_hybrid_bindings
 
         extension = prepare_hybrid_bindings(checkout)
@@ -313,11 +313,13 @@ def _validate_scope(scope: Any, cases: Any) -> tuple[list[dict], dict[str, set[s
     from equivalence.automation_job_state import validate_registration as validate_jobs_registration
     from equivalence.datetime_regex_family import validate_registration as validate_datetime_registration
     from equivalence.engine_numeric_family import validate_registration as validate_numeric_registration
+    from equivalence.engine_unicode_collation import validate_registration as validate_unicode_registration
     from equivalence.heartbeat_turn_boundaries import validate_registration as validate_heartbeat_exclusions
     from equivalence.heartbeat_turn_outcomes import validate_registration as validate_heartbeat_outcomes
     try:
         validate_numeric_registration(cases)
         validate_datetime_registration(cases)
+        validate_unicode_registration(cases)
         validate_heartbeat_exclusions(cases)
         validate_heartbeat_outcomes(cases)
         validate_jobs_registration(cases)
@@ -772,8 +774,9 @@ def _oracle(node: Path, script: Path, checkout: Path, cases: list[dict], timeout
             raise failure from error
     source_policy = len(cases) == 1 and cases[0]["operation"] == "redaction-policy-source"
     budget_units = len(cases) == 1 and cases[0]["operation"] in {"memory-budget-runtime", "memory-budget-apply-runtime"}
+    unicode_units = any(case["operation"] == "engine-unicode-collation" for case in cases)
     body = json.dumps({"cases": cases, "dependencies": dependencies,
-                       "bindings": bindings}, ensure_ascii=source_policy or budget_units, allow_nan=False)
+                       "bindings": bindings}, ensure_ascii=source_policy or budget_units or unicode_units, allow_nan=False)
     # No provider credentials, runtime switches, Node options or user auth state
     # cross into the source-only oracle. There is one dispatch and no retry.
     env = {"PATH": str(node.parent) + os.pathsep + os.defpath, "LANG": "en_US.UTF-8", "TZ": "UTC"}
@@ -1426,7 +1429,7 @@ def run_suite(*, checkout: Path, node: Path, smoke: bool = False,
         } for case in cases)
         reuse_operations = frozenset(case["operation"] for case in cases
                                      if case["operation"] in {
-                                         "bootstrap-budget", "flush-contract", "flush-target", "engine-numeric-boundaries", "session-projection",
+                                         "bootstrap-budget", "flush-contract", "flush-target", "engine-numeric-boundaries", "engine-unicode-collation", "session-projection",
                                          "vector-scoring", "hybrid-scoring", "exact-path-priority",
                                          "importance-project",
                                          "search-contract",
@@ -2068,6 +2071,12 @@ def run_suite(*, checkout: Path, node: Path, smoke: bool = False,
             report["heartbeatCorpusSourceImports"] = heartbeat_source_imports
         if oracle.get("datetimeSourceImports"):
             report["datetimeSourceImports"] = oracle["datetimeSourceImports"]
+        if "unicodeSourceImports" in oracle:
+            from equivalence.engine_unicode_collation import sdk_unicode_identity
+
+            report["unicodeSdkRuntime"] = sdk_unicode_identity()
+            report["unicodeSourceImports"] = oracle["unicodeSourceImports"]
+            report["unicodeRuntime"] = oracle["unicodeRuntime"]
         numeric_source_imports = oracle.get("numericSourceImports", {})
         if numeric_source_imports:
             report["numericSourceImports"] = numeric_source_imports
@@ -2158,8 +2167,14 @@ def run_suite(*, checkout: Path, node: Path, smoke: bool = False,
                             "authenticated-all-source-redaction-policy" if case in policy_source_cases else "authenticated-official-release"
                         )
                     python = python_runner(python_case)
-                    if case["requirement"] == "engine.numeric-boundaries":
+                    if case["requirement"] in {"engine.numeric-boundaries", "engine.unicode-collation"}:
                         row.update(openclaw=native_comparison, python=python)
+                    if case["operation"] == "engine-unicode-collation":
+                        from equivalence.engine_unicode_collation import validate_source_pair as validate_unicode
+
+                        validate_unicode(case, report["unicodeSourceImports"].get(case["id"]), report["sources"],
+                                         report["unicodeRuntime"], native_comparison, python)
+                        row["unicodeEvidenceValidated"] = True
                     if case["operation"] == "engine-numeric-boundaries":
                         from equivalence.engine_numeric_family import validate_source_pair
 
@@ -2610,6 +2625,10 @@ def run_suite(*, checkout: Path, node: Path, smoke: bool = False,
         report["datetimeRegexFamilyComplete"] = datetime_complete
         numeric_complete = numeric_family_complete(report["cases"])
         report["engineNumericFamilyComplete"] = numeric_complete
+        from equivalence.engine_unicode_collation import family_complete as unicode_family_complete, POINTS as unicode_points
+
+        unicode_complete = unicode_family_complete(report["cases"])
+        report["engineUnicodeFamilyComplete"] = unicode_complete
 
         from equivalence.deep_consolidation import family_complete as deep_family_complete, POINTS as deep_points
 
@@ -2689,6 +2708,7 @@ def run_suite(*, checkout: Path, node: Path, smoke: bool = False,
                                                       and dream_points.get(point["id"], True)
                                                       and (point["id"] not in datetime_points or datetime_complete)
                                                       and (point["id"] not in numeric_points or numeric_complete)
+                                                      and (point["id"] not in unicode_points or unicode_complete)
                                                       and (point["id"] not in deep_points or deep_complete)
                                                       and (point["id"] not in lock_points or locks_complete)]})
             report["requirements"].append({"id": requirement["id"], "required": requirement["required"],

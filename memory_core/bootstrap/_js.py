@@ -18,9 +18,9 @@ from __future__ import annotations
 import errno
 import json
 import re
-import unicodedata
 from collections.abc import Callable
-from functools import cmp_to_key
+
+from memory_core._icu import locale_sort_key
 
 # ECMAScript WhiteSpace (TAB, VT, FF, ZWNBSP, USP = Zs) plus LineTerminator
 # (LF, CR, LS, PS): the set used by String.prototype.trim/trimEnd and by \s.
@@ -251,62 +251,11 @@ def js_iu_keyword_pattern(keyword: str) -> str:
     return "".join(parts)
 
 
-# ICU root collation order of printable ASCII as produced by V8's
-# String.prototype.localeCompare (measured with node v25.2.1, locale en-US).
-# Letters share a primary weight with their other case.
-_ICU_ASCII_ORDER = (
-    " _-,;:!?.'\"()[]{}@*/\\&#%`^+<=>|~$0123456789"
-    "aAbBcCdDeEfFgGhHiIjJkKlLmMnNoOpPqQrRsStTuUvVwWxXyYzZ"
-)
-_ICU_ASCII_PRIMARY: dict[str, int] = {}
-_weight = 0
-for _char in _ICU_ASCII_ORDER:
-    if _char.isalpha() and _char.isupper():
-        _ICU_ASCII_PRIMARY[_char] = _ICU_ASCII_PRIMARY[_char.lower()]
-        continue
-    _weight += 1
-    _ICU_ASCII_PRIMARY[_char] = _weight
-_NON_ASCII_PRIMARY_BASE = 1_000
-
-
-def _collation_key(value: str) -> tuple[tuple[int, ...], tuple[int, ...], tuple[int, ...]]:
-    primaries: list[int] = []
-    secondaries: list[int] = []
-    tertiaries: list[int] = []
-    for char in unicodedata.normalize("NFD", value):
-        if unicodedata.combining(char):
-            secondaries.append(ord(char))
-            continue
-        weight = _ICU_ASCII_PRIMARY.get(char)
-        if weight is None:
-            folded = char.lower()
-            weight = _ICU_ASCII_PRIMARY.get(folded)
-            if weight is None:
-                weight = _NON_ASCII_PRIMARY_BASE + ord(folded[0])
-        primaries.append(weight)
-        secondaries.append(0)
-        tertiaries.append(1 if char != char.lower() else 0)
-    return tuple(primaries), tuple(secondaries), tuple(tertiaries)
-
-
 def locale_compare(left: str, right: str) -> int:
-    """Approximation of V8 ``localeCompare`` (ICU root collation).
-
-    Exact for printable ASCII (primary order measured from V8, lowercase before
-    uppercase, accents as secondary differences after NFD). Other characters
-    sort after ASCII letters by lowercase code point, which is an approximation
-    of the ICU root tables; callers only use it for tie-breaking file paths.
-    """
-    left_key = _collation_key(left)
-    right_key = _collation_key(right)
-    if left_key < right_key:
-        return -1
-    if left_key > right_key:
-        return 1
-    return 0
-
-
-locale_sort_key = cmp_to_key(locale_compare)
+    """Compare strings using the pinned runtime's default English ICU collation."""
+    left_key = locale_sort_key(left)
+    right_key = locale_sort_key(right)
+    return (left_key > right_key) - (left_key < right_key)
 
 
 def format_js_error_message(exc: BaseException, *, redact: Callable[[str], str] | None = None) -> str:

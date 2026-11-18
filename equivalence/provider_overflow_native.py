@@ -20,6 +20,7 @@ from equivalence.provider_overflow_cases import build_cases, wire
 DIR = Path(__file__).resolve().parent
 DRIVER = DIR / "provider_overflow_native.mjs"
 ASSEMBLY = DIR / "compaction_assembly_native.mjs"
+CHECKPOINT = DIR / "provider_overflow_checkpoint.mjs"
 PRELOAD = DIR / "provider_overflow_preload.mjs"
 PLUGIN = DIR / "prompt-runtime-provider/index.mjs"
 SOURCE = (
@@ -77,7 +78,10 @@ def _phase_cases(case):
     data = assembly_inputs()[spec["checkpoint"]]
     data["model"]["contextWindow"] = spec["contextWindow"]
     data.update(prompt=spec["prompt"] * spec["promptRepeat"], seedMs=spec["clock"] - 60_000, attemptMs=spec["clock"])
-    return [(phase, ASSEMBLY, {"input": data}) for phase in ("seed", "reopen")]
+    seed = ("seed", ASSEMBLY, {"input": data})
+    if spec.get("outerRecovery"):
+        return [seed, ("recovery", CHECKPOINT, {"input": {**data, "sequence": spec["sequence"]}})]
+    return [seed, ("reopen", ASSEMBLY, {"input": data})]
 
 
 def _logs(directory, phases, table, node_path, identity):
@@ -105,6 +109,8 @@ def _logs(directory, phases, table, node_path, identity):
                            for i in indices):
                     raise ValueError("The original did not instantiate the registered offline provider")
                 required |= {EMBED, HARN, "dist/session-accessor.sqlite-read-BsSfe2AE.mjs"}
+            elif process["phase"] == "recovery":
+                required |= {HARN, EMBED, AI}
             elif process["phase"] == "reopen":
                 required |= {HARN, AI}
             else:
@@ -142,6 +148,8 @@ def _observation(case, original, log, physical_rows):
     if any(not e.get("summary") or not e.get("firstKeptEntryId") for e in checkpoints):
         raise ValueError("An original summary lacks its durable boundary")
     result = original["result"]
+    if spec.get("outerRecovery"):
+        return _checkpoint_recovery(case, original, log, admitted, checkpoints)
     if "checkpoint" in spec:
         recovery = result["preflightRecovery"]
         if (result["terminal"].get("source") != "precheck" or recovery["overflowTokens"] <= 0 or original["requests"]
@@ -215,6 +223,54 @@ def _observation(case, original, log, physical_rows):
             "durableToolResults": results, "terminal": {"kind": failure or "completed", "text": payload["text"]}}
 
 
+def _checkpoint_recovery(case, original, log, admitted, checkpoints):
+    """Reconstruct admissions from actual rejection, compaction dispatch and wire requests."""
+    checks, attempts = [], 0
+    for line in log.splitlines():
+        message = json.loads(line).get("1")
+        if not isinstance(message, str):
+            continue
+        if message.startswith("[context-overflow-precheck] pre-prompt check "):
+            checks.append({"route": re.search(r" route=([a-z_]+) ", message)[1], "admitted": None})
+        elif message.startswith("[context-overflow-diag]") and "source=promptError trigger=budget" in message:
+            if not checks or checks[-1]["admitted"] is not None:
+                raise ValueError("Context rejection did not follow an original precheck")
+            checks[-1]["admitted"] = False
+        elif message.startswith("[context-pressure-diagnostic] admitted provider attempt "):
+            if not checks or checks[-1]["admitted"] is not None:
+                raise ValueError("Provider was admitted outside its original precheck")
+            checks[-1]["admitted"] = True
+        elif message.startswith("[compaction-diag] start "):
+            attempts += 1
+    calls = []
+    raw_requests = original["requests"]
+    for req, supplied in zip(raw_requests, case["input"]["sequence"], strict=True):
+        if req["method"] != "POST" or req["url"] != original["model"]["baseUrl"] + "/responses":
+            raise ValueError("Unknown original checkpoint provider method/endpoint")
+        last = json.loads(req["body"])["input"][-1]
+        if last.get("role") != "user":
+            raise ValueError("An original checkpoint dispatch has no foreground or summary input")
+        text = "".join(b["text"] for b in last["content"] if b["type"] == "input_text")
+        result = req["response"]
+        events = [json.loads(line[6:]) for line in result["body"].splitlines()
+                  if line.startswith("data: {")]
+        [completed] = [e for e in events if e["type"] == "response.completed"]
+        [answer] = completed["response"]["output"]
+        reply = {"text": "".join(b["text"] for b in answer["content"] if b["type"] == "output_text")}
+        if result["status"] != 200 or result["contentType"] != "text/event-stream" or supplied != reply:
+            raise ValueError("The captured checkpoint provider wire differs from the original reply")
+        calls.append({"kind": "summary" if "<conversation>" in text and "</conversation>" in text else "provider",
+                      "continuation": CONTINUE if text.endswith(CONTINUE) else None, "reply": reply})
+    [payload] = original["result"]["payloads"]
+    if (payload.get("isError") or original["result"]["meta"].get("error") or not checkpoints
+            or not calls or checks[0]["admitted"] is not False or checks[-1]["admitted"] is not True
+            or calls[-1]["kind"] != "provider" or len(calls) != len(raw_requests)):
+        raise ValueError("The original checkpoint recovery lacks rejection, compaction and final admission")
+    return {"preflight": checks, "midturn": [], "dispatches": calls, "tools": [],
+            "compactionAttempts": attempts, "compactionsCommitted": len(checkpoints), "durableUserAdmissions": admitted,
+            "durableToolResults": [], "terminal": {"kind": "completed", "text": payload["text"]}}
+
+
 def run_native(case, node, checkout, runtime, directory):
     if wire(case) not in {wire(c) for c in build_cases()} or runtime["buildAttestation"]["commit"] != REFERENCE_COMMIT:
         raise ValueError("Unexpected overflow case or original release")
@@ -232,7 +288,7 @@ def run_native(case, node, checkout, runtime, directory):
         sources.append({"path": name, "sha256": digest(data)})
     table_rows = [(str(Path(pkg["directory"]) / f["path"]), f["sha256"], pkg["location"], f["path"])
                   for pkg in runtime["packages"] for f in pkg["files"]]
-    table_rows.extend((str(f), digest(f.read_bytes()), "driver", f.name) for f in (DRIVER, ASSEMBLY, PLUGIN))
+    table_rows.extend((str(f), digest(f.read_bytes()), "driver", f.name) for f in (DRIVER, ASSEMBLY, CHECKPOINT, PLUGIN))
     table = {str(i): {"package": pkg, "path": f, "sha256": h} for i, (_, h, pkg, f) in enumerate(table_rows)}
     captures, artifacts = [], []
     (directory / "case.json").write_bytes(wire(case))
@@ -277,7 +333,8 @@ def run_native(case, node, checkout, runtime, directory):
         receipts, loaded = _logs(directory, captures, table, str(node), authority_sha)
     retained = {i: table[i] for i in sorted(loaded, key=int)}
     (directory / "modules.json").write_bytes(wire(retained))
-    artifacts.extend(["case.json", "modules.json", "reopen.log" if "checkpoint" in case["input"] else "log.jsonl"])
+    final_log = {"recovery": "recovery.log", "reopen": "reopen.log", "run": "log.jsonl"}[captures[-1]["phase"]]
+    artifacts.extend(["case.json", "modules.json", final_log])
     raw = {"sources": sources, "caseSha256": digest(wire(case)), "node": prepare_model_node_authority(node),
            "release": {key: runtime[key] for key in ("buildAttestation", "lockfileSha256", "manifestSha256")},
            "preloadSha256": digest(PRELOAD.read_bytes()), "phases": captures, "moduleAuthoritySha256": authority_sha,
@@ -303,7 +360,7 @@ def read_native(case, raw, directory):
         if digest(_file(directory, name).read_bytes()) != sha:
             raise ValueError("Retained overflow artifact changed: " + name)
     table = json.loads(_file(directory, "modules.json").read_bytes())
-    driver_hashes = {f.name: digest(f.read_bytes()) for f in (DRIVER, ASSEMBLY, PLUGIN)}
+    driver_hashes = {f.name: digest(f.read_bytes()) for f in (DRIVER, ASSEMBLY, CHECKPOINT, PLUGIN)}
     if any(item["sha256"] != driver_hashes.get(item["path"]) for item in table.values() if item["package"] == "driver"):
         raise ValueError("A captured original driver no longer matches its loaded bytes")
     logs, loaded = _logs(directory, raw["phases"], table, raw["node"]["execPath"], raw["moduleAuthoritySha256"])
@@ -317,5 +374,5 @@ def read_native(case, raw, directory):
         physical = _rows(_file(directory, proc["snapshot"]), original["scope"]["sessionId"])
         if phase == "seed" and (original["persisted"] != physical or len(original["requests"]) != 2):
             raise ValueError("Unverified official checkpoint and tool seed")
-    filename = "log.jsonl" if len(raw["phases"]) == 1 else "reopen.log"
+    filename = {"recovery": "recovery.log", "reopen": "reopen.log", "run": "log.jsonl"}[raw["phases"][-1]["phase"]]
     return _observation(case, original, _file(directory, filename).read_text(), physical)

@@ -26,7 +26,13 @@ from followup_jobs import replay_jobs
 from followup_locks import replay_locks
 
 
+import followup_secret_boundaries
+from equivalence.secret_boundary_inputs import POINTS as SECRET_BOUNDARIES
+
+
 FAMILIES = {
+    SECRET_BOUNDARIES[0]: (followup_secret_boundaries, "secretRedactionBoundariesComplete",
+                           followup_secret_boundaries.replay_secret_boundaries),
     engine_unicode_collation.OPERATION: (engine_unicode_collation, "engineUnicodeFamilyComplete", replay_unicode),
     recovery_failure.OPERATION: (recovery_failure, "recoveryInterruptionFamilyComplete", replay_interrupted_publication),
     datetime_regex_family.REQUIREMENT: (datetime_regex_family, "datetimeRegexFamilyComplete", replay_datetime),
@@ -52,6 +58,8 @@ REPORT_FIELDS = {field for _, field, _ in FAMILIES.values()} | {
 
 
 def family_key(case):
+    if SECRET_BOUNDARIES[0] in case.get("covers", ()):
+        return SECRET_BOUNDARIES[0]
     if compaction_active_history.active_case(case):
         return compaction_active_history.POINT
     if case.get("requirement") == datetime_regex_family.REQUIREMENT:
@@ -74,6 +82,8 @@ def replay_followup(data, definitions, args, metrics, replay_rank):
         if case["id"] not in rows:
             continue
         required = {"case"} if (family_key(case) == HEARTBEAT_GATE and case["operation"] == "session-projection") else {"case", "native", "python", "trace"}
+        if family_key(case) == SECRET_BOUNDARIES[0] and case["operation"] == "redaction-policy-source":
+            required = {"case", "python", "sourcePolicy"}
         if case["operation"] == engine_unicode_collation.OPERATION:
             required = {"case"}
         if family_key(case) == datetime_regex_family.REQUIREMENT:

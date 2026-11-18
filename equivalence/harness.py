@@ -22,7 +22,7 @@ import tempfile
 import time
 from typing import Any, Callable
 
-from equivalence import flush_plan_target
+from equivalence import flush_plan_target, secret_boundary_evidence, secret_boundary_inputs
 from equivalence.workspace_case_families import FAMILIES as WORKSPACE_FAMILIES, evidence_family, prepare_bindings, report_key, sdk_validator
 
 
@@ -317,6 +317,7 @@ def _validate_scope(scope: Any, cases: Any) -> tuple[list[dict], dict[str, set[s
     from equivalence.heartbeat_turn_boundaries import validate_registration as validate_heartbeat_exclusions
     from equivalence.heartbeat_turn_outcomes import validate_registration as validate_heartbeat_outcomes
     try:
+        secret_boundary_evidence.validate_registration(cases)
         validate_numeric_registration(cases)
         validate_datetime_registration(cases)
         validate_unicode_registration(cases)
@@ -1018,9 +1019,17 @@ def _oracle(node: Path, script: Path, checkout: Path, cases: list[dict], timeout
             except (OSError, ValueError):
                 raise HarnessError("redaction-source-evidence-invalid",
                                    "The isolated all-source policy caller lost its actual owner, runtime or complete output evidence.") from None
+        if source_policy and cases[0]["id"] in {"secret-boundary-whole-utf16", "secret-boundary-chunked-utf16"}:
+            from equivalence.secret_boundary_transport import retain_streams
+            result["secretSourceStreams"] = retain_streams(cases[0], ROOT, stdout, stderr)
         if execution is not None:
             try:
                 result = execution.collect(result, cases)
+                if len(cases) == 1 and "secretBoundaryTransport" in result["releaseTrace"]:
+                    from equivalence.secret_boundary_transport import retain_streams
+                    directory = Path(result["runtimeDiagnostics"][0]["retainedNativeRawPath"]).parent
+                    result["releaseTrace"]["secretBoundaryTransport"]["originalStreams"] = retain_streams(
+                        cases[0], ROOT, stdout, stderr, directory=directory)
                 if len(cases) == 1 and cases[0]["operation"] == "embed-cache-lifecycle-runtime":
                     result["releaseTrace"]["embeddingCacheTransport"]["originalProcessStreams"] = {
                         name: {"text": value, "bytes": len(value.encode("utf8")),
@@ -1833,7 +1842,10 @@ def run_suite(*, checkout: Path, node: Path, smoke: bool = False,
                     report["failedReferenceCaseId"] = case["id"]
                     raise
                 oracle["results"].extend(native["results"])
-                report["sourcePolicyDiagnostics"].append({"id": case["id"], "sourceExecution": native["sourceExecution"]})
+                receipt = {"id": case["id"], "sourceExecution": native["sourceExecution"]}
+                if "secretSourceStreams" in native:
+                    receipt["originalStreams"] = native["secretSourceStreams"]
+                report["sourcePolicyDiagnostics"].append(receipt)
                 for entry in native["sources"]:
                     if entry["path"] in source_members and source_members[entry["path"]] != entry:
                         raise HarnessError("source-changed", "An isolated source owner changed between cases.")
@@ -2508,7 +2520,12 @@ def run_suite(*, checkout: Path, node: Path, smoke: bool = False,
                     native_comparison = native["result"]
                     python_case = deepcopy(case)
                     if case in python_diagnostic_cases:
-                        if case["operation"] in {"heartbeat-turn-outcomes-runtime", "compaction-assembly-restart-runtime", "automation-job-outcomes-runtime", "forget-index-fence-v6-runtime", "host-turn-barrier-v4-runtime", "workspace-lock-process-runtime", "automation-job-state-runtime", "index-identity-boundaries-runtime", "query-sync-outcomes-runtime", "query-sync-boundaries-runtime", "forget-lineage-runtime", "forget-boundaries-runtime", "recall-signals-runtime", "embed-cache-lifecycle-runtime", "session-reset-boundaries-runtime", "prompt-runtime-context-runtime", "prompt-history-repair-runtime", "deep-consolidation-runtime", flush_plan_target.OPERATION, *WORKSPACE_FAMILIES}:
+                        if secret_boundary_inputs.POINTS[0] in case["covers"]:
+                            retained = ROOT / ".equivalence-results" / "secret-redaction"
+                            retained.mkdir(parents=True, exist_ok=True)
+                            directory = Path(tempfile.mkdtemp(prefix="sdk-attempt-", dir=retained))
+                            row["sdkEvidenceDirectory"] = str(directory)
+                        elif case["operation"] in {"heartbeat-turn-outcomes-runtime", "compaction-assembly-restart-runtime", "automation-job-outcomes-runtime", "forget-index-fence-v6-runtime", "host-turn-barrier-v4-runtime", "workspace-lock-process-runtime", "automation-job-state-runtime", "index-identity-boundaries-runtime", "query-sync-outcomes-runtime", "query-sync-boundaries-runtime", "forget-lineage-runtime", "forget-boundaries-runtime", "recall-signals-runtime", "embed-cache-lifecycle-runtime", "session-reset-boundaries-runtime", "prompt-runtime-context-runtime", "prompt-history-repair-runtime", "deep-consolidation-runtime", flush_plan_target.OPERATION, *WORKSPACE_FAMILIES}:
                             # Keep the original child paths and bytes for the post-run
                             # semantic replay, including failed SDK captures.
                             family = ("deep-consolidation" if case["operation"] == "deep-consolidation-runtime" else
@@ -2578,6 +2595,13 @@ def run_suite(*, checkout: Path, node: Path, smoke: bool = False,
                             snapshots = [snapshots]
                         if not isinstance(snapshots, list):
                             raise ValueError("Runtime diagnostics must retain raw snapshot rows.")
+                        if secret_boundary_inputs.POINTS[0] in case["covers"]:
+                            if len(snapshots) != 1:
+                                raise ValueError("The secret boundary caller requires one actual SDK capture")
+                            replayed, _ = secret_boundary_evidence.replay_sdk(case, snapshots[0], directory)
+                            if not _same_json(replayed, python):
+                                raise ValueError("SDK output differs from its reopened process and session")
+                            row.update(secretBoundaryEvidenceValidated=True, openclaw=native_comparison, python=python)
                         if case["operation"] in {"automation-job-outcomes-runtime", "compaction-assembly-restart-runtime"}:
                             if case["operation"] == "compaction-assembly-restart-runtime":
                                 from equivalence.compaction_assembly import review_pair
@@ -3038,6 +3062,8 @@ def run_suite(*, checkout: Path, node: Path, smoke: bool = False,
         report["promptHistoryRepairFamilyComplete"] = history_complete
         flush_plan_complete = flush_plan_target.family_complete(report["cases"])
         report["flushPlanTargetFamilyComplete"] = flush_plan_complete
+        secret_boundaries_complete = secret_boundary_evidence.family_complete(report["cases"])
+        report["secretRedactionBoundariesComplete"] = secret_boundaries_complete
         dream_points = {}
         for op, family in WORKSPACE_FAMILIES.items():
             complete = family.family_complete(report["cases"])
@@ -3139,6 +3165,7 @@ def run_suite(*, checkout: Path, node: Path, smoke: bool = False,
                                                       and (point["id"] != restart_point or restarts_complete)
                                                       and (point["id"] != active_history_point or active_history_verified)
                                                       and (point["id"] not in flush_plan_target.POINTS or flush_plan_complete)
+                                                      and (point["id"] not in secret_boundary_inputs.POINTS or secret_boundaries_complete)
                                                       and (point["id"] != heartbeat_outcome or heartbeat_outcomes)
                                                       and dream_points.get(point["id"], True)
                                                       and (point["id"] not in datetime_points or datetime_complete)

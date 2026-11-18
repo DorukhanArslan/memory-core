@@ -3334,19 +3334,19 @@
           "path": "memory_core/session_catalog.py",
           "symbol": "MemorySessionCatalog.snapshot",
           "anchor": "    def snapshot(",
-          "line": 1316
+          "line": 1334
         },
         {
           "path": "memory_core/session_catalog.py",
           "symbol": "MemorySessionCatalog.read_transcript",
           "anchor": "    def read_transcript(",
-          "line": 1403
+          "line": 1421
         },
         {
           "path": "memory_core/session_catalog.py",
           "symbol": "MemorySessionCatalog.record_archive",
           "anchor": "    def record_archive(",
-          "line": 1290
+          "line": 1308
         },
         {
           "path": "memory_core/session_visibility.py",
@@ -3370,19 +3370,19 @@
           "path": "memory_core/session_catalog.py",
           "symbol": "MemorySessionCatalog.record_participant",
           "anchor": "    def record_participant(",
-          "line": 1195
+          "line": 1213
         },
         {
           "path": "memory_core/session_catalog.py",
           "symbol": "MemorySessionCatalog.list_participants",
           "anchor": "    def list_participants(",
-          "line": 1262
+          "line": 1280
         },
         {
           "path": "memory_core/session_catalog.py",
           "symbol": "MemorySessionCatalog.load_session_metadata",
           "anchor": "    def load_session_metadata(",
-          "line": 1493
+          "line": 1511
         },
         {
           "path": "memory_core/session_visibility.py",
@@ -3586,7 +3586,7 @@
           "path": "memory_core/session_catalog.py",
           "symbol": "MemorySessionCatalog.read_transcript",
           "anchor": "    def read_transcript(",
-          "line": 1403
+          "line": 1421
         },
         {
           "path": "memory_core/session_corpus.py",
@@ -3766,25 +3766,25 @@
           "path": "memory_core/session_catalog.py",
           "symbol": "MemorySessionCatalog.read_transcript",
           "anchor": "    def read_transcript(",
-          "line": 1403
+          "line": 1421
         },
         {
           "path": "memory_core/session_catalog.py",
           "symbol": "MemorySessionCatalog.read_reset_cutoff",
           "anchor": "    def read_reset_cutoff(",
-          "line": 1431
+          "line": 1449
         },
         {
           "path": "memory_core/session_catalog.py",
           "symbol": "MemorySessionCatalog.snapshot",
           "anchor": "    def snapshot(",
-          "line": 1316
+          "line": 1334
         },
         {
           "path": "memory_core/session_catalog.py",
           "symbol": "MemorySessionCatalog.tombstone_session",
           "anchor": "    def tombstone_session(",
-          "line": 1305
+          "line": 1323
         },
         {
           "path": "memory_core/tools/memory_search.py",
@@ -4050,25 +4050,25 @@
           "path": "memory_core/session_catalog.py",
           "symbol": "MemorySessionCatalog.append_message",
           "anchor": "    def append_message(",
-          "line": 1016
+          "line": 1034
         },
         {
           "path": "memory_core/session_catalog.py",
           "symbol": "MemorySessionCatalog.read_continuation",
           "anchor": "    def read_continuation(",
-          "line": 1437
+          "line": 1455
         },
         {
           "path": "memory_core/session_catalog.py",
           "symbol": "MemorySessionCatalog.read_anchor",
           "anchor": "    def read_anchor(",
-          "line": 1155
+          "line": 1173
         },
         {
           "path": "memory_core/session_catalog.py",
           "symbol": "MemorySessionCatalog.list_transcript_instances",
           "anchor": "    def list_transcript_instances(",
-          "line": 1337
+          "line": 1355
         },
         {
           "path": "memory_core/session_context.py",
@@ -4541,13 +4541,13 @@
           "path": "memory_core/host/lifecycle.py",
           "symbol": "HostSessionRunner._prepare_model_prompt",
           "anchor": "    def _prepare_model_prompt(self, effective_prompt, options, context, user_key,",
-          "line": 1121
+          "line": 1135
         },
         {
           "path": "memory_core/host/lifecycle.py",
           "symbol": "HostSessionRunner.run_turn",
           "anchor": "    async def run_turn(self, user_message: str | Mapping[str, Any], *,",
-          "line": 902
+          "line": 916
         },
         {
           "path": "memory_core/host/lifecycle.py",
@@ -4559,7 +4559,7 @@
           "path": "memory_core/host/lifecycle.py",
           "symbol": "HostTurn.record_message",
           "anchor": "    def record_message(self, message: Mapping[str, Any]) -> dict[str, Any]:",
-          "line": 306
+          "line": 320
         },
         {
           "path": "memory_core/history.py",
@@ -4671,7 +4671,7 @@
           "path": "memory_core/host/lifecycle.py",
           "symbol": "FlushModelExecutor",
           "anchor": "class FlushModelExecutor:",
-          "line": 519
+          "line": 533
         }
       ],
       "implementation": "partial",
@@ -4956,13 +4956,13 @@
           "path": "memory_core/host/lifecycle.py",
           "symbol": "HostTurn.responses_input",
           "anchor": "    def responses_input(self) -> list[Any]:",
-          "line": 285
+          "line": 299
         },
         {
           "path": "memory_core/host/lifecycle.py",
           "symbol": "HostTurn.responses_compaction_tracker",
           "anchor": "    def responses_compaction_tracker(self, assistant:",
-          "line": 292
+          "line": 306
         },
         {
           "path": "memory_core/history_replay.py",
@@ -4980,7 +4980,7 @@
           "path": "memory_core/tool_result_context_guard.py",
           "symbol": "ToolResultContextGuard.transform_context",
           "anchor": "    def transform_context(self, messages:",
-          "line": 432
+          "line": 433
         }
       ],
       "implementation": "partial",
@@ -5038,12 +5038,18 @@
           "path": "memory_core/tool_result_context_guard.py",
           "symbol": "ToolResultContextGuard",
           "anchor": "class ToolResultContextGuard:",
-          "line": 415
+          "line": 416
+        },
+        {
+          "path": "memory_core/host/provider_overflow.py",
+          "symbol": "ProviderTurnExecutor",
+          "anchor": "class ProviderTurnExecutor:",
+          "line": 140
         }
       ],
       "implementation": "partial",
       "notes": [
-        "Python exposes preflight and overflow decision objects; native recovery executes compact/truncate/retry against the current runtime session. A Python host must implement and count those dispatches, preserve replay-safe admission and persist the resulting transcript state."
+        "The public host executor uses the admitted model route, durable transcript and tool or summary callbacks for preflight, provider rejection and continuation. Its recovery writes are checked against the source session version."
       ]
     },
     {
@@ -6800,7 +6806,7 @@
           "path": "memory_core/host/lifecycle.py",
           "symbol": "HostSessionRunner.run_turn",
           "anchor": "    async def run_turn(",
-          "line": 902
+          "line": 916
         },
         {
           "path": "memory_core/host/managed_session.py",
@@ -6893,7 +6899,7 @@
           "path": "memory_core/host/lifecycle.py",
           "symbol": "HostSessionRunner._load",
           "anchor": "    def _load(",
-          "line": 766
+          "line": 780
         },
         {
           "path": "memory_core/host/managed_index.py",

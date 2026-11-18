@@ -42,7 +42,9 @@ PRE_SECRET_CASES = 1605
 PRE_SECRET_CATALOG_SHA256 = "0ffd953f5504b162d6879a2e4e6d7916b2b985441d98f8a7cdcd85be96cf846b"
 PRE_CONFIGURED_CASES = 1609
 PRE_CONFIGURED_CATALOG_SHA256 = "d440b9e0828e0c0994aa4d20519a1813b54e3684ed783695b573010661dc55ed"
-REGISTERED_CASES = 1611
+PRE_PROVIDER_OVERFLOW_CASES = 1611
+PRE_PROVIDER_OVERFLOW_CATALOG_SHA256 = "0e2a16aa84908495a3b48d5a28f9d2855ece6d2083db8375110efe2aaca810b4"
+REGISTERED_CASES = 1618
 
 # PR22 changes these three policy texts, not the thirteen cases' business inputs,
 # order, coverage or other fields. Reversing only the exact reviewed fragments
@@ -134,7 +136,7 @@ def definition_authority(cases, *, fif_version):
                                   BOUNDARY_REGISTERED_CASES, RECALL_REGISTERED_CASES,
                                   CACHE_REGISTERED_CASES, RESET_REGISTERED_CASES, PROMPT_REGISTERED_CASES,
                                   HISTORY_REGISTERED_CASES, NUMERIC_REGISTERED_CASES, DEEP_REGISTERED_CASES, PRE_RECOVERY_CASES, PRE_FLUSH_PLAN_CASES,
-                                  PRE_HEARTBEAT_OUTCOME_CASES, PRE_INTERRUPTION_CASES, PRE_ACTIVE_HISTORY_CASES, PRE_DATETIME_CASES, PRE_UNICODE_CASES, PRE_SECRET_CASES, PRE_CONFIGURED_CASES, REGISTERED_CASES}
+                                  PRE_HEARTBEAT_OUTCOME_CASES, PRE_INTERRUPTION_CASES, PRE_ACTIVE_HISTORY_CASES, PRE_DATETIME_CASES, PRE_UNICODE_CASES, PRE_SECRET_CASES, PRE_CONFIGURED_CASES, PRE_PROVIDER_OVERFLOW_CASES, REGISTERED_CASES}
             or fif_version == "v5" and len(cases) != HISTORICAL_REGISTERED_CASES):
         raise ValueError("Catalog migration requires one complete exact registered definition set")
     frozen = families[fif_version]
@@ -261,6 +263,11 @@ def definition_authority(cases, *, fif_version):
         if len(cases) > PRE_CONFIGURED_CASES:
             from equivalence.configured_redaction import build_cases as build_configured_cases
             expected.extend(build_configured_cases())
+        if len(cases) >= PRE_PROVIDER_OVERFLOW_CASES and _sha(cases[:PRE_PROVIDER_OVERFLOW_CASES]) != PRE_PROVIDER_OVERFLOW_CATALOG_SHA256:
+            raise ValueError("The first 1611 definitions preceding provider overflow changed")
+        if len(cases) > PRE_PROVIDER_OVERFLOW_CASES:
+            from equivalence.provider_overflow_cases import build_cases as build_provider_overflow_cases
+            expected.extend(build_provider_overflow_cases())
         if _sha(cases[:DEEP_REGISTERED_CASES]) != DEEP_CATALOG_SHA256 or _sha(maintenance) != _sha(expected):
             raise ValueError("Maintenance cases must follow the exact prior 1519 definitions")
     frozen.validate_registration(cases)

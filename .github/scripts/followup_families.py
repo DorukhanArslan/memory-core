@@ -24,6 +24,8 @@ from followup_interrupted_publication import replay_interrupted_publication
 from followup_recovery import replay_recovery
 from followup_jobs import replay_jobs
 from followup_locks import replay_locks
+from equivalence import provider_overflow_cases
+from followup_overflow import replay_overflow
 
 
 from equivalence import configured_redaction
@@ -39,6 +41,7 @@ FAMILIES = {
     engine_unicode_collation.OPERATION: (engine_unicode_collation, "engineUnicodeFamilyComplete", replay_unicode),
     recovery_failure.OPERATION: (recovery_failure, "recoveryInterruptionFamilyComplete", replay_interrupted_publication),
     datetime_regex_family.REQUIREMENT: (datetime_regex_family, "datetimeRegexFamilyComplete", replay_datetime),
+    provider_overflow_cases.OPERATION: (provider_overflow_cases, "providerOverflowFamilyComplete", replay_overflow),
     flush_plan_target.OPERATION: (flush_plan_target, "flushPlanTargetFamilyComplete", replay_flush),
     recovery_repair.REQUIREMENT: (recovery_repair, "recoveryRepairFamilyComplete", replay_recovery),
     heartbeat_turn_outcomes.OPERATION: (heartbeat_turn_outcomes, "heartbeatTurnOutcomesComplete", replay_heartbeat_outcomes),

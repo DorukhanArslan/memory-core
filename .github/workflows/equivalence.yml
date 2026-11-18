@@ -186,6 +186,7 @@ jobs:
             .equivalence-results/query-sync-outcomes/sdk-attempt-*/sdk-query-sync-*/sdk-host-raw.json
             .equivalence-results/query-sync-outcomes/sdk-attempt-*/sdk-query-sync-*/tool-*-envelope.json
             .equivalence-results/heartbeat-turn-outcomes/**
+            .equivalence-results/provider-overflow/**
             .equivalence-results/query-sync-cold-retry/**
             .equivalence-results/next-turn-notice/**
             .equivalence-results/query-sync-boundaries-acceptance/**

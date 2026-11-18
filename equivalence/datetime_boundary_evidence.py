@@ -4,7 +4,7 @@ from __future__ import annotations
 from hashlib import sha256
 import json
 
-from equivalence.datetime_boundary_cases import CORPUS, DIAGNOSTIC, INVALID, POINT, STAMPS, UNSAFE, UNVERIFIED, ZONE, build_cases, members
+from equivalence.datetime_boundary_cases import CORPUS, DIAGNOSTIC, INVALID, POINT as POINT, STAMPS, UNSAFE, ZONE, build_cases, members
 from equivalence.datetime_regex_evidence import same
 from equivalence.datetime_regex_family import CLOCK_OWNERS, wire
 

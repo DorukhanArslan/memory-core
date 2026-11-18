@@ -131,7 +131,7 @@ def _turn_extras(raw, ordinal, workspace, events, native):
                 "Deep hook lost final callback or log output")
     for receipt in raw["provider"][prev["providerCalls"]:control["providerCalls"]]:
         same(receipt["nowMs"], raw["input"]["turns"][ordinal]["nowMs"], "Deep callbacks escaped the triggering turn")
-    texts = [l["args"][0] if native else l["text"] for l in raw["logs"][:control["logCount"]]]
+    texts = [entry["args"][0] if native else entry["text"] for entry in raw["logs"][:control["logCount"]]]
     return {"events": _events(events, workspace),
             "modelCalls": [c["request"] for c in raw["provider"][:control["providerCalls"]]],
             "summaries": [t for t in texts if isinstance(t, str) and t.startswith("memory-core: dreaming promotion complete")]}

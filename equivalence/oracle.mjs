@@ -210,7 +210,7 @@ async function execute(operation, input, id) {
     "engine-datetime-clock": datetimeSourceImports,
     "engine-numeric-boundaries": numericSourceImports,
     "engine-unicode-collation": unicodeSourceImports,
-    "session-projection": input.reopenHeartbeatCorpus && heartbeatCorpusSourceImports,
+    "session-projection": input.reopenDatetimeCorpus ? datetimeSourceImports : input.reopenHeartbeatCorpus && heartbeatCorpusSourceImports,
   })[operation];
   if (receipts) {
     const imports = new Set();

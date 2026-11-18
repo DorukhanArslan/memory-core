@@ -44,7 +44,9 @@ PRE_CONFIGURED_CASES = 1609
 PRE_CONFIGURED_CATALOG_SHA256 = "d440b9e0828e0c0994aa4d20519a1813b54e3684ed783695b573010661dc55ed"
 PRE_PROVIDER_OVERFLOW_CASES = 1611
 PRE_PROVIDER_OVERFLOW_CATALOG_SHA256 = "0e2a16aa84908495a3b48d5a28f9d2855ece6d2083db8375110efe2aaca810b4"
-REGISTERED_CASES = 1618
+PRE_DATE_BOUNDARY_CASES = 1618
+PRE_DATE_BOUNDARY_SHA = "28eeb93559b2c65178dad1c849408f8808e95471c22583bef225ea30c4540676"
+REGISTERED_CASES = 1623
 
 # PR22 changes these three policy texts, not the thirteen cases' business inputs,
 # order, coverage or other fields. Reversing only the exact reviewed fragments
@@ -268,6 +270,11 @@ def definition_authority(cases, *, fif_version):
         if len(cases) > PRE_PROVIDER_OVERFLOW_CASES:
             from equivalence.provider_overflow_cases import build_cases as build_provider_overflow_cases
             expected.extend(build_provider_overflow_cases())
+        if len(cases) >= PRE_DATE_BOUNDARY_CASES and _sha(cases[:PRE_DATE_BOUNDARY_CASES]) != PRE_DATE_BOUNDARY_SHA:
+            raise ValueError("The first 1618 ordered definitions preceding date boundary admission changed")
+        if len(cases) > PRE_DATE_BOUNDARY_CASES:
+            from equivalence.datetime_boundary_cases import build_cases as build_date_boundaries
+            expected.extend(build_date_boundaries())
         if _sha(cases[:DEEP_REGISTERED_CASES]) != DEEP_CATALOG_SHA256 or _sha(maintenance) != _sha(expected):
             raise ValueError("Maintenance cases must follow the exact prior 1519 definitions")
     frozen.validate_registration(cases)

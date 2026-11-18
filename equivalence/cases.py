@@ -394,6 +394,11 @@ def build_cases(*, include_prospective: bool = False) -> list[dict[str, Any]]:
     from equivalence.provider_overflow_cases import build_cases as build_provider_overflow
 
     cases.extend(build_provider_overflow())
+
+    from equivalence.datetime_boundary_cases import build_cases as build_datetime_boundaries
+
+    cases.extend(build_datetime_boundaries())
+
     if include_prospective:
         from equivalence.flush_contract import build_prospective_flush_contract_cases
         from equivalence.session_projection import build_prospective_session_projection_cases

@@ -3550,13 +3550,13 @@
           "path": "memory_core/session_entry.py",
           "symbol": "build_session_entry",
           "anchor": "def build_session_entry(",
-          "line": 649
+          "line": 604
         },
         {
           "path": "memory_core/session_entry.py",
           "symbol": "parse_jsonl_records",
           "anchor": "def parse_jsonl_records(text: str) -> list[tuple[int, Any]]:",
-          "line": 633
+          "line": 588
         },
         {
           "path": "memory_core/consolidation/session_ingestion.py",
@@ -3712,7 +3712,7 @@
           "path": "memory_core/session_entry.py",
           "symbol": "resolve_session_reset_recall_cutoff",
           "anchor": "def resolve_session_reset_recall_cutoff(events: list[Any]) -> dict[str, Any]:",
-          "line": 569
+          "line": 524
         },
         {
           "path": "memory_core/session_visibility.py",
@@ -4296,7 +4296,7 @@
           "path": "memory_core/current_time.py",
           "symbol": "format_current_time_line",
           "anchor": "def format_current_time_line(",
-          "line": 225
+          "line": 226
         },
         {
           "path": "memory_core/model_prompt.py",
@@ -4314,7 +4314,7 @@
           "path": "memory_core/current_time.py",
           "symbol": "resolve_cron_style_now",
           "anchor": "def resolve_cron_style_now(",
-          "line": 239
+          "line": 240
         }
       ],
       "implementation": "partial",
@@ -6551,7 +6551,7 @@
           "path": "memory_core/consolidation/_util.py",
           "symbol": "js_to_fixed",
           "anchor": "def js_to_fixed(",
-          "line": 72
+          "line": 70
         },
         {
           "path": "memory_core/consolidation/promotion.py",
@@ -6670,6 +6670,18 @@
           "symbol": "configured RegExp normalization",
           "anchor": "pattern = new RegExp(raw.source, `${raw.flags}g`);",
           "line": 171
+        },
+        {
+          "path": "packages/memory-host-sdk/src/host/session-files.ts",
+          "symbol": "parseSessionTimestampMs",
+          "anchor": "function parseSessionTimestampMs(",
+          "line": 535
+        },
+        {
+          "path": "src/security/safe-regex.ts",
+          "symbol": "compileSafeRegexDetailed",
+          "anchor": "export function compileSafeRegexDetailed(",
+          "line": 328
         }
       ],
       "python": [
@@ -6677,24 +6689,37 @@
           "path": "memory_core/current_time.py",
           "symbol": "format_current_time_line",
           "anchor": "def format_current_time_line(",
-          "line": 225
+          "line": 226
         },
         {
           "path": "memory_core/consolidation/_util.py",
           "symbol": "parse_ms",
           "anchor": "def parse_ms(",
-          "line": 103
+          "line": 92
         },
         {
           "path": "memory_core/redact_user_patterns.py",
           "symbol": "compile_config_regex",
           "anchor": "def compile_config_regex(",
           "line": 914
+        },
+        {
+          "path": "memory_core/_js_date.py",
+          "symbol": "date_parse_profile",
+          "anchor": "def date_parse_profile(",
+          "line": 26
+        },
+        {
+          "path": "memory_core/_icu_timezone.py",
+          "symbol": "named_time_zone",
+          "anchor": "def named_time_zone(",
+          "line": 36
         }
       ],
       "implementation": "partial",
       "notes": [
-        "Python implements selected timezone/date and JS-regex behavior; permissive Date.parse, host locale choice and unsupported regex syntax require explicit differential cases."
+        "Python implements selected timezone/date and JS-regex behavior; permissive Date.parse, host locale choice and unsupported regex syntax require explicit differential cases.",
+        "The saved transcript exposes each accepted or fallback timestamp. Known V8-only syntax retains the complete original/SDK discrepancy, and coincident rejected values still have uncovered grammar status. ICU supplies named zone admission and the configured regex security owner retains both terminal refusal reasons."
       ],
       "acceptancePoints": [
         "engine.datetime-regex.outcomes",
@@ -12874,6 +12899,21 @@
       ],
       "exportedDeclarations": [
         "sanitizeGoogleAssistantFirstOrdering"
+      ]
+    },
+    {
+      "path": "src/security/safe-regex.ts",
+      "sha256": "0067759e19538ca8ffe3f95f3669a519d400243bfd0798bb5384ac84713342e5",
+      "sourceImports": [
+        "../infra/map-size.js",
+        "@openclaw/normalization-core"
+      ],
+      "exportedDeclarations": [
+        "SafeRegexCompileResult",
+        "SafeRegexRejectReason",
+        "compileSafeRegex",
+        "compileSafeRegexDetailed",
+        "testRegexWithBoundedInput"
       ]
     }
   ]

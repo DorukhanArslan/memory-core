@@ -1526,7 +1526,7 @@ def verify_process_exit(args, data):
 
 def compact_case(row, definition):
     receipt = {key: value for key, value in row.items()
-               if key in {"id", "status", "publicValueSha256", "datetimeRegexValidated"} or key.endswith("EvidenceValidated")}
+               if key in {"id", "status", "publicValueSha256", "datetimeRegexValidated", "datetimeBoundaryEvidence"} or key.endswith("EvidenceValidated")}
     omitted = sorted(definition.keys() - row.keys())
     if omitted:
         receipt["omittedDefinitionFields"] = omitted
@@ -1711,7 +1711,9 @@ def assess(args, result):
         "allowedUncreditedNativeWarmFlushChanges": allowed_warm_changes,
         "resolvedCaseIds": sorted(resolved),
         "otherChangedCaseIds": sorted((set(sdk_changes) | set(native_changes)) - set(allowed_warm_changes) - resolved)}
-    require({row["id"] for row in mismatches} == set(previous_hashes) - resolved
+    from followup_date_boundaries import DIAGNOSTIC, verify_legacy_diagnostic
+    verify_legacy_diagnostic(rows_by_id[DIAGNOSTIC])
+    require({row["id"] for row in mismatches} == (set(previous_hashes) - resolved) | {DIAGNOSTIC}
             and not result["previousMismatchPublicHashReview"]["otherChangedCaseIds"],
             "Unexpected change to a retained difference or its complete public value")
     expected_status = ("blocked" if metrics["cases"].get("blocked") else "mismatched"

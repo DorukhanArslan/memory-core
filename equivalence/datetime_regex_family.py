@@ -84,8 +84,10 @@ def build_cases():
 
 
 def members(cases):
-    return [row for row in cases if row.get("requirement") == REQUIREMENT or row.get("operation") == CLOCK
-            or set(POINTS).intersection(row.get("covers", ()))]
+    from equivalence.datetime_boundary_cases import IDS as boundary_ids
+
+    return [row for row in cases if row.get("id") not in boundary_ids and (row.get("requirement") == REQUIREMENT
+            or row.get("operation") == CLOCK or set(POINTS).intersection(row.get("covers", ())))]
 
 
 def validate_registration(cases):

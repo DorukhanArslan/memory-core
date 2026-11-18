@@ -11,6 +11,7 @@ from equivalence import datetime_regex_family
 from equivalence import engine_unicode_collation
 from followup_unicode import replay_unicode
 from followup_datetime import replay_datetime
+import followup_date_boundaries as date_boundaries
 from followup_diary import replay_diary
 from followup_dreams import replay_dreams
 from followup_flush import replay_flush
@@ -35,6 +36,7 @@ from equivalence.secret_boundary_inputs import POINTS as SECRET_BOUNDARIES
 
 
 FAMILIES = {
+    date_boundaries.POINT: (date_boundaries, "datetimeRegexBoundaryComplete", date_boundaries.replay),
     configured_redaction.POINT: (configured_redaction, "configuredRedactionOutcomesComplete", replay_configured_redaction),
     SECRET_BOUNDARIES[0]: (followup_secret_boundaries, "secretRedactionBoundariesComplete",
                            followup_secret_boundaries.replay_secret_boundaries),
@@ -64,6 +66,8 @@ REPORT_FIELDS = {field for _, field, _ in FAMILIES.values()} | {
 
 
 def family_key(case):
+    if case.get("id") in date_boundaries.IDS:
+        return date_boundaries.POINT
     if configured_redaction.POINT in case.get("covers", ()):
         return configured_redaction.POINT
     if SECRET_BOUNDARIES[0] in case.get("covers", ()):
@@ -94,8 +98,8 @@ def replay_followup(data, definitions, args, metrics, replay_rank):
             required = {"case", "python", "sourcePolicy"}
         if case["operation"] == engine_unicode_collation.OPERATION:
             required = {"case"}
-        if family_key(case) == datetime_regex_family.REQUIREMENT:
-            if case["operation"] == datetime_regex_family.CLOCK:
+        if family_key(case) in {datetime_regex_family.REQUIREMENT, date_boundaries.POINT}:
+            if case["operation"] in {datetime_regex_family.CLOCK, "session-projection"}:
                 required = {"case"}
             elif case["operation"] == "redaction-policy-source":
                 required = {"case", "python", "sourcePolicy"}
@@ -111,7 +115,8 @@ def replay_followup(data, definitions, args, metrics, replay_rank):
             evidence = replay(data, cases, args, runtime)
         if [r["id"] for r in evidence] != [case["id"] for case in cases]:
             raise ValueError("Physical replay omitted or substituted a case")
-        passed = all(r["publicMatch"] is True for r in evidence)
+        passed = (all(r["publicMatch"] is (r["id"] != date_boundaries.DIAGNOSTIC) for r in evidence)
+                  if op == date_boundaries.POINT else all(r["publicMatch"] is True for r in evidence))
         if not (data[field] is family.family_complete(data["cases"]) is metrics["families"][op] is passed):
             raise ValueError("Appended family gate disagrees with the independent physical replay")
         results[op] = {"gate": field, "passed": passed, "cases": evidence,

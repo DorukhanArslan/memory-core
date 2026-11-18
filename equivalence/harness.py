@@ -313,6 +313,7 @@ def _validate_scope(scope: Any, cases: Any) -> tuple[list[dict], dict[str, set[s
     from equivalence.compaction_assembly import validate_registration as validate_compaction_restarts
     from equivalence.automation_job_outcomes import validate_registration as validate_job_outcomes
     from equivalence.automation_job_state import validate_registration as validate_jobs_registration
+    from equivalence.datetime_boundary_cases import validate_registration as validate_date_boundaries
     from equivalence.datetime_regex_family import validate_registration as validate_datetime_registration
     from equivalence.engine_numeric_family import validate_registration as validate_numeric_registration
     from equivalence.engine_unicode_collation import validate_registration as validate_unicode_registration
@@ -323,6 +324,7 @@ def _validate_scope(scope: Any, cases: Any) -> tuple[list[dict], dict[str, set[s
         secret_boundary_evidence.validate_registration(cases)
         validate_numeric_registration(cases)
         validate_datetime_registration(cases)
+        validate_date_boundaries(cases)
         validate_unicode_registration(cases)
         validate_heartbeat_exclusions(cases)
         validate_heartbeat_outcomes(cases)
@@ -2975,8 +2977,13 @@ def run_suite(*, checkout: Path, node: Path, smoke: bool = False,
                         from equivalence.datetime_regex_evidence import validate_pair as validate_datetime_pair
 
                         row.update(openclaw=native_comparison, python=python)
-                        validate_datetime_pair(case, report, native_comparison, python)
-                        row["datetimeRegexValidated"] = True
+                        from equivalence.datetime_boundary_evidence import observe, POINT as datetime_boundary
+                        from equivalence.datetime_boundary_cases import DIAGNOSTIC as date_diagnostic
+                        if datetime_boundary in case["covers"] or case["id"] == date_diagnostic:
+                            row["datetimeBoundaryEvidence"] = observe(case, report, native_comparison, python)
+                        else:
+                            validate_datetime_pair(case, report, native_comparison, python)
+                            row["datetimeRegexValidated"] = True
                     if case["requirement"] == "engine.numeric-boundaries" and case["operation"] == "promotion-ranking-runtime":
                         from equivalence.engine_numeric_rank import validate_numeric_rank
 
@@ -3011,6 +3018,10 @@ def run_suite(*, checkout: Path, node: Path, smoke: bool = False,
                     if (case["operation"] in {"forget-index-fence-v6-runtime", "host-turn-barrier-v4-runtime"}
                             or case["id"] in HISTORICAL_MISMATCH_REPORT_IDS):
                         row.update(python=python, openclaw=native_comparison)
+                    if row["status"] == "matched" and any(
+                        cell["comparison"] == "uncovered" for cell in row.get("datetimeBoundaryEvidence", ())
+                    ):
+                        row.update(status="blocked", code="unsupported-date-grammar")
                     if row["status"] == "mismatched":
                         row.update(operation=case["operation"], input=case["input"],
                                    python=python, openclaw=native_comparison)
@@ -3120,6 +3131,10 @@ def run_suite(*, checkout: Path, node: Path, smoke: bool = False,
 
         overflow = overflow_complete(report["cases"])
         report["providerOverflowFamilyComplete"] = overflow
+
+        from equivalence.datetime_boundary_evidence import family_complete as date_boundaries_complete, POINT as date_boundary_point
+        date_boundaries = date_boundaries_complete(report["cases"])
+        report["datetimeRegexBoundaryComplete"] = date_boundaries
         numeric_complete = numeric_family_complete(report["cases"])
         report["engineNumericFamilyComplete"] = numeric_complete
         from equivalence.engine_unicode_collation import family_complete as unicode_family_complete, POINTS as unicode_points
@@ -3208,6 +3223,7 @@ def run_suite(*, checkout: Path, node: Path, smoke: bool = False,
                                                       and (point["id"] not in overflow_points or overflow)
                                                       and dream_points.get(point["id"], True)
                                                       and (point["id"] not in datetime_points or datetime_complete)
+                                                      and (point["id"] != date_boundary_point or date_boundaries)
                                                       and (point["id"] not in numeric_points or numeric_complete)
                                                       and (point["id"] not in unicode_points or unicode_complete)
                                                       and (point["id"] not in deep_points or deep_complete)

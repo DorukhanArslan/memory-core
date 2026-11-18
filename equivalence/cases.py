@@ -365,6 +365,9 @@ def build_cases(*, include_prospective: bool = False) -> list[dict[str, Any]]:
 
     cases.extend(build_flush_plan_targets())
     cases.extend(build_heartbeat_outcomes())
+    from equivalence.provider_overflow_cases import build_cases as build_provider_overflow
+
+    cases.extend(build_provider_overflow())
     if include_prospective:
         from equivalence.flush_contract import build_prospective_flush_contract_cases
         from equivalence.session_projection import build_prospective_session_projection_cases
@@ -394,8 +397,10 @@ def run_python(case: dict[str, Any]) -> Any:
             with TemporaryDirectory() as temp:
                 return run_sdk(exact, Path(temp))
         return run_sdk(exact, directory)
-    if operation in {"automation-job-state-runtime", "heartbeat-turn-outcomes-runtime"}:
-        if operation == "heartbeat-turn-outcomes-runtime":
+    if operation in {"automation-job-state-runtime", "heartbeat-turn-outcomes-runtime", "provider-overflow-host-runtime"}:
+        if operation == "provider-overflow-host-runtime":
+            from equivalence.provider_overflow_sdk import run_sdk
+        elif operation == "heartbeat-turn-outcomes-runtime":
             from equivalence.heartbeat_turn_outcomes_sdk import run_sdk
         else:
             from equivalence.automation_job_state_sdk import run_sdk

@@ -314,10 +314,12 @@ def _validate_scope(scope: Any, cases: Any) -> tuple[list[dict], dict[str, set[s
     from equivalence.engine_numeric_family import validate_registration as validate_numeric_registration
     from equivalence.heartbeat_turn_boundaries import validate_registration as validate_heartbeat_exclusions
     from equivalence.heartbeat_turn_outcomes import validate_registration as validate_heartbeat_outcomes
+    from equivalence.provider_overflow_cases import validate_registration as validate_provider_overflow
     try:
         validate_numeric_registration(cases)
         validate_heartbeat_exclusions(cases)
         validate_heartbeat_outcomes(cases)
+        validate_provider_overflow(cases)
         validate_jobs_registration(cases)
         validate_job_outcomes(cases)
         validate_compaction_restarts(cases)
@@ -474,18 +476,23 @@ def _oracle(node: Path, script: Path, checkout: Path, cases: list[dict], timeout
             failure.rejected_evidence = {"caseIds": [cases[0]["id"]], "coverageCredit": False,
                                          "retainedDirectory": str(attempt), "reason": str(error)}
             raise failure from error
-    if len(cases) == 1 and cases[0]["operation"] == "heartbeat-turn-outcomes-runtime":
-        from equivalence.heartbeat_turn_outcomes_replay import run_original
+    if len(cases) == 1 and cases[0]["operation"] in {"heartbeat-turn-outcomes-runtime", "provider-overflow-host-runtime"}:
+        if cases[0]["operation"] == "provider-overflow-host-runtime":
+            from equivalence.provider_overflow_native import run_native as run_original
+            family = "provider-overflow"
+        else:
+            from equivalence.heartbeat_turn_outcomes_replay import run_original
+            family = "heartbeat-turn-outcomes"
 
         if release_runtime is None:
-            raise HarnessError("release-runtime-unavailable", "Heartbeat outcome runs require the pinned release.")
-        retained = ROOT / ".equivalence-results" / "heartbeat-turn-outcomes"
+            raise HarnessError("release-runtime-unavailable", f"{family} requires the pinned release.")
+        retained = ROOT / ".equivalence-results" / family
         retained.mkdir(parents=True, exist_ok=True)
         attempt = Path(tempfile.mkdtemp(prefix="native-attempt-", dir=retained))
         try:
             return run_original(cases[0], node, checkout, release_runtime, attempt)
         except Exception as error:
-            failure = HarnessError("heartbeat-outcomes-evidence-invalid", str(error))
+            failure = HarnessError(f"{family}-evidence-invalid", str(error))
             failure.rejected_evidence = {"caseIds": [cases[0]["id"]], "coverageCredit": False,
                                          "retainedDirectory": str(attempt), "reason": str(error)}
             raise failure from error
@@ -1399,7 +1406,7 @@ def run_suite(*, checkout: Path, node: Path, smoke: bool = False,
             flush_plan_target.OPERATION, *WORKSPACE_FAMILIES,
             "embed-cache-lifecycle-runtime", "automation-job-state-runtime", "automation-job-outcomes-runtime",
             "compaction-assembly-restart-runtime",
-            "heartbeat-turn-outcomes-runtime",
+            "heartbeat-turn-outcomes-runtime", "provider-overflow-host-runtime",
         }
         runtime_cases = [case for case in cases if case["operation"] in runtime_operations]
         source_cases = [case for case in cases if case["operation"] not in runtime_operations]
@@ -2117,13 +2124,14 @@ def run_suite(*, checkout: Path, node: Path, smoke: bool = False,
                     native_comparison = native["result"]
                     python_case = deepcopy(case)
                     if case in python_diagnostic_cases:
-                        if case["operation"] in {"heartbeat-turn-outcomes-runtime", "compaction-assembly-restart-runtime", "automation-job-outcomes-runtime", "workspace-lock-process-runtime", "automation-job-state-runtime", "index-identity-boundaries-runtime", "query-sync-outcomes-runtime", "query-sync-boundaries-runtime", "forget-lineage-runtime", "forget-boundaries-runtime", "recall-signals-runtime", "embed-cache-lifecycle-runtime", "session-reset-boundaries-runtime", "prompt-runtime-context-runtime", "prompt-history-repair-runtime", "deep-consolidation-runtime", flush_plan_target.OPERATION, *WORKSPACE_FAMILIES}:
+                        if case["operation"] in {"provider-overflow-host-runtime", "heartbeat-turn-outcomes-runtime", "compaction-assembly-restart-runtime", "automation-job-outcomes-runtime", "workspace-lock-process-runtime", "automation-job-state-runtime", "index-identity-boundaries-runtime", "query-sync-outcomes-runtime", "query-sync-boundaries-runtime", "forget-lineage-runtime", "forget-boundaries-runtime", "recall-signals-runtime", "embed-cache-lifecycle-runtime", "session-reset-boundaries-runtime", "prompt-runtime-context-runtime", "prompt-history-repair-runtime", "deep-consolidation-runtime", flush_plan_target.OPERATION, *WORKSPACE_FAMILIES}:
                             # Keep the original child paths and bytes for the post-run
                             # semantic replay, including failed SDK captures.
                             family = ("deep-consolidation" if case["operation"] == "deep-consolidation-runtime" else
                                       "flush-plan-target" if case["operation"] == flush_plan_target.OPERATION else
                                       evidence_family(case["operation"]) if case["operation"] in WORKSPACE_FAMILIES else
                                       "compaction-context-assembly" if case["operation"] == "compaction-assembly-restart-runtime" else
+                                      "provider-overflow" if case["operation"] == "provider-overflow-host-runtime" else
                                       "heartbeat-turn-outcomes" if case["operation"] == "heartbeat-turn-outcomes-runtime" else
                                       "automation-job-outcomes" if case["operation"] == "automation-job-outcomes-runtime" else
                                       "automation-job-state" if case["operation"] == "automation-job-state-runtime" else
@@ -2187,8 +2195,11 @@ def run_suite(*, checkout: Path, node: Path, smoke: bool = False,
                                 hashlib.sha256(raw).hexdigest(), directory, report["implementation"])
                             row.update(runtimeEvidenceValidated=True, openclaw=native_comparison, python=python,
                                        sdkEvidenceDirectory=str(directory))
-                        if case["operation"] == "heartbeat-turn-outcomes-runtime":
-                            from equivalence.heartbeat_turn_outcomes_replay import review_pair
+                        if case["operation"] in {"heartbeat-turn-outcomes-runtime", "provider-overflow-host-runtime"}:
+                            if case["operation"] == "provider-overflow-host-runtime":
+                                from equivalence.provider_overflow_replay import review_pair
+                            else:
+                                from equivalence.heartbeat_turn_outcomes_replay import review_pair
 
                             original = next(d for d in report["runtimeDiagnostics"]
                                             if d["side"] == "native" and d["id"] == case["id"])
@@ -2518,7 +2529,7 @@ def run_suite(*, checkout: Path, node: Path, smoke: bool = False,
                     if case["requirement"] == "engine.numeric-boundaries":
                         row["numericError"] = {"type": type(error).__name__, "message": str(error)}
                     row.update(status="blocked", code="python-case-failed")
-                    if case["requirement"] == "heartbeat.turn-decisions":
+                    if case["requirement"] in {"heartbeat.turn-decisions", "compaction.provider-overflow"}:
                         row["evidenceError"] = {"name": type(error).__name__, "message": str(error)}
                     if case["operation"] in {"compaction-assembly-restart-runtime", "automation-job-outcomes-runtime", "workspace-lock-process-runtime", "promotion-apply-family-runtime", "deep-consolidation-runtime", "host-restart-session-runtime",
                                              "host-update-isolation-runtime", "host-turn-barrier-runtime",
@@ -2593,6 +2604,10 @@ def run_suite(*, checkout: Path, node: Path, smoke: bool = False,
 
         heartbeat_outcomes = heartbeat_outcomes_complete(report["cases"])
         report["heartbeatTurnOutcomesComplete"] = heartbeat_outcomes
+        from equivalence.provider_overflow_cases import family_complete as overflow_complete, POINTS as overflow_points
+
+        overflow = overflow_complete(report["cases"])
+        report["providerOverflowFamilyComplete"] = overflow
         numeric_complete = numeric_family_complete(report["cases"])
         report["engineNumericFamilyComplete"] = numeric_complete
 
@@ -2666,6 +2681,7 @@ def run_suite(*, checkout: Path, node: Path, smoke: bool = False,
                                                       and (point["id"] != restart_point or restarts_complete)
                                                       and (point["id"] not in flush_plan_target.POINTS or flush_plan_complete)
                                                       and (point["id"] != heartbeat_outcome or heartbeat_outcomes)
+                                                      and (point["id"] not in overflow_points or overflow)
                                                       and dream_points.get(point["id"], True)
                                                       and (point["id"] not in numeric_points or numeric_complete)
                                                       and (point["id"] not in deep_points or deep_complete)

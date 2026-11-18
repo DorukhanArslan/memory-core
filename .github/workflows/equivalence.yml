@@ -167,6 +167,7 @@ jobs:
             .equivalence-results/automation-job-outcomes/**
             .equivalence-results/compaction-context-assembly/**
             .equivalence-results/heartbeat-turn-outcomes/**
+            .equivalence-results/provider-overflow/**
             .equivalence-results/query-sync-cold-retry/**
             .equivalence-results/next-turn-notice/**
             .equivalence-results/query-sync-boundaries-acceptance/**

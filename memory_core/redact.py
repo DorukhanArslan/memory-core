@@ -60,6 +60,7 @@ from functools import lru_cache
 from typing import Any, Literal, NamedTuple
 
 from memory_core.bootstrap._js import JS_IU_WORD_CLASS, JS_SPACE_CLASS, js_trim
+from memory_core.ecmascript_regexp import ECMAMatch, ECMAPattern
 from memory_core.redact_user_patterns import UserRegex, compile_redact_pattern
 from memory_core.secret_registry import (
     RegistrySnapshot,
@@ -1633,7 +1634,7 @@ def _redact_match(
     groups: list[str],
     offset: int,
     pattern: _Pattern,
-    regex_match: re.Match[str] | None,
+    regex_match: re.Match[str] | ECMAMatch | None,
     replacement: str | None = None,
 ) -> str:
     if "PRIVATE KEY-----" in match:
@@ -1687,17 +1688,12 @@ def _sub_regex(text: str, pattern: _Pattern) -> str:
     # must match exactly where the previous match ended.
     parts: list[str] = []
     last = 0
-    position = 0
-    while position <= len(text):
-        match = regex.match(text, position) if user.sticky else regex.search(text, position)
-        if match is None:
-            break
+    for match in regex.finditer(text):
         parts.append(text[last : match.start()])
         parts.append(
             _redact_match(match.group(0), [g or "" for g in match.groups()], match.start(), pattern, match)
         )
         last = match.end()
-        position = match.end() if match.end() > match.start() else match.end() + 1
     if not parts:
         return text
     parts.append(text[last:])
@@ -1726,7 +1722,6 @@ def _replace_regex(text: str, pattern: _Pattern) -> str:
             _redact_match(match.group(0), [g or "" for g in match.groups()], match.start(), pattern, match)
         )
         last = match.end()
-        position = match.end() if match.end() > match.start() else match.end() + 1
     if not parts:
         return text
     parts.append(text[last:])
@@ -2023,7 +2018,7 @@ def get_default_redact_patterns() -> list[str]:
 
 
 # --- computeSensitiveRedactionBitmap ---------------------------------------------------------------------
-def _iterate_matches(text: str, pattern: _Pattern) -> Iterator[tuple[str, list[str], int, re.Match[str] | None]]:
+def _iterate_matches(text: str, pattern: _Pattern) -> Iterator[tuple[str, list[str], int, re.Match[str] | ECMAMatch | None]]:
     """``iterateRedactMatches`` over ``text`` (in the pattern's own coordinates: UTF-16 units, code
     points for a ``u``-flag configured pattern): every match, left to right, an empty match
     advancing the search by one position."""
@@ -2032,6 +2027,10 @@ def _iterate_matches(text: str, pattern: _Pattern) -> Iterator[tuple[str, list[s
             yield found[0], found[1], found[2], None
         return
     regex = pattern.regex
+    if isinstance(regex, ECMAPattern):
+        for found in regex.finditer(text):
+            yield found.group(0), [group or "" for group in found.groups()], found.start(), found
+        return
     sticky = pattern.user is not None and pattern.user.sticky
     position = 0
     while position <= len(text):

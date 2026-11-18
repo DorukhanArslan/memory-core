@@ -5671,19 +5671,19 @@
           "path": "memory_core/redact.py",
           "symbol": "redact_sensitive_text",
           "anchor": "def redact_sensitive_text(",
-          "line": 1960
+          "line": 1955
         },
         {
           "path": "memory_core/redact.py",
           "symbol": "redact_model_visible_secrets",
           "anchor": "def redact_model_visible_secrets(",
-          "line": 2484
+          "line": 2483
         },
         {
           "path": "memory_core/redact.py",
           "symbol": "create_sensitive_text_redactor",
           "anchor": "def create_sensitive_text_redactor(",
-          "line": 2008
+          "line": 2003
         },
         {
           "path": "memory_core/session_transcript_append.py",
@@ -5929,13 +5929,13 @@
           "path": "memory_core/redact_user_patterns.py",
           "symbol": "compile_config_regex",
           "anchor": "def compile_config_regex(",
-          "line": 900
+          "line": 914
         },
         {
           "path": "memory_core/redact.py",
           "symbol": "configure_logging_redaction",
           "anchor": "def configure_logging_redaction(",
-          "line": 1874
+          "line": 1869
         },
         {
           "path": "memory_core/consolidation/artifact_provenance.py",
@@ -5977,8 +5977,8 @@
       "implementation": "partial",
       "notes": [
         "Two actual AgentLoop/tool/write/stored-session flows establish the bounded owner/taint/provenance condition. One authenticated unchanged dependency-free original TypeScript taint owner is used explicitly with the official release; complete outer results and separate raw coding presentation/diagnostic hashes remain retained. This does not establish the regex/mode/full-context outcome condition.",
-        "Configured Unicode Letter properties use exact Node 24.16/ICU78.3/Unicode17 facts with a reproducible generator and Unicode notice. Mixed case-folding, repeated capture, general-category Lu and direct v-mode differences remain ordinary diagnostics; unsupported source behavior is not counted as a match.",
-        "Python accepts a supported subset of JavaScript regex behavior and explicitly rejects unsupported syntax; it cannot assume native RegExp acceptance for every configured source pattern.",
+        "Configured redaction uses an embedded ECMAScript RegExp with UTF-16 indices and capture reset. The exact single Letter-property fast paths use the original Unicode 17 inventory. The same safety check runs before every configured pattern is compiled.",
+        "The outcome gate requires the original source-level policy and durable session diagnostics, including mode overrides, full-context nested objects, configured Unicode patterns and direct v-mode compilation.",
         "Artifact hash/owner transitions exist, but the host supplies untrusted_turn and session metadata. Native sticky tool-result taint and persisted sender/owner state need a host adapter and end-to-end comparisons."
       ]
     },
@@ -6604,7 +6604,7 @@
           "path": "memory_core/redact_user_patterns.py",
           "symbol": "compile_config_regex",
           "anchor": "def compile_config_regex(",
-          "line": 900
+          "line": 914
         }
       ],
       "implementation": "partial",

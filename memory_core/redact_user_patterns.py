@@ -12,7 +12,10 @@ dropped without a diagnostic in :func:`memory_core.redact.redact_sensitive_text`
 the list still applies). :func:`compile_config_regex` returns the reason for hosts that report
 it.
 
-JavaScript regex source is translated into Python ``re`` source by a small parser
+Configured rules run in an embedded ECMAScript engine after the upstream safety screen.
+The proven single Letter property forms use their pinned Unicode data for faster traversal.
+
+The lower-level :func:`translate_user_regex` translates JavaScript source into Python ``re`` source by a small parser
 (:func:`translate_user_regex`), following ECMAScript 2024 with the Annex B web-compat syntax
 for the non-``u`` mode: ``\\d``, ``\\w``, ``\\s``, ``\\b``, ``.``, ``^`` and ``$`` have their
 ECMAScript meaning (ASCII word set, the JS white-space set, the four line terminators, ``$`` is
@@ -25,7 +28,7 @@ The six exact Letter aliases (``L``, ``Letter``, ``gc=L``, ``gc=Letter``,
 ``General_Category=L``, ``General_Category=Letter``) under ``u`` use pinned Unicode 17 ranges.
 The ``P`` form materializes its complement before the existing case-folding stage.
 
-Deviations (reported as ``unsupported`` instead of guessing; such an entry is dropped like an
+Deviations of the Python translation helper (reported as ``unsupported`` instead of guessing; such an entry is dropped like an
 invalid one and noted by :func:`memory_core.redact.unsupported_redact_patterns`):
 other ``\\p{..}``/``\\P{..}`` property escapes, look-behind assertions Python cannot compile (variable
 width), ``\\S``/``\\W``... negated shorthands inside a class that Python cannot express (``\\S``),
@@ -43,7 +46,8 @@ from functools import lru_cache
 from typing import Literal
 
 from memory_core.bootstrap._js import JS_IU_WORD_CLASS, JS_SPACE_CLASS, js_trim
-from memory_core.unicode_letter_property import letter_property_class_body
+from memory_core.ecmascript_regexp import ECMAPattern
+from memory_core.unicode_letter_property import LETTER_PROPERTY_ALIASES, letter_property_class_body
 
 _ASTRAL_RE = re.compile("[\U00010000-\U0010ffff]")
 _SURROGATE_PAIR_RE = re.compile("[\ud800-\udbff][\udc00-\udfff]")
@@ -847,7 +851,7 @@ class _Translator:
 class UserRegex:
     """A translated user pattern: the Python regex and the JavaScript flags that shape matching."""
 
-    regex: re.Pattern[str]
+    regex: re.Pattern[str] | ECMAPattern
     source: str
     flags: str
     unicode: bool
@@ -897,6 +901,16 @@ class CompiledConfigRegex:
     reason: RejectReason | None
 
 
+# These exact single-atom forms have independent full-Unicode proofs for the
+# pinned release. Retain their faster native Python traversal for inventories.
+_LETTER_ATOMS = {
+    surrounding.format(atom=slash + "{" + alias + "}")
+    for surrounding in ("{atom}", "[{atom}]", "[^{atom}]")
+    for slash in (r"\p", r"\P")
+    for alias in LETTER_PROPERTY_ALIASES
+}
+
+
 def compile_config_regex(pattern: str, flags: str = "") -> CompiledConfigRegex | None:
     """Compile one user-configured regex; ``None`` for a blank entry (skipped silently)."""
     trimmed = js_trim(pattern)
@@ -909,12 +923,13 @@ def compile_config_regex(pattern: str, flags: str = "") -> CompiledConfigRegex |
 def _compile_safe(trimmed: str, flags: str) -> CompiledConfigRegex:
     if _has_nested_repetition(to_units(trimmed)):
         return CompiledConfigRegex(None, trimmed, flags, "unsafe-nested-repetition")
-    try:
+    if trimmed in _LETTER_ATOMS and flags in ("u", "iu", "ui", "gu", "ug"):
         return CompiledConfigRegex(translate_user_regex(trimmed, flags), trimmed, flags, None)
-    except InvalidRegexError:
+    pattern = ECMAPattern(trimmed, flags)
+    if not pattern.valid():
         return CompiledConfigRegex(None, trimmed, flags, "invalid-regex")
-    except UnsupportedRegexError:
-        return CompiledConfigRegex(None, trimmed, flags, "unsupported-syntax")
+    compiled = UserRegex(pattern, trimmed, flags, "u" in flags or "v" in flags, "y" in flags)
+    return CompiledConfigRegex(compiled, trimmed, flags, None)
 
 
 def compile_redact_pattern(raw: str) -> CompiledConfigRegex | None:

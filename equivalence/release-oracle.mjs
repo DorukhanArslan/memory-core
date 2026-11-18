@@ -304,6 +304,7 @@ for (const testCase of request.cases) {
     const adapter = await import(new URL(binding[0], import.meta.url).href);
     const result = await adapter[binding[1]](testCase.input, {
       ...context.runtime, evidenceDirectory,
+      retainConfiguredDatabases: testCase.id === "redaction-configured-session-captures",
       stateDirectory: context.stateDirectory, configPath: context.configPath,
       approvedReferenceSources: context.approvedReferenceSources ?? [],
       getReadRaceProfile: context.getReadRaceProfile,

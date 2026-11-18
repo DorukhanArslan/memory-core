@@ -38,5 +38,5 @@ def test_existing_safety_and_nonunicode_escape_paths_are_preserved():
     assert compile_config_regex(r"(\p{L}+)+$", "u").reason == "unsafe-nested-repetition"
     assert compile_config_regex(r"\p{L}").regex.regex.fullmatch("p{L}")
     assert compile_redact_pattern(r"/\p{L}/u").regex.unicode is True
-    assert compile_config_regex(r"\p{Lu}", "u").reason == "unsupported-syntax"
-    assert compile_config_regex(r"[\p{ASCII}&&\p{Letter}]", "v").reason == "unsupported-syntax"
+    assert compile_config_regex(r"\p{Lu}", "u").regex.regex.fullmatch("Λ")
+    assert compile_config_regex(r"[\p{ASCII}&&\p{Letter}]", "v").regex.regex.fullmatch("A")

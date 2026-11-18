@@ -2,6 +2,7 @@
 import fs from "node:fs/promises";
 import path from "node:path";
 import crypto from "node:crypto";
+import { DatabaseSync, backup } from "node:sqlite";
 import { spawn } from "node:child_process";
 import { fileURLToPath } from "node:url";
 import { modelChildEnvironment, modelRuntimeIdentity, observeModelChildStreams } from "./model-runtime-observation.mjs";
@@ -43,6 +44,14 @@ export async function runModelSessionRuntime(input, runtimeConfig) {
       Object.assign(record, { exit, finishedAtNs: process.hrtime.bigint().toString(), stdout, stderr });
       raw.phases.push(record);
       const output = JSON.parse(stdout); record.raw = output.raw;
+      if (runtimeConfig.retainConfiguredDatabases) {
+        const dbPath = record.raw.databasePath;
+        if (typeof dbPath !== "string" || !path.resolve(dbPath).startsWith(directory + path.sep) ||
+            await fs.realpath(dbPath) !== dbPath) throw Error("Unbound session database");
+        const reader = new DatabaseSync(dbPath, { readOnly: true });
+        try { await backup(reader, path.join(runtimeConfig.evidenceDirectory, "configured-" + phase.label + ".sqlite")); }
+        finally { reader.close(); }
+      }
       if (exit.code !== 0 || output.fatal) throw Error(`The actual model ${phase.label} process failed: ${JSON.stringify(output)}`);
       phases.push(output.result);
     }

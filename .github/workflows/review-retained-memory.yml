@@ -1,0 +1,102 @@
+name: Review the retained evidence from comparison 44214324963
+
+on:
+  push:
+    branches: [verify/assess-retained-memory-44214324963]
+    paths: [.github/workflows/review-retained-memory.yml]
+
+permissions:
+  actions: read
+  contents: read
+
+jobs:
+  review:
+    runs-on: ubuntu-latest
+    timeout-minutes: 75
+    outputs:
+      summary_id: ${{ steps.summary.outputs.artifact-id }}
+      summary_sha: ${{ steps.summary.outputs.artifact-digest }}
+    env:
+      UV_PYTHON: "3.12.16"
+      PYTHONDONTWRITEBYTECODE: "1"
+      LANGSMITH_TRACING: "false"
+      LANGCHAIN_TRACING_V2: "false"
+      OPENAI_API_KEY: ""
+      OPENAI_MODEL: ""
+      ANTHROPIC_API_KEY: ""
+      OPENROUTER_API_KEY: ""
+      MEMORY_CORE_LIVE_OPENAI: ""
+      MEMORY_CORE_DEMO_OPENAI_API_KEY: ""
+      MEMORY_CORE_DEMO_OPENAI_EMBEDDING_API_KEY: ""
+      OPENCLAW_ORACLE_REPO: ""
+    steps:
+      - name: Check out the original measurement at its recorded path
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
+        with:
+          ref: 8b00530188a1d6e87a02172bebf7b6e8b5c49433
+          persist-credentials: false
+      - name: Check out the independent review program
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
+        with:
+          ref: ${{ github.sha }}
+          path: .reference/review-source
+          persist-credentials: false
+      - name: Check out the original OpenClaw reference
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
+        with:
+          repository: openclaw/openclaw
+          ref: bcfc88812a35243893585dbeca87ca41b48272ca
+          path: .reference/openclaw
+          persist-credentials: false
+      - uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97
+        with:
+          python-version: "3.12.16"
+      - uses: actions/setup-node@249970729cb0ef3589644e2896645e5dc5ba9c38
+        with:
+          node-version: "24.16.0"
+      - uses: astral-sh/setup-uv@bec219d24cd3e171d82865faccec33120bb574f4
+        with:
+          version: "0.9.18"
+      - name: Install the original frozen dependencies
+        run: uv sync --frozen
+      - name: Restore the source and release dependencies at their original paths
+        run: |
+          uv run --frozen python -m equivalence.dependencies --reference .reference/openclaw --destination .reference/npm --install
+          uv run --frozen python -m equivalence.release_runtime --reference .reference/openclaw --destination .reference/release-runtime --install
+          uv run --frozen python -m equivalence.heartbeat_dependency --reference .reference/openclaw --destination .reference/heartbeat-dependencies/archives
+      - name: Authenticate and restore both original GitHub artifacts
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: python .reference/review-source/.github/scripts/restore_comparison_artifact.py
+      - name: Finish the assessment of the retained comparison
+        id: assessment
+        run: uv run --frozen python .reference/review-source/.github/scripts/review_retained_memory.py
+      - name: Retain the supplemental assessment and its receipt
+        if: always() && steps.assessment.outcome != 'skipped'
+        id: summary
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
+        with:
+          name: memory-contract-remainder-reviewed-summary
+          path: ${{ runner.temp }}/corrected-summary/
+          if-no-files-found: warn
+
+  read-summary:
+    needs: review
+    if: always() && needs.review.outputs.summary_id != ''
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    strategy:
+      fail-fast: false
+      matrix:
+        part: [0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15]
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
+        with:
+          persist-credentials: false
+      - name: Read one bounded part of the supplemental assessment
+        env:
+          GH_TOKEN: ${{ github.token }}
+          ARTIFACT_ID: ${{ needs.review.outputs.summary_id }}
+          ARTIFACT_SHA: ${{ needs.review.outputs.summary_sha }}
+          REPORT_PART: ${{ matrix.part }}
+        run: python scripts/read_retained_summary_part.py

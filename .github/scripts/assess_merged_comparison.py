@@ -19,7 +19,8 @@ from equivalence.harness import _adapter_identity, _implementation_identity, _sa
 from equivalence.strict_report_reader import Reader, _constant, _finite, _object  # noqa: E402
 
 from followup_datetime import SOURCE_OWNERS as DATETIME_SOURCE_OWNERS
-from equivalence.engine_unicode_collation import DIAGNOSTIC as UNICODE_TIE_ID, OWNERS as UNICODE_SOURCE_OWNERS
+from equivalence.engine_unicode_collation import (DIAGNOSTIC as UNICODE_TIE_ID, MEASURED_SDK_F01_SHA256,
+                                                  OWNERS as UNICODE_SOURCE_OWNERS, PRIOR_NATIVE_F01_SHA256)
 from followup_families import FAMILIES, REPORT_FIELDS, family_key, replay_followup
 from followup_heartbeat import CORPUS_OWNERS
 from followup_seal import (CATALOG_SHA, EXPECTED_RESOLUTIONS, PREVIOUS_CASES, PREVIOUS_CATALOG_SHA, PREVIOUS_COMPARISON,
@@ -1523,6 +1524,28 @@ def verify_process_exit(args, data):
             "stderrSha256": stderr, "reportBytes": data["report"]["bytes"], "reportSha256": data["report"]["sha256"]}
 
 
+def compact_case(row, definition):
+    receipt = {key: value for key, value in row.items()
+               if key in {"id", "status", "publicValueSha256", "datetimeRegexValidated"} or key.endswith("EvidenceValidated")}
+    omitted = sorted(definition.keys() - row.keys())
+    if omitted:
+        receipt["omittedDefinitionFields"] = omitted
+    return receipt
+
+
+def check_resolved_row(row, prior, unicode_pair):
+    expected = {"openclaw": prior["openclaw"], "python": prior["openclaw"]}
+    if row["id"] == UNICODE_TIE_ID:
+        # Scores such as 1 and 1.0 compare equally in JSON while preserving distinct producer bytes.
+        expected["python"] = MEASURED_SDK_F01_SHA256
+        observed = {side: hashlib.sha256(canonical(unicode_pair[side])).hexdigest() for side in expected}
+        require(prior["openclaw"] == PRIOR_NATIVE_F01_SHA256 and observed == expected
+                and _same_json(unicode_pair["openclaw"], unicode_pair["python"]),
+                "The complete Unicode tie values or their measured producer receipts changed")
+    require(row["status"] == "matched" and row["publicValueSha256"] == expected,
+            "A declared fix differs from the required whole producer outputs")
+
+
 def assess(args, result):
     check_seal()
     seal = load(args.seal)
@@ -1578,12 +1601,7 @@ def assess(args, result):
     for row, definition in zip(data["cases"], definitions, strict=True):
         observed = {key: row[key] for key in definition if key in row}
         observed_definitions.append(observed)
-        receipt = {key: value for key, value in row.items()
-                   if key in {"id", "status", "publicValueSha256"} or key.endswith("EvidenceValidated")}
-        omitted = sorted(definition.keys() - observed.keys())
-        if omitted:
-            receipt["omittedDefinitionFields"] = omitted
-        compact_rows.append(receipt)
+        compact_rows.append(compact_case(row, definition))
     result["projection"].update(
         cases=compact_rows, requirements=data["requirements"],
         observedDefinitionsSha256=hashlib.sha256(canonical(observed_definitions)).hexdigest(),
@@ -1679,10 +1697,7 @@ def assess(args, result):
     resolved = set(EXPECTED_RESOLUTIONS)
     require(resolved <= set(previous_hashes), "The expected resolutions include a case outside the previous differences")
     for cid in resolved:
-        require(rows_by_id[cid]["status"] == "matched"
-                and public[cid] == {"openclaw": previous_hashes[cid]["openclaw"],
-                                     "python": previous_hashes[cid]["openclaw"]},
-                "A declared fix must reproduce the previous original whole output on both implementations")
+        check_resolved_row(rows_by_id[cid], previous_hashes[cid], data["unicodeTiePair"])
     sdk_changes = [cid for cid, before in previous_hashes.items()
                    if before["python"] != (public[cid] or {}).get("python")]
     native_changes = [cid for cid, before in previous_hashes.items()

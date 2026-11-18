@@ -41,6 +41,20 @@ jobs:
           ref: ${{ github.sha }}
           path: .reference/review-source
           persist-credentials: false
+      - name: Check out the separately measured product
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
+        with:
+          ref: 160c7c2d70aaa2a030a13103a8c56b8e23430015
+          path: .reference/product-source
+          persist-credentials: false
+      - name: Verify the SDK tree against the original product
+        run: |
+          python - <<'PYTHON'
+          import subprocess
+          def tree(root):
+              return subprocess.check_output(["git", "-C", root, "rev-parse", "HEAD:memory_core"], text=True).strip()
+          assert tree(".") == tree(".reference/product-source") == "78f8709108ccfb27d33a791ff193da96c18e6baa"
+          PYTHON
       - name: Check out the original OpenClaw reference
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
         with:

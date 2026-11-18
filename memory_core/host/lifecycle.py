@@ -1115,7 +1115,7 @@ class HostSessionRunner:
             user.setdefault("timestamp", self._clock())
             user.setdefault("idempotencyKey", turn_id)
             prompt_owner = None
-            queued_user = None
+            queued_append = {}
             if prompt_context is not None:
                 if not isinstance(user.get("content"), str):
                     raise TypeError("RuntimePromptInput requires the current prompt as string text")
@@ -1128,20 +1128,21 @@ class HostSessionRunner:
                     last_turn = continuation["instanceEntry"].get(_STATE, {}).get("lastTurnId")
                     queued = trailing_user(continuation["visibleEvents"], last_turn)
                     if queued and not prompt_owner.skip_submission and not prompt_owner.prompt_submission.get("runtimeOnly"):
+                        queued_append["expected_mutation_at"] = continuation["version"]["updatedAt"]
                         previous = queued[0]["message"]
                         prompt_owner.session_prompt = merge_queued_user_text(prompt_owner.session_prompt, previous)
                         prompt_owner.model_prompt = merge_queued_user_text(prompt_owner.model_prompt, previous)
                         origin = user.get("provenance")
                         if not (isinstance(origin, Mapping) and origin.get("kind") == "internal_system" and
                                 str(origin.get("sourceTool", "")).lower() == "main_session_restart_recovery"):
-                            queued_user = queued[0]["id"]
+                            queued_append["detach_queued_user"] = queued[0]["id"]
                 user = {**user, "content": prompt_owner.session_prompt}
             skip = prompt_owner is not None and prompt_owner.skip_submission
             suppress = prompt_context is not None and prompt_context.suppress_next_user_message_persistence
             if not skip and not suppress:
                 saved = self.catalog.append_message(state.session_id, user, session_key=state.session_key,
                     event_id=f"{turn_id}:user", now_ms=self._clock(), cwd=str(self.kit.memory.workspace.root),
-                    **({"detach_queued_user": queued_user} if queued_user is not None else {}))
+                    **queued_append)
                 appends.append(saved)
                 if not saved["appended"]:
                     raise RuntimeError("This request was already admitted; no model turn was repeated")

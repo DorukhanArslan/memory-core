@@ -1,0 +1,58 @@
+name: Read the retained Host V4 failure from run 44206756377
+on:
+  push:
+    branches: [verify/read-host-v4-44206756377]
+    paths: [.github/workflows/read-host-v4-stop.yml]
+permissions:
+  actions: read
+jobs:
+  retained-failure:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - name: Print only the failed synthetic case and child diagnostic
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          python - <<'PY'
+          import hashlib, io, json, os, urllib.request, urllib.error, zipfile
+          from pathlib import PurePosixPath
+          api = "https://api.github.com/repos/DorukhanArslan/memory-core/actions/artifacts/14386046332"
+          headers = {"Authorization": "Bearer " + os.environ["GH_TOKEN"], "Accept": "application/vnd.github+json"}
+          request = lambda url: urllib.request.Request(url, headers=headers)
+          meta = json.load(urllib.request.urlopen(request(api), timeout=20))
+          assert meta["workflow_run"]["id"] == 44206756377 and meta["workflow_run"]["head_sha"] == "50f61b80d50cbbbd67fde0326cd6a19d772c6cad"
+          assert meta["digest"] == "sha256:51b11760076eaddcaaa53d486d30b66ca3326ffb1c757e383f93356c64e81aab"
+          class Redirect(urllib.request.HTTPRedirectHandler):
+              def redirect_request(self, *args):
+                  return None
+          try:
+              urllib.request.build_opener(Redirect()).open(request(api + "/zip"), timeout=20)
+          except urllib.error.HTTPError as e:
+              assert e.code == 302 and e.headers["Location"].startswith("https://")
+              with urllib.request.urlopen(e.headers["Location"], timeout=40) as stream:
+                  data = stream.read(42441771)
+          assert len(data) == meta["size_in_bytes"] == 42441770 and hashlib.sha256(data).hexdigest() == meta["digest"][7:]
+          with zipfile.ZipFile(io.BytesIO(data)) as archive:
+              names = archive.namelist()
+              name, = [n for n in names if n.endswith(".equivalence-results/full.json")]
+              wire = archive.read(name)
+              assert hashlib.sha256(wire).hexdigest() == "6a28088914c5991a5b862737c867d342b060498a39961ae6f26b21d7d6cd1c88"
+              report = json.loads(wire)
+              receipt, = report["rejectedRuntimeEvidence"]
+              diagnostic = {k: receipt.get(k) for k in ["caseIds", "reason", "coverageCredit"]}
+              case_dir = receipt["retainedDirectory"].split(".equivalence-results/", 1)[1]
+              prefix = name.removesuffix("full.json") + case_dir + "/"
+              diagnostic["files"] = [n.removeprefix(prefix) for n in names if n.startswith(prefix) and n.count("/") <= prefix.count("/") + 1][:35]
+              for relative in ["process.json", "stdout.json", "stderr.log", "evidence/git-before.process.json", "evidence/git-after.process.json"]:
+                  path = prefix + relative
+                  if path not in names:
+                      continue
+                  payload = archive.read(path)
+                  if relative == "stderr.log":
+                      diagnostic["stderrEnd"] = payload[-3800:].decode("utf-8", "replace")
+                  elif payload.strip():
+                      raw = json.loads(payload)
+                      diagnostic[relative] = {k: raw[k] for k in ["error","actualReturnCode","timedOut","timeoutSeconds","pathError","signal"] if k in raw}
+              print("RETAINED_HOST_V4=" + json.dumps(diagnostic, ensure_ascii=True)[:16000])
+          PY

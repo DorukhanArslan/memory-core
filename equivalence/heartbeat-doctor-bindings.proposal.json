@@ -29,7 +29,7 @@
     "baseManifest": "equivalence/release-runtime.json",
     "baseManifestSha256": "5f8d7efe63635bdcf633f75b028aa748d8cf3547b66efe1781b02b09bc648cf5",
     "sharedInstallationOrManifestChangesPermitted": false,
-    "privateRuntimeRoot": "/workspace/scratch/memory-core-heartbeat-doctor-lane/.reference/release-runtime/node_modules/openclaw",
+    "privateRuntimeRoot": "node_modules/openclaw under the authenticated private runtime-cache argument",
     "additionalPackages": [
       {
         "name": "croner",

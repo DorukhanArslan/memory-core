@@ -399,6 +399,9 @@ def build_cases(*, include_prospective: bool = False) -> list[dict[str, Any]]:
 
     cases.extend(build_datetime_boundaries())
 
+    from equivalence.heartbeat_scratch_acceptance import build_cases as build_heartbeat_scratch
+    cases.extend(build_heartbeat_scratch())
+
     if include_prospective:
         from equivalence.flush_contract import build_prospective_flush_contract_cases
         from equivalence.session_projection import build_prospective_session_projection_cases

@@ -23,6 +23,7 @@ from equivalence.engine_unicode_collation import (DIAGNOSTIC as UNICODE_TIE_ID, 
                                                   OWNERS as UNICODE_SOURCE_OWNERS, PRIOR_NATIVE_F01_SHA256)
 from followup_families import FAMILIES, REPORT_FIELDS, family_key, replay_followup
 from followup_heartbeat import CORPUS_OWNERS
+from heartbeat_119_guard import baseline as accepted_118, verify_previous_cases
 from followup_seal import (CATALOG_SHA, EXPECTED_RESOLUTIONS, PREVIOUS_CASES, PREVIOUS_CATALOG_SHA, PREVIOUS_COMPARISON,
                            PRODUCT, REGISTERED_CASES, SCOPE_SHA as SCOPE, SDK_FILES, SDK_SHA, check_seal)
 
@@ -1526,7 +1527,7 @@ def verify_process_exit(args, data):
 
 def compact_case(row, definition):
     receipt = {key: value for key, value in row.items()
-               if key in {"id", "status", "publicValueSha256", "datetimeRegexValidated", "datetimeBoundaryEvidence"} or key.endswith("EvidenceValidated")}
+               if key in {"id", "status", "publicValueSha256", "datetimeRegexValidated", "datetimeBoundaryEvidence", "heartbeatScratchEvidence"} or key.endswith("EvidenceValidated")}
     omitted = sorted(definition.keys() - row.keys())
     if omitted:
         receipt["omittedDefinitionFields"] = omitted
@@ -1676,16 +1677,20 @@ def assess(args, result):
     process = verify_process_exit(args, data)
     result["comparisonProcess"] = process
     public = {row["id"]: row.get("publicValueSha256") for row in data["cases"]}
-    require(set(PREVIOUS_MISMATCH_PUBLIC_SHA256) <= set(public), "A previous mismatch case disappeared")
-    earlier = PREVIOUS_COMPARISON["familyGates"]
-    newly_measured = {"prompt-history-repair-runtime", "engine.numeric-boundaries", "deep-consolidation-runtime"}
-    require(set(metrics["families"]) == set(earlier) | newly_measured | set(FAMILIES)
-            and all(metrics["families"][name] is passed for name, passed in earlier.items()),
-            "A previously accepted family gate differs from its retained assessment")
-    previous_hashes = dict(PREVIOUS_MISMATCH_PUBLIC_SHA256)
-    previous_hashes["flush-execution-warm-index-first-recall"] = {
-        **previous_hashes["flush-execution-warm-index-first-recall"],
-        "openclaw": PREVIOUS_COMPARISON["warmFlushNativeSha256"]}
+    previous = accepted_118()
+    previous_hashes = {cid: PREVIOUS_MISMATCH_PUBLIC_SHA256[cid] for cid in previous["wholeOutputAudit"]["open"]
+                       if cid in PREVIOUS_MISMATCH_PUBLIC_SHA256}
+    for cid in previous_hashes:
+        changes = previous["wholeOutputAudit"]["changes"].get(cid)
+        if changes:
+            previous_hashes[cid] = changes["after"]
+    from equivalence.datetime_boundary_cases import DIAGNOSTIC
+    from equivalence.datetime_boundary_evidence import PUBLIC_DIGESTS
+    previous_hashes[DIAGNOSTIC] = PUBLIC_DIGESTS[DIAGNOSTIC]
+    require(set(previous_hashes) == set(previous["wholeOutputAudit"]["open"]),
+            "Missing retained whole-output hashes for the accepted baseline")
+    require(set(previous_hashes) <= set(public), "A previous mismatch case disappeared")
+    result["baseline118"] = verify_previous_cases(metrics, data, PREVIOUS_CASES)
     result["previousComparison"] = PREVIOUS_COMPARISON
     mismatches = [r for r in data["cases"] if r["status"] == "mismatched"]
     result["mismatchMetadata"] = [{k: r[k] for k in ("id", "operation", "requirement", "covers", "publicValueSha256")}
@@ -1738,6 +1743,9 @@ def main():
     for name in ("report", "seal", "fif-replay", "reference", "node", "release-runtime", "output"):
         parser.add_argument("--" + name, type=Path, required=True)
     args = parser.parse_args()
+    # Replay bindings compare runtime source paths to the captured absolute checkout.
+    args.reference = args.reference.resolve(strict=True)
+    args.release_runtime = args.release_runtime.resolve(strict=True)
     result = {"kind": "approved-product-complete-eof-candidate-assessment", "status": "blocked",
               "metadataOnlyAssessment": True, "completeRootAudit": False, "acceptancePointsAwarded": 0,
               "originalEnginesExecuted": False, "historicalVerifiedConditions": (PREVIOUS_COMPARISON or {}).get("verified"),

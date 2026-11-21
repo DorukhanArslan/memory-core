@@ -6122,7 +6122,7 @@
           "path": "memory_core/heartbeat_migration.py",
           "symbol": "migrate_heartbeat_md",
           "anchor": "def migrate_heartbeat_md(",
-          "line": 757
+          "line": 763
         }
       ],
       "implementation": "partial",
@@ -6262,7 +6262,7 @@
           "path": "memory_core/heartbeat_migration.py",
           "symbol": "migrate_heartbeat_tasks",
           "anchor": "def migrate_heartbeat_tasks(",
-          "line": 1109
+          "line": 1122
         },
         {
           "path": "memory_core/host/kit.py",

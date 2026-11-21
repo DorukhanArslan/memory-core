@@ -23,7 +23,7 @@ if (context.kind !== "heartbeat-doctor-execution" || context.providerMode !== "n
     !capability || Object.keys(capability).sort().join() !== "kind,node,profile" ||
     capability.kind !== "heartbeat-doctor-node-capability" || capability.profile !== "heartbeat-scratch-doctor" ||
     process.env.MEMORY_EQ_HEARTBEAT_CONTEXT || process.env.MEMORY_EQ_RELEASE_CONTEXT ||
-    context.bindingsSha256 !== "e08e2474e9582bac3fed1730cefe66c5c10a4d001380559191c85ba9bc1622c2" ||
+    context.bindingsSha256 !== "da4005562f77914bed0d6c8d146ad6083d20868960b8acac4b5f2feddf6f6442" ||
     context.codecSha256 !== "86671a5b11a40cfcd5299c5a867a7c8f27898112055bdaa7c3bbc2eeccd54a38") {
   throw Error("Doctor authority cannot borrow STORE, model, source or other runtime capabilities");
 }
@@ -75,10 +75,14 @@ for (const item of context.allowedLocal) {
   if (!path.isAbsolute(item.path) || fs.realpathSync(item.path) !== item.path || hash(fs.readFileSync(item.path)) !== item.sha256) throw Error("Doctor adapter changed");
   permitted.set(item.path, { kind: "doctor-adapter", path: item.path, sha256: item.sha256 });
 }
-if (context.runtime.runtimeRoot !== "/workspace/scratch/memory-core-heartbeat-doctor-lane/.reference/release-runtime/node_modules/openclaw" ||
+const packageRoot = context.runtime.runtimeRoot;
+if (!path.isAbsolute(packageRoot) || fs.realpathSync(packageRoot) !== packageRoot ||
+    path.basename(packageRoot) !== "openclaw" || path.basename(path.dirname(packageRoot)) !== "node_modules" ||
     context.runtime.manifestSha256 !== "5f8d7efe63635bdcf633f75b028aa748d8cf3547b66efe1781b02b09bc648cf5" ||
     context.runtime.reference?.commit !== "bcfc88812a35243893585dbeca87ca41b48272ca" || context.runtime.buildAttestation?.sourceBuildReproduced !== false ||
     !Array.isArray(context.runtime.packages) || context.runtime.packages.length !== 84 ||
+    context.runtime.packages.filter((item) => item.location === "node_modules/openclaw" &&
+      item.directory === packageRoot && item.name === "openclaw" && item.version === "2026.9.9").length !== 1 ||
     context.runtime.packages.filter((item) => item.name === "croner" && item.version === "10.0.1").length !== 1) throw Error("Doctor requires its exact private84 package authority");
 for (const item of context.runtime.packages) {
   if (item.directory !== path.join(path.resolve(context.runtime.runtimeRoot, "../.."), item.location) ||

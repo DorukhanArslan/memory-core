@@ -35,7 +35,12 @@ import followup_secret_boundaries
 from equivalence.secret_boundary_inputs import POINTS as SECRET_BOUNDARIES
 
 
+from equivalence import heartbeat_scratch_acceptance
+from followup_scratch import replay_scratch
+
+
 FAMILIES = {
+    heartbeat_scratch_acceptance.OPERATION: (heartbeat_scratch_acceptance, "heartbeatScratchOutcomesComplete", replay_scratch),
     date_boundaries.POINT: (date_boundaries, "datetimeRegexBoundaryComplete", date_boundaries.replay),
     configured_redaction.POINT: (configured_redaction, "configuredRedactionOutcomesComplete", replay_configured_redaction),
     SECRET_BOUNDARIES[0]: (followup_secret_boundaries, "secretRedactionBoundariesComplete",
@@ -59,6 +64,7 @@ FAMILIES = {
     workspace_lock_cases.OPERATION: (workspace_lock_cases, "workspaceLockFamilyComplete", replay_locks),
 }
 REPORT_FIELDS = {field for _, field, _ in FAMILIES.values()} | {
+    "heartbeatScratchEvidenceDirectory", "heartbeatScratchError",
     "unicodeSourceImports", "unicodeRuntime", "unicodeSdkRuntime",
     "datetimeSourceImports", "modelSessionRuntimeBindings", "modelNodeAuthority", "redactionPolicySourceBindings",
     "recoveryInterruptionBindings", "recoveryInterruptionNode", "recoveryArtifactBindings", "recoveryArtifactNode", "recoveryIndexBindings", "recoveryIndexNode",
@@ -96,7 +102,7 @@ def replay_followup(data, definitions, args, metrics, replay_rank):
         required = {"case"} if (family_key(case) == HEARTBEAT_GATE and case["operation"] == "session-projection") else {"case", "native", "python", "trace"}
         if family_key(case) in {configured_redaction.POINT, SECRET_BOUNDARIES[0]} and case["operation"] == "redaction-policy-source":
             required = {"case", "python", "sourcePolicy"}
-        if case["operation"] == engine_unicode_collation.OPERATION:
+        if case["operation"] in {engine_unicode_collation.OPERATION, heartbeat_scratch_acceptance.OPERATION}:
             required = {"case"}
         if family_key(case) in {datetime_regex_family.REQUIREMENT, date_boundaries.POINT}:
             if case["operation"] in {datetime_regex_family.CLOCK, "session-projection"}:

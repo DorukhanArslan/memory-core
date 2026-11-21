@@ -25,8 +25,8 @@ migration, :class:`~memory_core.automation.AutomationStore` for the task migrati
 - the read-only doctor health findings (``collectHeartbeatScratchMigrationFindings``,
   ``collectHeartbeatTaskMigrationFindings``).
 
-Deviations (documented in docs/parity_matrix.md): archives live under the workspace,
-``<root>/.memory-core/backups/heartbeat-migration/`` (upstream: ``<state>/backups/``); one call
+The SDK uses ``<root>/.memory-core`` for its state directory by default. Hosts may supply
+their own state directory for migration backups, as in OpenClaw. One call
 migrates the agents sharing one workspace root, and ``retain_source`` (of the migration and
 of its findings) stands for upstream's "a heartbeat owner of this file is disabled".
 FileAutomationStore prepares durable monitor ownership on repair without adding scheduler
@@ -115,6 +115,7 @@ from memory_core._heartbeat_constants import (
     HEARTBEAT_TASK_WARNING_UNREADABLE,
     LEGACY_HEARTBEAT_FILENAME,
 )
+from memory_core._memory_scan_io import bridge_memory_read_io_error
 from memory_core.automation import (
     AutomationJob,
     AutomationJobConflictError,
@@ -154,13 +155,15 @@ __all__ = [
     "LegacyHeartbeatTaskDocument",
     "analyze_legacy_heartbeat_tasks",
     "heartbeat_md_migration_findings",
+    "heartbeat_migration_archive_dir",
     "heartbeat_task_migration_findings",
     "migrate_heartbeat_md",
     "migrate_heartbeat_tasks",
     "migrate_session_heartbeat_tasks",
 ]
 
-HEARTBEAT_MIGRATION_ARCHIVE_PARTS = (STATE_DIRNAME, "backups", "heartbeat-migration")
+_ARCHIVE_SUBDIR = ("backups", "heartbeat-migration")
+HEARTBEAT_MIGRATION_ARCHIVE_PARTS = (STATE_DIRNAME, *_ARCHIVE_SUBDIR)
 # Named where upstream names `openclaw doctor --fix` / `openclaw doctor`.
 MIGRATE_HEARTBEAT_MD_COMMAND = f"{PACKAGE_NAME}.heartbeat_migration.migrate_heartbeat_md()"
 MIGRATE_HEARTBEAT_TASKS_COMMAND = f"{PACKAGE_NAME}.heartbeat_migration.migrate_heartbeat_tasks()"
@@ -450,8 +453,12 @@ def _read_regular_text(real_path: str) -> str:
         raise HeartbeatMigrationError(
             _FS_SAFE_TOO_LARGE.format(max_bytes=CRON_JOB_SCRATCH_MAX_BYTES, path=real_path)
         )
-    with open(real_path, "rb") as handle:
-        data = handle.read(CRON_JOB_SCRATCH_MAX_BYTES + 1)
+    try:
+        source = open(real_path, "rb")
+    except OSError as exc:
+        raise bridge_memory_read_io_error(exc, "open", Path(real_path)) from None
+    with source:
+        data = source.read(CRON_JOB_SCRATCH_MAX_BYTES + 1)
     if len(data) > CRON_JOB_SCRATCH_MAX_BYTES:
         raise HeartbeatMigrationError(
             _FS_SAFE_TOO_LARGE.format(max_bytes=CRON_JOB_SCRATCH_MAX_BYTES, path=real_path)
@@ -549,20 +556,21 @@ def _read_heartbeat_source(workspace: Path, *, recover_claims: bool) -> _Source 
     )
 
 
-def heartbeat_migration_archive_dir(root: str | os.PathLike[str]) -> Path:
-    return Path(os.path.abspath(os.path.expanduser(os.fspath(root)))).joinpath(
-        *HEARTBEAT_MIGRATION_ARCHIVE_PARTS
-    )
+def heartbeat_migration_archive_dir(
+    root: str | os.PathLike[str], *, state_dir: str | os.PathLike[str] | None = None
+) -> Path:
+    """Return the backup directory used by ``migrate_heartbeat_md`` for this workspace."""
+    state = Path(root) / STATE_DIRNAME if state_dir is None else Path(state_dir)
+    return Path(os.path.abspath(os.path.expanduser(state))).joinpath(*_ARCHIVE_SUBDIR)
 
 
-def _archive_path(root: Path, agent_id: str, sha256: str) -> Path:
+def _archive_path(directory: Path, agent_id: str, sha256: str) -> Path:
     safe = re.sub("[^A-Za-z0-9._-]+", "-", agent_id)
-    return heartbeat_migration_archive_dir(root) / f"{safe}-{sha256}.md"
+    return directory / f"{safe}-{sha256}.md"
 
 
-def _archive_source(root: Path, agent_id: str, source: _Source) -> None:
+def _archive_source(archive: Path, source: _Source) -> None:
     # doctor-heartbeat-scratch-migration.ts archiveSource: write once (wx, 0600), or verify.
-    archive = _archive_path(root, agent_id, source.sha256)
     _make_private_dirs(archive.parent)
     try:
         fd = os.open(archive, os.O_WRONLY | os.O_CREAT | os.O_EXCL, 0o600)
@@ -573,10 +581,8 @@ def _archive_source(root: Path, agent_id: str, source: _Source) -> None:
                 HEARTBEAT_SCRATCH_ERROR_ARCHIVE_COLLISION.format(archive=archive)
             ) from exc
         return
-    try:
-        os.write(fd, source.content.encode("utf-8"))
-    finally:
-        os.close(fd)
+    with os.fdopen(fd, "wb") as handle:
+        handle.write(source.content.encode("utf-8"))
 
 
 class _Claim:
@@ -763,6 +769,7 @@ def migrate_heartbeat_md(
     now_ms: int | None = None,
     should_repair: bool = True,
     monitor_agent_ids: Sequence[str] | None = None,
+    state_dir: str | os.PathLike[str] | None = None,
 ) -> HeartbeatMigrationResult:
     """Move ``<root>/HEARTBEAT.md`` into the heartbeat monitor scratch of ``agent_ids``.
 
@@ -770,7 +777,8 @@ def migrate_heartbeat_md(
     workspace is ``root``. Each agent's scratch gets the file's exact text with its SHA-256 as
     ``source_sha256``, unless that agent already has different scratch or an explicit unset
     (warned, left unchanged, file kept). The file is archived to
-    ``<root>/.memory-core/backups/heartbeat-migration/<agent>-<sha256>.md`` and removed after its
+    ``<state_dir>/backups/heartbeat-migration/<agent>-<sha256>.md``, with
+    ``state_dir`` defaulting to ``<root>/.memory-core``, and removed after its
     claimed bytes are verified again; ``retain_source`` keeps it in place (upstream: another
     heartbeat owner of the file is disabled). Reruns are idempotent. The ``tasks:`` block stays
     in the scratch until :func:`migrate_heartbeat_tasks` runs. ``should_repair=False``
@@ -791,6 +799,7 @@ def migrate_heartbeat_md(
                 if finding.severity == "error":
                     warnings.append(finding.message)
         return HeartbeatMigrationResult((), tuple(warnings))
+    archive_dir = heartbeat_migration_archive_dir(workspace, state_dir=state_dir)
     stamp = int(time.time() * 1000) if now_ms is None else int(now_ms)
     if isinstance(store, FileAutomationStore):
         # Validate complete literal configuration before any owner is persisted.
@@ -803,7 +812,10 @@ def migrate_heartbeat_md(
         if now_ms is not None:
             bounded_integer(now_ms, clock=True)
         try:
-            owners = {agent: store.ensure_heartbeat_monitor(agent, adopt_legacy_scratch=True) for agent in configured}
+            owners = {
+                agent: store.ensure_heartbeat_monitor(agent, adopt_legacy_scratch=True, generate_job_id=True)
+                for agent in configured
+            }
         except Exception as error:
             return HeartbeatMigrationResult((), (f"Could not prepare heartbeat monitor jobs: {_format_error_message(error)}",))
         store = _BoundMonitorMigrationStore(store, owners)
@@ -850,9 +862,10 @@ def migrate_heartbeat_md(
                     write_needed = True
         if not import_agents or (keep_source and not write_needed):
             continue
+        archive = _archive_path(archive_dir, import_agents[0], source.sha256)
         if not keep_source:
             try:
-                _archive_source(workspace, import_agents[0], source)
+                _archive_source(archive, source)
             except Exception as exc:
                 warnings.append(
                     HEARTBEAT_SCRATCH_WARNING_NOT_MIGRATED.format(
@@ -953,7 +966,7 @@ def migrate_heartbeat_md(
                 )
             continue
         try:
-            claim.release(_archive_path(workspace, import_agents[0], source.sha256))
+            claim.release(archive)
             changes.extend(group_changes)
         except _ClaimChangedError as exc:
             rollback()

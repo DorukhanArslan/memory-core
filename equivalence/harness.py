@@ -23,7 +23,7 @@ import time
 import traceback
 from typing import Any, Callable
 
-from equivalence import flush_plan_target, secret_boundary_evidence, secret_boundary_inputs
+from equivalence import flush_plan_target, heartbeat_scratch_acceptance, secret_boundary_evidence, secret_boundary_inputs
 from equivalence.configured_redaction import IDS as CONFIGURED_IDS, RESOLVED_IDS as CONFIGURED_RESOLVED
 from equivalence.configured_redaction_evidence import retain_capture as retain_configured_capture
 from equivalence.workspace_case_families import FAMILIES as WORKSPACE_FAMILIES, evidence_family, prepare_bindings, report_key, sdk_validator
@@ -329,6 +329,7 @@ def _validate_scope(scope: Any, cases: Any) -> tuple[list[dict], dict[str, set[s
         validate_unicode_registration(cases)
         validate_heartbeat_exclusions(cases)
         validate_heartbeat_outcomes(cases)
+        heartbeat_scratch_acceptance.validate_registration(cases)
         validate_provider_overflow(cases)
         validate_jobs_registration(cases)
         validate_job_outcomes(cases)
@@ -1746,6 +1747,7 @@ def run_suite(*, checkout: Path, node: Path, smoke: bool = False,
         target, scope = _load(reference_path), _load(scope_path)
         if not isinstance(target, dict):
             raise HarnessError("reference-contract-invalid", "A versioned reference contract is required.")
+        default_smoke = smoke and cases is None
         if cases is None or python_runner is None:
             from equivalence.cases import build_cases, run_python
             cases = build_cases() if cases is None else cases
@@ -1755,6 +1757,9 @@ def run_suite(*, checkout: Path, node: Path, smoke: bool = False,
 
         if not smoke and len(cases) == REGISTERED_CASES:
             report["definitionMigration"] = definition_authority(cases, fif_version="v6")
+        if default_smoke:
+            cases = [case for case in cases if case["operation"] != heartbeat_scratch_acceptance.OPERATION]
+        scratch_cases = [case for case in cases if case["operation"] == heartbeat_scratch_acceptance.OPERATION]
         runtime_operations = {
             "index-lifecycle-runtime", "flush-trigger-runtime", "flush-execution-runtime",
             "exact-path-runtime",
@@ -1795,7 +1800,8 @@ def run_suite(*, checkout: Path, node: Path, smoke: bool = False,
             "heartbeat-turn-outcomes-runtime", "provider-overflow-host-runtime",
         }
         runtime_cases = [case for case in cases if case["operation"] in runtime_operations]
-        source_cases = [case for case in cases if case["operation"] not in runtime_operations]
+        source_cases = [case for case in cases if case["operation"] not in runtime_operations
+                        and case["operation"] != heartbeat_scratch_acceptance.OPERATION]
         policy_source_cases = [case for case in source_cases if case["operation"] == "redaction-policy-source"]
         ordinary_source_cases = [case for case in source_cases if case["operation"] != "redaction-policy-source"]
         report["manifestSha256"] = {"reference": _digest(reference_path), "scope": _digest(scope_path)}
@@ -2429,9 +2435,22 @@ def run_suite(*, checkout: Path, node: Path, smoke: bool = False,
                 raise HarnessError("release-runtime-changed",
                                    "Official runtime artifact bytes changed during comparison.") from None
             report["releaseSources"] = [observed_release[key] for key in sorted(observed_release)]
+        scratch_rows = {}
+        if scratch_cases:
+            retained = ROOT / ".equivalence-results" / "heartbeat-scratch-outcomes"
+            retained.mkdir(parents=True, exist_ok=True)
+            attempt = Path(tempfile.mkdtemp(prefix="attempt-", dir=retained))
+            report["heartbeatScratchEvidenceDirectory"] = str(attempt)
+            try:
+                scratch_rows = heartbeat_scratch_acceptance.run_batch(checkout, node, release_runtime_root, attempt)
+            except Exception as error:
+                # Preserve the other comparisons and give this entire batch zero credit.
+                report["heartbeatScratchError"] = {"name": type(error).__name__, "message": str(error)}
+                scratch_rows = {c["id"]: {**c, "status": "blocked", "code": "heartbeat-scratch-evidence-invalid"}
+                                for c in scratch_cases}
         report["referenceExecution"] = {
             "trackedTypeScriptCaseIds": [case["id"] for case in source_cases],
-            "compiledReleaseCaseIds": [case["id"] for case in runtime_cases],
+            "compiledReleaseCaseIds": [case["id"] for case in (*runtime_cases, *scratch_cases)],
         }
         if dependencies is not None:
             from equivalence.dependencies import validate_dependency_sources
@@ -2517,6 +2536,9 @@ def run_suite(*, checkout: Path, node: Path, smoke: bool = False,
         python_diagnostics = (Path(resources.enter_context(tempfile.TemporaryDirectory(
             prefix="memory-python-runtime-evidence-"))) if python_diagnostic_cases else None)
         for case in cases:
+            if case["operation"] == heartbeat_scratch_acceptance.OPERATION:
+                report["cases"].append(scratch_rows[case["id"]])
+                continue
             row = {"id": case["id"], "requirement": case["requirement"], "covers": case["covers"],
                    "operation": case["operation"], "input": case["input"]}
             for field in ("normalizationPolicy", "driverScope", "declaredDeviation"):
@@ -3125,6 +3147,8 @@ def run_suite(*, checkout: Path, node: Path, smoke: bool = False,
 
         heartbeat_outcomes = heartbeat_outcomes_complete(report["cases"])
         report["heartbeatTurnOutcomesComplete"] = heartbeat_outcomes
+        scratch_complete = heartbeat_scratch_acceptance.family_complete(report["cases"])
+        report["heartbeatScratchOutcomesComplete"] = scratch_complete
         from equivalence.datetime_regex_family import POINTS as datetime_points, family_complete as datetime_family_complete
         datetime_complete = datetime_family_complete(report["cases"])
         report["datetimeRegexFamilyComplete"] = datetime_complete
@@ -3221,6 +3245,7 @@ def run_suite(*, checkout: Path, node: Path, smoke: bool = False,
                                                       and (point["id"] not in flush_plan_target.POINTS or flush_plan_complete)
                                                       and (point["id"] not in secret_boundary_inputs.POINTS or secret_boundaries_complete)
                                                       and (point["id"] != heartbeat_outcome or heartbeat_outcomes)
+                                                      and (point["id"] != heartbeat_scratch_acceptance.POINT or scratch_complete)
                                                       and (point["id"] not in overflow_points or overflow)
                                                       and dream_points.get(point["id"], True)
                                                       and (point["id"] not in datetime_points or datetime_complete)

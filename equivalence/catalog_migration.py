@@ -46,7 +46,9 @@ PRE_PROVIDER_OVERFLOW_CASES = 1611
 PRE_PROVIDER_OVERFLOW_CATALOG_SHA256 = "0e2a16aa84908495a3b48d5a28f9d2855ece6d2083db8375110efe2aaca810b4"
 PRE_DATE_BOUNDARY_CASES = 1618
 PRE_DATE_BOUNDARY_SHA = "28eeb93559b2c65178dad1c849408f8808e95471c22583bef225ea30c4540676"
-REGISTERED_CASES = 1623
+PRE_SCRATCH_CASES = 1623
+PRE_SCRATCH_SHA256 = "b3defae8b4ffe4cd439ca21decadf585850835e96ad4909a47c14a0098867399"
+REGISTERED_CASES = 1662
 
 # PR22 changes these three policy texts, not the thirteen cases' business inputs,
 # order, coverage or other fields. Reversing only the exact reviewed fragments
@@ -138,7 +140,7 @@ def definition_authority(cases, *, fif_version):
                                   BOUNDARY_REGISTERED_CASES, RECALL_REGISTERED_CASES,
                                   CACHE_REGISTERED_CASES, RESET_REGISTERED_CASES, PROMPT_REGISTERED_CASES,
                                   HISTORY_REGISTERED_CASES, NUMERIC_REGISTERED_CASES, DEEP_REGISTERED_CASES, PRE_RECOVERY_CASES, PRE_FLUSH_PLAN_CASES,
-                                  PRE_HEARTBEAT_OUTCOME_CASES, PRE_INTERRUPTION_CASES, PRE_ACTIVE_HISTORY_CASES, PRE_DATETIME_CASES, PRE_UNICODE_CASES, PRE_SECRET_CASES, PRE_CONFIGURED_CASES, PRE_PROVIDER_OVERFLOW_CASES, REGISTERED_CASES}
+                                  PRE_HEARTBEAT_OUTCOME_CASES, PRE_INTERRUPTION_CASES, PRE_ACTIVE_HISTORY_CASES, PRE_DATETIME_CASES, PRE_UNICODE_CASES, PRE_SECRET_CASES, PRE_CONFIGURED_CASES, PRE_PROVIDER_OVERFLOW_CASES, PRE_SCRATCH_CASES, REGISTERED_CASES}
             or fif_version == "v5" and len(cases) != HISTORICAL_REGISTERED_CASES):
         raise ValueError("Catalog migration requires one complete exact registered definition set")
     frozen = families[fif_version]
@@ -275,6 +277,11 @@ def definition_authority(cases, *, fif_version):
         if len(cases) > PRE_DATE_BOUNDARY_CASES:
             from equivalence.datetime_boundary_cases import build_cases as build_date_boundaries
             expected.extend(build_date_boundaries())
+        if len(cases) >= PRE_SCRATCH_CASES and _sha(cases[:PRE_SCRATCH_CASES]) != PRE_SCRATCH_SHA256:
+            raise ValueError("The 1623 definitions of the independently accepted 118 conditions changed")
+        if len(cases) > PRE_SCRATCH_CASES:
+            from equivalence.heartbeat_scratch_acceptance import build_cases as build_scratch_cases
+            expected.extend(build_scratch_cases())
         if _sha(cases[:DEEP_REGISTERED_CASES]) != DEEP_CATALOG_SHA256 or _sha(maintenance) != _sha(expected):
             raise ValueError("Maintenance cases must follow the exact prior 1519 definitions")
     frozen.validate_registration(cases)

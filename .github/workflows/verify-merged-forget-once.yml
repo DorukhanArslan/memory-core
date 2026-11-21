@@ -1,10 +1,10 @@
-name: Compare 1,623 cases for the OpenClaw memory contract
+name: Compare 1,662 cases for the OpenClaw memory contract
 # One frozen full measurement; retain the first result without retrying.
-# The 1,592-case prefix and the last accepted 84/128 measurement are independently pinned.
+# The independently accepted 118/128 and its 1,623 original case definitions are pinned.
 
 on:
   push:
-    branches: [verify/memory-contract-remainder-once]
+    branches: [verify/heartbeat-scratch-119-once]
     paths: [.github/workflows/verify-merged-forget-once.yml]
 
 permissions:

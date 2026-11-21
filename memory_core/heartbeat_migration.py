@@ -688,6 +688,24 @@ def _monitor_name(agent_id: str) -> str:
     return HEARTBEAT_MONITOR_DISPLAY_NAME.format(agent_id=agent_id)
 
 
+def _display_heartbeat_source(path: str) -> str:
+    """Use OpenClaw's effective home prefix in Doctor migration messages."""
+    configured = js_trim(os.environ.get("OPENCLAW_HOME", ""))
+    if configured in {"", "undefined", "null"}:
+        return _shorten_home_path(path)
+    if configured == "~" or configured.startswith(("~/", "~\\")):
+        home = os.path.expanduser("~")
+        if home == "~":
+            return path
+        configured = home + configured[1:]
+    home = os.path.abspath(configured)
+    if path == home or path.startswith((home + "/", home + "\\")):
+        return "$OPENCLAW_HOME" + path[len(home):]
+    if os.name == "nt" and Path(path).is_relative_to(home):
+        return str(Path("$OPENCLAW_HOME") / Path(path).relative_to(home))
+    return path
+
+
 def heartbeat_md_migration_findings(
     root: str | os.PathLike[str], *, agent_id: str = "main", retain_source: bool = False
 ) -> tuple[HeartbeatMigrationFinding, ...]:
@@ -837,7 +855,7 @@ def migrate_heartbeat_md(
         group[1].append(agent_id)
 
     for source, agents in groups.values():
-        shown = _shorten_home_path(source.path)
+        shown = _display_heartbeat_source(source.path)
         keep_source = retain_source
         import_agents: list[str] = []
         write_needed = False

@@ -19,6 +19,34 @@ NOW = 2_000_000_000_000
 CONTENT = "- Real source instructions\n"
 
 
+@pytest.mark.parametrize("inside", [True, False], ids=["inside", "sibling-with-same-prefix"])
+def test_repair_displays_source_relative_to_configured_openclaw_home(tmp_path, monkeypatch, inside):
+    home = tmp_path / "claw"
+    workspace = (home if inside else tmp_path / "claw-other") / "workspace"
+    workspace.mkdir(parents=True)
+    source = workspace / "HEARTBEAT.md"
+    source.write_text(CONTENT, encoding="utf-8")
+    monkeypatch.setenv("OPENCLAW_HOME", f"  {home}  ")
+
+    result = migration.migrate_heartbeat_md(workspace, FileAutomationStore(workspace), now_ms=NOW)
+
+    shown = Path("$OPENCLAW_HOME") / source.relative_to(home) if inside else source
+    assert result.changes == (f"Migrated {shown} into cron scratch for Heartbeat (main).",)
+    assert result.warnings == ()
+
+
+@pytest.mark.parametrize("configured", [" ", "undefined", " null ", "~/claw", "~"])
+def test_display_for_os_home_and_openclaw_home_placeholders(monkeypatch, configured):
+    monkeypatch.setenv("OPENCLAW_HOME", configured)
+    source = Path.home() / "workspace" / "HEARTBEAT.md"
+    if configured == "~/claw":
+        expected = source
+    else:
+        prefix = "$OPENCLAW_HOME" if configured == "~" else "~"
+        expected = Path(prefix) / "workspace" / "HEARTBEAT.md"
+    assert migration._display_heartbeat_source(str(source)) == str(expected)
+
+
 @pytest.mark.parametrize("content", [None, b"- Preview\r\n", b"\xff", b"x" * 262145])
 def test_public_preview_validates_without_store_enrollment_or_any_file_mutation(
     tmp_path, monkeypatch, content

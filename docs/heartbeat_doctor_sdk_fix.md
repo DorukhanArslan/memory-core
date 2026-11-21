@@ -68,3 +68,24 @@ durable monitor, custom filename, guarded rollback and confirmed-zombie fixes
 are integrated and regression-tested. See the
 [maintenance closeout](promotion_heartbeat_integration_closeout.md) for exact
 producer identities, whole-suite/package results and the stop point.
+
+## Migration outcomes with a configured state directory
+
+During repair, a missing monitor gets a new job ID. An active monitor keeps its
+ID across upgrades and restarts. A retired monitor's note can still be read by
+its old ID. Supplying `state_dir` to `migrate_heartbeat_md` places the backup
+under `backups/heartbeat-migration` in the host's state directory. The snapshot
+filename includes the agent ID and the same source digest stored with its note.
+
+The outcome comparison checks all 17 store fixtures and 22 Doctor fixtures. It
+compares the complete repair replies, note text and revisions, ownership through
+restart, retained files and archived bytes. Each run generates its own job IDs
+and temporary directory names. The comparison follows each ID and name across
+operations and checks whether the original file was moved. Raw findings, paths
+and filesystem statistics remain available in the strict diagnostic packet.
+The wording of restart instructions is tracked by `heartbeat.scratch.boundaries`.
+
+After preparing the pinned reference, Node, release runtime and scheduled-task
+dependency as in the [comparison workflow](../.github/workflows/equivalence.yml),
+run the focused comparison with `scripts/check_equivalence.py --heartbeat-scratch-only`
+and the same `--reference`, `--node`, `--release-runtime` and `--report` arguments.

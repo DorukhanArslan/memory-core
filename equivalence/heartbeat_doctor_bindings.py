@@ -8,7 +8,7 @@ import re
 import subprocess
 
 ROOT = Path(__file__).resolve().parents[1]
-MANIFEST_SHA256 = "e08e2474e9582bac3fed1730cefe66c5c10a4d001380559191c85ba9bc1622c2"
+MANIFEST_SHA256 = "da4005562f77914bed0d6c8d146ad6083d20868960b8acac4b5f2feddf6f6442"
 COMMIT = "bcfc88812a35243893585dbeca87ca41b48272ca"
 
 

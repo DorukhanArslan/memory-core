@@ -145,7 +145,7 @@ durum bilgisi listelenir; bekletilen eski rapor incelemeleri yeniden başlatılm
 - [ ] **F15 — Eski tarih yazımını okuma** `engine-datetime-unverified-legacy-grammar`.
   OpenClaw bir girdiyi tarih olarak okudu. SDK kaydın zamanını kullandı. [Ölçülen fark](https://github.com/DorukhanArslan/memory-core/actions/runs/44214324963)
 
-- [ ] **F16 — Arama hatasından sonra yeniden deneme** · `query-sync-boundaries-warm-failure-natural-retry`. İlk yeniden denemede OpenClaw boş sonuçla aramanın güncel olmadığı uyarısını verdi. SDK güncellenen notu buldu ve uyarı vermedi. [İki sistemin kayıtlı yanıtları](https://github.com/DorukhanArslan/memory-core/blob/5bd9ac41dfa66b7732a6898b6a4e02366dd836de/independent-review/heartbeat-home/query-retry-difference.json) · [Karşılaştırma raporu](https://github.com/DorukhanArslan/memory-core/actions/runs/44927413199)
+- [ ] **F16 — Arama hatasından sonra yeniden deneme** · `query-sync-boundaries-warm-failure-natural-retry`. İlk yeniden denemede OpenClaw boş sonuçla aramanın güncel olmadığı uyarısını verdi. SDK güncellenen notu buldu ve uyarı vermedi. İşlem kayıtlarında OpenClaw yanıt verdikten sonra güncellemeyi tamamladı. SDK ise arama sürerken güncellemeyi tamamlayıp yeni notu okudu. [İki sistemin kayıtlı yanıtları](https://github.com/DorukhanArslan/memory-core/blob/5bd9ac41dfa66b7732a6898b6a4e02366dd836de/independent-review/heartbeat-home/query-retry-difference.json) · [Karşılaştırma raporu](https://github.com/DorukhanArslan/memory-core/actions/runs/44927413199)
 
 Bir fark bilinçli SDK davranışı veya Python'a özel bir ek olabilir. Gerekçesi
 açıkça kaydedilmeli. **“Kapsam dışı” demek onu eşleşmiş yapmaz.** İddianın

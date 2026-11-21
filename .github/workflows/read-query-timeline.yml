@@ -1,0 +1,58 @@
+name: Read the original query timeline from the retained 16 MB review
+on:
+  push:
+    branches: [verify/read-query-timeline-44927413199]
+    paths: [.github/workflows/read-query-timeline.yml]
+permissions:
+  actions: read
+  contents: read
+jobs:
+  inspect:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
+        with:
+          ref: 38c686d13ef7a9a88aa9e73ee226946d9bd252f0
+          persist-credentials: false
+      - name: Transport authenticated original query records for local review
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          python - <<'PY'
+          import base64, hashlib, io, json, os, sys, zipfile
+          from pathlib import Path
+          sys.path.insert(0, ".github/scripts")
+          import restore_comparison_artifact as archive
+          archive.RUN, archive.COMMIT = 44943504979, "59da2929000dc09b9bac9ff2be841442c098319f"
+          seal = (14722198515, "retained-query-sync-warm-failure-44927413199", 16053283, "63abc38ffdefe86fd91bd512764a64504aff6a488e0382914e6cb625e5dae784")
+          source = Path(os.environ["RUNNER_TEMP"])/"original.zip"
+          archive.download(seal, source)
+          with zipfile.ZipFile(source) as src:
+              names = src.namelist()
+              archive.require(len(names)==len(set(names)), "Duplicate query member")
+              inventory = json.loads(src.read("physical-inventory.json"))
+              expected = {r["member"].split("/query-sync-boundaries/",1)[1]:r for r in inventory["members"]}
+              members = {n.removeprefix("original-files/"):n for n in names if n.startswith("original-files/") and not n.endswith("/")}
+              missing = sorted(expected.keys()-members.keys())
+              archive.require(not (members.keys()-expected.keys()), "Unexpected original physical members")
+              for key, name in members.items():
+                  raw = src.read(name)
+                  archive.require(len(raw)==expected[key]["bytes"] and hashlib.sha256(raw).hexdigest()==expected[key]["sha256"], "Original physical evidence hash")
+              print("PHYSICAL_INVENTORY",len(expected),len(members),"missing",json.dumps(missing),flush=True)
+              def copy_group(group, selection):
+                  package = io.BytesIO()
+                  with zipfile.ZipFile(package,"w",compression=zipfile.ZIP_DEFLATED,compresslevel=9) as small:
+                      for name in sorted(selection):
+                          small.writestr(name,src.read(name))
+                  raw = package.getvalue()
+                  payload = base64.b64encode(raw).decode()
+                  print("QUERY_CAPSULE",group,len(raw),hashlib.sha256(raw).hexdigest(),len(selection),flush=True)
+                  for n in range(0,len(payload),6000):
+                      print("QUERY_CAPSULE_DATA",group,n//6000,payload[n:n+6000],flush=True)
+              core = [n for n in names if "/" not in n and n.endswith(".json") and not n.startswith("releaseTraces-")]
+              copy_group("core",core)
+              copy_group("releaseTrace",[n for n in names if n.startswith("releaseTraces-") and n.endswith(".json")])
+              extra = [n for n in members.values() if n.split("/")[-1] in {"native-raw.json","python-raw.json","process.json","context.json","stdout.json","stderr.log","dispatch.json","request.json"}]
+              copy_group("original",extra)
+          PY

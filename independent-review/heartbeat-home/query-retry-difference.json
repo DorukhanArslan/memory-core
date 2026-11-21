@@ -1,0 +1,167 @@
+{
+  "caseId": "query-sync-boundaries-warm-failure-natural-retry",
+  "condition": "indexing.query-sync.boundaries",
+  "comparisonRun": 44927413199,
+  "retainedEvidenceRun": 44943504979,
+  "rawArchiveId": 14722198515,
+  "rawArchiveSha256": "63abc38ffdefe86fd91bd512764a64504aff6a488e0382914e6cb625e5dae784",
+  "archiveMember": "public-differences.json",
+  "archiveMemberSha256": "27b977116d17992c045a6776db0bc68b971a1390f83893d1d722428b6bd6d8d4",
+  "publicSha256": {
+    "openclaw": "9d8e7a952ca229537a469d7f606feb3b6a5ab2395f780dbc75c042284ccdb7ce",
+    "python": "a08e023e6023c40c846520456853ad8cd9add57704060388a894a89e480d7594"
+  },
+  "differences": [
+    {
+      "path": [
+        "searches",
+        "retryNatural",
+        "action"
+      ],
+      "openclaw": {
+        "present": true,
+        "value": "Run: openclaw memory status --index --agent main. Rebuilding uses keyword indexing only and does not call an embedding provider."
+      },
+      "python": {
+        "present": false
+      }
+    },
+    {
+      "path": [
+        "searches",
+        "retryNatural",
+        "debug",
+        "candidateHits"
+      ],
+      "openclaw": {
+        "present": true,
+        "value": 0
+      },
+      "python": {
+        "present": true,
+        "value": 1
+      }
+    },
+    {
+      "path": [
+        "searches",
+        "retryNatural",
+        "debug",
+        "hits"
+      ],
+      "openclaw": {
+        "present": true,
+        "value": 0
+      },
+      "python": {
+        "present": true,
+        "value": 1
+      }
+    },
+    {
+      "path": [
+        "searches",
+        "retryNatural",
+        "results",
+        0
+      ],
+      "openclaw": {
+        "present": false
+      },
+      "python": {
+        "present": true,
+        "value": {
+          "path": "memory/topics/note.md",
+          "startLine": 1,
+          "endLine": 4,
+          "score": 0.6585724285704286,
+          "textScore": 9.99999000001e-07,
+          "snippet": "# Boundary note\n\nThe updated marker is boundarywillow297.\n",
+          "source": "memory",
+          "provenance": {
+            "originClass": "agent",
+            "sessionKind": "unknown",
+            "observedAt": 1794268801000
+          },
+          "corpus": "memory"
+        }
+      }
+    },
+    {
+      "path": [
+        "searches",
+        "retryNatural",
+        "stale"
+      ],
+      "openclaw": {
+        "present": true,
+        "value": true
+      },
+      "python": {
+        "present": false
+      }
+    },
+    {
+      "path": [
+        "searches",
+        "retryNatural",
+        "warning"
+      ],
+      "openclaw": {
+        "present": true,
+        "value": "Memory index is stale: unable to open database file. Search results may be incomplete."
+      },
+      "python": {
+        "present": false
+      }
+    },
+    {
+      "path": [
+        "sources",
+        "afterFinalClose",
+        0,
+        "mtimeMs"
+      ],
+      "openclaw": {
+        "present": true,
+        "value": 1794268801000
+      },
+      "python": {
+        "present": true,
+        "value": 1794268801000.0
+      }
+    },
+    {
+      "path": [
+        "sources",
+        "afterPrimaryClose",
+        0,
+        "mtimeMs"
+      ],
+      "openclaw": {
+        "present": true,
+        "value": 1794268801000
+      },
+      "python": {
+        "present": true,
+        "value": 1794268801000.0
+      }
+    },
+    {
+      "path": [
+        "sources",
+        "initial",
+        0,
+        "mtimeMs"
+      ],
+      "openclaw": {
+        "present": true,
+        "value": 1794268800000
+      },
+      "python": {
+        "present": true,
+        "value": 1794268800000.0
+      }
+    }
+  ]
+}

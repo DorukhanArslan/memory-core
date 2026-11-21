@@ -230,6 +230,8 @@ def sdk_doctor_phase(request, *, configured_state=False):
         raw["snapshots"].append(snapshot())
         for operation in input_value["ops"]:
             call = {"operation": operation, "clockMs": int(time.time() * 1000)}
+            if configured_state:
+                call["openclawHome"] = os.environ["OPENCLAW_HOME"]
             raw["calls"].append(call)
             try:
                 if operation["op"] == "findings":
@@ -638,9 +640,12 @@ def run(checkout, cache, node, output, selected=None, *, configured_state=False)
                     sdk_path = phase_directory / "sdk-input.json"
                     sdk_path.write_text(json.dumps(sdk_request, ensure_ascii=True))
                     sdk_phase = "--sdk-configured-state-phase" if configured_state else "--sdk-phase"
+                    sdk_env = {"PATH": os.defpath, "LANG": "C.UTF-8", "TZ": "UTC", "PYTHONPATH": str(ROOT),
+                               "OPENAI_API_KEY": "", "OPENROUTER_API_KEY": ""}
+                    if configured_state:
+                        sdk_env["OPENCLAW_HOME"] = str(directory / "sdk-fixture" / "home")
                     sdk_process = _capture_process([sys.executable, "-m", "equivalence.heartbeat_doctor_probe", sdk_phase, str(sdk_path)],
-                        phase_directory, "sdk", cwd=ROOT, timeout=60,
-                        env={"PATH": os.defpath, "LANG": "C.UTF-8", "TZ": "UTC", "PYTHONPATH": str(ROOT), "OPENAI_API_KEY": "", "OPENROUTER_API_KEY": ""})
+                        phase_directory, "sdk", cwd=ROOT, timeout=60, env=sdk_env)
                     sdk = json.loads(sdk_process.stdout)
                     _validate_public_observation(sdk, input_value)
                     observed_pids = _pid_status(pids)

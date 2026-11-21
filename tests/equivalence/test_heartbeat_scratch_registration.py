@@ -26,3 +26,21 @@ def test_scratch_outcome_requires_all_39_literal_inputs_and_bound_phase_receipts
     assert not family_complete(rows[1:])
     rows[-1]["heartbeatScratchEvidence"]["stdoutSha256"].pop()
     assert not family_complete(rows)
+
+
+def test_mismatch_report_contains_both_reviewed_public_values_and_keeps_matched_rows_compact():
+    from equivalence.heartbeat_scratch_acceptance import _digest, _report_row
+
+    native = [{"returns": [{"changes": ["archived"]}], "snapshots": [{"source": {}}]}]
+    sdk = [{"returns": [{"changes": ["copied"]}], "snapshots": [{"source": {"HEARTBEAT.md": "note"}}]}]
+    receipt = {"matches": False, "openclaw": native, "python": sdk,
+               "nativeSha256": _digest(native), "sdkSha256": _digest(sdk)}
+    row = _report_row({"id": "mismatch"}, receipt)
+    assert (row["openclaw"], row["python"]) == (native, sdk)
+    assert not {"openclaw", "python"} & row["heartbeatScratchEvidence"].keys()
+    assert "python" in receipt
+    with pytest.raises(ValueError, match="reviewed projections"):
+        _report_row({"id": "mismatch"}, {**receipt, "python": []})
+
+    match = _report_row({"id": "match"}, {"matches": True, "nativeSha256": _digest(native), "sdkSha256": _digest(native)})
+    assert not {"openclaw", "python"} & match.keys()

@@ -68,6 +68,19 @@ def family_complete(rows):
     return True
 
 
+def _report_row(case, observation):
+    evidence = observation.copy()
+    row = {**case, "status": "matched" if evidence["matches"] else "mismatched",
+           "referenceMode": "authenticated-official-release", "runtimeEvidenceValidated": True,
+           "heartbeatScratchEvidence": evidence}
+    if not evidence["matches"]:
+        for field, checksum in (("openclaw", "nativeSha256"), ("python", "sdkSha256")):
+            row[field] = evidence.pop(field)
+            if _digest(row[field]) != evidence[checksum]:
+                raise ValueError("Heartbeat scratch mismatch values differ from their reviewed projections")
+    return row
+
+
 def run_batch(checkout, node, runtime, directory):
     """Create and review fresh original and SDK observations in a unique attempt."""
     store.run(checkout, runtime, node, directory / "store")
@@ -84,9 +97,5 @@ def run_batch(checkout, node, runtime, directory):
     if [row["id"] for row in review["cases"]] != [case["input"]["fixture"] for case in cases]:
         raise ValueError("Heartbeat scratch review omitted or reordered a fixture")
     (directory / "review.json").write_text(json.dumps(review, indent=2, ensure_ascii=True) + "\n")
-    rows = {}
-    for case, observation in zip(cases, review["cases"], strict=True):
-        rows[case["id"]] = {**case, "status": "matched" if observation["matches"] else "mismatched",
-                            "referenceMode": "authenticated-official-release", "runtimeEvidenceValidated": True,
-                            "heartbeatScratchEvidence": observation}
-    return rows
+    return {case["id"]: _report_row(case, observation)
+            for case, observation in zip(cases, review["cases"], strict=True)}

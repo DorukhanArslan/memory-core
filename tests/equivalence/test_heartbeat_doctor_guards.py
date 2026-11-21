@@ -15,11 +15,31 @@ from equivalence.heartbeat_doctor_authority import NODE, validate_doctor_authori
 from equivalence.heartbeat_node_authority import validate_heartbeat_node_authority, prepare_heartbeat_node_authority
 from equivalence.heartbeat_doctor_probe import (
     ROOT, CODEC_SHA256, _capture_process, _documents, _error, _validate_decoded_events, _validate_public_observation,
-    build_doctor_cases, phase,
+    build_doctor_cases, phase, sdk_doctor_phase,
 )
 from equivalence.heartbeat_doctor_bindings import MANIFEST_SHA256
+from equivalence.heartbeat_scratch_review import _check_doctor_sdk
 
 EXECUTABLE = Path("/workspace/openclaw-memory-bridge/node_modules/node/bin/node")
+
+
+def test_configured_sdk_call_uses_fixture_home_inside_host_account(tmp_path, monkeypatch):
+    root = tmp_path / "work" / "sdk-fixture"
+    source = root / "workspace" / "HEARTBEAT.md"
+    source.parent.mkdir(parents=True)
+    source.write_text("Check the orders.\n")
+    monkeypatch.setenv("HOME", str(tmp_path))
+    monkeypatch.setenv("OPENCLAW_HOME", str(root / "home"))
+    fixture = phase("repair")
+    result = sdk_doctor_phase({"fixtureDirectory": str(root), "input": fixture}, configured_state=True)
+    change, = result["result"]["operations"][0]["changes"]
+    assert change == f"Migrated {source} into cron scratch for Heartbeat (main)."
+    raw = result["raw"]
+    assert raw["calls"][0]["openclawHome"] == str(root / "home")
+    _check_doctor_sdk(raw, fixture, root)
+    raw["calls"][0]["openclawHome"] = str(tmp_path)
+    with pytest.raises(ValueError, match="home"):
+        _check_doctor_sdk(raw, fixture, root)
 
 
 def _capability(kind="heartbeat-doctor-node-capability", profile="heartbeat-scratch-doctor"):

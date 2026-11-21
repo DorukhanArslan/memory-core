@@ -40,19 +40,39 @@ jobs:
                   raw = src.read(name)
                   archive.require(len(raw)==expected[key]["bytes"] and hashlib.sha256(raw).hexdigest()==expected[key]["sha256"], "Original physical evidence hash")
               print("PHYSICAL_INVENTORY",len(expected),len(members),"missing",json.dumps(missing),flush=True)
-              def copy_group(group, selection):
-                  package = io.BytesIO()
-                  with zipfile.ZipFile(package,"w",compression=zipfile.ZIP_DEFLATED,compresslevel=9) as small:
-                      for name in sorted(selection):
-                          small.writestr(name,src.read(name))
-                  raw = package.getvalue()
-                  payload = base64.b64encode(raw).decode()
-                  print("QUERY_CAPSULE",group,len(raw),hashlib.sha256(raw).hexdigest(),len(selection),flush=True)
-                  for n in range(0,len(payload),6000):
-                      print("QUERY_CAPSULE_DATA",group,n//6000,payload[n:n+6000],flush=True)
-              core = [n for n in names if "/" not in n and n.endswith(".json") and not n.startswith("releaseTraces-")]
-              copy_group("core",core)
-              copy_group("releaseTrace",[n for n in names if n.startswith("releaseTraces-") and n.endswith(".json")])
-              extra = [n for n in members.values() if n.split("/")[-1] in {"native-raw.json","python-raw.json","process.json","context.json","stdout.json","stderr.log","dispatch.json","request.json"}]
-              copy_group("original",extra)
+              for path in ("cases-00.json","runtimeDiagnostics-00.json","runtimeDiagnostics-01.json"):
+                  b=src.read(path)
+                  print("RECORD_SHA",path,len(b),hashlib.sha256(b).hexdigest())
+              case=json.loads(src.read("cases-00.json"))
+              result={"case":case,"differences":json.loads(src.read("public-differences.json")),
+                      "physicalFiles":{"expected":len(expected),"present":len(members),"missing":missing}}
+              for path in ("runtimeDiagnostics-00.json","runtimeDiagnostics-01.json"):
+                  recording=json.loads(src.read(path))
+                  raw=recording["rawSnapshots"][0]
+                  if recording["side"]=="python":
+                      raw=raw["observation"]["raw"]
+                  keys=("events","schedule","faults","sqlGates","syncCalls","backgroundCalls","originalSearchCalls","publicationCalls","readAdmissions","functionalInterleavings","statusCalls","toolCalls","counterDerivations")
+                  projection={}
+                  for k in keys:
+                      item=raw.get(k)
+                      if isinstance(item,list):
+                          projection[k]=[{name:vv for name,vv in row.items() if not isinstance(vv,(dict,list))} if isinstance(row,dict) else row for row in item]
+                      elif isinstance(item,dict):
+                          projection[k]={n:({name:vv for name,vv in row.items() if not isinstance(vv,(dict,list))} if isinstance(row,dict) else row) for n,row in item.items()}
+                  result[recording["side"]]=projection
+              import gzip
+              def transport(key, obj):
+                  raw=json.dumps(obj,ensure_ascii=True,separators=(",",":"),sort_keys=True).encode()
+                  payload=base64.b64encode(gzip.compress(raw,mtime=0)).decode()
+                  print("QRECORD",key,len(raw),hashlib.sha256(raw).hexdigest(),len(payload))
+                  if len(payload)>100000:
+                      raise ValueError("Corrected original diagnostic fragment exceeds transfer bound")
+                  for j in range(0,len(payload),6000):
+                      print("QDATA",key,j//6000,payload[j:j+6000])
+              essential={key:result[key] for key in ("case","differences","physicalFiles")}
+              for side in ("native","python"):
+                  projection=result[side]
+                  essential[side]={k:v for k,v in projection.items() if k!="events"}
+              transport("public-and-gates",essential)
+              transport("event-timelines",{side:result[side]["events"] for side in ("native","python")})
           PY

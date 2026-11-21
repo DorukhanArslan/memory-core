@@ -1,0 +1,88 @@
+name: Recount the retained 1,662 outcomes of run 44913992591
+on:
+  push:
+    branches: [verify/recount-44913992591-retained]
+    paths: [.github/workflows/recount-heartbeat-attempt.yml]
+permissions:
+  actions: read
+  contents: read
+
+jobs:
+  recount:
+    runs-on: ubuntu-latest
+    timeout-minutes: 40
+    steps:
+      - name: Check out the frozen measurement
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
+        with:
+          ref: 31221e378e0cb315121cefa750a3b3dfe1c2a04c
+          persist-credentials: false
+      - name: Check out the measured SDK
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
+        with:
+          ref: 2ea7fb4520b78579f9528270cd472f33c2e84c7b
+          path: .reference/product-source
+          persist-credentials: false
+      - name: Check out the supplemental reader
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
+        with:
+          ref: ${{ github.sha }}
+          path: .reference/recount
+          persist-credentials: false
+      - name: Check out the pinned artifact reader
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
+        with:
+          ref: 38c686d13ef7a9a88aa9e73ee226946d9bd252f0
+          path: .reference/previous-reader
+          persist-credentials: false
+      - uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97
+        with:
+          python-version: '3.12'
+      - uses: astral-sh/setup-uv@bec219d24cd3e171d82865faccec33120bb574f4
+        with:
+          version: '0.9.18'
+      - run: uv sync --frozen
+      - name: Recount the original evidence
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: uv run --frozen python .reference/recount/.github/scripts/recount_heartbeat_attempt.py
+      - name: Upload the compact historical decision
+        id: evidence
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
+        with:
+          name: historical-heartbeat-recount-44913992591
+          path: ${{ runner.temp }}/heartbeat-historical-recount.json
+          if-no-files-found: error
+      - name: Bind the downloaded result to the uploaded ZIP for review
+        env:
+          GH_TOKEN: ${{ github.token }}
+          ARTIFACT_ID: ${{ steps.evidence.outputs.artifact-id }}
+          ARTIFACT_SHA: ${{ steps.evidence.outputs.artifact-digest }}
+        run: |
+          python - <<'PY'
+          import base64, hashlib, json, os, sys, tempfile, zipfile
+          from pathlib import Path
+          sys.path.insert(0, ".reference/previous-reader/.github/scripts")
+          import restore_comparison_artifact as archive
+          import urllib.request
+          archive.RUN, archive.COMMIT = int(os.environ["GITHUB_RUN_ID"]), os.environ["GITHUB_SHA"]
+          id = int(os.environ["ARTIFACT_ID"])
+          url = f"https://api.github.com/repos/{archive.REPOSITORY}/actions/artifacts/{id}"
+          meta = json.load(urllib.request.urlopen(urllib.request.Request(url, headers={"Authorization": "Bearer "+os.environ["GH_TOKEN"]})))
+          digest = os.environ["ARTIFACT_SHA"].split(":")[-1]
+          seal = (id, "historical-heartbeat-recount-44913992591", meta["size_in_bytes"], digest)
+          with tempfile.TemporaryDirectory() as temp:
+              path = Path(temp)/"receipt.zip"
+              archive.download(seal, path)
+              with zipfile.ZipFile(path) as package:
+                  assert package.namelist() == ["heartbeat-historical-recount.json"]
+                  data = package.read(package.namelist()[0])
+                  assert data == (Path(os.environ["RUNNER_TEMP"])/package.namelist()[0]).read_bytes()
+              print("HISTORICAL_ZIP_RECEIPT", id, path.stat().st_size, digest, hashlib.sha256(data).hexdigest())
+              # Emit the compressed decision (only), split below the workflow log line limit.
+              import gzip
+              payload = base64.b64encode(gzip.compress(data, mtime=0)).decode()
+              for n in range(0,len(payload),6000):
+                  print(f"HISTORICAL_DATA {n//6000} {payload[n:n+6000]}")
+              print("HISTORICAL_END", len(payload))
+          PY

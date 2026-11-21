@@ -82,8 +82,9 @@ def read_review(package):
           "phases":counts["phases"],"reviewSha256":counts["reviewSha256"]}))
 
 
-with tempfile.TemporaryDirectory(dir=os.environ["RUNNER_TEMP"]) as td:
-    packed=Path(td)/"original.zip"
-    archive.download(RAW, packed)
-    with ZipFile(packed) as recording:
-        read_review(recording)
+if __name__ == "__main__":
+    with tempfile.TemporaryDirectory(dir=os.environ["RUNNER_TEMP"]) as td:
+        packed=Path(td)/"original.zip"
+        archive.download(RAW, packed)
+        with ZipFile(packed) as recording:
+            read_review(recording)

@@ -1,0 +1,39 @@
+name: Read the recorded heartbeat migration outcomes
+on:
+  push:
+    branches: [verify/read-heartbeat-44913992591]
+    paths: [.github/workflows/read-heartbeat-attempt.yml]
+permissions:
+  actions: read
+  contents: read
+
+jobs:
+  recover:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
+        with:
+          persist-credentials: false
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
+        with:
+          ref: 38c686d13ef7a9a88aa9e73ee226946d9bd252f0
+          path: .reference/previous-reader
+          persist-credentials: false
+      - uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97
+        with:
+          python-version: '3.12'
+      - uses: astral-sh/setup-uv@bec219d24cd3e171d82865faccec33120bb574f4
+        with:
+          version: '0.9.18'
+      - run: uv sync --frozen
+      - name: Read the sealed previous artifact and compare its recorded rows
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: uv run --frozen python .github/scripts/read_heartbeat_attempt.py
+      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
+        if: always()
+        with:
+          name: retained-heartbeat-39-outcomes
+          path: ${{ runner.temp }}/scratch-retained/
+          if-no-files-found: warn

@@ -85,10 +85,17 @@ operations and checks whether the original file was moved. Raw findings, paths
 and filesystem statistics remain available in the strict diagnostic packet.
 The wording of restart instructions is tracked by `heartbeat.scratch.boundaries`.
 
-The focused review matched all 39 cases across 69 native/SDK process pairs.
-Its compact JSON has SHA-256
+The initial focused review of product `2ea7fb4` matched 39 cases across 69
+native/SDK process pairs. Its compact JSON has SHA-256
 `8ba612ab1c79d01113d5c19d041fc479a7e0be24da71ced4afe80e8a091ac528`.
-The full comparison determines the score.
+The first hosted measurement matched 29 of those 39 cases. An independent
+read of the archived outputs located all 13 differing strings in the change
+messages of ten migrations. The note, owner and archive observations matched.
+OpenClaw used the explicitly configured home when displaying paths. The SDK
+abbreviated the runner account home with `~`. Product `f040ac1` honors
+`OPENCLAW_HOME`, and each worker receives and records its own equivalent
+fixture setting. The literal message comparison stays in force.
+[First hosted measurement](https://github.com/DorukhanArslan/memory-core/actions/runs/44913992591) · [Archived observations](https://github.com/DorukhanArslan/memory-core/actions/runs/44926829799)
 
 After preparing the pinned reference, Node, release runtime and scheduled-task
 dependency as in the [comparison workflow](../.github/workflows/equivalence.yml),

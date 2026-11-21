@@ -4,6 +4,7 @@ from __future__ import annotations
 import hashlib
 import json
 from pathlib import Path
+import re
 import shutil
 import tempfile
 
@@ -14,6 +15,7 @@ from equivalence.heartbeat_scratch_review import review_packets
 
 OPERATION = "heartbeat-scratch-outcomes-runtime"
 POINT = "heartbeat.scratch.outcomes"
+SHA256 = re.compile(r"[0-9a-f]{64}")
 STORE_DIGEST = "79ebb2a265c09022a743abaaea0485219b071076c2a8e467f80ae3a8e9d23725"
 DOCTOR_DIGEST = "1c544112e9034ac4dd018e5afb70019b6945cc1f239a9304f81aa9764bc7053f"
 
@@ -52,12 +54,16 @@ def family_complete(rows):
         return False
     for case, row in zip(cases, members, strict=True):
         evidence = row.get("heartbeatScratchEvidence", {})
+        stdout = evidence.get("stdoutSha256", ())
         if (any(row.get(key) != value for key, value in case.items())
                 or row.get("status") != "matched" or row.get("runtimeEvidenceValidated") is not True
                 or evidence.get("matches") is not True or evidence.get("id") != case["input"]["fixture"]
                 or evidence.get("nativeSha256") != evidence.get("sdkSha256")
-                or not evidence.get("nativeSha256")
-                or len(evidence.get("stdoutSha256", ())) != case["input"]["phases"]):
+                or not SHA256.fullmatch(str(evidence.get("nativeSha256")))
+                or not isinstance(stdout, list) or len(stdout) != case["input"]["phases"]
+                or any(not isinstance(pair, dict) or set(pair) != {"native", "sdk"}
+                       or not all(isinstance(digest, str) and SHA256.fullmatch(digest) for digest in pair.values())
+                       for pair in stdout)):
             return False
     return True
 

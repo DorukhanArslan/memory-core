@@ -52,6 +52,7 @@ def _check_doctor_sdk(raw, fixture, root):
              and raw["clock"]["nowMs"] == fixture["nowMs"], "unexpected SDK migration host")
     for call in raw["calls"]:
         _require(call["clockMs"] == fixture["nowMs"], "unexpected SDK phase clock")
+        _require(call.get("openclawHome") == str(root / "home"), "unexpected SDK fixture home")
         operation = call["operation"]["op"]
         if operation in {"repair", "preview"}:
             _require(call["request"] == {"root": str(root / "workspace"), "agent_ids": host["agentIds"],
@@ -107,6 +108,8 @@ def _review(directory, *, is_doctor):
             stdout_hashes.append(digests)
             if is_doctor:
                 _check_doctor_sdk(sdk[-1]["raw"], fixture, root / "sdk-fixture")
+                _require(native[-1]["raw"]["env"].get("OPENCLAW_HOME") == str(root / "native-fixture" / "home"),
+                         "unexpected OpenClaw fixture home")
                 execution = doctor.validate_execution(phase, context, native[-1])
                 _require(execution == prior["execution"], "Doctor execution traces differ")
                 for cut in ("before", "after"):
@@ -136,8 +139,8 @@ def _review(directory, *, is_doctor):
         item = {"id": case["id"], "matches": outcome["matches"], "stdoutSha256": stdout_hashes,
                 "nativeSha256": _digest(outcome["native"]), "sdkSha256": _digest(outcome["sdk"])}
         if not item["matches"]:
-            # Raw data stays in the packet. Keep a compact display of each
-            # distinct failure including the exact first differing repair reply.
+            item.update(openclaw=outcome["native"], python=outcome["sdk"])
+            # Keep a first difference alongside both complete compared values.
             differences = list(_differences(outcome["native"], outcome["sdk"]))
             item["differenceCount"] = len(differences)
             if differences:

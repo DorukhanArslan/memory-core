@@ -18,9 +18,13 @@ def replay_scratch(data, cases, args, runtime):
     receipts = []
     for case, observed in zip(cases, review["cases"], strict=True):
         row = data["followupRows"][case["id"]]["case"]
+        compact = {key: value for key, value in observed.items() if key not in {"openclaw", "python"}}
+        if not observed["matches"] and not all(
+                side in observed and _same_json(observed[side], row[side]) for side in ("openclaw", "python")):
+            raise ValueError("Reopened scratch discrepancy differs from the stored whole outputs")
         if (observed["id"] != case["input"]["fixture"]
-                or not _same_json(row["heartbeatScratchEvidence"], observed)
+                or not _same_json(row["heartbeatScratchEvidence"], compact)
                 or row["status"] != ("matched" if observed["matches"] else "mismatched")):
             raise ValueError("Physical scratch observations differ from the complete suite row")
-        receipts.append({"id": case["id"], "publicMatch": observed["matches"], "receipt": observed})
+        receipts.append({"id": case["id"], "publicMatch": observed["matches"], "receipt": compact})
     return receipts

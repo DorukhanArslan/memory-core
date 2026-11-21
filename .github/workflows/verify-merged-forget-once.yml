@@ -1,10 +1,10 @@
-name: Compare 1,662 cases for the OpenClaw memory contract
+name: Compare 1,662 cases after validating the hosted Doctor display
 # One frozen full measurement; retain the first result without retrying.
 # The independently accepted 118/128 and its 1,623 original case definitions are pinned.
 
 on:
   push:
-    branches: [verify/heartbeat-scratch-119-once]
+    branches: [verify/heartbeat-home-119-once]
     paths: [.github/workflows/verify-merged-forget-once.yml]
 
 permissions:
@@ -75,6 +75,15 @@ jobs:
         run: uv run --frozen python -m equivalence.release_runtime --reference .reference/openclaw --destination .reference/release-runtime --install
       - name: Stage the scheduler dependency pinned by OpenClaw
         run: uv run --frozen python -m equivalence.heartbeat_dependency --reference .reference/openclaw --destination .reference/heartbeat-dependencies/archives
+      - name: Check actual home-relative Doctor replies before the full comparison
+        run: uv run --frozen python .github/scripts/preflight_scratch_home.py
+      - name: Retain the compact home-path preflight
+        if: always()
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
+        with:
+          name: scratch-home-preflight
+          path: ${{ runner.temp }}/scratch-home-preflight.json
+          if-no-files-found: warn
       - name: Run exactly one full comparison
         id: comparison
         continue-on-error: true

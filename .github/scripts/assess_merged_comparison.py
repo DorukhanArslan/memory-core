@@ -1527,7 +1527,7 @@ def verify_process_exit(args, data):
 
 def compact_case(row, definition):
     receipt = {key: value for key, value in row.items()
-               if key in {"id", "status", "publicValueSha256", "datetimeRegexValidated", "datetimeBoundaryEvidence", "heartbeatScratchEvidence"} or key.endswith("EvidenceValidated")}
+               if key in {"id", "status", "publicValueSha256", "datetimeRegexValidated", "datetimeBoundaryEvidence", "heartbeatScratchEvidence", "referenceMode"} or key.endswith("EvidenceValidated")}
     omitted = sorted(definition.keys() - row.keys())
     if omitted:
         receipt["omittedDefinitionFields"] = omitted

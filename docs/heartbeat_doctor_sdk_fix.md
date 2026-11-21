@@ -85,6 +85,11 @@ operations and checks whether the original file was moved. Raw findings, paths
 and filesystem statistics remain available in the strict diagnostic packet.
 The wording of restart instructions is tracked by `heartbeat.scratch.boundaries`.
 
+The focused review matched all 39 cases across 69 native/SDK process pairs.
+Its compact JSON has SHA-256
+`8ba612ab1c79d01113d5c19d041fc479a7e0be24da71ced4afe80e8a091ac528`.
+The full comparison determines the score.
+
 After preparing the pinned reference, Node, release runtime and scheduled-task
 dependency as in the [comparison workflow](../.github/workflows/equivalence.yml),
 run the focused comparison with `scripts/check_equivalence.py --heartbeat-scratch-only`

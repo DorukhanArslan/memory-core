@@ -57,7 +57,9 @@ Comparisons must not normalize away behavior. A platform-specific path, generate
 Entries remain pending until their complete acceptance conditions are verified against `v2026.9.9`. Their detailed acceptance points and stable identifiers are in [scope.json](../equivalence/scope.json). A helper that already exists in Python still needs the new differential evidence. A known difference must stay visible until its implementation and tests agree. Bounded passing subsets are recorded below without closing the containing contract.
 
 <!-- CURRENT-VERIFICATION-START -->
-The independent review verifies **118/128 conditions (92.2%)**, with **10 remaining**. All 84 previously verified conditions passed, and 34 more passed. Of 1,623 cases, 1,615 matched, 8 differed and 0 were blocked. 8 conditions lack a comparison and 2 have unresolved comparisons. The first assessment stopped while resolving the reference path. A separate assessor read the same retained report and evidence from the single measurement. The archive assessor completed all behavior checks and stopped when the SDK's serialized output changed for the still-open ranking case F14. Independent review reproduced both SDK outputs. Two timestamps gained a decimal suffix while keeping the same value, and both candidate lists were empty. F14 received zero credit. Both hosted assessments remain blocked. The independent count uses the original measurement and replay receipts. The full comparison exited with code 1. [Full run](https://github.com/DorukhanArslan/memory-core/actions/runs/44214324963) · [Archived replay evidence](https://github.com/DorukhanArslan/memory-core/actions/runs/44232754070/artifacts/14396301086) · [Independent acceptance decision](https://github.com/DorukhanArslan/memory-core/blob/34b52d79f6082e061b8f1ce47a6ca27d407fb391/independent-review/README.md)
+The 21 November candidate `f040ac1` measured **118/128, net zero**. All 39 heartbeat scratch outcomes matched across 69 paired process phases. The warm-failure retry case reopened `indexing.query-sync.boundaries`. The complete run matched 1,653 of 1,662 cases, with nine differences, zero blocked cases and zero engine errors. Seven conditions lack coverage and three registered conditions remain unresolved. [PR #32](https://github.com/DorukhanArslan/memory-core/pull/32) · [Measurement](https://github.com/DorukhanArslan/memory-core/actions/runs/44927413199) · [Independent recount](https://github.com/DorukhanArslan/memory-core/blob/5bd9ac41dfa66b7732a6898b6a4e02366dd836de/independent-review/heartbeat-home/README.md)
+
+The 18 November independent review verified **118/128 conditions (92.2%)**, with **10 remaining**. All 84 previously verified conditions passed, and 34 more passed. Of 1,623 cases, 1,615 matched, 8 differed and 0 were blocked. 8 conditions lack a comparison and 2 have unresolved comparisons. The first assessment stopped while resolving the reference path. A separate assessor read the same retained report and evidence from the single measurement. The archive assessor completed all behavior checks and stopped when the SDK's serialized output changed for the still-open ranking case F14. Independent review reproduced both SDK outputs. Two timestamps gained a decimal suffix while keeping the same value, and both candidate lists were empty. F14 received zero credit. Both hosted assessments remain blocked. The independent count uses the original measurement and replay receipts. The full comparison exited with code 1. [Full run](https://github.com/DorukhanArslan/memory-core/actions/runs/44214324963) · [Archived replay evidence](https://github.com/DorukhanArslan/memory-core/actions/runs/44232754070/artifacts/14396301086) · [Independent acceptance decision](https://github.com/DorukhanArslan/memory-core/blob/34b52d79f6082e061b8f1ce47a6ca27d407fb391/independent-review/README.md)
 
 The archive review reopened 25 databases and 102 flush file instances. Timestamp checks in 22 cases and file identity checks in 7 diary cases use the original live measurements. ZIP extraction does not preserve those filesystem properties.
 
@@ -338,9 +340,9 @@ reaching 66/128 before the update/isolation and natural next-turn packages.
 
 | Contract status | Contracts | Verified conditions | Remaining conditions |
 | --- | ---: | ---: | ---: |
-| Complete | 55 | 110 | 0 |
-| Partial | 8 | 8 | 8 |
-| Pending verification | 1 | 0 | 2 |
+| Complete | 54 | 108 | 0 |
+| Partial | 10 | 10 | 10 |
+| Pending verification | 0 | 0 | 0 |
 | Total | 64 | 118 | 10 |
 
 Pending verification can include existing implementation. Partial contracts retain one open
@@ -366,7 +368,7 @@ Current status of all 64 contracts:
 | 12 | `indexing.incremental-sync` | Complete | 2/2 |
 | 13 | `indexing.transaction-publication` | Complete | 2/2 |
 | 14 | `indexing.embedding-cache` | Complete | 2/2 |
-| 15 | `indexing.query-sync` | Complete | 2/2 |
+| 15 | `indexing.query-sync` | Partial | 1/2 |
 | 16 | `retrieval.vector-scoring` | Complete | 2/2 |
 | 17 | `retrieval.hybrid-scoring` | Complete | 2/2 |
 | 18 | `retrieval.exact-path-priority` | Complete | 2/2 |
@@ -404,7 +406,7 @@ Current status of all 64 contracts:
 | 50 | `forget.index-fence` | Complete | 2/2 |
 | 51 | `trust.secret-redaction` | Partial | 1/2 |
 | 52 | `trust.configured-redaction` | Complete | 2/2 |
-| 53 | `heartbeat.scratch` | Pending verification | 0/2 |
+| 53 | `heartbeat.scratch` | Partial | 1/2 |
 | 54 | `heartbeat.turn-decisions` | Complete | 2/2 |
 | 55 | `automation.job-state` | Complete | 2/2 |
 | 56 | `concurrency.workspace-locks` | Complete | 2/2 |
@@ -451,7 +453,7 @@ pre-open race authority, full raw filesystem evidence and broader SDK-only limit
 - [x] **`indexing.incremental-sync` — Match index refresh and invalidation.** Create, update, rename and delete files and sessions while retaining an index. Compare discovery, chunk replacement and unchanged-file handling across reopen.
 - [x] **`indexing.transaction-publication` — Publish one coherent index revision.** Interleave readers with successful and failing rebuilds. Compare visible old/new revisions and prevent partial chunk, FTS or provenance publication. Both acceptance points are covered by the prepared-publication comparisons recorded below.
 - [x] **`indexing.embedding-cache` — Match embedding reuse and invalidation.** Both original conditions are verified by the complete eight-case real-manager family in the [cache closeout](embedding_cache_lifecycle_closeout.md). Compare complete cache identity/BLOBs, batching, changed chunks, failed batches, retained entries and all actual query/document calls. Outer API returns and full index-publication differences remain honest raw evidence; broader lifecycle is partial.
-- [x] **`indexing.query-sync` — Match query-time synchronization.** Both original conditions are verified for the declared provider-none on-search profile. Compare complete query outcomes and the eight frozen forced-sync/joining, failure, typed retry/exhaustion and dispatch-count schedules. Broader providers and interleavings remain outside this proof.
+- [ ] **`indexing.query-sync` — Match query-time synchronization.** Both original conditions are verified for the declared provider-none on-search profile. Compare complete query outcomes and the eight frozen forced-sync/joining, failure, typed retry/exhaustion and dispatch-count schedules. Broader providers and interleavings remain outside this proof.
 
 ### Retrieval and ranking
 

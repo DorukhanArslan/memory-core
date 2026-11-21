@@ -97,6 +97,11 @@ abbreviated the runner account home with `~`. Product `f040ac1` honors
 fixture setting. The literal message comparison stays in force.
 [First hosted measurement](https://github.com/DorukhanArslan/memory-core/actions/runs/44913992591) · [Archived observations](https://github.com/DorukhanArslan/memory-core/actions/runs/44926829799)
 
+The corrected full measurement matched all 39 heartbeat cases. One earlier
+query-sync retry case reopened. The SDK found the updated note on retry.
+OpenClaw returned no results and a stale-index warning at that point. The
+global measurement therefore stayed at 118/128. [Corrected measurement](https://github.com/DorukhanArslan/memory-core/actions/runs/44927413199) · [Original search replies](https://github.com/DorukhanArslan/memory-core/blob/5bd9ac41dfa66b7732a6898b6a4e02366dd836de/independent-review/heartbeat-home/query-retry-difference.json)
+
 After preparing the pinned reference, Node, release runtime and scheduled-task
 dependency as in the [comparison workflow](../.github/workflows/equivalence.yml),
 run the focused comparison with `scripts/check_equivalence.py --heartbeat-scratch-only`

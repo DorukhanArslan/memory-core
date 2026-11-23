@@ -1,0 +1,695 @@
+{
+  "run": 45153594838,
+  "measurement": "8a8b447bf539c4f270c5d319da9ca84d5879530d",
+  "product": "fc4aad3995d5f547f7a844d8b9024523d85b032d",
+  "reference": {
+    "tag": "v2026.9.9",
+    "commit": "bcfc88812a35243893585dbeca87ca41b48272ca",
+    "tree": "702b8f6a50264e8de42f105992aff6406b073275",
+    "nodeVersion": "v24.16.0",
+    "packageVersion": "2026.9.9",
+    "packageSha256": "09f313df5a3b93723c7f408bba1887e9978156bbcfd4fa0b3c3bccb61c4779c8"
+  },
+  "sdk": {
+    "sourceSha256": "df9cb99bb5b8423bf1e45d2b5c7eb018f1c55622f300d37e1ffffe47950e3bd6",
+    "sourceFiles": 183
+  },
+  "sdkTree": "067066c08f64c53a378d707276da6c795b80cc53",
+  "catalogSha256": "1480bb7dbbbda146e7044bc265cfcc510cedcff8f8a316762e558bce2f21021e",
+  "scopeSha256": "a8e066e63970dd0be734485d62a5932640894b8c0a42f47ac3eb67f784cbc7b9",
+  "archive": {
+    "id": 14820546579,
+    "sha256": "68590697b56a6fed14c3d3b49d62714fb3c4cc2f34332a2d9177b79b58c09a4a",
+    "bytes": 354903
+  },
+  "report": {
+    "path": "/home/runner/work/memory-core/memory-core/.equivalence-results/full.json",
+    "bytes": 1909410536,
+    "sha256": "8f9a1471a20e8a89d3c7a71f03dde773285b4a113db3ea0ab5fc2c0e0b977119"
+  },
+  "registeredCases": 1662,
+  "conditions": 128,
+  "verified": 119,
+  "remaining": 9,
+  "uncovered": 7,
+  "registeredUnresolved": 2,
+  "contracts": {
+    "complete": 55,
+    "partial": 9
+  },
+  "cases": {
+    "matched": 1654,
+    "mismatched": 8,
+    "blocked": 0
+  },
+  "families": {
+    "deep-consolidation-runtime": true,
+    "embed-cache-lifecycle-runtime": true,
+    "engine.numeric-boundaries": true,
+    "forget-boundaries-runtime": true,
+    "forget-index-fence-v6-runtime": true,
+    "forget-lineage-runtime": true,
+    "host-restart-session-runtime": true,
+    "host-turn-barrier-boundaries-runtime": true,
+    "host-turn-barrier-v4-runtime": true,
+    "host-update-isolation-runtime": true,
+    "index-identity-boundaries-runtime": true,
+    "prompt-history-repair-runtime": true,
+    "prompt-runtime-context-runtime": true,
+    "query-sync-boundaries-runtime": true,
+    "query-sync-outcomes-runtime": true,
+    "recall-signals-runtime": true,
+    "session-reset-boundaries-runtime": true,
+    "heartbeat-scratch-outcomes-runtime": true,
+    "engine.datetime-regex.boundaries": true,
+    "trust.configured-redaction.outcomes": true,
+    "trust.secret-redaction.boundaries": true,
+    "engine-unicode-collation": true,
+    "recovery-forget-interruption-runtime": true,
+    "engine.datetime-regex": true,
+    "provider-overflow-host-runtime": true,
+    "flush-plan-target-runtime": true,
+    "recovery.repair-diagnostics": true,
+    "heartbeat-turn-outcomes-runtime": true,
+    "heartbeat.turn-decisions.boundaries": true,
+    "dream-light-runtime": true,
+    "dream-rem-runtime": true,
+    "dream-deep-runtime": true,
+    "dream-diary-publication-runtime": true,
+    "automation-job-state-runtime": true,
+    "automation-job-outcomes-runtime": true,
+    "compaction.context-assembly.outcomes": true,
+    "compaction-assembly-restart-runtime": true,
+    "workspace-lock-process-runtime": true
+  },
+  "points": [
+    {
+      "id": "storage.discovery.outcomes",
+      "verified": true
+    },
+    {
+      "id": "storage.discovery.boundaries",
+      "verified": true
+    },
+    {
+      "id": "storage.path-safety.outcomes",
+      "verified": true
+    },
+    {
+      "id": "storage.path-safety.boundaries",
+      "verified": true
+    },
+    {
+      "id": "storage.atomic-writes.outcomes",
+      "verified": true
+    },
+    {
+      "id": "storage.atomic-writes.boundaries",
+      "verified": true
+    },
+    {
+      "id": "storage.workspace-isolation.outcomes",
+      "verified": true
+    },
+    {
+      "id": "storage.workspace-isolation.boundaries",
+      "verified": true
+    },
+    {
+      "id": "lexical.tokenization.tokens",
+      "verified": true
+    },
+    {
+      "id": "lexical.tokenization.generated",
+      "verified": true
+    },
+    {
+      "id": "lexical.fts-query.query",
+      "verified": true
+    },
+    {
+      "id": "lexical.fts-query.generated",
+      "verified": true
+    },
+    {
+      "id": "lexical.bm25.ranks",
+      "verified": true
+    },
+    {
+      "id": "lexical.bm25.boundaries",
+      "verified": true
+    },
+    {
+      "id": "chunking.markdown-boundaries.outcomes",
+      "verified": true
+    },
+    {
+      "id": "chunking.markdown-boundaries.boundaries",
+      "verified": true
+    },
+    {
+      "id": "chunking.utf16-cjk-budget.outcomes",
+      "verified": true
+    },
+    {
+      "id": "chunking.utf16-cjk-budget.boundaries",
+      "verified": true
+    },
+    {
+      "id": "chunking.entry-provenance.outcomes",
+      "verified": true
+    },
+    {
+      "id": "chunking.entry-provenance.boundaries",
+      "verified": true
+    },
+    {
+      "id": "indexing.identity.outcomes",
+      "verified": true
+    },
+    {
+      "id": "indexing.identity.boundaries",
+      "verified": true
+    },
+    {
+      "id": "indexing.incremental-sync.outcomes",
+      "verified": true
+    },
+    {
+      "id": "indexing.incremental-sync.boundaries",
+      "verified": true
+    },
+    {
+      "id": "indexing.transaction-publication.outcomes",
+      "verified": true
+    },
+    {
+      "id": "indexing.transaction-publication.boundaries",
+      "verified": true
+    },
+    {
+      "id": "indexing.embedding-cache.outcomes",
+      "verified": true
+    },
+    {
+      "id": "indexing.embedding-cache.boundaries",
+      "verified": true
+    },
+    {
+      "id": "indexing.query-sync.outcomes",
+      "verified": true
+    },
+    {
+      "id": "indexing.query-sync.boundaries",
+      "verified": true
+    },
+    {
+      "id": "retrieval.vector-scoring.outcomes",
+      "verified": true
+    },
+    {
+      "id": "retrieval.vector-scoring.boundaries",
+      "verified": true
+    },
+    {
+      "id": "retrieval.hybrid-scoring.outcomes",
+      "verified": true
+    },
+    {
+      "id": "retrieval.hybrid-scoring.boundaries",
+      "verified": true
+    },
+    {
+      "id": "retrieval.exact-path-priority.outcomes",
+      "verified": true
+    },
+    {
+      "id": "retrieval.exact-path-priority.boundaries",
+      "verified": true
+    },
+    {
+      "id": "retrieval.mmr.order",
+      "verified": true
+    },
+    {
+      "id": "retrieval.mmr.text-boundaries",
+      "verified": true
+    },
+    {
+      "id": "retrieval.temporal-decay.time-inputs",
+      "verified": true
+    },
+    {
+      "id": "retrieval.temporal-decay.sources",
+      "verified": true
+    },
+    {
+      "id": "retrieval.importance-project.outcomes",
+      "verified": true
+    },
+    {
+      "id": "retrieval.importance-project.boundaries",
+      "verified": true
+    },
+    {
+      "id": "tools.search-contract.outcomes",
+      "verified": true
+    },
+    {
+      "id": "tools.search-contract.boundaries",
+      "verified": true
+    },
+    {
+      "id": "tools.get-contract.outcomes",
+      "verified": true
+    },
+    {
+      "id": "tools.get-contract.boundaries",
+      "verified": true
+    },
+    {
+      "id": "tools.deadline-cooldown.outcomes",
+      "verified": true
+    },
+    {
+      "id": "tools.deadline-cooldown.boundaries",
+      "verified": true
+    },
+    {
+      "id": "tools.unavailable-partial.outcomes",
+      "verified": true
+    },
+    {
+      "id": "tools.unavailable-partial.boundaries",
+      "verified": true
+    },
+    {
+      "id": "sessions.corpus-admission.outcomes",
+      "verified": true
+    },
+    {
+      "id": "sessions.corpus-admission.boundaries",
+      "verified": true
+    },
+    {
+      "id": "sessions.transcript-filtering.outcomes",
+      "verified": true
+    },
+    {
+      "id": "sessions.transcript-filtering.boundaries",
+      "verified": false
+    },
+    {
+      "id": "sessions.visibility-lineage.outcomes",
+      "verified": true
+    },
+    {
+      "id": "sessions.visibility-lineage.boundaries",
+      "verified": true
+    },
+    {
+      "id": "sessions.reset-hook.outcomes",
+      "verified": false
+    },
+    {
+      "id": "sessions.reset-hook.boundaries",
+      "verified": true
+    },
+    {
+      "id": "sessions.durable-context.outcomes",
+      "verified": true
+    },
+    {
+      "id": "sessions.durable-context.boundaries",
+      "verified": true
+    },
+    {
+      "id": "prompt.bootstrap-discovery.outcomes",
+      "verified": true
+    },
+    {
+      "id": "prompt.bootstrap-discovery.boundaries",
+      "verified": false
+    },
+    {
+      "id": "prompt.bootstrap-budget.outcomes",
+      "verified": true
+    },
+    {
+      "id": "prompt.bootstrap-budget.boundaries",
+      "verified": true
+    },
+    {
+      "id": "prompt.runtime-context.outcomes",
+      "verified": true
+    },
+    {
+      "id": "prompt.runtime-context.boundaries",
+      "verified": true
+    },
+    {
+      "id": "prompt.history-repair.outcomes",
+      "verified": true
+    },
+    {
+      "id": "prompt.history-repair.boundaries",
+      "verified": true
+    },
+    {
+      "id": "flush.plan-target.outcomes",
+      "verified": true
+    },
+    {
+      "id": "flush.plan-target.boundaries",
+      "verified": false
+    },
+    {
+      "id": "flush.trigger-usage.outcomes",
+      "verified": true
+    },
+    {
+      "id": "flush.trigger-usage.boundaries",
+      "verified": true
+    },
+    {
+      "id": "flush.execute-finalize.outcomes",
+      "verified": true
+    },
+    {
+      "id": "flush.execute-finalize.boundaries",
+      "verified": false
+    },
+    {
+      "id": "compaction.memory-budget.outcomes",
+      "verified": true
+    },
+    {
+      "id": "compaction.memory-budget.boundaries",
+      "verified": true
+    },
+    {
+      "id": "compaction.context-assembly.outcomes",
+      "verified": true
+    },
+    {
+      "id": "compaction.context-assembly.boundaries",
+      "verified": true
+    },
+    {
+      "id": "compaction.provider-overflow.outcomes",
+      "verified": true
+    },
+    {
+      "id": "compaction.provider-overflow.boundaries",
+      "verified": true
+    },
+    {
+      "id": "promotion.recall-signals.outcomes",
+      "verified": true
+    },
+    {
+      "id": "promotion.recall-signals.boundaries",
+      "verified": true
+    },
+    {
+      "id": "promotion.ranking-gates.outcomes",
+      "verified": true
+    },
+    {
+      "id": "promotion.ranking-gates.boundaries",
+      "verified": false
+    },
+    {
+      "id": "promotion.apply-reconcile.outcomes",
+      "verified": true
+    },
+    {
+      "id": "promotion.apply-reconcile.boundaries",
+      "verified": true
+    },
+    {
+      "id": "promotion.deep-consolidation.outcomes",
+      "verified": true
+    },
+    {
+      "id": "promotion.deep-consolidation.boundaries",
+      "verified": true
+    },
+    {
+      "id": "dreaming.light.outcomes",
+      "verified": true
+    },
+    {
+      "id": "dreaming.light.boundaries",
+      "verified": true
+    },
+    {
+      "id": "dreaming.rem.outcomes",
+      "verified": true
+    },
+    {
+      "id": "dreaming.rem.boundaries",
+      "verified": true
+    },
+    {
+      "id": "dreaming.deep.outcomes",
+      "verified": true
+    },
+    {
+      "id": "dreaming.deep.boundaries",
+      "verified": true
+    },
+    {
+      "id": "dreaming.diary-provenance.outcomes",
+      "verified": true
+    },
+    {
+      "id": "dreaming.diary-provenance.boundaries",
+      "verified": true
+    },
+    {
+      "id": "forget.lineage-tombstones.outcomes",
+      "verified": true
+    },
+    {
+      "id": "forget.lineage-tombstones.boundaries",
+      "verified": true
+    },
+    {
+      "id": "forget.index-fence.outcomes",
+      "verified": true
+    },
+    {
+      "id": "forget.index-fence.boundaries",
+      "verified": true
+    },
+    {
+      "id": "trust.secret-redaction.outcomes",
+      "verified": false
+    },
+    {
+      "id": "trust.secret-redaction.boundaries",
+      "verified": true
+    },
+    {
+      "id": "trust.configured-redaction.outcomes",
+      "verified": true
+    },
+    {
+      "id": "trust.configured-redaction.boundaries",
+      "verified": true
+    },
+    {
+      "id": "heartbeat.scratch.outcomes",
+      "verified": true
+    },
+    {
+      "id": "heartbeat.scratch.boundaries",
+      "verified": false
+    },
+    {
+      "id": "heartbeat.turn-decisions.outcomes",
+      "verified": true
+    },
+    {
+      "id": "heartbeat.turn-decisions.boundaries",
+      "verified": true
+    },
+    {
+      "id": "automation.job-state.outcomes",
+      "verified": true
+    },
+    {
+      "id": "automation.job-state.boundaries",
+      "verified": true
+    },
+    {
+      "id": "concurrency.workspace-locks.outcomes",
+      "verified": true
+    },
+    {
+      "id": "concurrency.workspace-locks.boundaries",
+      "verified": true
+    },
+    {
+      "id": "recovery.repair-diagnostics.outcomes",
+      "verified": true
+    },
+    {
+      "id": "recovery.repair-diagnostics.boundaries",
+      "verified": true
+    },
+    {
+      "id": "recovery.failure-publication.outcomes",
+      "verified": true
+    },
+    {
+      "id": "recovery.failure-publication.boundaries",
+      "verified": false
+    },
+    {
+      "id": "engine.numeric-boundaries.outcomes",
+      "verified": true
+    },
+    {
+      "id": "engine.numeric-boundaries.boundaries",
+      "verified": true
+    },
+    {
+      "id": "engine.unicode-collation.outcomes",
+      "verified": true
+    },
+    {
+      "id": "engine.unicode-collation.boundaries",
+      "verified": true
+    },
+    {
+      "id": "engine.datetime-regex.outcomes",
+      "verified": true
+    },
+    {
+      "id": "engine.datetime-regex.boundaries",
+      "verified": true
+    },
+    {
+      "id": "host.turn-barrier.outcomes",
+      "verified": true
+    },
+    {
+      "id": "host.turn-barrier.boundaries",
+      "verified": true
+    },
+    {
+      "id": "host.restart-recall.outcomes",
+      "verified": true
+    },
+    {
+      "id": "host.restart-recall.boundaries",
+      "verified": true
+    },
+    {
+      "id": "host.update-isolation.outcomes",
+      "verified": true
+    },
+    {
+      "id": "host.update-isolation.boundaries",
+      "verified": true
+    }
+  ],
+  "netChange": 1,
+  "gained": [
+    "indexing.query-sync.boundaries"
+  ],
+  "lost": [],
+  "missing": [
+    "sessions.transcript-filtering.boundaries",
+    "sessions.reset-hook.outcomes",
+    "flush.plan-target.boundaries",
+    "flush.execute-finalize.boundaries",
+    "trust.secret-redaction.outcomes",
+    "heartbeat.scratch.boundaries",
+    "recovery.failure-publication.boundaries"
+  ],
+  "unresolved": [
+    "prompt.bootstrap-discovery.boundaries",
+    "promotion.ranking-gates.boundaries"
+  ],
+  "terminalStatus": "mismatched",
+  "osExit": 1,
+  "elapsedSeconds": 9156.058068253,
+  "fullScopePassed": false,
+  "engineErrors": [],
+  "mismatchedCaseIds": [
+    "transcript-boundary-compressed-same-size-mtime-cache-diagnostic",
+    "flush-execution-warm-index-first-recall",
+    "model-tool-complete-tool-result",
+    "model-tool-utf16-redaction-truncation-order",
+    "bootstrap-discovery-memory-core-layout-extension",
+    "bootstrap-discovery-legacy-state-gate",
+    "promotion-ranking-primitive-provenance-safety-diagnostic",
+    "engine-datetime-unverified-legacy-grammar"
+  ],
+  "originalEightOnly": true,
+  "queryCases": {
+    "query-sync-boundaries-clean-cold-repeat": "matched",
+    "query-sync-boundaries-warm-force-unchanged": "matched",
+    "query-sync-boundaries-joined-force-and-query": "matched",
+    "query-sync-boundaries-joined-failure-persistent-cold-recovery": "matched",
+    "query-sync-boundaries-warm-failure-natural-retry": "matched",
+    "query-sync-boundaries-typed-conflict-once-retry": "matched",
+    "query-sync-boundaries-typed-conflict-twice-exhaustion": "matched",
+    "query-sync-boundaries-newer-empty-public-refusal-cli-override": "matched"
+  },
+  "heartbeatCases": 39,
+  "heartbeatMatched": 39,
+  "heartbeatPairedPhases": 69,
+  "appendedPhysicalReplays": {
+    "host-turn-barrier-v4-runtime": 4,
+    "forget-lineage-runtime": 3,
+    "forget-boundaries-runtime": 1,
+    "recall-signals-runtime": 6,
+    "embed-cache-lifecycle-runtime": 8,
+    "session-reset-boundaries-runtime": 7,
+    "prompt-runtime-context-runtime": 10,
+    "prompt-history-repair-runtime": 8,
+    "engine.numeric-boundaries": 4,
+    "deep-consolidation-runtime": 7,
+    "forget-index-fence-v6-runtime": 13,
+    "heartbeat-scratch-outcomes-runtime": 39,
+    "engine.datetime-regex.boundaries": 5,
+    "trust.configured-redaction.outcomes": 2,
+    "trust.secret-redaction.boundaries": 4,
+    "engine-unicode-collation": 3,
+    "recovery-forget-interruption-runtime": 2,
+    "engine.datetime-regex": 5,
+    "provider-overflow-host-runtime": 7,
+    "flush-plan-target-runtime": 13,
+    "recovery.repair-diagnostics": 9,
+    "heartbeat-turn-outcomes-runtime": 4,
+    "heartbeat.turn-decisions.boundaries": 4,
+    "dream-light-runtime": 7,
+    "dream-rem-runtime": 8,
+    "dream-deep-runtime": 7,
+    "dream-diary-publication-runtime": 7,
+    "automation-job-state-runtime": 1,
+    "automation-job-outcomes-runtime": 3,
+    "compaction.context-assembly.outcomes": 3,
+    "compaction-assembly-restart-runtime": 3,
+    "workspace-lock-process-runtime": 7
+  },
+  "originalRecoveryModes": {
+    "flush-execution-cancel-before-write": "authenticated-official-release",
+    "flush-execution-cancel-after-write": "authenticated-official-release",
+    "storage.atomic-writes.temp-file-fsync-eio": "authenticated-official-release",
+    "storage.atomic-writes.rename-mutates-then-rejects": "authenticated-official-release",
+    "deep-consolidation-concurrent-edit": "authenticated-official-release",
+    "dream-diary-publisher-failure": "authenticated-official-release",
+    "dream-deep-report-publication-failure": "authenticated-official-release",
+    "recovery-forget-before-marker": "authenticated-official-release",
+    "recovery-forget-after-note": "authenticated-official-release"
+  },
+  "assessmentStatus": "assessed",
+  "assessmentErrors": [],
+  "previousIndependentDecision": "5bd9ac41dfa66b7732a6898b6a4e02366dd836de",
+  "reviewerSha256": "f0aa931e0a170109094b1c7439d9e5e8e818471e49c887ac6360970f8d6ec5be"
+}

@@ -1,0 +1,98 @@
+{
+  "kind": "warm-retry-whole-public-audit",
+  "run": 45153594838,
+  "measurement": "8a8b447bf539c4f270c5d319da9ca84d5879530d",
+  "product": "fc4aad3995d5f547f7a844d8b9024523d85b032d",
+  "summary": {
+    "id": 14820546579,
+    "sha256": "68590697b56a6fed14c3d3b49d62714fb3c4cc2f34332a2d9177b79b58c09a4a",
+    "bytes": 354903
+  },
+  "report": {
+    "path": "/home/runner/work/memory-core/memory-core/.equivalence-results/full.json",
+    "bytes": 1909410536,
+    "sha256": "8f9a1471a20e8a89d3c7a71f03dde773285b4a113db3ea0ab5fc2c0e0b977119"
+  },
+  "previousDecision": "5bd9ac41dfa66b7732a6898b6a4e02366dd836de",
+  "previousSummary": {
+    "id": 14721834715,
+    "sha256": "838cf28293c08122089d5939c2d0e5c9204a095b3faddf2367433a1a28b04446",
+    "bytes": 349038
+  },
+  "registeredCases": 1662,
+  "changedStatuses": {
+    "query-sync-boundaries-warm-failure-natural-retry": {
+      "before": "mismatched",
+      "after": "matched"
+    }
+  },
+  "otherHistoricalMismatchWholePublicChanges": {
+    "flush-execution-warm-index-first-recall": {
+      "before": {
+        "openclaw": "cb844e6214b8fd7526c42e6e3dd968c97ea9963230260e4c29ce178f0fb94ec5",
+        "python": "f5f748474b212ead4420d77fe1a6c3ba3425db777e1f15c318be567057925802"
+      },
+      "after": {
+        "openclaw": "208c57d0be33f822c949bc0dd3a4136e11593b56d6e07a91f32f665cb5cdcf3f",
+        "python": "f5f748474b212ead4420d77fe1a6c3ba3425db777e1f15c318be567057925802"
+      }
+    }
+  },
+  "unexpectedHistoricalPublicChanges": [],
+  "previousQueryWholePublicSha256": {
+    "openclaw": "9d8e7a952ca229537a469d7f606feb3b6a5ab2395f780dbc75c042284ccdb7ce",
+    "python": "a08e023e6023c40c846520456853ad8cd9add57704060388a894a89e480d7594"
+  },
+  "currentQuery": {
+    "matched": true,
+    "wholePublicSha256": {
+      "openclaw": "9d8e7a952ca229537a469d7f606feb3b6a5ab2395f780dbc75c042284ccdb7ce",
+      "python": "2a724d76d8d6349e11ddf4c3f3314fd3cc63dbc1c0ed24d57b7ce0784fbb8595"
+    },
+    "nativeBytesMatchPreviousFullRun": true,
+    "searches": {
+      "openclaw": {
+        "failedNatural": {
+          "results": 0,
+          "stale": true,
+          "warning": "Memory index is stale: unable to open database file. Search results may be incomplete.",
+          "firstSnippet": null
+        },
+        "retryNatural": {
+          "results": 0,
+          "stale": true,
+          "warning": "Memory index is stale: unable to open database file. Search results may be incomplete.",
+          "firstSnippet": null
+        },
+        "reopened": {
+          "results": 1,
+          "stale": false,
+          "warning": null,
+          "firstSnippet": "# Boundary note\n\nThe updated marker is boundarywillow297.\n"
+        }
+      },
+      "python": {
+        "failedNatural": {
+          "results": 0,
+          "stale": true,
+          "warning": "Memory index is stale: unable to open database file. Search results may be incomplete.",
+          "firstSnippet": null
+        },
+        "retryNatural": {
+          "results": 0,
+          "stale": true,
+          "warning": "Memory index is stale: unable to open database file. Search results may be incomplete.",
+          "firstSnippet": null
+        },
+        "reopened": {
+          "results": 1,
+          "stale": false,
+          "warning": null,
+          "firstSnippet": "# Boundary note\n\nThe updated marker is boundarywillow297.\n"
+        }
+      }
+    }
+  },
+  "onlyWarmRetryStatusImproved": true,
+  "reviewerSha256": "62c4c4bcc5c87378918d59a0d6d28c8b1303ec585f32b2660112c90ca67014f1"
+}

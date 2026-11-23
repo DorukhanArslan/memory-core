@@ -309,6 +309,10 @@ class SQLiteMemoryStore:
                 remove_listener()
             db.close()
 
+    def _prepared_search_db(self) -> sqlite3.Connection | None:
+        """A retrieval transaction already pinned by the managed search, if any."""
+        return None
+
     def _on_search_snapshot(self, db: sqlite3.Connection) -> None:
         """Optional host admission after a real valid reader snapshot is pinned.
 
@@ -1153,7 +1157,12 @@ class SQLiteMemoryStore:
             return []
         _checkpoint(signal)
         # memory/manager.ts:680-685: no hits unless the index identity is valid.
-        if self.index_identity()["status"] != "valid":
+        prepared_db = self._prepared_search_db()
+        if self.index_identity(db=prepared_db)["status"] != "valid":
+            if prepared_db is not None:
+                # No probes will use this generation. A partial-result callback
+                # may synchronously repair the refused index in rollback mode.
+                prepared_db.rollback()
             if on_partial_results is not None:
                 on_partial_results(None)
             return []
@@ -1484,7 +1493,8 @@ class SQLiteMemoryStore:
                 if on_partial_results is not None:
                     on_partial_results(None)
                 return []
-        with self._search_connection(signal) as db:
+        prepared_db = self._prepared_search_db()
+        with (nullcontext(prepared_db) if prepared_db is not None else self._search_connection(signal)) as db:
             if vector_ready and self._provider_identities() != provider_identity:
                 if on_partial_results is not None:
                     on_partial_results(None)

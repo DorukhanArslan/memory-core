@@ -1,10 +1,10 @@
-name: Compare 1,662 cases after validating the hosted Doctor display
+name: Compare 1,662 cases after validating the first search retry
 # One frozen full measurement; retain the first result without retrying.
-# The independently accepted 118/128 and its 1,623 original case definitions are pinned.
+# Both independent 118/128 decisions and the complete 1,662-case catalog are pinned.
 
 on:
   push:
-    branches: [verify/heartbeat-home-119-once]
+    branches: [verify/heartbeat-search-retry-119-once]
     paths: [.github/workflows/verify-merged-forget-once.yml]
 
 permissions:
@@ -67,6 +67,10 @@ jobs:
           version: "0.9.18"
       - name: Install frozen development stack
         run: uv sync --frozen
+      - name: Verify the search while a real file watcher recovers
+        run: >-
+          uv run --frozen python -m pytest -q
+          tests/unit/test_managed_on_search_publication.py::test_warm_retry_keeps_its_generation_when_file_watcher_recovers_during_search
       - name: Verify current source locations
         run: uv run --frozen python -m equivalence.source_map --reference .reference/openclaw
       - name: Prepare authenticated source dependencies
@@ -75,14 +79,22 @@ jobs:
         run: uv run --frozen python -m equivalence.release_runtime --reference .reference/openclaw --destination .reference/release-runtime --install
       - name: Stage the scheduler dependency pinned by OpenClaw
         run: uv run --frozen python -m equivalence.heartbeat_dependency --reference .reference/openclaw --destination .reference/heartbeat-dependencies/archives
-      - name: Check actual home-relative Doctor replies before the full comparison
-        run: uv run --frozen python .github/scripts/preflight_scratch_home.py
-      - name: Retain the compact home-path preflight
+      - name: Check the real first retry against the pinned OpenClaw release
+        run: >-
+          uv run --frozen python scripts/check_query_sync_boundaries.py
+          --case query-sync-boundaries-warm-failure-natural-retry
+          --reference .reference/openclaw --node "$(command -v node)"
+          --release-runtime .reference/release-runtime
+          --output "$RUNNER_TEMP/query-retry-preflight"
+      - name: Retain the original preflight replies and replay receipt
         if: always()
         uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
         with:
-          name: scratch-home-preflight
-          path: ${{ runner.temp }}/scratch-home-preflight.json
+          name: query-retry-preflight
+          path: |
+            ${{ runner.temp }}/query-retry-preflight/report.json
+            ${{ runner.temp }}/query-retry-preflight/query-sync-boundaries-warm-failure-natural-retry/stdout.json
+            ${{ runner.temp }}/query-retry-preflight/query-sync-boundaries-warm-failure-natural-retry/sdk-output.json
           if-no-files-found: warn
       - name: Run exactly one full comparison
         id: comparison

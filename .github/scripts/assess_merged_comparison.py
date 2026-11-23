@@ -24,6 +24,7 @@ from equivalence.engine_unicode_collation import (DIAGNOSTIC as UNICODE_TIE_ID, 
 from followup_families import FAMILIES, REPORT_FIELDS, family_key, replay_followup
 from followup_heartbeat import CORPUS_OWNERS
 from heartbeat_119_guard import baseline as accepted_118, verify_previous_cases
+from search_retry_review import RETRY_CASE, changes_since_heartbeat
 from followup_seal import (CATALOG_SHA, EXPECTED_RESOLUTIONS, PREVIOUS_CASES, PREVIOUS_CATALOG_SHA, PREVIOUS_COMPARISON,
                            PRODUCT, REGISTERED_CASES, SCOPE_SHA as SCOPE, SDK_FILES, SDK_SHA, check_seal)
 
@@ -168,6 +169,11 @@ def project(path, host_ids, lineage_ids, boundary_ids, recall_ids, cache_ids, re
             row = result["followupRows"].setdefault(value["id"], {})
             require(name not in row, "Duplicate appended case, diagnostic or trace")
             row[name] = value
+        if key == "runtimeDiagnostics" and value.get("id") == RETRY_CASE:
+            sides = result.setdefault("warmRetryDiagnostics", {})
+            side = value.get("side")
+            require(side in {"native", "python"} and side not in sides, "Unexpected warm retry diagnostic")
+            sides[side] = value
         if key == "cases":
             row = {k: v for k, v in value.items() if k not in {"openclaw", "python"}}
             if {"openclaw", "python"} & set(value):
@@ -1534,6 +1540,39 @@ def compact_case(row, definition):
     return receipt
 
 
+def replay_warm_retry(data, definitions, args):
+    from equivalence.query_sync_boundaries_evidence import validate_pair
+
+    case = next(item for item in definitions if item["id"] == RETRY_CASE)
+    row = next(item for item in data["cases"] if item["id"] == RETRY_CASE)
+    if row["status"] == "blocked":
+        return None
+    captures = {}
+    root = ROOT / ".equivalence-results/query-sync-boundaries"
+    for side, diagnostic in data["warmRetryDiagnostics"].items():
+        snapshots = diagnostic["rawSnapshots"]
+        require(diagnostic["validationStatus"] == "verified" and len(snapshots) == 1,
+                "Incomplete first retry diagnostic")
+        raw = snapshots[0]
+        if side == "native":
+            path = Path(raw["fixtureBase"]).parent / "evidence/native-raw.json"
+        else:
+            path = Path(raw["request"]["directory"]).parent / "python-raw.json"
+        require(path.resolve(strict=True) == path and path.is_relative_to(root)
+                and digest(path) == diagnostic["sha256"] and _same_json(load(path), snapshots),
+                "The retained first retry capture differs from the full report")
+        captures[side] = raw
+    pair = {"openclaw": captures["native"]["result"], "python": json.loads(captures["python"]["stdout"])["result"]}
+    require(validate_pair(case, captures["native"], captures["python"], pair["openclaw"], pair["python"],
+                          approved_node=args.node, approved_sdk_root=ROOT) is True
+            and _same_json(pair["openclaw"], pair["python"]) is (row["status"] == "matched"),
+            "The original first retry replies contradict the reported result")
+    hashes = {side: hashlib.sha256(canonical(reply)).hexdigest() for side, reply in pair.items()}
+    require(row.get("publicValueSha256", hashes) == hashes, "First retry public reply changed")
+    row["publicValueSha256"] = hashes
+    return pair
+
+
 def check_resolved_row(row, prior, unicode_pair):
     expected = {"openclaw": prior["openclaw"], "python": prior["openclaw"]}
     if row["id"] == UNICODE_TIE_ID:
@@ -1595,6 +1634,7 @@ def assess(args, result):
                        load(ROOT / "equivalence/reference.json"))), "The pinned release, executable or source tree changed")
     require(data["paidProviderCalls"] == 0 and data["providerCredentialsForwarded"] is False, "Unexpected provider access")
     metrics = recompute(data, definitions, load(ROOT / "equivalence/scope.json")["requirements"])
+    result["warmRetryPublicPair"] = replay_warm_retry(data, definitions, args)
     # Keep the second review reproducible without duplicating every literal input
     # or requiring reviewers to download the original process captures.
     compact_rows = []
@@ -1676,6 +1716,16 @@ def assess(args, result):
     result["appendedFamilyReplays"] = replay_followup(data, definitions, args, metrics, replay_persisted_rank)
     process = verify_process_exit(args, data)
     result["comparisonProcess"] = process
+    expected_status = ("blocked" if metrics["cases"].get("blocked") else "mismatched"
+                       if metrics["cases"].get("mismatched") else "incomplete" if metrics["uncovered"] else "passed")
+    require(data["status"] == expected_status and data["fullScopePassed"] is (expected_status == "passed"),
+            "Actual complete gate contradicts independently recomputed status")
+    source_unchanged(seal)
+    require(digest(args.report) == data["report"]["sha256"], "Report changed during assessment")
+    require(digest(args.fif_replay) == replay_sha, "FIF replay changed during assessment")
+    result.update(observedAssessment=metrics,
+                  changeSinceHeartbeatReview=changes_since_heartbeat(metrics, data, CATALOG_SHA, SCOPE),
+                  fifReplaySha256=replay_sha, fullScopePassed=data["fullScopePassed"])
     public = {row["id"]: row.get("publicValueSha256") for row in data["cases"]}
     previous = accepted_118()
     previous_hashes = {cid: PREVIOUS_MISMATCH_PUBLIC_SHA256[cid] for cid in previous["wholeOutputAudit"]["open"]
@@ -1690,7 +1740,6 @@ def assess(args, result):
     require(set(previous_hashes) == set(previous["wholeOutputAudit"]["open"]),
             "Missing retained whole-output hashes for the accepted baseline")
     require(set(previous_hashes) <= set(public), "A previous mismatch case disappeared")
-    result["baseline118"] = verify_previous_cases(metrics, data, PREVIOUS_CASES)
     result["previousComparison"] = PREVIOUS_COMPARISON
     mismatches = [r for r in data["cases"] if r["status"] == "mismatched"]
     result["mismatchMetadata"] = [{k: r[k] for k in ("id", "operation", "requirement", "covers", "publicValueSha256")}
@@ -1698,6 +1747,7 @@ def assess(args, result):
     result["previousMismatchPublicHashChanges"] = {
         cid: {"before": before, "after": public[cid]}
         for cid, before in previous_hashes.items() if not _same_json(before, public[cid])}
+    result["baseline118"] = verify_previous_cases(metrics, data, PREVIOUS_CASES)
     rows_by_id = {row["id"]: row for row in data["cases"]}
     resolved = set(EXPECTED_RESOLUTIONS)
     require(resolved <= set(previous_hashes), "The expected resolutions include a case outside the previous differences")
@@ -1721,13 +1771,6 @@ def assess(args, result):
     require({row["id"] for row in mismatches} == (set(previous_hashes) - resolved) | {DIAGNOSTIC}
             and not result["previousMismatchPublicHashReview"]["otherChangedCaseIds"],
             "Unexpected change to a retained difference or its complete public value")
-    expected_status = ("blocked" if metrics["cases"].get("blocked") else "mismatched"
-                       if metrics["cases"].get("mismatched") else "incomplete" if metrics["uncovered"] else "passed")
-    require(data["status"] == expected_status and data["fullScopePassed"] is (expected_status == "passed"),
-            "Actual complete gate contradicts independently recomputed status")
-    source_unchanged(seal)
-    require(digest(args.report) == data["report"]["sha256"], "Report changed during assessment")
-    require(digest(args.fif_replay) == replay_sha, "FIF replay changed during assessment")
     result.update(status="assessed", candidateAssessment=metrics, deltaFromHistorical71=metrics["verified"] - 71,
                   deltaFromHistorical77=metrics["verified"] - 77,
                   deltaFromHistorical79=metrics["verified"] - 79,
@@ -1759,6 +1802,7 @@ def main():
         json.dump(result, stream, ensure_ascii=True, allow_nan=False, separators=(",", ":"))
         stream.write("\n")
     print(json.dumps({"status": result["status"], "completeReportParsed": result["completeReportParsed"],
+                      "observedVerifiedConditions": (result.get("observedAssessment") or {}).get("verified"),
                       "candidateVerifiedConditions": (result["candidateAssessment"] or {}).get("verified"),
                       "errors": result["errors"]}))
     return 0 if result["status"] == "assessed" else 2

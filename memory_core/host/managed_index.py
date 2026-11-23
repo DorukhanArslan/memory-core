@@ -14,7 +14,7 @@ from __future__ import annotations
 from collections import deque
 from collections.abc import Callable, Collection, Iterator, Sequence
 from concurrent.futures import Future, ThreadPoolExecutor
-from contextlib import closing, contextmanager, nullcontext
+from contextlib import ExitStack, closing, contextmanager, nullcontext
 from copy import deepcopy
 import threading
 import sqlite3
@@ -235,7 +235,7 @@ class ManagedSQLiteMemoryStore(SQLiteMemoryStore):
                 return self._memory_scope_failure[0]
             return self._memory_job_error if self._memory_publication == "on-search" else None
 
-    def _refresh_memory_dirty(self, *, acknowledge_watch: bool = False) -> None:
+    def _refresh_memory_dirty(self, *, acknowledge_watch: bool = False, db: sqlite3.Connection | None = None) -> None:
         """Compare actual memory sources with SQL; caller holds the workspace guard."""
         if self._memory_publication != "on-search":
             return
@@ -245,8 +245,8 @@ class ManagedSQLiteMemoryStore(SQLiteMemoryStore):
         sources = self._read_source_snapshots(self._workspace, selection=selection)
         current = {path: (entry.hash, entry.mtime, entry.size)
                    for (_, path), entry in sources.items()}
-        with closing(self.connect()) as db:
-            published = {path: (digest, mtime, size) for path, digest, mtime, size in db.execute(
+        with (nullcontext(db) if db is not None else closing(self.connect())) as connection:
+            published = {path: (digest, mtime, size) for path, digest, mtime, size in connection.execute(
                 f"SELECT path,hash,mtime,size FROM {INDEX_SOURCES_TABLE} WHERE source='memory'")}
         with self._condition:
             if acknowledge_watch and current == published:
@@ -511,18 +511,20 @@ class ManagedSQLiteMemoryStore(SQLiteMemoryStore):
         """Read actual published SQL state and the live repair-request notice."""
         with self._operation("status"):
             self._assert_workspace(self._workspace)
-            state = self._read_state()
-            result = {"backend": "builtin", "provider": "none", "requestedProvider": "none",
-                "chunks": state["chunks"], "sourceCounts": state["sourceCounts"],
-                "fts": {"enabled": self.flags.text_search, "available": state["ftsAvailable"]},
-                "custom": {"indexIdentity": state["identity"],
-                           "automaticRebuildNotice": self._automatic_rebuild_notice}}
-            sync_error = self._retained_sync_error()
-            if sync_error is not None:
-                result["lastSyncError"] = sync_error
-            if self._session_publication is not None:
-                result["custom"]["sessionPublication"] = self._session_publication.status()
-            return result
+            return self._status_from_state(self._read_state())
+
+    def _status_from_state(self, state: dict[str, Any]) -> dict[str, Any]:
+        result = {"backend": "builtin", "provider": "none", "requestedProvider": "none",
+            "chunks": state["chunks"], "sourceCounts": state["sourceCounts"],
+            "fts": {"enabled": self.flags.text_search, "available": state["ftsAvailable"]},
+            "custom": {"indexIdentity": state["identity"],
+                       "automaticRebuildNotice": self._automatic_rebuild_notice}}
+        sync_error = self._retained_sync_error()
+        if sync_error is not None:
+            result["lastSyncError"] = sync_error
+        if self._session_publication is not None:
+            result["custom"]["sessionPublication"] = self._session_publication.status()
+        return result
 
     def bind_session_publication(self, controller: SessionPublicationController) -> None:
         """Opt in to lazy session publication for this exact store and corpus.
@@ -548,6 +550,10 @@ class ManagedSQLiteMemoryStore(SQLiteMemoryStore):
             self._assert_workspace(self._workspace)
             self._session_publication = controller
 
+    def _prepared_search_db(self) -> sqlite3.Connection | None:
+        frames = getattr(self._local, "search_status_frames", ())
+        return frames[-1]["db"] if frames else None
+
     def _on_search_snapshot(self, db: sqlite3.Connection) -> None:
         controller = self._session_publication
         if controller is None and self._memory_publication != "on-search":
@@ -557,21 +563,9 @@ class ManagedSQLiteMemoryStore(SQLiteMemoryStore):
         revision = self.index_revision(db=db)
         frames = getattr(self._local, "search_status_frames", ())
         frame = frames[-1] if frames else None
-        state = self._read_state(db=db) if frame is not None or self._memory_publication == "on-search" else None
+        state = frame["state"] if frame is not None else (
+            self._read_state(db=db) if self._memory_publication == "on-search" else None)
         with self._condition:
-            if frame is not None:
-                status = deepcopy(frame["beforeStatus"])
-                status.update(chunks=state["chunks"], sourceCounts=state["sourceCounts"])
-                status["fts"]["available"] = state["ftsAvailable"]
-                status["custom"]["indexIdentity"] = state["identity"]
-                error = self._retained_sync_error()
-                if error is None and revision == frame["beforeRevision"]:
-                    error = frame["beforeStatus"].get("lastSyncError")
-                if error is None:
-                    status.pop("lastSyncError", None)
-                else:
-                    status["lastSyncError"] = error
-                frame["status"] = status
             self._read_admission_count += 1
             operations = getattr(self._local, "operations", ())
             self._read_admissions.append({"id": self._read_admission_count,
@@ -941,6 +935,41 @@ class ManagedSQLiteMemoryStore(SQLiteMemoryStore):
             self._local.automatic_repair_notice = previous_notice
             self._update(request, noticeSequenceAfter=self._automatic_rebuild_notice["sequence"])
 
+    @contextmanager
+    def _managed_search_generation(self, operation: dict[str, Any], signal: CancellationSignal | None):
+        guard = workspace_index_lock(self._workspace.root)
+        with ExitStack() as reader:
+            with ExitStack() as admission:
+                db = None
+                if guard.acquire(blocking=False):
+                    admission.callback(guard.release)
+                    db = reader.enter_context(self._search_connection(signal))
+                # A cold reader must see and join an unfinished bootstrap even
+                # when its publisher already owns the workspace guard.
+                state = self._read_state(db=db, provider_key_known=True)
+                with self._condition:
+                    self._provider_initialized = True
+                repair = not state["hasContent"] or (
+                    self._last_sync_error is None and self._automatic_repair_allowed(state["identity"]))
+                if repair or db is None:
+                    reader.close()
+                    admission.close()
+                    if repair:
+                        self._repair_search(state, operation)
+                    admission.enter_context(guard)
+                    db = reader.enter_context(self._search_connection(signal))
+                    state = self._read_state(db=db, provider_key_known=True)
+                self._refresh_memory_dirty(db=db)
+                frame = {"db": db, "state": state, "status": deepcopy(self._status_from_state(state))}
+            # Keep only the SQLite generation through lexical retrieval. WAL
+            # publishers and live metadata readers retain their normal owners.
+            frames = getattr(self._local, "search_status_frames", ())
+            self._local.search_status_frames = (*frames, frame)
+            try:
+                yield frame
+            finally:
+                self._local.search_status_frames = frames
+
     def search(
         self,
         query: str,
@@ -968,40 +997,21 @@ class ManagedSQLiteMemoryStore(SQLiteMemoryStore):
                 return super().search(query, **options)
             self._update(operation, query=query)
             if self._memory_publication == "on-search":
-                # Observe the committed generation before waiting for a writer:
-                # a real cold query must join an already admitted full sync.
+                with self._managed_search_generation(operation, signal) as frame:
+                    if signal is not None:
+                        signal.throw_if_aborted()
+                    return _ManagedSearchResults(super().search(query, **options), frame["status"])
+            with workspace_index_lock(self._workspace.root):
                 state = self._read_state(provider_key_known=True)
                 with self._condition:
                     self._provider_initialized = True
-                if (not state["hasContent"] or self._last_sync_error is None
-                        and self._automatic_repair_allowed(state["identity"])):
+                identity = state["identity"]
+                if self._last_sync_error is None and (self._automatic_repair_allowed(identity)
+                        or not state["hasContent"] and identity["status"] == "valid"):
                     self._repair_search(state, operation)
-            with workspace_index_lock(self._workspace.root):
-                self._refresh_memory_dirty()
-                if self._memory_publication != "on-search":
-                    state = self._read_state(provider_key_known=True)
-                    with self._condition:
-                        self._provider_initialized = True
-                    identity = state["identity"]
-                    if self._last_sync_error is None and (self._automatic_repair_allowed(identity)
-                            or not state["hasContent"] and identity["status"] == "valid"):
-                        self._repair_search(state, operation)
-                # A search can keep this failed generation while a publisher
-                # recovers a newer one. Capture only after synchronous repair;
-                # the actual SQL pin below decides which generation was read.
-                frame = ({"beforeRevision": self.index_revision(),
-                          "beforeStatus": deepcopy(self.status()), "status": None}
-                         if self._memory_publication == "on-search" else None)
             if signal is not None:
                 signal.throw_if_aborted()
-            frames = getattr(self._local, "search_status_frames", ())
-            self._local.search_status_frames = (*frames, frame) if frame is not None else frames
-            try:
-                results = super().search(query, **options)
-                return (_ManagedSearchResults(results, frame["status"])
-                        if frame is not None and frame["status"] is not None else results)
-            finally:
-                self._local.search_status_frames = frames
+            return super().search(query, **options)
 
     def lifecycle_snapshot(self) -> dict[str, Any]:
         """Copy actual admitted operations/repair receipts, including after close."""

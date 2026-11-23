@@ -20,6 +20,8 @@ def main() -> int:
     parser.add_argument("--node", type=Path, required=True, help="Supported Node executable.")
     parser.add_argument("--smoke", action="store_true",
                         help="Compare registered cases only; does not establish full equivalence.")
+    parser.add_argument("--heartbeat-scratch-only", action="store_true",
+                        help="Run all pinned heartbeat scratch store and migration cases as a focused subset.")
     parser.add_argument("--include-prospective", action="store_true",
                         help="Compatibility option; completed prospective fixtures are now registered by default.")
     parser.add_argument("--dependencies", type=Path, default=ROOT / ".reference/npm",
@@ -29,11 +31,15 @@ def main() -> int:
     parser.add_argument("--report", type=Path, required=True, help="Retain every mismatch and coverage gap as JSON.")
     args = parser.parse_args()
     cases = None
-    if args.include_prospective:
+    if args.heartbeat_scratch_only:
+        from equivalence.heartbeat_scratch_acceptance import build_cases as scratch_cases
+        cases = scratch_cases()
+    elif args.include_prospective:
         from equivalence.cases import build_cases
 
         cases = build_cases(include_prospective=True)
-    report, code = run_suite(checkout=args.reference.resolve(), node=args.node.resolve(), smoke=args.smoke,
+    report, code = run_suite(checkout=args.reference.resolve(), node=args.node.resolve(),
+                             smoke=args.smoke or args.heartbeat_scratch_only,
                              cases=cases,
                              dependency_root=args.dependencies.resolve(),
                              release_runtime_root=args.release_runtime.resolve())

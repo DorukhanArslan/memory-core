@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import errno
 import os
 from pathlib import Path
 import subprocess
@@ -16,6 +17,34 @@ from memory_core.heartbeat_scratch import hash_heartbeat_scratch_source
 
 NOW = 2_000_000_000_000
 CONTENT = "- Real source instructions\n"
+
+
+@pytest.mark.parametrize("inside", [True, False], ids=["inside", "sibling-with-same-prefix"])
+def test_repair_displays_source_relative_to_configured_openclaw_home(tmp_path, monkeypatch, inside):
+    home = tmp_path / "claw"
+    workspace = (home if inside else tmp_path / "claw-other") / "workspace"
+    workspace.mkdir(parents=True)
+    source = workspace / "HEARTBEAT.md"
+    source.write_text(CONTENT, encoding="utf-8")
+    monkeypatch.setenv("OPENCLAW_HOME", f"  {home}  ")
+
+    result = migration.migrate_heartbeat_md(workspace, FileAutomationStore(workspace), now_ms=NOW)
+
+    shown = Path("$OPENCLAW_HOME") / source.relative_to(home) if inside else source
+    assert result.changes == (f"Migrated {shown} into cron scratch for Heartbeat (main).",)
+    assert result.warnings == ()
+
+
+@pytest.mark.parametrize("configured", [" ", "undefined", " null ", "~/claw", "~"])
+def test_display_for_os_home_and_openclaw_home_placeholders(monkeypatch, configured):
+    monkeypatch.setenv("OPENCLAW_HOME", configured)
+    source = Path.home() / "workspace" / "HEARTBEAT.md"
+    if configured == "~/claw":
+        expected = source
+    else:
+        prefix = "$OPENCLAW_HOME" if configured == "~" else "~"
+        expected = Path(prefix) / "workspace" / "HEARTBEAT.md"
+    assert migration._display_heartbeat_source(str(source)) == str(expected)
 
 
 @pytest.mark.parametrize("content", [None, b"- Preview\r\n", b"\xff", b"x" * 262145])
@@ -137,6 +166,50 @@ def test_repair_preserves_an_existing_custom_job_identity(tmp_path):
     assert migration.migrate_heartbeat_md(tmp_path, store, now_ms=NOW).warnings == ()
     actual = FileAutomationStore(tmp_path).read_heartbeat_monitor_scratch("main")
     assert actual.owner == owner and actual.state.content == CONTENT
+
+
+@pytest.mark.parametrize("separate_filesystem", [False, True])
+def test_configured_state_archive_traces_reopened_note_to_original(
+    tmp_path, monkeypatch, separate_filesystem
+):
+    workspace, state = tmp_path / "workspace", tmp_path / "state"
+    workspace.mkdir()
+    content = "Order 42 is still pending.\r\n"
+    original = b"\xef\xbb\xbf" + content.encode()
+    source = workspace / "HEARTBEAT.md"
+    source.write_bytes(original)
+    store = FileAutomationStore(workspace)
+    owner = store.enroll_heartbeat_monitor("orders", "morning-check")
+    archive_dir = migration.heartbeat_migration_archive_dir(workspace, state_dir=state)
+    assert archive_dir == state / "backups" / "heartbeat-migration"
+    if separate_filesystem:
+        rename = os.rename
+
+        def rename_across_devices(src, dst):
+            if Path(dst).is_relative_to(state) and Path(src).is_relative_to(workspace):
+                raise OSError(errno.EXDEV, "cross-device rename")
+            return rename(src, dst)
+
+        monkeypatch.setattr(os, "rename", rename_across_devices)
+
+    result = migration.migrate_heartbeat_md(
+        workspace, store, agent_ids=["orders"], state_dir=state, now_ms=NOW
+    )
+
+    assert result.changes and not result.warnings and not source.exists()
+    monitor = FileAutomationStore(workspace).read_heartbeat_monitor_scratch("orders")
+    assert monitor.owner == owner
+    scratch = monitor.state.scratch
+    assert scratch.content == content
+    assert scratch.source_sha256 == hash_heartbeat_scratch_source(content)
+    snapshot = archive_dir / f"orders-{scratch.source_sha256}.md"
+    assert snapshot.read_bytes() == content.encode()
+    if separate_filesystem:
+        [preserved] = workspace.glob("HEARTBEAT.md.doctor-archived.*/HEARTBEAT.md")
+    else:
+        [preserved] = archive_dir.glob(f"{snapshot.name}.*/HEARTBEAT.md")
+    assert preserved.read_bytes() == original
+    assert not migration.heartbeat_migration_archive_dir(workspace).exists()
 
 
 def test_first_repair_keeps_the_exact_owner_returned_before_a_competing_aba(tmp_path, monkeypatch):

@@ -19,6 +19,7 @@ from memory_core.host.lifecycle import HostModelResult
 from memory_core.host.managed_session import ManagedHostSession
 from memory_core.host.session import SessionState, TurnUsage
 from memory_core.index.identity import MEMORY_INDEX_META_KEY
+from memory_core.index.sqlite_store import SQLiteMemoryStore
 from memory_core.runtime_identity import OPENCLAW_COMPAT_RUNTIME_IDENTITY
 from memory_core.session_catalog import MemorySessionCatalog
 from memory_core.session_visibility import resolve_memory_search_source_policy
@@ -383,6 +384,56 @@ def test_old_reader_keeps_actual_failure_notice_after_recovery_and_a_new_reader(
         assert "stale" not in _search(owner, "MAPLE-NEW-942")
     finally:
         release.set()
+        journal.unlink(missing_ok=True)
+        owner.close()
+
+
+def test_warm_retry_keeps_its_generation_when_file_watcher_recovers_during_search(tmp_path, monkeypatch):
+    owner = _owner(tmp_path)
+    watcher = owner.store.memory_watcher
+    journal = Path(str(owner.store.path) + "-journal")
+    release_watch = threading.Event()
+    on_change = watcher._on_change
+
+    def hold_file_change():
+        assert release_watch.wait(10)
+        on_change()
+
+    monkeypatch.setattr(watcher, "_on_change", hold_file_change)
+    try:
+        _warm(owner)
+        _append(owner, FRESH)
+        version = watcher.capture_versions(["MEMORY.md"])
+        journal.symlink_to(tmp_path / "missing-journal-directory" / "journal")
+        with pytest.raises(sqlite3.OperationalError, match="unable to open database file"):
+            owner.store.reindex(owner.kit.memory.workspace, force=True)
+        assert _search(owner, "MAPLE-NEW-942")["results"] == []
+        assert _wait_settled(owner)["jobs"][-1]["state"] == "failed"
+        journal.unlink()
+        # WAL lets the writer finish even while the retry holds its older reader.
+        with owner.store.connect() as db:
+            assert db.execute("PRAGMA journal_mode=WAL").fetchone()[0] == "wal"
+
+        # The managed search has inspected the warm index. Let the real watcher
+        # publish the changed file before the base search looks up its candidates.
+        base_search = SQLiteMemoryStore.search
+
+        def recover_during_search(store, *args, **kwargs):
+            release_watch.set()
+            publication = store.wait_for_memory_watches(version, timeout=10)
+            assert publication["status"] == "completed" and publication["job"]["reason"] == "watch"
+            return base_search(store, *args, **kwargs)
+
+        with monkeypatch.context() as patch:
+            patch.setattr(SQLiteMemoryStore, "search", recover_during_search)
+            retry = _search(owner, "MAPLE-NEW-942")
+        assert retry["results"] == [] and retry["stale"] is True
+        assert "unable to open database file" in retry["warning"] and "action" in retry
+        current = _search(owner, "MAPLE-NEW-942")
+        assert any(FRESH in hit["snippet"] for hit in current["results"])
+        assert "stale" not in current
+    finally:
+        release_watch.set()
         journal.unlink(missing_ok=True)
         owner.close()
 

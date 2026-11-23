@@ -10,10 +10,12 @@ import os
 from pathlib import Path
 import subprocess
 import sys
+from uuid import UUID
 
 import pytest
 
 from memory_core.automation import AUTOMATION_STORE_PARTS, FileAutomationStore
+from memory_core.heartbeat_migration import migrate_heartbeat_md
 from memory_core.heartbeat_scratch import HeartbeatMonitorEnrollmentConflictError
 
 
@@ -79,6 +81,29 @@ def test_explicit_ensure_after_retirement_uses_a_new_generation_without_stealing
     persisted = store.path.read_bytes()
     assert store.ensure_heartbeat_monitor("main") == replacement
     assert store.path.read_bytes() == persisted
+
+
+def test_doctor_import_after_retirement_keeps_orphan_and_uses_a_fresh_job(tmp_path):
+    store = _owned(tmp_path)
+    retired = store.ensure_heartbeat_monitor("main")
+    store.write_job_scratch("main", retired.job_id, "previous monitor note", now_ms=NOW)
+    store.remove_heartbeat_monitor("main")
+    source = tmp_path / "HEARTBEAT.md"
+    source.write_text("new monitor note", encoding="utf-8")
+
+    result = migrate_heartbeat_md(tmp_path, store, now_ms=NOW + 1)
+
+    assert result.changes and not result.warnings
+    assert not source.exists()
+    reopened = FileAutomationStore(tmp_path)
+    current = reopened.read_heartbeat_monitor_scratch("main")
+    assert UUID(current.owner.job_id).version == 4
+    assert current.owner.job_id != retired.job_id
+    assert current.owner.generation == retired.generation + 1
+    assert current.state.content == "new monitor note" and current.state.current_revision == 1
+    assert reopened.read_job_scratch("main", retired.job_id).content == "previous monitor note"
+    assert not migrate_heartbeat_md(tmp_path, reopened, now_ms=NOW + 2).changes
+    assert reopened.read_heartbeat_monitor_scratch("main") == current
 
 
 @pytest.mark.parametrize("content", ["operator-authored checklist", None], ids=["content", "explicit-unset"])

@@ -35,7 +35,8 @@ ADAPTERS = ("equivalence/heartbeat-doctor-preload.mjs", "equivalence/heartbeat-d
             "equivalence/heartbeat_doctor_bindings.py", "equivalence/heartbeat_dependency.py")
 SDK_FILES = ("memory_core/heartbeat_migration.py", "memory_core/automation.py", "memory_core/heartbeat_ownership.py",
              "memory_core/heartbeat_scratch.py", "memory_core/_heartbeat_constants.py", "memory_core/bootstrap/_js.py",
-             "memory_core/bootstrap/tools_md.py", "memory_core/consolidation/file_lock.py")
+             "memory_core/bootstrap/tools_md.py", "memory_core/consolidation/file_lock.py",
+             "memory_core/_memory_scan_io.py", "memory_core/_memory_scan_error_facts.py")
 STORE_ISOLATION_FILES = ("equivalence/heartbeat_node_authority.py", "equivalence/heartbeat-preload.mjs",
                          "equivalence/heartbeat-runtime.mjs")
 
@@ -201,7 +202,7 @@ def _tree(directory):
     return rows
 
 
-def sdk_doctor_phase(request):
+def sdk_doctor_phase(request, *, configured_state=False):
     import memory_core
     from memory_core.automation import FileAutomationStore
     from memory_core.heartbeat_migration import (
@@ -213,6 +214,9 @@ def sdk_doctor_phase(request):
     workspace = root / "workspace"
     workspace.mkdir(parents=True, exist_ok=True)
     store_options = {"store_path": root / "custom-cron" / "jobs.json"} if input_value["customStore"] else {}
+    state_options = {"state_dir": root / "state"} if configured_state else {}
+    if configured_state and not store_options:
+        store_options = {"store_path": root / "state" / "automation.json"}
     store = FileAutomationStore(workspace, **store_options)
     raw = {"fixtureDirectory": str(root), "hostMapping": input_value["host"], "calls": [], "snapshots": [],
            "pid": os.getpid(), "sourceBuildReproduced": False,
@@ -221,11 +225,13 @@ def sdk_doctor_phase(request):
     def snapshot():
         monitors = {agent["id"]: value.to_json() if (value := store.read_heartbeat_monitor_scratch(agent["id"])) is not None
                     else {"type": "undefined"} for agent in input_value["agents"]}
-        return {"monitors": monitors, "sourceTree": _tree(workspace), "archiveTree": _tree(heartbeat_migration_archive_dir(workspace))}
+        return {"monitors": monitors, "sourceTree": _tree(workspace), "archiveTree": _tree(heartbeat_migration_archive_dir(workspace, **state_options))}
     with patch("memory_core.heartbeat_migration.time.time", return_value=input_value["nowMs"] / 1000):
         raw["snapshots"].append(snapshot())
         for operation in input_value["ops"]:
             call = {"operation": operation, "clockMs": int(time.time() * 1000)}
+            if configured_state:
+                call["openclawHome"] = os.environ["OPENCLAW_HOME"]
             raw["calls"].append(call)
             try:
                 if operation["op"] == "findings":
@@ -239,11 +245,14 @@ def sdk_doctor_phase(request):
                                  "retain_source": input_value["host"]["retainSource"], "now_ms": input_value["nowMs"],
                                  "monitor_agent_ids": [agent["id"] for agent in input_value["agents"]],
                                  "should_repair": operation["op"] == "repair"}
-                    call["request"] = {"root": str(workspace), **arguments}
-                    returned = migrate_heartbeat_md(workspace, store, **arguments)
+                    call["request"] = {"root": str(workspace), **arguments, **{k: str(v) for k, v in state_options.items()}}
+                    returned = migrate_heartbeat_md(workspace, store, **arguments, **state_options)
                     call["result"] = {"changes": list(returned.changes), "warnings": list(returned.warnings)}
                 else:
-                    owner = store.enroll_heartbeat_monitor(operation["agentId"])
+                    if configured_state:
+                        owner = store.ensure_heartbeat_monitor(operation["agentId"], generate_job_id=True)
+                    else:
+                        owner = store.enroll_heartbeat_monitor(operation["agentId"])
                     call["preparation"] = asdict(owner)
                     call["request"] = {"agentId": operation["agentId"], "jobId": owner.job_id,
                                        "content": operation["content"], "nowMs": input_value["nowMs"]}
@@ -580,7 +589,7 @@ def validate_execution(phase_directory, context, native):
     return {"threads": sorted(threads), "events": len(all_events), "commands": commands}
 
 
-def run(checkout, cache, node, output, selected=None):
+def run(checkout, cache, node, output, selected=None, *, configured_state=False):
     output.mkdir(parents=True, exist_ok=False)
     documents = _documents()
     runtime = _runtime(checkout, cache)
@@ -630,9 +639,13 @@ def run(checkout, cache, node, output, selected=None):
                     sdk_request = {**request, "fixtureDirectory": str(directory / "sdk-fixture")}
                     sdk_path = phase_directory / "sdk-input.json"
                     sdk_path.write_text(json.dumps(sdk_request, ensure_ascii=True))
-                    sdk_process = _capture_process([sys.executable, "-m", "equivalence.heartbeat_doctor_probe", "--sdk-phase", str(sdk_path)],
-                        phase_directory, "sdk", cwd=ROOT, timeout=60,
-                        env={"PATH": os.defpath, "LANG": "C.UTF-8", "TZ": "UTC", "PYTHONPATH": str(ROOT), "OPENAI_API_KEY": "", "OPENROUTER_API_KEY": ""})
+                    sdk_phase = "--sdk-configured-state-phase" if configured_state else "--sdk-phase"
+                    sdk_env = {"PATH": os.defpath, "LANG": "C.UTF-8", "TZ": "UTC", "PYTHONPATH": str(ROOT),
+                               "OPENAI_API_KEY": "", "OPENROUTER_API_KEY": ""}
+                    if configured_state:
+                        sdk_env["OPENCLAW_HOME"] = str(directory / "sdk-fixture" / "home")
+                    sdk_process = _capture_process([sys.executable, "-m", "equivalence.heartbeat_doctor_probe", sdk_phase, str(sdk_path)],
+                        phase_directory, "sdk", cwd=ROOT, timeout=60, env=sdk_env)
                     sdk = json.loads(sdk_process.stdout)
                     _validate_public_observation(sdk, input_value)
                     observed_pids = _pid_status(pids)
@@ -675,20 +688,24 @@ def run(checkout, cache, node, output, selected=None):
             raise ValueError("Doctor source, package, capability, codec or adapter bytes changed during capture")
     report = {"kind": "heartbeat-doctor-first-baseline", "covers": [], "acceptancePointsAwarded": 0,
               "sourceBuildReproduced": False, "observations": rows}
+    if configured_state:
+        report["sdkStateDirectory"] = "<FIXTURE>/state"
     (output / "report.json").write_text(json.dumps(report, ensure_ascii=True, indent=2))
     return {"cases": len(rows), "matches": sum(row["matches"] for row in rows), "acceptancePointsAwarded": 0}
 
 
 def main():
-    if len(sys.argv) == 3 and sys.argv[1] == "--sdk-phase":
-        print(json.dumps(sdk_doctor_phase(json.loads(Path(sys.argv[2]).read_text())), ensure_ascii=True))
+    if len(sys.argv) == 3 and sys.argv[1] in {"--sdk-phase", "--sdk-configured-state-phase"}:
+        configured = sys.argv[1] == "--sdk-configured-state-phase"
+        print(json.dumps(sdk_doctor_phase(json.loads(Path(sys.argv[2]).read_text()), configured_state=configured), ensure_ascii=True))
         return
     parser = argparse.ArgumentParser(description=__doc__)
     for name in ("checkout", "runtime-cache", "node", "output"):
         parser.add_argument("--" + name, required=True, type=Path)
     parser.add_argument("--case", action="append")
+    parser.add_argument("--configured-state", action="store_true", help="Supply the host state directory to the SDK migration.")
     args = parser.parse_args()
-    print(json.dumps(run(args.checkout.resolve(), args.runtime_cache.resolve(), args.node.resolve(), args.output.resolve(), args.case)))
+    print(json.dumps(run(args.checkout.resolve(), args.runtime_cache.resolve(), args.node.resolve(), args.output.resolve(), args.case, configured_state=args.configured_state)))
 
 
 if __name__ == "__main__":

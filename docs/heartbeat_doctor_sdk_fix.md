@@ -68,3 +68,41 @@ durable monitor, custom filename, guarded rollback and confirmed-zombie fixes
 are integrated and regression-tested. See the
 [maintenance closeout](promotion_heartbeat_integration_closeout.md) for exact
 producer identities, whole-suite/package results and the stop point.
+
+## Migration outcomes with a configured state directory
+
+During repair, a missing monitor gets a new job ID. An active monitor keeps its
+ID across upgrades and restarts. A retired monitor's note can still be read by
+its old ID. Supplying `state_dir` to `migrate_heartbeat_md` places the backup
+under `backups/heartbeat-migration` in the host's state directory. The snapshot
+filename includes the agent ID and the same source digest stored with its note.
+
+The outcome comparison checks all 17 store fixtures and 22 Doctor fixtures. It
+compares the complete repair replies, note text and revisions, ownership through
+restart, retained files and archived bytes. Each run generates its own job IDs
+and temporary directory names. The comparison follows each ID and name across
+operations and checks whether the original file was moved. Raw findings, paths
+and filesystem statistics remain available in the strict diagnostic packet.
+The wording of restart instructions is tracked by `heartbeat.scratch.boundaries`.
+
+The initial focused review of product `2ea7fb4` matched 39 cases across 69
+native/SDK process pairs. Its compact JSON has SHA-256
+`8ba612ab1c79d01113d5c19d041fc479a7e0be24da71ced4afe80e8a091ac528`.
+The first hosted measurement matched 29 of those 39 cases. An independent
+read of the archived outputs located all 13 differing strings in the change
+messages of ten migrations. The note, owner and archive observations matched.
+OpenClaw used the explicitly configured home when displaying paths. The SDK
+abbreviated the runner account home with `~`. Product `f040ac1` honors
+`OPENCLAW_HOME`, and each worker receives and records its own equivalent
+fixture setting. The literal message comparison stays in force.
+[First hosted measurement](https://github.com/DorukhanArslan/memory-core/actions/runs/44913992591) · [Archived observations](https://github.com/DorukhanArslan/memory-core/actions/runs/44926829799)
+
+The corrected full measurement matched all 39 heartbeat cases. One earlier
+query-sync retry case reopened. The SDK found the updated note on retry.
+OpenClaw returned no results and a stale-index warning at that point. The
+global measurement therefore stayed at 118/128. [Corrected measurement](https://github.com/DorukhanArslan/memory-core/actions/runs/44927413199) · [Original search replies](https://github.com/DorukhanArslan/memory-core/blob/5bd9ac41dfa66b7732a6898b6a4e02366dd836de/independent-review/heartbeat-home/query-retry-difference.json)
+
+After preparing the pinned reference, Node, release runtime and scheduled-task
+dependency as in the [comparison workflow](../.github/workflows/equivalence.yml),
+run the focused comparison with `scripts/check_equivalence.py --heartbeat-scratch-only`
+and the same `--reference`, `--node`, `--release-runtime` and `--report` arguments.

@@ -1,5 +1,7 @@
 # Query-time synchronization boundary acceptance
 
+On 23 November product `fc4aad3` restored `indexing.query-sync.boundaries`. The SDK selects a SQLite revision when the warm search starts and uses it for both the result and the stale-index warning. A query started after publication uses the new revision. All 8 frozen cases matched on both systems, and the full 1,662-case comparison verified **119/128 conditions**. [Full comparison](https://github.com/DorukhanArslan/memory-core/actions/runs/45153594838) · [Independent recount](https://github.com/DorukhanArslan/memory-core/blob/9430a2cb23a6660f281adbeadb0fb1b926687fa4/independent-review/search-retry/README.md)
+
 Prepared 2026-11-13 (UTC). The completed catalog verifies **73/128 original
 conditions; 55 remain**. This is **+2 from 71**: one newly verified
 `indexing.query-sync.boundaries` condition and one restored

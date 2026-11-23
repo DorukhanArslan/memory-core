@@ -621,13 +621,15 @@ class FileAutomationStore:
             )
 
     def ensure_heartbeat_monitor(
-        self, agent_id: str, *, adopt_legacy_scratch: bool = False,
+        self, agent_id: str, *, adopt_legacy_scratch: bool = False, generate_job_id: bool = False,
     ) -> HeartbeatMonitorOwner:
         """Explicitly prepare a configured monitor without replacing its owner.
 
         An existing active owner is returned exactly, including a custom job id
         and its generation. Otherwise enrollment and optional first adoption of
-        legacy scratch share the same locked transaction. This method performs
+        legacy scratch share the same locked transaction. With ``generate_job_id=True``,
+        a missing monitor gets a fresh job ID so it cannot inherit retired scratch.
+        The default enrollment ID is ``heartbeat:<agent>``. This method performs
         configuration work; construction and read APIs never call it.
         """
         _owners.identity(agent_id)
@@ -635,8 +637,15 @@ class FileAutomationStore:
             current = _owners.active_owner(data, agent_id)
             if current is not None:
                 return current
+            job_id = f"heartbeat:{agent_id}"
+            if generate_job_id:
+                job_id = str(uuid.uuid4())
+                if job_id in _owners.catalog(data)["owners"] or any(
+                    isinstance(row, dict) and row.get("id") == job_id for row in data["jobs"]
+                ):
+                    raise ValueError("generated heartbeat job identity already exists")
             return self._enroll_heartbeat_monitor_unlocked(
-                data, agent_id, f"heartbeat:{agent_id}", adopt_legacy_scratch=adopt_legacy_scratch,
+                data, agent_id, job_id, adopt_legacy_scratch=adopt_legacy_scratch,
             )
 
     def _enroll_heartbeat_monitor_unlocked(

@@ -1,6 +1,6 @@
 # OpenClaw bellek eşdeğerliği: bitiş ve ilerleme takibi
 
-**Durum: tamamlanmadı. Son güncelleme: 23 Kasım 2026.**
+**Durum: tamamlanmadı. Son güncelleme: 26 Kasım 2026.**
 
 Hedef, sabitlenmiş **OpenClaw v2026.9.9 bellek sözleşmesi** için eşdeğerliktir.
 Bu sayfa mevcut [ana planın bitiş şartlarını](full-equivalence-checklist.md#5-completion-evidence-and-release-decision)
@@ -8,20 +8,28 @@ izler; yeni kabul koşulu veya puan eklemez. **128/128 tek başına bitiş deği
 
 ## Şimdi neredeyiz?
 
-**119/128 koşul doğrulandı (+1). 9 koşul kaldı.** Denemede bir nota yeni bir kelime eklendi ve arama listesi güncellenirken hata oluştu. Bu kelime hemen arandığında iki sistem de boş sonuç verdi ve listenin güncel olmayabileceğini bildirdi. Güncelleme bitince ikisi de notu buldu. `fc4aad3` sürümünde sekiz arama örneği ile takip notlarını taşıma ve saklamayı kapsayan 39 örneğin tamamı eşleşti. [Genel karşılaştırma](https://github.com/DorukhanArslan/memory-core/actions/runs/45153594838) · [PR #32](https://github.com/DorukhanArslan/memory-core/pull/32) · [Bağımsız sayım](https://github.com/DorukhanArslan/memory-core/blob/9430a2cb23a6660f281adbeadb0fb1b926687fa4/independent-review/search-retry/README.md)
+**122/128 koşul doğrulandı. Bu çalışmada +3, kalan 6.** `bb40b5c` sürümünde önceki 119 koşulun tamamı yeniden geçti. Dört eski karşılaştırma farkı kapandı. [Genel karşılaştırma](https://github.com/DorukhanArslan/memory-core/actions/runs/45840190038) · [Bağımsız sayım](https://github.com/DorukhanArslan/memory-core/blob/45ac3284219ac82bcec99353c5d5b896bdbae5d7/independent-review/remaining-memory-conditions/README.md)
+
+| Kapanan koşul | Kullanıcı ne görür? | Eşleşme |
+| --- | --- | ---: |
+| Başlangıç dosyaları · `prompt.bootstrap-discovery.boundaries` | Yeni sohbet varsayılan altı dosyayı kullanır. OpenClaw eski kurulumu onardığında SDK aynı tamamlanma tarihini okur. Ek tercih dosyası isteyenler `EXTENDED_WORKSPACE_LAYOUT` seçebilir. | 11/11 |
+| Kalıcı belleğe aday notlar · `promotion.ranking-gates.boundaries` | Kaynağı bozuk bir not önizlemede görülebilir. Kalıcı belleğe yazmak için kaynak ayrıca doğrulanır. | 16/16 |
+| Sohbet arşivleri · `sessions.transcript-filtering.boundaries` | OpenClaw uyumluluk modunda, sıkıştırılmış arşiv aynı boyutta ve aynı milisaniyede değiştirilirse eski metin okunur. Değişiklik zamanı ilerleyince yeni metin görünür. | 9/9 |
 
 | Gösterge | Doğrulanmış durum | Bitiş hedefi |
 | --- | --- | --- |
-| Kabul koşulları | **119/128**, **9 açık** | 128/128 |
-| Henüz karşılaştırmayla kapsanmayan koşullar | 7 | 0 |
-| Karşılaştırması olan fakat kapanmayan koşullar | 2 | 0 |
-| Başlıklar | 55 tamam, 9 kısmi, 0 bekliyor | 64 tamam |
-| Son tam koşudaki örnekler | 1.654 eşleşti / 1.662 | Kapsamdaki tüm kayıtlı örnekler eşleşmeli |
-| Kayıtlı karşılaştırma farkları | **8 açık** | 0 açık fark |
+| Kabul koşulları | **122/128**, **6 açık** | 128/128 |
+| Henüz karşılaştırmayla kapsanmayan koşullar | 6 | 0 |
+| Karşılaştırması olan fakat kapanmayan koşullar | 0 | 0 |
+| Başlıklar | 58 tamam, 6 kısmi, 0 bekliyor | 64 tamam |
+| Son tam koşudaki örnekler | 1.659 eşleşti / 1.663 | Kapsamdaki tüm kayıtlı örnekler eşleşmeli |
+| Kayıtlı karşılaştırma farkları | **4 açık** | 0 açık fark |
 | Engellenen örnekler / koşu hataları | 0 / 0 | 0 / 0 |
 | Tam eşdeğerlik kapısı | Geçmedi (`fullScopePassed: false`, çıkış kodu 1) | `fullScopePassed: true`, çıkış kodu 0 |
 
-**84 → 118, toplam +34 koşul.** Önceki 84 koşulun tamamı yeniden geçti ve yedi eski fark kapandı. Ölçülen ürün `160c7c2`, SDK dosyası sayısı 183. İlk değerlendirme bir dosya yolunda durdu. Arşiv incelemesi, açık kalan F14 örneğinde aynı zaman damgasının iki farklı sayı yazımıyla kaydedildiğini işaretledi. Bağımsız inceleme iki SDK sürümünün de boş aday listesi döndürdüğünü doğruladı. F14 puanı açık. [118/128 kabul kaydı](https://github.com/DorukhanArslan/memory-core/blob/34b52d79f6082e061b8f1ce47a6ca27d407fb391/independent-review/README.md) · [Genel koşu](https://github.com/DorukhanArslan/memory-core/actions/runs/44214324963) · [Arşiv incelemesi](https://github.com/DorukhanArslan/memory-core/actions/runs/44232754070/artifacts/14396301086)
+**23 Kasım’da 118 → 119 (+1).** Denemede bir nota yeni bir kelime eklendi ve arama listesi güncellenirken hata oluştu. Bu kelime hemen arandığında iki sistem de boş sonuç verdi ve listenin güncel olmayabileceğini bildirdi. Güncelleme bitince ikisi de notu buldu. `fc4aad3` sürümünde sekiz arama örneği ile takip notlarını taşıma ve saklamayı kapsayan 39 örneğin tamamı eşleşti. [Genel karşılaştırma](https://github.com/DorukhanArslan/memory-core/actions/runs/45153594838) · [PR #32](https://github.com/DorukhanArslan/memory-core/pull/32) · [Bağımsız sayım](https://github.com/DorukhanArslan/memory-core/blob/9430a2cb23a6660f281adbeadb0fb1b926687fa4/independent-review/search-retry/README.md)
+
+**84 → 118, toplam +34 koşul.** Önceki 84 koşulun tamamı yeniden geçti ve yedi eski fark kapandı. Ölçülen ürün `160c7c2`, SDK dosyası sayısı 183. İlk değerlendirme bir dosya yolunda durdu. Arşiv incelemesi, açık kalan F14 örneğinde aynı zaman damgasının iki farklı sayı yazımıyla kaydedildiğini işaretledi. Bağımsız inceleme iki SDK sürümünün de boş aday listesi döndürdüğünü doğruladı. O ölçümde F14 açık kaldı. [118/128 kabul kaydı](https://github.com/DorukhanArslan/memory-core/blob/34b52d79f6082e061b8f1ce47a6ca27d407fb391/independent-review/README.md) · [Genel koşu](https://github.com/DorukhanArslan/memory-core/actions/runs/44214324963) · [Arşiv incelemesi](https://github.com/DorukhanArslan/memory-core/actions/runs/44232754070/artifacts/14396301086)
 
 **18 Kasım'daki ilk genel karşılaştırma puanı değiştirmedi.** Eksik araç
 sonuçlarının onarılması 8/8, sayı sınırları 4/4, birleştirilen notların içeriği
@@ -50,25 +58,20 @@ koşulu kapsıyor. İkinci genel koşu bu hedefi ölçemeden durdu. [Koşu kayd�
 | Bozuk bellek kaydını onarma | Bozulmuş arama kaydını düzelt. İkinci onarımda sağlam kaydı koru | 9/9 | +2 |
 | Notun kaydedileceği yeri seçme | Gün değiştiğinde doğru tarihli dosyayı seç. Hedef hazırlanamazsa modele istek gönderme | 13/13 | +1 |
 
-Güncel ölçümde 7 koşul için karşılaştırma eksik. 2 koşulda kayıtlı örnekler hâlâ farklı sonuç veriyor. [64 başlığın durumu](full-equivalence-checklist.md#4-implement-and-verify-the-fixed-memory-behavior-contract)
+## Kalan 6 iş
 
-## Kalan 9 iş
+Her satır doğrulandığında **+1** getirir. Altı koşul için de kayıtlı örnekler puan vermeye yetmiyor. Ayrı denemeler aşağıdaki farkları gösterdi. Süreler, ilgili davranış üzerinde karar alındıktan sonraki tahmini uygulama ve doğrulama emeğidir. [64 başlığın durumu](full-equivalence-checklist.md#4-implement-and-verify-the-fixed-memory-behavior-contract)
 
-Her satır mevcut bir kabul koşuludur. Doğrulanınca **+1** getirir. Süreler karar alındıktan sonra tek kişinin yaklaşık uygulama ve doğrulama süresidir. OpenClaw tarafındaki değişikliklerin kabul süresi ayrıca işler.
-
-| İş | İki sistem için ne gerekiyor? | Tahmini emek |
+| İş | Örnek ve kapanması için gereken | Tahmini emek |
 | --- | --- | ---: |
-| **Başlangıç dosyaları** · `prompt.bootstrap-discovery.boundaries` | SDK bir tercih dosyası daha okuyor. Eski alan kurulamazsa duruyor. Varsayılan dosya listesini ve hatada devam kararını seçmek gerekiyor. | 1–3 gün |
-| **İlk aramada yeni not** · `flush.execute-finalize.boundaries` | Yeni yazılan kelimeyi SDK hemen buluyor. OpenClaw dizini yenileyene kadar eski sonucu döndürebiliyor. “Kaydedildi” denince aramanın hangi anda hazır olması gerektiği belirlenmeli. | 2–4 gün |
-| **Değişen sohbet arşivi** · `sessions.transcript-filtering.boundaries` | Aynı boyut ve dosya zamanıyla değiştirilen konuşmayı SDK yeniden okuyor. OpenClaw önceki metni verebiliyor. Güncel arşiv güvencesinde uzlaşılmalı. | 1–3 gün |
-| **Aynı adlı iki sohbet notu** · `sessions.reset-hook.outcomes` | SDK, başka bir sohbetin aldığı dosya adını koruyor. OpenClaw önce adı kontrol ediyor, sonra yazıyor. İki notun da saklanması için aynı yazma güvencesi gerekli. | 2–4 gün |
-| **Günlük not dosyasını açmak** · `flush.plan-target.boundaries` | SDK aynı fiziksel dosyaya birden fazla ad verildiyse yazmayı reddediyor. Hangi hedefin güvenle açılabildiği ve hatanın nasıl bildirildiği ortaklaştırılmalı. | 2–4 gün |
-| **Kaynağı belirsiz not** · `promotion.ranking-gates.boundaries` | Bir notun kaynak bilgisi bozuksa SDK kalıcı belleğe alınmasını engelliyor. OpenClaw bu örneği kabul ediyor. Kaynak kontrolü için ortak kural gerekiyor. | ½–2 gün |
-| **Aynı araç cevabını tekrar temizlemek** · `trust.secret-redaction.outcomes` | Gizlenen metin eşleşiyor. OpenClaw önceki temizlenmiş nesneyi geri veriyor, SDK yeni bir kopya veriyor. Ham gizli verinin ömrünü uzatmadan aynı davranış gösterilmeli. | 2–5 gün |
-| **Taşıma kesilirse ne yapmalı** · `heartbeat.scratch.boundaries` | Yeniden açılışta OpenClaw bir terminal komutu, SDK bir Python işlevi öneriyor. İki ortamda da çalışan onarım yolu ve kalıcı kaydı doğrulanmalı. | 1–3 gün |
-| **Yarım kalan işi tekrar etmek** · `recovery.failure-publication.boundaries` | Ayrı bir kesinti denemesinde not diske yazıldı, başarı kaydı tamamlanmadı. Yeniden açılışta OpenClaw sonraki mesajı modele gönderdi. SDK yazılan not onaylanana kadar bekledi. Yeniden başlatma ve tekrar kuralları ortaklaştırılmalı. | 3–6 gün |
+| **Yeni notu hemen bulmak** · `flush.execute-finalize.boundaries` | Aynı notta ilk arama OpenClaw’ın iki çalıştırmasında farklı sonuç verdi. Varsayılan SDK hemen güncel metni buldu. İlk aramanın hangi güncellemeyi bekleyeceği ortak bir kurala bağlanmalı. | 2–4 gün |
+| **Aynı adlı iki sohbet notu** · `sessions.reset-hook.outcomes` | Aynı dakikada kapanan iki sohbet için v2026.9.9 tek not bıraktı. SDK ikisini sakladı. Yeni sürümlerde doğrulanan çözüm aşağıda ayrı hedef olarak izleniyor. | Yeni sürüm araştırması tamamlandı. Sabit sürüm için süre verilemiyor. |
+| **Günlük not dosyasını açmak** · `flush.plan-target.boundaries` | İki ad aynı fiziksel notu gösterdiğinde OpenClaw modeli çağırdı, SDK hazırlıkta durdu. Yazma güvenliğini koruyan ortak bir dosya açma kuralı gerekiyor. | 2–4 gün |
+| **Aynı araç cevabındaki gizli bilgiyi temizlemek** · `trust.secret-redaction.outcomes` | Ekranda görünen metin aynı. OpenClaw aynı ham cevap için önceki temiz kopyayı geri veriyor. SDK yeni kopya üretiyor. Ham parolanın saklanma süresini uzatmadan aynı davranış sağlanmalı. | 2–5 gün |
+| **Kesilen takip notu taşıması** · `heartbeat.scratch.boundaries` | Onarılan notun hangi çalışma alanından geldiği eski kayıttan belirlenemiyor. SDK’nın doğru depoyu tanıyıp o depoda çalışan onarımı önermesi gerekiyor. | 1–3 gün |
+| **Kesintiden sonra sıradaki mesaj** · `recovery.failure-publication.boundaries` | Not yazıldıktan hemen sonra süreç kapandı. OpenClaw yeni isteği kabul etti. SDK mevcut dosya için onay istedi. Başarı kaydı eksikken hangi isteğin başlayabileceği belirlenmeli. | 3–6 gün |
 
-Ölçüm ve kapsam için [ana kontrol listesine](full-equivalence-checklist.md), [başlangıç dosyalarına](bootstrap_discovery_equivalence.md), [kaynak bilgisinin etkisine](promotion_ranking_closeout.md) ve [yoklama notlarının taşınmasına](promotion_heartbeat_integration_closeout.md) bakılabilir.
+[İlk arama denemeleri](https://github.com/DorukhanArslan/memory-core/blob/3a287e8725b016b5d15e14df38629fc6d9829b26/independent-review/remaining-memory-conditions/flush-review.md) · [Gizli bilgi denemesi](https://github.com/DorukhanArslan/memory-core/blob/3a287e8725b016b5d15e14df38629fc6d9829b26/independent-review/remaining-memory-conditions/redaction-input-identity.json) · [Diğer dört davranışın ölçümü](https://github.com/DorukhanArslan/memory-core/blob/3a287e8725b016b5d15e14df38629fc6d9829b26/independent-review/remaining-memory-conditions/four-point-review.md)
 
 ## Ayrı sürüm araştırması · Aynı anda kapanan iki sohbet
 
@@ -89,10 +92,10 @@ Bu davranış için doğrulanmış güncel hedef **v2026.11.10**. Deneme iki Ope
 - [x] **B1 — Hedef sabit.** Sürüm, 64 başlık ve 128 koşul tanımlı.
   Referans: `bcfc88812a35243893585dbeca87ca41b48272ca`;
   [sabit kapsam](../equivalence/scope.json). Sonraki OpenClaw sürümleri bu iddiaya dahil değil.
-- [ ] **B2 — 128 koşulun tamamı doğrulandı.** Şimdi 119/128.
-  Kalan 9 koşul mevcut başlıkları altında kapanmalı; yalnızca kodun mevcut
+- [ ] **B2 — 128 koşulun tamamı doğrulandı.** Şimdi 122/128.
+  Kalan 6 koşul mevcut başlıkları altında kapanmalı; yalnızca kodun mevcut
   olması veya bir yardımcı fonksiyonun geçmesi yeterli değil.
-- [ ] **B3 — Kayıtlı açık fark kalmadı.** Aşağıda 8 açık fark izleniyor.
+- [ ] **B3 — Kayıtlı açık fark kalmadı.** Aşağıda 4 açık fark izleniyor.
   Puansız olması bir farkı çözülmüş yapmaz. Başarısız örnekler silinerek,
   çıktının alanları atılarak veya kurallar gevşetilerek bu kutu kapatılamaz.
 - [ ] **B4 — Kapsam ve çalışma modları denetlendi.** Tüm 64 başlıktaki sınır
@@ -102,7 +105,7 @@ Bu davranış için doğrulanmış güncel hedef **v2026.11.10**. Deneme iki Ope
   Kaydetme, hemen hatırlama, güncelleme, yeni sohbet, yeniden başlatma,
   kullanıcı/çalışma alanı ayrımı ve gerçek hata akışları aynı son kaynakta geçmeli.
   Bunlar mevcut host sözleşmeleridir; yeni puan kalemleri değildir.
-  18 Kasım’daki 118/128 ölçümünde ilgili host kanıtları geçti; nihai kaynak temeli henüz yok.
+  26 Kasım ölçümünde önceki host kanıtları yeniden geçti. Nihai kaynak sürümü 128 koşul tamamlandığında belirlenecek.
 - [ ] **B6 — Paket ve kullanım kontrolleri son sürümde geçti.** İddia edilen
   Python sürümleri, dağıtım paketleri ve temiz kurulumdan SDK kullanan örnekler
   için [mevcut yayın kontrolleri](release.md) tamamlanmalı.
@@ -114,7 +117,7 @@ Bu davranış için doğrulanmış güncel hedef **v2026.11.10**. Deneme iki Ope
 - [ ] **B8 — Bağımsız son kontrol ve main doğrulaması yapıldı.** Raporun tamamı,
   kaynak kimlikleri ve kapsam sınırları bağımsızca kontrol edilmeli; main'deki
   SDK ölçülen SDK ile aynı olmalı. Komutlar, rapor ve kapanış notları yeniden
-  üretilebilir olmalı. `fc4aad3` sürümünde 119/128 koşul bağımsızca doğrulandı.
+  üretilebilir olmalı. `bb40b5c` sürümünde 122/128 koşul bağımsızca doğrulandı.
   Nihai inceleme, 128 koşul tamamlandığında yapılacak.
 
 ## Puanın dışında kaybolmaması gereken bilinen sınırlar
@@ -130,14 +133,14 @@ Sınırsız bütün platform/sağlayıcı/zamanlama olasılıkları için yeni b
 | K3 — Sıfırlama ve host modları | Arka arkaya ve eşzamanlı işlemler, otomatik sıfırlama, özel sohbet ve desteklenecek adlandırma/host akışları mevcut sınırlarıyla denetlensin. Sıralı manuel reset kanıtı hepsini tamamlamaz. | [Açık reset kapsamı](session_reset_boundaries_closeout.md#remaining-scope); `sessions.reset-hook`, `host.*`, `concurrency.*` |
 | K4 — Diğer başlıkların sınırları | Gizleme kuralları, tarih/sayı sınırları, arşivler, başlangıç dosyaları ve bakım akışlarında “yalnızca şu profilde” notları mevcut 64 başlık üzerinden taransın. Runtime kanıtı sıralı, manuel ve özel olmayan sohbetlere, sağlayıcının verdiği `responseId` değerine ve 1–9999 takvim yıllarına bağlıdır; UUID fallback yolu ve modelin talimata uyma başarısı doğrulanmadı. İlgisiz persona ve araç kayıtları ham olarak tutuldu, karşılaştırılmadı. | [Runtime kapsam sınırları](prompt_runtime_context_closeout.md#remaining-scope), [ana plan](full-equivalence-checklist.md), [kaynak haritası](equivalence-source-map.md) ve ilgili kapanış notları |
 
-## Karşılaştırma farkları (8 açık)
+## Karşılaştırma farkları (4 açık)
 
 Her satır ancak aynı gerçek davranış tekrar karşılaştırılıp eşleştiğinde ve
 kanıt bağlantısı eklendiğinde işaretlenir. Burada sadece son raporun kimlik ve
 durum bilgisi listelenir; bekletilen eski rapor incelemeleri yeniden başlatılmadı.
 
 - [x] **F01 — Unicode dosya adlarının sırası:** `hybrid-unicode-path-collation-diagnostic`. [Doğrulayan koşu](https://github.com/DorukhanArslan/memory-core/actions/runs/44214324963)
-- [ ] **F02 — Yeniden yazılan sıkıştırılmış konuşmayı okuma:** `transcript-boundary-compressed-same-size-mtime-cache-diagnostic`.
+- [x] **F02 — Yeniden yazılan sıkıştırılmış konuşmayı okuma:** `transcript-boundary-compressed-same-size-mtime-cache-diagnostic`. [Doğrulayan koşu](https://github.com/DorukhanArslan/memory-core/actions/runs/45840190038)
 - [ ] **F03 — Kayıttan sonraki ilk arama:** `flush-execution-warm-index-first-recall`.
 - [x] **F04 — Karışık büyük/küçük i içeren gizleme kuralı:** `redaction-policy-letter-mixed-i-engine-diagnostic`. [Doğrulayan koşu](https://github.com/DorukhanArslan/memory-core/actions/runs/44214324963)
 - [x] **F05 — Tekrarlanan gruplu gizleme kuralı:** `redaction-policy-letter-repeated-capture-engine-diagnostic`. [Doğrulayan koşu](https://github.com/DorukhanArslan/memory-core/actions/runs/44214324963)
@@ -147,9 +150,9 @@ durum bilgisi listelenir; bekletilen eski rapor incelemeleri yeniden başlatılm
 - [ ] **F09 — Gizleme ve metni kısaltma sırası:** `model-tool-utf16-redaction-truncation-order`.
 - [x] **F10 — Sohbet içinde karışık i ile gizleme:** `model-session-configured-letter-mixed-i-engine-diagnostic`. [Doğrulayan koşu](https://github.com/DorukhanArslan/memory-core/actions/runs/44214324963)
 - [x] **F11 — Sohbet içinde gruplu gizleme:** `model-session-configured-letter-capture-reset-engine-diagnostic`. [Doğrulayan koşu](https://github.com/DorukhanArslan/memory-core/actions/runs/44214324963)
-- [ ] **F12 — Başlangıçta bellek dosyalarını seçme:** `bootstrap-discovery-memory-core-layout-extension`.
-- [ ] **F13 — Eski çalışma alanında başlangıç seçimi:** `bootstrap-discovery-legacy-state-gate`.
-- [ ] **F14 — Kaynağın güven bilgisini değerlendirme:** `promotion-ranking-primitive-provenance-safety-diagnostic`.
+- [x] **F12 — Başlangıçta bellek dosyalarını seçme:** `bootstrap-discovery-memory-core-layout-extension`. [Doğrulayan koşu](https://github.com/DorukhanArslan/memory-core/actions/runs/45840190038)
+- [x] **F13 — Eski çalışma alanında başlangıç seçimi:** `bootstrap-discovery-legacy-state-gate`. [Doğrulayan koşu](https://github.com/DorukhanArslan/memory-core/actions/runs/45840190038)
+- [x] **F14 — Kaynağın güven bilgisini değerlendirme:** `promotion-ranking-primitive-provenance-safety-diagnostic`. [Doğrulayan koşu](https://github.com/DorukhanArslan/memory-core/actions/runs/45840190038)
 - [ ] **F15 — Eski tarih yazımını okuma** `engine-datetime-unverified-legacy-grammar`.
   OpenClaw bir girdiyi tarih olarak okudu. SDK kaydın zamanını kullandı. [Ölçülen fark](https://github.com/DorukhanArslan/memory-core/actions/runs/44214324963)
 
@@ -176,6 +179,7 @@ puan değişimi ve nedeni saklanmaz. Eski rapor kendi kaynak kimliğiyle korunur
 
 | Güncelleme | Puan değişimi | Kapanan konu | Kanıt |
 | --- | --- | --- | --- |
+| Başlangıç, aday notlar ve arşivler | 119 → 122, **+3** | F02, F12, F13 ve F14 kapandı. Önceki 119 koşul korundu. | [Genel karşılaştırma](https://github.com/DorukhanArslan/memory-core/actions/runs/45840190038) · [Bağımsız sayım](https://github.com/DorukhanArslan/memory-core/blob/45ac3284219ac82bcec99353c5d5b896bdbae5d7/independent-review/remaining-memory-conditions/README.md) |
 | Hatadan sonra ilk arama | 118 → 119, **+1** | Arama yeniden denemesi (F16) kapandı. Taşıma ve saklama korundu (39/39). | [Özet](https://github.com/DorukhanArslan/memory-core/actions/runs/45153594838/artifacts/14820546579) · [Genel karşılaştırma](https://github.com/DorukhanArslan/memory-core/actions/runs/45153594838) · [Bağımsız sayım](https://github.com/DorukhanArslan/memory-core/blob/9430a2cb23a6660f281adbeadb0fb1b926687fa4/independent-review/search-retry/README.md) |
 | Eski takip notunun taşınması | 118 → 118, **net 0** | Taşıma +1 (39/39), aramada yeniden deneme −1 | [Genel koşu](https://github.com/DorukhanArslan/memory-core/actions/runs/44927413199) · [Özet](https://github.com/DorukhanArslan/memory-core/actions/runs/44927413199/artifacts/14721834715) · [Önceki bağımsız sayım](https://github.com/DorukhanArslan/memory-core/blob/5bd9ac41dfa66b7732a6898b6a4e02366dd836de/independent-review/heartbeat-home/README.md) |
 | Genel bellek karşılaştırması | 84 → 118, **+34** | 1.623 örnek, 8 açık fark | [Genel koşu](https://github.com/DorukhanArslan/memory-core/actions/runs/44214324963), [özet](https://github.com/DorukhanArslan/memory-core/actions/runs/44232754070/artifacts/14396301086) |
@@ -195,7 +199,7 @@ Sonraki kabul edilen koşu yalnızca B2'nin iki koşulunu kapatır;
 B2–B8 ve kayıtlı 14 fark açık kalır. Dört eski farkın değer incelemeleri
 beklemede kalır; yeni kanıt bu incelemeleri yeniden başlatmadı.
 
-Kalan 9 koşulun bağlı olduğu başlıklar ve doğrulanan koşullar [ana tabloda](full-equivalence-checklist.md#4-implement-and-verify-the-fixed-memory-behavior-contract) izleniyor.
+Kalan 6 koşulun bağlı olduğu başlıklar ve doğrulanan koşullar [ana tabloda](full-equivalence-checklist.md#4-implement-and-verify-the-fixed-memory-behavior-contract) izleniyor.
 
 ## Bitişte kullanılabilecek ifade
 

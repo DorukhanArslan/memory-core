@@ -140,13 +140,12 @@ old absolute runtime path; the real catalog explicitly uses the exact approved
 binary at its new path. No skip receives acceptance credit. Source inventory,
 Ruff and diff checks pass.
 
-The 14 differences remain visible: Unicode path collation, same-size compressed
+That full comparison recorded 14 differences across Unicode path collation, same-size compressed
 transcript cache freshness, first warm-flush recall, eight redaction/identity/regex
 diagnostics, two bootstrap boundary cases, and primitive promotion provenance.
-Two covered boundary conditions remain unverified in addition to 62 uncovered
-conditions, so **64 remain**, not 62. The full gate remains `mismatched` and
-`fullScopePassed` remains false. No complete OpenClaw equivalence or source-build
-reproduction is claimed. Whole-host restart is the recommended next package.
+Two covered boundaries and 62 uncovered conditions left **64 open** at that checkpoint.
+The full gate recorded `mismatched` and `fullScopePassed: false`. The next package
+at that checkpoint addressed whole-host restart.
 
 The full report and large local packets/logs remain under ignored `work/` and
 `.equivalence-results/`; pushing Git commits does not upload them. Three sealed

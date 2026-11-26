@@ -401,6 +401,8 @@ def build_cases(*, include_prospective: bool = False) -> list[dict[str, Any]]:
 
     from equivalence.heartbeat_scratch_acceptance import build_cases as build_heartbeat_scratch
     cases.extend(build_heartbeat_scratch())
+    from equivalence.transcript_boundary_acceptance import covered_case as transcript_archive_case
+    cases.append(transcript_archive_case())
 
     if include_prospective:
         from equivalence.flush_contract import build_prospective_flush_contract_cases

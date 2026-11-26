@@ -93,7 +93,7 @@ def _update_signals(workspace: Path, keys, now_ms, now_iso, *, considered):
     """Update each set from a fresh store read while holding the phase's workspace lock."""
     if not keys:
         return 0
-    known = read_canonical_recall_store(recall_store_path(workspace), now_ms)["entries"]
+    known = read_canonical_recall_store(recall_store_path(workspace), now_ms, for_publication=True)["entries"]
     signal_path = phase_signal_store_path(workspace)
     store = read_canonical_phase_signal_store(signal_path, now_ms)
     records = store["entries"]
@@ -120,7 +120,7 @@ def prepare_rem_phase(*, config, now_ms, timezone, limit, lookback_days, options
     workspace = config.workspace_dir
     now_iso = iso_ms(now_ms)
     with memory_workspace_lock(workspace, now_ms=now_ms):
-        store = read_canonical_recall_store(recall_store_path(workspace), now_ms)
+        store = read_canonical_recall_store(recall_store_path(workspace), now_ms, for_publication=True)
         recent = filter_recall_entries_within_lookback(
             entries=[entry for entry in store["entries"].values() if is_short_term_memory_path(entry["path"])],
             now_ms=now_ms, lookback_days=lookback_days,

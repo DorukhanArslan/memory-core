@@ -6,7 +6,7 @@ import pytest
 from memory_core.bootstrap import (
     GENERATED_WORKSPACE_BOOTSTRAP_FILENAMES,
     OPENCLAW_COMPAT_LAYOUT,
-    MEMORY_CORE_WORKSPACE_LAYOUT,
+    EXTENDED_WORKSPACE_LAYOUT,
     WORKSPACE_BOOTSTRAP_FILENAMES,
     WorkspaceBootstrapFile,
     filter_bootstrap_files,
@@ -53,25 +53,25 @@ def test_compat_layout_is_the_v2026_9_6_map():
     assert OPENCLAW_COMPAT_LAYOUT.cron_files == {"AGENTS.md", "SOUL.md", "IDENTITY.md", "USER.md"}
     assert OPENCLAW_COMPAT_LAYOUT.skip_absent_files == {"USER.md", "MEMORY.md"}
     assert OPENCLAW_COMPAT_LAYOUT.extra_dirs == ()
-    for layout in (OPENCLAW_COMPAT_LAYOUT, MEMORY_CORE_WORKSPACE_LAYOUT):
+    for layout in (OPENCLAW_COMPAT_LAYOUT, EXTENDED_WORKSPACE_LAYOUT):
         assert "TOOLS.md" not in layout.load_order
         assert "HEARTBEAT.md" not in layout.load_order
 
 
-def test_memory_core_layout_adds_proactive_preferences_after_user():
-    order = list(MEMORY_CORE_WORKSPACE_LAYOUT.load_order)
+def test_extended_layout_adds_proactive_preferences_after_user():
+    order = list(EXTENDED_WORKSPACE_LAYOUT.load_order)
     assert [name for name in order if name != "PROACTIVE_PREFERENCES.md"] == TAG_ORDER
     assert order.index("PROACTIVE_PREFERENCES.md") == order.index("USER.md") + 1
-    assert MEMORY_CORE_WORKSPACE_LAYOUT.render_priority("proactive_preferences.md") == 45
-    assert "PROACTIVE_PREFERENCES.md" in MEMORY_CORE_WORKSPACE_LAYOUT.optional_files
-    assert "PROACTIVE_PREFERENCES.md" in MEMORY_CORE_WORKSPACE_LAYOUT.cron_files
-    assert "PROACTIVE_PREFERENCES.md" not in MEMORY_CORE_WORKSPACE_LAYOUT.subagent_files
-    assert "PROACTIVE_PREFERENCES.md" in MEMORY_CORE_WORKSPACE_LAYOUT.skip_absent_files
-    assert MEMORY_CORE_WORKSPACE_LAYOUT.extra_dirs == ("user", "workspace")
-    assert "MEMORY.md" not in MEMORY_CORE_WORKSPACE_LAYOUT.seed_order
-    assert "BOOTSTRAP.md" not in MEMORY_CORE_WORKSPACE_LAYOUT.seed_order
-    assert MEMORY_CORE_WORKSPACE_LAYOUT.is_expected_absent("PROACTIVE_PREFERENCES.md")
-    assert not MEMORY_CORE_WORKSPACE_LAYOUT.is_expected_absent("AGENTS.md")
+    assert EXTENDED_WORKSPACE_LAYOUT.render_priority("proactive_preferences.md") == 45
+    assert "PROACTIVE_PREFERENCES.md" in EXTENDED_WORKSPACE_LAYOUT.optional_files
+    assert "PROACTIVE_PREFERENCES.md" in EXTENDED_WORKSPACE_LAYOUT.cron_files
+    assert "PROACTIVE_PREFERENCES.md" not in EXTENDED_WORKSPACE_LAYOUT.subagent_files
+    assert "PROACTIVE_PREFERENCES.md" in EXTENDED_WORKSPACE_LAYOUT.skip_absent_files
+    assert EXTENDED_WORKSPACE_LAYOUT.extra_dirs == ("user", "workspace")
+    assert "MEMORY.md" not in EXTENDED_WORKSPACE_LAYOUT.seed_order
+    assert "BOOTSTRAP.md" not in EXTENDED_WORKSPACE_LAYOUT.seed_order
+    assert EXTENDED_WORKSPACE_LAYOUT.is_expected_absent("PROACTIVE_PREFERENCES.md")
+    assert not EXTENDED_WORKSPACE_LAYOUT.is_expected_absent("AGENTS.md")
 
 
 def test_loader_skips_absent_user_and_memory_and_marks_the_rest_missing(tmp_path):
@@ -99,7 +99,7 @@ def test_loader_names_restrict_the_load(tmp_path):
 def test_loader_includes_exact_memory_file(tmp_path):
     _write(tmp_path, "MEMORY.md", "- fact 記憶\n")
 
-    files = load_workspace_bootstrap_files(tmp_path, MEMORY_CORE_WORKSPACE_LAYOUT)
+    files = load_workspace_bootstrap_files(tmp_path, EXTENDED_WORKSPACE_LAYOUT)
 
     assert files[-1].name == "MEMORY.md"
     assert files[-1].content == "- fact 記憶\n"
@@ -108,7 +108,7 @@ def test_loader_includes_exact_memory_file(tmp_path):
     assert "USER.md" not in [file.name for file in files]
 
     _write(tmp_path, "PROACTIVE_PREFERENCES.md", "")
-    files = {file.name: file for file in load_workspace_bootstrap_files(tmp_path, MEMORY_CORE_WORKSPACE_LAYOUT)}
+    files = {file.name: file for file in load_workspace_bootstrap_files(tmp_path, EXTENDED_WORKSPACE_LAYOUT)}
     assert files["PROACTIVE_PREFERENCES.md"].missing is False
 
 
@@ -119,7 +119,7 @@ def test_loader_marks_a_refused_extension_file_unreadable(tmp_path):
     root.mkdir()
     (root / "PROACTIVE_PREFERENCES.md").symlink_to(outside)
 
-    files = {file.name: file for file in load_workspace_bootstrap_files(root, MEMORY_CORE_WORKSPACE_LAYOUT)}
+    files = {file.name: file for file in load_workspace_bootstrap_files(root, EXTENDED_WORKSPACE_LAYOUT)}
 
     refused = files["PROACTIVE_PREFERENCES.md"]
     assert refused.missing is False
@@ -168,7 +168,7 @@ def test_loader_reports_a_permission_error_like_node(tmp_path):
     assert files[0].content == f"[UNREADABLE: EACCES: permission denied, open '{real}']"
 
 
-def _all_files(layout=MEMORY_CORE_WORKSPACE_LAYOUT) -> list[WorkspaceBootstrapFile]:
+def _all_files(layout=EXTENDED_WORKSPACE_LAYOUT) -> list[WorkspaceBootstrapFile]:
     return [
         WorkspaceBootstrapFile(name, f"/w/{name}", name.lower()) for name in layout.load_order
     ]
@@ -176,30 +176,30 @@ def _all_files(layout=MEMORY_CORE_WORKSPACE_LAYOUT) -> list[WorkspaceBootstrapFi
 
 @pytest.mark.parametrize("kind", ["main", "direct", "heartbeat"])
 def test_private_session_kinds_keep_every_file(kind):
-    assert filter_bootstrap_files_for_session(_all_files(), kind, MEMORY_CORE_WORKSPACE_LAYOUT) == _all_files()
+    assert filter_bootstrap_files_for_session(_all_files(), kind, EXTENDED_WORKSPACE_LAYOUT) == _all_files()
 
 
 @pytest.mark.parametrize("kind", ["group", "channel"])
 def test_shared_sessions_drop_the_root_memory_file(kind):
     # d06fc25a0c5 (#119198): root MEMORY.md is private to main and direct sessions.
-    kept = filter_bootstrap_files_for_session(_all_files(), kind, MEMORY_CORE_WORKSPACE_LAYOUT, root="/w")
+    kept = filter_bootstrap_files_for_session(_all_files(), kind, EXTENDED_WORKSPACE_LAYOUT, root="/w")
     nested = WorkspaceBootstrapFile("MEMORY.md", "/w/extra/MEMORY.md", "nested")
     with_nested = filter_bootstrap_files_for_session(
-        [*_all_files(), nested], kind, MEMORY_CORE_WORKSPACE_LAYOUT, root="/w"
+        [*_all_files(), nested], kind, EXTENDED_WORKSPACE_LAYOUT, root="/w"
     )
     no_root = filter_bootstrap_files_for_session(
-        [*_all_files(), nested], kind, MEMORY_CORE_WORKSPACE_LAYOUT
+        [*_all_files(), nested], kind, EXTENDED_WORKSPACE_LAYOUT
     )
 
-    assert _names(kept) == [name for name in MEMORY_CORE_WORKSPACE_LAYOUT.load_order if name != "MEMORY.md"]
+    assert _names(kept) == [name for name in EXTENDED_WORKSPACE_LAYOUT.load_order if name != "MEMORY.md"]
     # With the workspace root only the root file goes; without it every MEMORY.md goes.
     assert nested in with_nested
     assert "MEMORY.md" not in _names(no_root)
 
 
 def test_subagent_and_cron_allowlists():
-    subagent = filter_bootstrap_files_for_session(_all_files(), "subagent", MEMORY_CORE_WORKSPACE_LAYOUT)
-    cron = filter_bootstrap_files_for_session(_all_files(), "cron", MEMORY_CORE_WORKSPACE_LAYOUT)
+    subagent = filter_bootstrap_files_for_session(_all_files(), "subagent", EXTENDED_WORKSPACE_LAYOUT)
+    cron = filter_bootstrap_files_for_session(_all_files(), "cron", EXTENDED_WORKSPACE_LAYOUT)
     compat_cron = filter_bootstrap_files_for_session(
         _all_files(OPENCLAW_COMPAT_LAYOUT), "cron", OPENCLAW_COMPAT_LAYOUT
     )
@@ -214,7 +214,7 @@ def test_subagent_and_cron_allowlists():
     ]
     assert [file.name for file in compat_cron] == ["AGENTS.md", "SOUL.md", "IDENTITY.md", "USER.md"]
     with pytest.raises(ValueError):
-        filter_bootstrap_files_for_session(_all_files(), "unknown", MEMORY_CORE_WORKSPACE_LAYOUT)
+        filter_bootstrap_files_for_session(_all_files(), "unknown", EXTENDED_WORKSPACE_LAYOUT)
 
 
 def _names(files):

@@ -543,6 +543,8 @@ class MemoryWorkspace:
         is_session_forgotten: Callable[[str], bool] | None = None,
         session_catalog: MemorySessionCatalog | None = None,
         index_sources: Sequence[str] | None = None,
+        cache_compressed_session_archives: bool = False,
+        archive_origins_path: Path | None = None,
     ):
         # ``is_session_forgotten(session_id)``: forgotten sessions leave the index and stay out
         # (the origins ledger's tombstones, ``MemoryEntryOriginLedger.list_session_tombstones``).
@@ -551,6 +553,8 @@ class MemoryWorkspace:
         self.openclaw_state_dir = openclaw_state_dir.resolve() if openclaw_state_dir else None
         self.agent_id = agent_id
         self.session_catalog = session_catalog
+        self.cache_compressed_session_archives = cache_compressed_session_archives
+        self.archive_origins_path = archive_origins_path
         self.index_sources = tuple(index_sources) if index_sources is not None else None
 
     def discover_memory_files(
@@ -590,7 +594,8 @@ class MemoryWorkspace:
             corpus = MemoryCoreSessionCorpus(
                 self.openclaw_state_dir or self.session_catalog.store_path.parent,
                 agent_id=self.agent_id, is_forgotten=self.is_session_forgotten,
-                catalog=self.session_catalog,
+                catalog=self.session_catalog, cache_compressed_archives=self.cache_compressed_session_archives,
+                archive_origins_path=self.archive_origins_path,
             )
             for item in corpus.discover_files():
                 if paths is not None and item.rel_path not in paths:

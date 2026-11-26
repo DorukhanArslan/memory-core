@@ -53,8 +53,8 @@ def test_observer_failure_keeps_storage_boundary_and_original_observed_message()
     assert results["sqlite"]["observedMessages"][0]["message"]["content"] == "Cedar root"
 
 
-def test_cache_diagnostic_does_not_stale_the_sdk_or_invent_expected_reference_output():
+def test_compat_archive_reader_retains_the_first_admitted_generation():
     case, = [case for case in build_transcript_boundary_cases() if case.get("diagnosticOnly")]
     result = run_python(case)
-    assert [read["entry"]["content"] for read in result["reads"]] == ["User: Cedar A.", "User: Cedar B."]
+    assert [read["entry"]["content"] for read in result["reads"]] == ["User: Cedar A.", "User: Cedar A."]
     assert case["covers"] == []

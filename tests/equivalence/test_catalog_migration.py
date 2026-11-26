@@ -12,8 +12,8 @@ from equivalence import host_turn_barrier as old_host
 from equivalence import host_turn_barrier_v4 as host
 
 
-def test_default_catalog_explicitly_migrates_only_four_host_and_thirteen_fif_definitions():
-    cases = build_cases()
+def test_boundary_catalog_explicitly_migrates_only_four_host_and_thirteen_fif_definitions():
+    cases = build_cases()[:1469]
     proof = definition_authority(cases, fif_version="v6")
     assert len(cases) == proof["registeredCases"] == 1469
     assert len(proof["policyReplacements"]) == 13 and len(proof["lineageAppend"]) == 3
@@ -38,6 +38,25 @@ def test_default_catalog_explicitly_migrates_only_four_host_and_thirteen_fif_def
     _restore_reviewed_policies(restored)
     wire = json.dumps(restored, sort_keys=True, ensure_ascii=True, separators=(",", ":"), allow_nan=False).encode()
     assert hashlib.sha256(wire).hexdigest() == ORIGINAL_PREFIX_SHA256
+
+
+def test_transcript_archive_extends_the_frozen_catalog_by_one_exact_case():
+    cases = build_cases()
+    historic = definition_authority(cases[:1662], fif_version="v6")
+    current = definition_authority(cases, fif_version="v6")
+    assert historic["registeredCases"] == 1662
+    assert len(cases) == current["registeredCases"] == 1663
+    assert current.pop("transcriptArchiveAppend") == [{
+        "index": 1662, "id": "transcript-boundary-compressed-malformed-reset-replacement",
+        "definitionSha256": "5000ac7c0d2ec162e15ec04fc22bbdabceddcdffa4e8806a996706cbe2e12628",
+    }]
+    assert current == {**historic, "registeredCases": 1663}
+    cases[-1]["input"]["observer"] = 1
+    with pytest.raises(ValueError, match="transcript archive definition"):
+        definition_authority(cases, fif_version="v6")
+    cases[-2], cases[-1] = cases[-1], cases[-2]
+    with pytest.raises(ValueError, match="first 1662"):
+        definition_authority(cases, fif_version="v6")
 
 
 @pytest.mark.parametrize("attack", [

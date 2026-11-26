@@ -24,6 +24,7 @@ import traceback
 from typing import Any, Callable
 
 from equivalence import flush_plan_target, heartbeat_scratch_acceptance, secret_boundary_evidence, secret_boundary_inputs
+from equivalence import transcript_boundary_acceptance as transcript_family
 from equivalence.configured_redaction import IDS as CONFIGURED_IDS, RESOLVED_IDS as CONFIGURED_RESOLVED
 from equivalence.configured_redaction_evidence import retain_capture as retain_configured_capture
 from equivalence.workspace_case_families import FAMILIES as WORKSPACE_FAMILIES, evidence_family, prepare_bindings, report_key, sdk_validator
@@ -330,6 +331,7 @@ def _validate_scope(scope: Any, cases: Any) -> tuple[list[dict], dict[str, set[s
         validate_heartbeat_exclusions(cases)
         validate_heartbeat_outcomes(cases)
         heartbeat_scratch_acceptance.validate_registration(cases)
+        transcript_family.validate_registration(cases)
         validate_provider_overflow(cases)
         validate_jobs_registration(cases)
         validate_job_outcomes(cases)
@@ -2569,6 +2571,12 @@ def run_suite(*, checkout: Path, node: Path, smoke: bool = False,
                             retained.mkdir(parents=True, exist_ok=True)
                             directory = Path(tempfile.mkdtemp(prefix="sdk-attempt-", dir=retained))
                             row["sdkEvidenceDirectory"] = str(directory)
+                        elif case["operation"] == transcript_family.OPERATION:
+                            retained = ROOT / ".equivalence-results" / "transcript-boundaries"
+                            retained.mkdir(parents=True, exist_ok=True)
+                            if retained.resolve(strict=True) != retained:
+                                raise ValueError("Transcript retention requires its owned directory")
+                            directory = Path(tempfile.mkdtemp(prefix="sdk-attempt-", dir=retained))
                         elif case["operation"] in {"provider-overflow-host-runtime", "heartbeat-turn-outcomes-runtime", "compaction-assembly-restart-runtime", "automation-job-outcomes-runtime", "forget-index-fence-v6-runtime", "host-turn-barrier-v4-runtime", "workspace-lock-process-runtime", "automation-job-state-runtime", "index-identity-boundaries-runtime", "query-sync-outcomes-runtime", "query-sync-boundaries-runtime", "forget-lineage-runtime", "forget-boundaries-runtime", "recall-signals-runtime", "embed-cache-lifecycle-runtime", "session-reset-boundaries-runtime", "prompt-runtime-context-runtime", "prompt-history-repair-runtime", "deep-consolidation-runtime", flush_plan_target.OPERATION, *WORKSPACE_FAMILIES}:
                             # Keep the original child paths and bytes for the post-run
                             # semantic replay, including failed SDK captures.
@@ -2988,6 +2996,13 @@ def run_suite(*, checkout: Path, node: Path, smoke: bool = False,
                                 "sha256": hashlib.sha256(raw).hexdigest(), "rawSnapshots": snapshots,
                                 "validationStatus": "verified", "rawPath": str(evidence)})
                             row.update(workspaceLockEvidenceValidated=True, openclaw=native_comparison, python=python)
+                        if case["operation"] == transcript_family.OPERATION:
+                            original = next(d for d in report["runtimeDiagnostics"]
+                                            if d["id"] == case["id"] and d["side"] == "native")
+                            row.update(openclaw=native_comparison, python=python)
+                            transcript_family.review_pair(case, native_comparison, python,
+                                                          original["rawSnapshots"], snapshots)
+                            row["runtimeEvidenceValidated"] = True
                         diagnostic_key = "sourceDiagnostics" if case in source_diagnostic_cases else "runtimeDiagnostics"
                         if case["operation"] not in {"host-turn-barrier-v4-runtime", "forget-index-fence-v6-runtime", "workspace-lock-process-runtime", "promotion-apply-family-runtime", "deep-consolidation-runtime", "host-restart-session-runtime",
                                                      "host-update-isolation-runtime", "host-turn-barrier-runtime",
@@ -2995,6 +3010,8 @@ def run_suite(*, checkout: Path, node: Path, smoke: bool = False,
                             report[diagnostic_key].append({
                                 "id": case["id"], "side": "python", "sha256": hashlib.sha256(raw).hexdigest(),
                                 "rawSnapshots": snapshots,
+                                **({"retainedSdkRawPath": str(evidence), "sdkRawBytes": len(raw)}
+                                   if case["operation"] == transcript_family.OPERATION else {}),
                             })
                     if case["requirement"] == "engine.datetime-regex":
                         from equivalence.datetime_regex_evidence import validate_pair as validate_datetime_pair
@@ -3054,7 +3071,7 @@ def run_suite(*, checkout: Path, node: Path, smoke: bool = False,
                     if case["requirement"] == "engine.numeric-boundaries":
                         row["numericError"] = {"type": type(error).__name__, "message": str(error)}
                     row.update(status="blocked", code="python-case-failed")
-                    if case["requirement"] in {"heartbeat.turn-decisions", "compaction.provider-overflow"}:
+                    if case["requirement"] in {"heartbeat.turn-decisions", "compaction.provider-overflow", "sessions.transcript-filtering"}:
                         row["evidenceError"] = {"name": type(error).__name__, "message": str(error)}
                     if case["operation"] in {"compaction-assembly-restart-runtime", "automation-job-outcomes-runtime", "host-turn-barrier-v4-runtime", "forget-index-fence-v6-runtime", "workspace-lock-process-runtime", "promotion-apply-family-runtime", "deep-consolidation-runtime", "host-restart-session-runtime",
                                              "host-update-isolation-runtime", "host-turn-barrier-runtime",
@@ -3147,6 +3164,8 @@ def run_suite(*, checkout: Path, node: Path, smoke: bool = False,
 
         heartbeat_outcomes = heartbeat_outcomes_complete(report["cases"])
         report["heartbeatTurnOutcomesComplete"] = heartbeat_outcomes
+        transcript_complete = transcript_family.family_complete(report["cases"])
+        report["transcriptBoundariesComplete"] = transcript_complete
         scratch_complete = heartbeat_scratch_acceptance.family_complete(report["cases"])
         report["heartbeatScratchOutcomesComplete"] = scratch_complete
         from equivalence.datetime_regex_family import POINTS as datetime_points, family_complete as datetime_family_complete
@@ -3245,6 +3264,7 @@ def run_suite(*, checkout: Path, node: Path, smoke: bool = False,
                                                       and (point["id"] not in flush_plan_target.POINTS or flush_plan_complete)
                                                       and (point["id"] not in secret_boundary_inputs.POINTS or secret_boundaries_complete)
                                                       and (point["id"] != heartbeat_outcome or heartbeat_outcomes)
+                                                      and (point["id"] != transcript_family.POINT or transcript_complete)
                                                       and (point["id"] != heartbeat_scratch_acceptance.POINT or scratch_complete)
                                                       and (point["id"] not in overflow_points or overflow)
                                                       and dream_points.get(point["id"], True)

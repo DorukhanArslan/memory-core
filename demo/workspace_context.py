@@ -9,10 +9,11 @@ upstream render format and order. Nothing here is a second implementation.
 
 from __future__ import annotations
 
+from dataclasses import replace
 from pathlib import Path
 
 from memory_core.bootstrap import (
-    DEFAULT_WORKSPACE_LAYOUT,
+    EXTENDED_WORKSPACE_LAYOUT,
     ContextFile,
     WorkspaceInitResult,
     WorkspaceLayout,
@@ -20,9 +21,10 @@ from memory_core.bootstrap import (
     initialize_agent_workspace,
 )
 from memory_core.bootstrap.render import prepare_context_files
-from memory_core.project_name import DISPLAY_NAME
+from memory_core.project_name import DISPLAY_NAME, DIST_NAME
 
-DEMO_WORKSPACE_LAYOUT = DEFAULT_WORKSPACE_LAYOUT
+# Retain the saved Lab layout name and its explicitly enabled preferences.
+DEMO_WORKSPACE_LAYOUT = replace(EXTENDED_WORKSPACE_LAYOUT, name=DIST_NAME)
 
 # Lab seed texts (project-authored). PROACTIVE_PREFERENCES.md has no Lab text
 # and is seeded empty, so it is not injected until someone writes to it. v2026.9.6 retired

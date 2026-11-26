@@ -48,7 +48,10 @@ PRE_DATE_BOUNDARY_CASES = 1618
 PRE_DATE_BOUNDARY_SHA = "28eeb93559b2c65178dad1c849408f8808e95471c22583bef225ea30c4540676"
 PRE_SCRATCH_CASES = 1623
 PRE_SCRATCH_SHA256 = "b3defae8b4ffe4cd439ca21decadf585850835e96ad4909a47c14a0098867399"
-REGISTERED_CASES = 1662
+PRE_TRANSCRIPT_ARCHIVE_CASES = 1662
+PRE_TRANSCRIPT_ARCHIVE_SHA256 = "1480bb7dbbbda146e7044bc265cfcc510cedcff8f8a316762e558bce2f21021e"
+TRANSCRIPT_ARCHIVE_CASE_SHA256 = "5000ac7c0d2ec162e15ec04fc22bbdabceddcdffa4e8806a996706cbe2e12628"
+REGISTERED_CASES = 1663
 
 # PR22 changes these three policy texts, not the thirteen cases' business inputs,
 # order, coverage or other fields. Reversing only the exact reviewed fragments
@@ -140,7 +143,8 @@ def definition_authority(cases, *, fif_version):
                                   BOUNDARY_REGISTERED_CASES, RECALL_REGISTERED_CASES,
                                   CACHE_REGISTERED_CASES, RESET_REGISTERED_CASES, PROMPT_REGISTERED_CASES,
                                   HISTORY_REGISTERED_CASES, NUMERIC_REGISTERED_CASES, DEEP_REGISTERED_CASES, PRE_RECOVERY_CASES, PRE_FLUSH_PLAN_CASES,
-                                  PRE_HEARTBEAT_OUTCOME_CASES, PRE_INTERRUPTION_CASES, PRE_ACTIVE_HISTORY_CASES, PRE_DATETIME_CASES, PRE_UNICODE_CASES, PRE_SECRET_CASES, PRE_CONFIGURED_CASES, PRE_PROVIDER_OVERFLOW_CASES, PRE_SCRATCH_CASES, REGISTERED_CASES}
+                                  PRE_HEARTBEAT_OUTCOME_CASES, PRE_INTERRUPTION_CASES, PRE_ACTIVE_HISTORY_CASES, PRE_DATETIME_CASES, PRE_UNICODE_CASES, PRE_SECRET_CASES, PRE_CONFIGURED_CASES, PRE_PROVIDER_OVERFLOW_CASES, PRE_SCRATCH_CASES,
+                                  PRE_TRANSCRIPT_ARCHIVE_CASES, REGISTERED_CASES}
             or fif_version == "v5" and len(cases) != HISTORICAL_REGISTERED_CASES):
         raise ValueError("Catalog migration requires one complete exact registered definition set")
     frozen = families[fif_version]
@@ -215,7 +219,17 @@ def definition_authority(cases, *, fif_version):
         if _sha(cases[:NUMERIC_REGISTERED_CASES]) != NUMERIC_CATALOG_SHA256 or _sha(deep) != _sha(build_cases()):
             raise ValueError("The deep consolidation cases must follow the complete numeric family")
         validate_registration(cases)
-    maintenance = cases[DEEP_REGISTERED_CASES:]
+    if (len(cases) >= PRE_TRANSCRIPT_ARCHIVE_CASES
+            and _sha(cases[:PRE_TRANSCRIPT_ARCHIVE_CASES]) != PRE_TRANSCRIPT_ARCHIVE_SHA256):
+        raise ValueError("The first 1662 definitions preceding the transcript archive case changed")
+    transcript_archive = cases[PRE_TRANSCRIPT_ARCHIVE_CASES:]
+    if transcript_archive:
+        if _sha(transcript_archive[0]) != TRANSCRIPT_ARCHIVE_CASE_SHA256:
+            raise ValueError("The appended transcript archive definition changed")
+        from equivalence.transcript_boundary_acceptance import validate_registration
+
+        validate_registration(cases)
+    maintenance = cases[DEEP_REGISTERED_CASES:PRE_TRANSCRIPT_ARCHIVE_CASES]
     if maintenance:
         from equivalence import automation_job_outcomes, automation_job_state, compaction_assembly, heartbeat_turn_boundaries, workspace_lock_cases
         from equivalence.dream_phase_family import FAMILIES as dream_families
@@ -365,4 +379,8 @@ def definition_authority(cases, *, fif_version):
         result["maintenanceAndLockAppend"] = [
             {"index": index, "id": case["id"], "definitionSha256": _sha(case)}
             for index, case in enumerate(maintenance, DEEP_REGISTERED_CASES)]
+    if transcript_archive:
+        result["transcriptArchiveAppend"] = [{"index": PRE_TRANSCRIPT_ARCHIVE_CASES,
+                                             "id": transcript_archive[0]["id"],
+                                             "definitionSha256": TRANSCRIPT_ARCHIVE_CASE_SHA256}]
     return result

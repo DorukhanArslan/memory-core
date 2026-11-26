@@ -117,14 +117,15 @@ def test_creation_overrides_reach_their_own_api_without_replacing_the_baseline(c
     assert public["steps"][0]["setupCompleted"] is True
 
 
-def test_default_layout_extension_and_created_directories_are_never_dropped(captures):
+def test_default_layout_omits_existing_extensions_without_deleting_them(captures):
     _, public, _ = captures["memory-core-layout-extension"]
     loaded = public["steps"][0]["loaded"]
-    assert "PROACTIVE_PREFERENCES.md" in [file["name"] for file in loaded]
+    assert "PROACTIVE_PREFERENCES.md" not in [file["name"] for file in loaded]
     observation = _observation(captures, "memory-core-layout-extension")
     ensured = next(call for call in observation["calls"] if call["owner"] == "initialize_agent_workspace")
-    assert ensured["result"]["fields"]["created_dirs"] == ["user", "workspace"]
-    assert {row["path"] for row in observation["snapshots"][0]["workspace"] if row["kind"] == "directory"} >= {"user", "workspace"}
+    assert ensured["result"]["fields"]["created_dirs"] == []
+    assert any(row["path"] == "PROACTIVE_PREFERENCES.md" and row["kind"] == "file"
+               for row in observation["snapshots"][0]["workspace"])
 
 
 def test_configured_context_calls_real_classification_and_artifact_store_owners(captures):

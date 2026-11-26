@@ -45,11 +45,14 @@ import hashlib
 import json
 import os
 import re
+import sqlite3
 import stat
 import tempfile
 import time
+import unicodedata
 import uuid
 from collections.abc import Collection, Mapping
+from contextlib import closing
 from dataclasses import dataclass, replace
 from datetime import datetime, timezone
 from pathlib import Path
@@ -58,7 +61,7 @@ from typing import Literal
 from memory_core.bootstrap._js import JS_WHITESPACE, js_json_stringify, js_trim, js_utf8_encode
 from memory_core.bootstrap.files import exact_workspace_entry_exists, read_workspace_bootstrap_file
 from memory_core.bootstrap.layout import AGENTS_FILENAME, DEFAULT_WORKSPACE_LAYOUT, WorkspaceLayout
-from memory_core.project_name import PACKAGE_NAME, STATE_DIRNAME
+from memory_core.project_name import STATE_DIRNAME
 
 WORKSPACE_STATE_VERSION = 1
 MEMORY_CORE_WORKSPACE_STATE_FILENAME = "workspace-state.json"
@@ -69,7 +72,6 @@ OPENCLAW_LEGACY_WORKSPACE_STATE_FILENAME = "workspace-state.json"
 WORKSPACE_DOCTOR_CLAIM_SUFFIX = ".doctor-importing"
 # src/infra/state-migrations.workspace-setup-files.ts SETUP_MAX_BYTES.
 LEGACY_WORKSPACE_SETUP_MAX_BYTES = 64 * 1024
-MIGRATE_LEGACY_WORKSPACE_STATE_COMMAND = f"{PACKAGE_NAME}.bootstrap.migrate_legacy_workspace_state()"
 
 BootstrapStatus = Literal["pending", "complete"]
 
@@ -172,21 +174,51 @@ def _path_may_exist(path: Path) -> bool:
     return True
 
 
-class WorkspaceStateMigrationRequiredError(RuntimeError):
-    """Upstream's retired JSON setup state is still in the workspace.
+def _doctor_profile() -> str | None:
+    profile = os.environ.get("OPENCLAW_PROFILE", "").strip()
+    if profile.lower() != "default" and re.fullmatch(r"[A-Za-z0-9][A-Za-z0-9_-]{0,63}", profile):
+        return profile
+    return None
 
-    Port of ``assertNoUnmigratedWorkspaceState`` (``src/agents/workspace-legacy-state.ts``):
-    upstream refuses to read or seed such a workspace until ``openclaw doctor --fix`` imports
-    the file; memory-core's import is :func:`migrate_legacy_workspace_state`.
+
+def _doctor_repair_command() -> str:
+    container = os.environ.get("OPENCLAW_CONTAINER_HINT", "").strip()
+    if re.fullmatch(r"[A-Za-z0-9][A-Za-z0-9_.-]{0,127}", container):
+        return f"openclaw --container {container} doctor --fix"
+    profile = _doctor_profile()
+    return f"openclaw --profile {profile} doctor --fix" if profile else "openclaw doctor --fix"
+
+
+class StartupMaintenanceRequiredError(RuntimeError):
+    """A legacy workspace needs explicit migration before a setup read or write.
+
+    An OpenClaw host can run its Doctor. A standalone Python host can call
+    ``error.repair()`` to import the same source into its SDK workspace.
     """
 
     def __init__(self, workspace_dir: str, blocked_paths: tuple[str, ...]):
-        self.workspace_dir = workspace_dir
-        self.blocked_paths = blocked_paths
-        super().__init__(
-            f"Legacy workspace setup state requires migration for {workspace_dir}; "
-            f"run {MIGRATE_LEGACY_WORKSPACE_STATE_COMMAND}."
-        )
+        super().__init__(workspace_dir, blocked_paths)
+        self.code = "gateway.maintenance_required"
+        self.kind = "legacy-workspace"
+
+    @property
+    def workspace_dir(self) -> str:
+        return self.args[0]
+
+    @property
+    def blocked_paths(self) -> tuple[str, ...]:
+        return self.args[1]
+
+    def __str__(self) -> str:
+        return f"Legacy workspace setup state requires migration for {self.workspace_dir}; run {_doctor_repair_command()}."
+
+    def repair(self) -> LegacyWorkspaceStateMigration:
+        """Import into the owning SDK workspace, preserving existing state and source bytes."""
+        return migrate_legacy_workspace_state(self.workspace_dir)
+
+
+# Preserve the catch type and constructor used by existing Python callers.
+WorkspaceStateMigrationRequiredError = StartupMaintenanceRequiredError
 
 
 def assert_no_unmigrated_workspace_state(root: str | os.PathLike[str]) -> None:
@@ -268,15 +300,62 @@ def read_stored_workspace_setup_state(root: str | os.PathLike[str]) -> Workspace
     return _read_state_file(_state_path(_root_path(root))) or WorkspaceSetupState()
 
 
+def _doctor_workspace_setup(root: Path) -> WorkspaceSetupState | None:
+    """Read milestones imported for this workspace by the official OpenClaw Doctor."""
+    home = Path((os.getenv("OPENCLAW_HOME") or "~").strip() or "~").expanduser()
+    override = (os.getenv("OPENCLAW_STATE_DIR") or "").strip()
+    if override:
+        state_dir = home / override[2:] if override == "~" or override.startswith("~/") else Path(override)
+    elif profile := _doctor_profile():
+        state_dir = home / f".openclaw-{profile}"
+    else:
+        state_dir = home / ".openclaw"
+        if not state_dir.exists() and (home / ".clawdbot").is_dir():
+            state_dir = home / ".clawdbot"
+    database = state_dir / "state" / "openclaw.sqlite"
+    try:
+        database.stat()
+    except FileNotFoundError:
+        return None
+    workspace = unicodedata.normalize("NFC", os.path.realpath(root))
+    if os.name == "nt":
+        workspace = workspace.lower()
+    workspace_key = hashlib.sha256(workspace.encode("utf-8")).hexdigest()
+    # Keep source paths in their original filesystem spelling, including decomposed Unicode.
+    sources = [str(path) for path in legacy_workspace_state_paths(root)]
+    with closing(sqlite3.connect(database.absolute().as_uri() + "?mode=ro", uri=True)) as db:
+        db.execute("PRAGMA trusted_schema=OFF")
+        row = db.execute(
+            """SELECT version, bootstrap_seeded_at, setup_completed_at FROM workspace_setup_state
+               WHERE workspace_key = ? AND workspace_path = ?
+                 AND EXISTS (SELECT 1 FROM migration_sources
+                             WHERE migration_kind = 'legacy-workspace-setup-files'
+                               AND target_table = 'workspace_setup_state'
+                               AND status = 'completed' AND removed_source = 1
+                               AND source_path IN (?, ?))""",
+            (workspace_key, workspace, *sources),
+        ).fetchone()
+    if row is None:
+        return None
+    if row[0] != WORKSPACE_STATE_VERSION:
+        raise WorkspaceStateMigrationError("unsupported migrated workspace setup version")
+    return WorkspaceSetupState(
+        bootstrap_seeded_at=_parse_legacy_iso_timestamp(row[1], "bootstrap timestamp"),
+        setup_completed_at=_parse_legacy_iso_timestamp(row[2], "completion timestamp"),
+    )
+
+
 def read_workspace_setup_state(root: str | os.PathLike[str]) -> WorkspaceSetupState:
     """Setup state of a workspace (upstream ``readCanonicalWorkspaceStateSnapshot().setup``).
 
     Raises :class:`WorkspaceStateMigrationRequiredError` while upstream's retired JSON state
-    is present, then returns :func:`read_stored_workspace_setup_state`.
+    is present, then reads the SDK state. When it has none, a matching completed
+    official Doctor migration for this workspace can supply the preserved setup milestones.
     """
     root_path = _root_path(root)
     assert_no_unmigrated_workspace_state(root_path)
-    return read_stored_workspace_setup_state(root_path)
+    stored = _read_state_file(_state_path(root_path))
+    return stored or _doctor_workspace_setup(root_path) or WorkspaceSetupState()
 
 
 def is_workspace_setup_completed(root: str | os.PathLike[str]) -> bool:
@@ -284,14 +363,21 @@ def is_workspace_setup_completed(root: str | os.PathLike[str]) -> bool:
     return read_workspace_setup_state(root).setup_completed
 
 
+def is_workspace_setup_completed_for_context(root: str | os.PathLike[str]) -> bool:
+    """Context selection treats an unavailable setup record as incomplete."""
+    try:
+        return is_workspace_setup_completed(root)
+    except (OSError, sqlite3.DatabaseError, WorkspaceStateMigrationError, WorkspaceStateMigrationRequiredError):
+        return False
+
+
 def bootstrap_status(
     root: str | os.PathLike[str], layout: WorkspaceLayout = DEFAULT_WORKSPACE_LAYOUT
 ) -> BootstrapStatus:
     """Port of ``resolveWorkspaceBootstrapStatus`` (``src/agents/workspace.ts``)."""
     root_path = _root_path(root)
-    if read_workspace_setup_state(root_path).setup_completed:
-        return "complete"
-    return "pending" if os.path.exists(root_path / layout.bootstrap_file) else "complete"
+    setup_completed = read_workspace_setup_state(root_path).setup_completed
+    return "pending" if not setup_completed and (root_path / layout.bootstrap_file).exists() else "complete"
 
 
 def _write_file_if_missing(path: Path, content: str) -> bool:
@@ -470,7 +556,7 @@ def initialize_agent_workspace(
 
     When setup evidence appears while BOOTSTRAP.md exists, the state is marked
     complete and BOOTSTRAP.md is deleted, exactly like upstream's reconcile.
-    Layout ``extra_dirs`` (memory-core layout: ``user/``, ``workspace/``) are created.
+    Layout ``extra_dirs`` (extended layout: ``user/``, ``workspace/``) are created.
 
     Raises :class:`WorkspaceStateMigrationRequiredError`, before touching anything, while
     upstream's retired JSON setup state is in the workspace (upstream's ensure reads its
@@ -485,7 +571,7 @@ def initialize_agent_workspace(
     if provisioning == "runtime-managed-implicit":
         root_path.mkdir(parents=True, exist_ok=True)
         return WorkspaceInitResult(root_path, (), (), False, False, None, None, False)
-    assert_no_unmigrated_workspace_state(root_path)
+    state = read_workspace_setup_state(root_path)
     root_path.mkdir(parents=True, exist_ok=True)
     stamp = _iso_from_ms(now_ms if now_ms is not None else time.time() * 1000)
     resolved = _resolve_templates(layout, templates)
@@ -507,7 +593,7 @@ def initialize_agent_workspace(
         if purpose and publish_instructions(resolved.get(AGENTS_FILENAME, "")):
             created_files.append(AGENTS_FILENAME)
         return WorkspaceInitResult(root_path, tuple(created_files), (), False, False,
-            read_workspace_setup_state(root_path), bootstrap_status(root_path, layout), False)
+            state, bootstrap_status(root_path, layout), False)
 
     creation = dict(resolved)
     for name in ("AGENTS.md", "SOUL.md", "IDENTITY.md"):
@@ -524,7 +610,7 @@ def initialize_agent_workspace(
     else:
         skipped = set(skip_optional)
     # Completed setup: never recreate optional root files a user removed.
-    if is_workspace_setup_completed(root_path):
+    if state.setup_completed:
         skipped.update(layout.optional_files)
 
     for name in layout.seed_order:

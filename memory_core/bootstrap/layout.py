@@ -1,7 +1,7 @@
 """Workspace layouts: which bootstrap files exist, in which order they load and render.
 
-Two presets ship, both following the OpenClaw workspace map of the parity pin, release tag
-v2026.9.6 (``memory_core.parity.upstream.LATEST_INSPECTED_COMMIT``):
+The presets follow the OpenClaw workspace map of the parity pin, release tag
+v2026.9.9 (``memory_core.parity.upstream.LATEST_INSPECTED_COMMIT``):
 
 - ``OPENCLAW_COMPAT_LAYOUT``: upstream's file set and nothing else.
   ``WORKSPACE_BOOTSTRAP_FILENAMES`` (``src/agents/workspace-bootstrap-policy.ts``: AGENTS,
@@ -16,7 +16,8 @@ v2026.9.6 (``memory_core.parity.upstream.LATEST_INSPECTED_COMMIT``):
   file with :func:`memory_core.bootstrap.migrate_tools_md`), HEARTBEAT.md in 3e2b3ea4d5e (#112967:
   the heartbeat monitor scratch). ``tools.md`` keeps render priority 50 because upstream's
   ``CONTEXT_FILE_ORDER`` still sorts a hook-supplied TOOLS.md there.
-- ``MEMORY_CORE_WORKSPACE_LAYOUT`` (default): the same map plus the memory-core extensions
+- ``MEMORY_CORE_WORKSPACE_LAYOUT``, the SDK default, uses the same six roles.
+- ``EXTENDED_WORKSPACE_LAYOUT`` explicitly enables the memory-core extensions
   ``PROACTIVE_PREFERENCES.md`` (when and how the agent may act or reach out unprompted) and
   the ``user/`` (user-supplied files) and ``workspace/`` (agent-made artifacts) folders. They
   have no upstream reference: PROACTIVE_PREFERENCES.md loads after USER.md, renders at
@@ -33,7 +34,7 @@ v2026.9.6 (``memory_core.parity.upstream.LATEST_INSPECTED_COMMIT``):
 from __future__ import annotations
 
 import os
-from dataclasses import dataclass
+from dataclasses import dataclass, replace
 
 from memory_core.project_name import DIST_NAME
 
@@ -203,8 +204,11 @@ OPENCLAW_COMPAT_LAYOUT = WorkspaceLayout(
     ),
 )
 
-MEMORY_CORE_WORKSPACE_LAYOUT = WorkspaceLayout(
-    name=DIST_NAME,
+MEMORY_CORE_WORKSPACE_LAYOUT = replace(OPENCLAW_COMPAT_LAYOUT, name=DIST_NAME)
+DEFAULT_WORKSPACE_LAYOUT = MEMORY_CORE_WORKSPACE_LAYOUT
+
+EXTENDED_WORKSPACE_LAYOUT = WorkspaceLayout(
+    name=f"{DIST_NAME}-extended",
     load_order=(
         AGENTS_FILENAME,
         SOUL_FILENAME,
@@ -257,5 +261,3 @@ MEMORY_CORE_WORKSPACE_LAYOUT = WorkspaceLayout(
     extra_dirs=("user", "workspace"),
     extension_files=frozenset({PROACTIVE_PREFERENCES_FILENAME}),
 )
-
-DEFAULT_WORKSPACE_LAYOUT = MEMORY_CORE_WORKSPACE_LAYOUT

@@ -744,6 +744,7 @@ class ReleaseOracleExecution:
         self.dream_phase_profile = deepcopy(dream_phase_profile)
         self.flush_plan_target_profile = deepcopy(flush_plan_target_profile)
         self._retained_flush_captures: dict[str, dict] = {}
+        self._retained_transcript_captures: dict[str, dict] = {}
         self._retained_secret_captures: dict[str, dict] = {}
         self._retained_dream_captures: dict[str, dict] = {}
         self._retained_history_captures: dict[str, dict] = {}
@@ -1438,7 +1439,7 @@ class ReleaseOracleExecution:
             if filename is None:
                 raise RuntimeOracleError("A release thread trace has an invalid identity.")
             raw = _regular(trace, MAX_SINGLE_TRACE_BYTES)
-            if secret_boundary or case["id"] == CONFIGURED_IDS[1] or self.flush_plan_target_profile is not None or self.dream_phase_profile is not None or self.entry_profile is not None or self.memory_budget_profile is not None or self.promotion_profile is not None or self.promotion_apply_profile is not None or self.forget_lineage_profile is not None or self.forget_boundaries_profile is not None or self.recall_signals_profile is not None or self.embedding_cache_profile is not None or self.session_reset_boundaries_profile is not None or self.prompt_runtime_context_profile is not None or self.prompt_history_repair_profile is not None:
+            if operation == "transcript-boundary-runtime" or secret_boundary or case["id"] == CONFIGURED_IDS[1] or self.flush_plan_target_profile is not None or self.dream_phase_profile is not None or self.entry_profile is not None or self.memory_budget_profile is not None or self.promotion_profile is not None or self.promotion_apply_profile is not None or self.forget_lineage_profile is not None or self.forget_boundaries_profile is not None or self.recall_signals_profile is not None or self.embedding_cache_profile is not None or self.session_reset_boundaries_profile is not None or self.prompt_runtime_context_profile is not None or self.prompt_history_repair_profile is not None:
                 entry_trace_files.append({"name": trace.name, "bytes": len(raw), "sha256": _digest(raw),
                                           "text": raw.decode("utf-8")})
             if self.bootstrap_profile is not None:
@@ -2159,6 +2160,10 @@ class ReleaseOracleExecution:
                                   "nativeBinaryPolicy": "all artifact bytes authenticated before and after execution"}
         answer["runtimeDiagnostics"] = [{"id": case["id"], "sha256": _digest(raw),
                                           "rawSnapshots": _json(raw) if self.entry_profile is not None or self.memory_budget_profile is not None or self.promotion_profile is not None or self.promotion_apply_profile is not None else diagnostic}]
+        if operation == "transcript-boundary-runtime":
+            receipt = self._retain_case_capture(case["id"], raw, "transcript-boundaries", self._retained_transcript_captures)
+            answer["runtimeDiagnostics"][0].update(receipt)
+            answer["releaseTrace"]["transcriptBoundaryTransport"] = {"rawProcessWorkerTraces": entry_trace_files}
         if secret_boundary:
             receipt = self._retain_case_capture(case["id"], raw, "secret-redaction", self._retained_secret_captures)
             answer["runtimeDiagnostics"][0].update(receipt)

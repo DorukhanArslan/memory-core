@@ -283,11 +283,11 @@ def _canonical_store_payload(path: Path) -> Any:
         return None
 
 
-def read_canonical_recall_store(path: Path, now_ms: int) -> dict[str, Any]:
-    """Read the promotion owner's canonical in-memory view; leave stored bytes intact."""
+def read_canonical_recall_store(path: Path, now_ms: int, *, for_publication: bool = False) -> dict[str, Any]:
+    """Read the ranking view. Publication requires the stricter, fail-closed provenance view."""
     from memory_core.consolidation.store_normalization import normalize_short_term_recall_store
 
-    canonical = normalize_short_term_recall_store(_canonical_store_payload(path), now_ms)
+    canonical = normalize_short_term_recall_store(_canonical_store_payload(path), now_ms, for_publication=for_publication)
     _enforce_short_term_recall_store_retention(canonical)
     return canonical
 

@@ -40,12 +40,14 @@ from memory_core.consolidation.origins import (
 from memory_core.consolidation.promotion import (
     PromotionCandidate,
     build_promotion_applied_event,
+    rank_short_term_promotion_candidates,
     run_short_term_promotion,
 )
 from memory_core.consolidation.store import (
     MemoryWorkspaceLockHeldError,
     acquire_short_term_promotion_lock,
     memory_workspace_lock,
+    recall_store_path,
     workspace_lock_held,
 )
 from memory_core.embeddings.base import FakeEmbeddingProvider
@@ -138,6 +140,42 @@ def _run(config: MemoryConfig, tmp_path: Path, **kwargs: Any):
 
 
 # --- candidates ---------------------------------------------------------------------------------
+
+
+def test_primitive_provenance_preview_cannot_authorize_a_durable_write(tmp_path: Path) -> None:
+    config = _workspace(tmp_path, [_entry(provenance=1)])
+    path = recall_store_path(config.workspace_dir)
+    raw = path.read_bytes()
+    query = dict(config=config, now_ms=NOW_MS, limit=5, min_score=0, min_recall_count=1, min_unique_queries=0)
+    preview, = rank_short_term_promotion_candidates(**query)
+    assert "provenance" not in preview.to_json()
+    assert rank_short_term_promotion_candidates(**query, for_publication=True) == []
+    assert path.read_bytes() == raw
+
+    imported = PromotionCandidate.from_json(preview.to_json())
+    memory = config.workspace_dir / "MEMORY.md"
+    original = memory.read_bytes()
+    blocked = _run(config, tmp_path, candidates=[imported])
+    assert not blocked.applied_candidates
+    assert blocked.rejected_candidates[0].reason == "origin filter (untrusted)"
+    assert path.read_bytes() == raw
+
+    path.unlink()
+    detached = _run(config, tmp_path, candidates=[imported])
+    assert not detached.applied_candidates
+    assert detached.rejected_candidates[0].category == "origin"
+    assert memory.read_bytes() == original
+    direct = _run(config, tmp_path, candidates=[_candidate()])
+    assert [c.key for c in direct.applied_candidates] == [KEY]
+
+
+def test_marking_another_row_promoted_preserves_quarantine(tmp_path: Path) -> None:
+    config = _workspace(tmp_path, [_entry(), _entry(key="quarantined", provenance=1)])
+    assert _run(config, tmp_path).applied_candidates
+    persisted = json.loads(recall_store_path(config.workspace_dir).read_text())
+    other = persisted["entries"]["quarantined"]
+    assert other["provenance"]["originClass"] == "untrusted"
+    assert "promotedAt" not in other
 
 
 def test_candidate_json_round_trip() -> None:

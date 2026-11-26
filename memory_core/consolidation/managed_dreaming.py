@@ -99,7 +99,7 @@ def _run_deep(target, options, owner, agent_ids, complete, now, identity, state_
     gates = dict(limit=policy.limit, min_score=policy.min_score, min_recall_count=policy.min_recall_count,
                  min_unique_queries=policy.min_unique_queries, recency_half_life_days=policy.recency_half_life_days,
                  max_age_days=policy.max_age_days)
-    candidates = rank_short_term_promotion_candidates(config=target.config, now_ms=now, **gates)
+    candidates = rank_short_term_promotion_candidates(config=target.config, now_ms=now, for_publication=True, **gates)
     stats["candidates"] += len(candidates)
     consolidation = None
     if complete is not None and owner:

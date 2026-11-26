@@ -266,7 +266,7 @@
           "path": "memory_core/consolidation/promotion.py",
           "symbol": "_append_to_memory",
           "anchor": "def _append_to_memory(",
-          "line": 1590
+          "line": 1602
         },
         {
           "path": "memory_core/consolidation/llm_consolidation.py",
@@ -4873,7 +4873,7 @@
           "path": "memory_core/consolidation/promotion.py",
           "symbol": "_commit_promotion",
           "anchor": "def _commit_promotion(",
-          "line": 982
+          "line": 994
         }
       ],
       "implementation": "present",
@@ -5135,13 +5135,13 @@
           "path": "memory_core/consolidation/promotion.py",
           "symbol": "rank_short_term_promotion_candidates",
           "anchor": "def rank_short_term_promotion_candidates(",
-          "line": 784
+          "line": 791
         },
         {
           "path": "memory_core/consolidation/promotion.py",
           "symbol": "evaluate_short_term_promotion_candidates",
           "anchor": "def evaluate_short_term_promotion_candidates(",
-          "line": 834
+          "line": 845
         },
         {
           "path": "memory_core/consolidation/recall.py",
@@ -5165,13 +5165,13 @@
           "path": "memory_core/consolidation/store_normalization.py",
           "symbol": "normalize_short_term_recall_store",
           "anchor": "def normalize_short_term_recall_store(",
-          "line": 100
+          "line": 103
         },
         {
           "path": "memory_core/consolidation/store_normalization.py",
           "symbol": "normalize_short_term_phase_signal_store",
           "anchor": "def normalize_short_term_phase_signal_store(",
-          "line": 147
+          "line": 150
         }
       ],
       "implementation": "partial",
@@ -5217,19 +5217,19 @@
           "path": "memory_core/consolidation/promotion.py",
           "symbol": "_plan_apply_stage",
           "anchor": "def _plan_apply_stage(",
-          "line": 622
+          "line": 625
         },
         {
           "path": "memory_core/consolidation/promotion.py",
           "symbol": "_commit_promotion",
           "anchor": "def _commit_promotion(",
-          "line": 982
+          "line": 994
         },
         {
           "path": "memory_core/consolidation/promotion.py",
           "symbol": "build_promotion_applied_event",
           "anchor": "def build_promotion_applied_event(",
-          "line": 1248
+          "line": 1260
         }
       ],
       "implementation": "present",
@@ -5463,7 +5463,7 @@
           "path": "memory_core/consolidation/dreaming.py",
           "symbol": "deep promotion invocation",
           "anchor": "promotion = run_short_term_promotion(",
-          "line": 368
+          "line": 369
         }
       ],
       "implementation": "partial",
@@ -5503,7 +5503,7 @@
           "path": "memory_core/consolidation/dreaming.py",
           "symbol": "_append_dreams_section",
           "anchor": "def _append_dreams_section(",
-          "line": 403
+          "line": 404
         },
         {
           "path": "memory_core/consolidation/artifacts.py",
@@ -6478,7 +6478,7 @@
           "path": "memory_core/consolidation/promotion.py",
           "symbol": "evaluate_short_term_promotion_candidates",
           "anchor": "def evaluate_short_term_promotion_candidates(",
-          "line": 834
+          "line": 845
         },
         {
           "path": "memory_core/index/identity.py",

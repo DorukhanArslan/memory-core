@@ -2,8 +2,7 @@
 
 Ports ``normalizeShortTermRecallStore`` and ``normalizeShortTermPhaseSignalStore``
 from the pinned original memory plugin. These views do not rewrite the JSON
-extension stores. Explicit malformed primitive provenance is treated as untrusted,
-a deliberately stricter admission policy than the original primitive-value path.
+extension stores. Publication readers treat explicit primitive provenance as untrusted.
 """
 from __future__ import annotations
 
@@ -72,12 +71,16 @@ def _nonblank(value: Any) -> str | None:
     return js_trim(value) or None if isinstance(value, str) else None
 
 
-def _provenance(entry: dict[str, Any], last_recalled_at: str, now_iso: str) -> dict[str, Any] | None:
+def _provenance(
+    entry: dict[str, Any], last_recalled_at: str, now_iso: str, *, for_publication: bool,
+) -> dict[str, Any] | None:
     raw = entry.get("provenance", _UNDEFINED)
     if raw is _UNDEFINED or raw is None:
         return None
-    # Object-shaped metadata follows the original canonical owner. Explicit
-    # malformed primitive metadata fails closed instead of losing its taint.
+    # The original ranking view has no provenance for a JSON primitive. An array
+    # is a JavaScript object and still receives the untrusted object defaults.
+    if not for_publication and not isinstance(raw, (dict, list)):
+        return None
     value = _record(raw)
     origin = value.get("originClass")
     kind = value.get("sessionKind")
@@ -97,7 +100,7 @@ def _provenance(entry: dict[str, Any], last_recalled_at: str, now_iso: str) -> d
     return result
 
 
-def normalize_short_term_recall_store(raw: Any, now_ms: int) -> dict[str, Any]:
+def normalize_short_term_recall_store(raw: Any, now_ms: int, *, for_publication: bool = True) -> dict[str, Any]:
     """Return the complete canonical recall view without mutating ``raw``."""
     now_iso = iso_ms(now_ms)
     record = _record(raw)
@@ -129,7 +132,7 @@ def normalize_short_term_recall_store(raw: Any, now_ms: int) -> dict[str, Any]:
                 if isinstance(day, str) and (match := _ISO_DAY.match(js_trim(day)))] if isinstance(entry.get("recallDays"), list) else []
         concepts = (_strings([js_trim(tag).lower() if isinstance(tag, str) else tag for tag in entry["conceptTags"]])[:MAX_CONCEPT_TAGS]
                     if isinstance(entry.get("conceptTags"), list) else derive_concept_tags(path, snippet))
-        provenance = _provenance(entry, last_at, now_iso)
+        provenance = _provenance(entry, last_at, now_iso, for_publication=for_publication)
         key = map_key or f"memory:{path}:{start}:{end}" + (":" + claim if claim else "")
         normalized = {"key": key, "path": path, "startLine": start, "endLine": end, "source": "memory",
             "snippet": truncate_short_term_snippet(snippet), "recallCount": recall, "dailyCount": daily,

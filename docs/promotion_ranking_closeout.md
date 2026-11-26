@@ -1,6 +1,15 @@
 # Promotion Ranking Comparison Closeout
 
-Fixed contract #42 remains partial. Independent review approved **one qualified outcomes condition**
+The SDK's read-only ranking and store views follow OpenClaw when a stored JSON
+primitive appears in the provenance field. Such a value supplies no provenance
+in the preview. Scheduled dreaming and promotion apply read the stored origin
+with stricter rules. They reject malformed provenance before passing text to the
+model or writing notes. An imported candidate whose recall row has disappeared
+needs an explicit owner or agent origin to authorize a direct write.
+
+## Historical partial result
+
+Fixed contract #42 was partial in the measurement below. Independent review approved **one qualified outcomes condition**
 using all fifteen proper-object case families. All sixteen cases cover the boundary condition,
 including a deliberate primitive-provenance mismatch. That boundary condition remains unverified.
 Registration does not assign points before the integrated gate, and the known mismatch remains

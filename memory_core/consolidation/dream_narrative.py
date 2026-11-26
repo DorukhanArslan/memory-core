@@ -83,7 +83,7 @@ def append_narrative_entry(
     entry = f"\n---\n\n*{stamp}*\n\n{narrative}\n"
     def update(existing: str, path: Path) -> tuple[str | None, Path | None]:
         if source_entry_keys:
-            current = read_canonical_recall_store(recall_store_path(workspace), now_ms)["entries"]
+            current = read_canonical_recall_store(recall_store_path(workspace), now_ms, for_publication=True)["entries"]
             if any(key not in current for key in source_entry_keys):
                 return None, None
         if recent_diary_entries and not set(recent_diary_entries).issubset(diary_context_entries(existing)):

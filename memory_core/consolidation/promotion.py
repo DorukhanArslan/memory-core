@@ -377,7 +377,8 @@ def run_short_term_promotion(
     carries the daily-file quarantine: a candidate whose daily file the flush recorded as
     ``untrusted`` is itself ``untrusted`` and is rejected by the ``origin`` gate, whatever the recall
     store says (:func:`~memory_core.consolidation.artifact_provenance.with_daily_file_quarantine`).
-    Without a store no file is quarantined.
+    Without a store no file is quarantined. A direct candidate with no surviving recall
+    row needs an explicit owner or agent origin; a detached ranking view alone cannot authorize a write.
 
     New markers use ``identity.promotion_marker_prefix`` (the neutral
     ``memory-core-memory-promotion:`` by default; pass
@@ -409,6 +410,7 @@ def run_short_term_promotion(
             config=config,
             now_ms=now_ms,
             recency_half_life_days=recency_half_life_days,
+            for_publication=True,
             **gates,
         )
     )
@@ -420,6 +422,7 @@ def run_short_term_promotion(
         min_unique_queries=min_unique_queries,
         max_age_days=max_age_days,
         recency_half_life_days=recency_half_life_days,
+        for_publication=True,
     )
     plan = _plan_apply_stage(
         config=config,
@@ -636,7 +639,7 @@ def _plan_apply_stage(
     from memory_core.consolidation.llm_consolidation import is_consolidation_candidate_eligible
 
     workspace_dir = Path(config.workspace_dir)
-    store = read_recall_store(recall_store_path(workspace_dir), now_ms)
+    store = read_recall_store(recall_store_path(workspace_dir), now_ms, for_publication=True)
     entries = _readable_store_entries(store)
     min_score = _to_finite_score(min_score, DEFAULT_DEEP_DREAMING_MIN_SCORE)
     min_recall_count = _to_finite_non_negative_int(min_recall_count, DEFAULT_DEEP_DREAMING_MIN_RECALL_COUNT)
@@ -675,6 +678,10 @@ def _plan_apply_stage(
         if is_promotion_origin_blocked(candidate.provenance):
             origin = (candidate.provenance or {}).get("originClass")
             plan.reject(key, "origin", f"origin filter ({origin})")
+        elif latest is None and (candidate.provenance or {}).get("originClass") not in ("owner", "agent"):
+            # A detached ranking result can outlive its row. Missing provenance
+            # cannot authorize a direct import once the source record is gone.
+            plan.reject(key, "origin", "no authoritative recall entry or trusted candidate origin")
         elif consolidation and (latest is None or not is_consolidation_candidate_eligible(candidate)):
             if latest is not None:
                 plan.reject(
@@ -793,6 +800,7 @@ def rank_short_term_promotion_candidates(
     recency_half_life_days: float = DEFAULT_RECENCY_HALF_LIFE_DAYS,
     include_promoted: bool = False,
     weights: Mapping[str, float] | None = None,
+    for_publication: bool = False,
 ) -> list[PromotionCandidate]:
     """Return up to ``limit`` gated candidates, best score first.
 
@@ -800,7 +808,9 @@ def rank_short_term_promotion_candidates(
     promoted entries for inspection. Partial ``weights`` override the component defaults
     before nonnegative normalization (short-term-promotion-utils.ts ``normalizeWeights``).
     Contaminated snippets and untrusted or system origins are always excluded
-    (``isPromotionOriginBlocked`` also rejects these origins during apply).
+    (``isPromotionOriginBlocked`` also rejects these origins during apply). The inspection
+    view can list a row with primitive metadata, as OpenClaw does. Set ``for_publication``
+    when selecting material for a report, diary, or model. Apply rechecks the actual store.
     """
     candidates = [
         _evaluation_to_candidate(evaluation)
@@ -814,6 +824,7 @@ def rank_short_term_promotion_candidates(
             recency_half_life_days=recency_half_life_days,
             include_promoted=include_promoted,
             weights=weights,
+            for_publication=for_publication,
         )
         if not evaluation.reasons and not is_promotion_origin_blocked(evaluation.provenance)
     ]
@@ -842,13 +853,14 @@ def evaluate_short_term_promotion_candidates(
     recency_half_life_days: float = DEFAULT_RECENCY_HALF_LIFE_DAYS,
     include_promoted: bool = False,
     weights: Mapping[str, float] | None = None,
+    for_publication: bool = False,
 ) -> list[PromotionEvaluation]:
     """Score every live recall entry and list the gates it fails, best score first."""
     min_score = _to_finite_score(min_score, DEFAULT_DEEP_DREAMING_MIN_SCORE)
     min_recall_count = _to_finite_non_negative_int(min_recall_count, DEFAULT_DEEP_DREAMING_MIN_RECALL_COUNT)
     min_unique_queries = _to_finite_non_negative_int(min_unique_queries, DEFAULT_DEEP_DREAMING_MIN_UNIQUE_QUERIES)
     max_age_days = _to_finite_non_negative_int(max_age_days, -1)
-    store = read_recall_store(recall_store_path(config.workspace_dir), now_ms)
+    store = read_recall_store(recall_store_path(config.workspace_dir), now_ms, for_publication=for_publication)
     phase_signals = read_phase_signal_store(phase_signal_store_path(config.workspace_dir), now_ms)
     phase_entries = phase_signals.get("entries", {})
     normalized_weights = _normalize_promotion_weights(weights)
@@ -1030,7 +1042,7 @@ def _commit_promotion(
         f"rehydrated {len(plan.rehydrated)}; "
     )
     # Revalidate against the store as it is under the locks.
-    latest_entries = _readable_store_entries(read_recall_store(recall_path, now_ms))
+    latest_entries = _readable_store_entries(read_recall_store(recall_path, now_ms, for_publication=True))
     authoritative: list[PromotionCandidate] = []
     for candidate in plan.rehydrated:
         entry = latest_entries.get(candidate.key)
@@ -1149,7 +1161,7 @@ def _commit_promotion(
             entry_keys=extract_promotion_markers(existing, identity=reader_identity),
             retained_entry_keys={
                 *extract_promotion_markers(committed_content, identity=reader_identity),
-                *_readable_store_entries(read_recall_store(recall_path, now_ms)),
+                *_readable_store_entries(read_recall_store(recall_path, now_ms, for_publication=True)),
                 *retained_preimage_keys,
             },
             identity=reader_identity,
@@ -1570,7 +1582,7 @@ def _format_promoted_snippet_for_memory(raw_snippet: str, max_tokens: int) -> st
 
 
 def _mark_promoted(path: Path, candidates: list[PromotionCandidate], now_ms: int) -> None:
-    store = read_recall_store(path, now_ms)
+    store = read_recall_store(path, now_ms, for_publication=True)
     now_iso = iso_ms(now_ms)
     readable = _readable_store_entries(store)
     for candidate in candidates:

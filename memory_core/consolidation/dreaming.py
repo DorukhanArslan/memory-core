@@ -312,6 +312,7 @@ def run_dreaming_sweep(
             )
         }
     candidates = rank_short_term_promotion_candidates(
+        for_publication=True,
         config=config,
         now_ms=now_ms,
         # Filter the complete ranked pool before limiting; stale evidence must not consume slots.

@@ -73,7 +73,7 @@ def test_live_streaming_example_seeds_the_default_layout(tmp_path: Path):
     prompt = identity.to_prompt_section()
 
     assert not (tmp_path / "BOOTSTRAP.md").exists()
-    assert (tmp_path / "PROACTIVE_PREFERENCES.md").read_text(encoding="utf-8") == ""
+    assert not (tmp_path / "PROACTIVE_PREFERENCES.md").exists()
     assert [Path(path).name for path, _ in identity.sections] == ["AGENTS.md", "SOUL.md"]
     assert "[MISSING]" not in prompt
     assert "Bootstrap Pending" not in prompt

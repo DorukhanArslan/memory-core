@@ -2,8 +2,9 @@ import os
 from pathlib import Path
 
 from memory_core.bootstrap import (
+    DEFAULT_WORKSPACE_LAYOUT,
     OPENCLAW_COMPAT_LAYOUT,
-    MEMORY_CORE_WORKSPACE_LAYOUT,
+    EXTENDED_WORKSPACE_LAYOUT,
     ContextFile,
     build_bootstrap_prompt_section_lines,
     build_workspace_context,
@@ -33,7 +34,7 @@ def test_render_order_uses_priorities_then_icu_like_names():
         ContextFile("/w/AGENTS.md", "g"),
     ]
 
-    assert _paths(sort_context_files(files, MEMORY_CORE_WORKSPACE_LAYOUT)) == [
+    assert _paths(sort_context_files(files, EXTENDED_WORKSPACE_LAYOUT)) == [
         "/w/AGENTS.md",
         "/w/USER.md",
         "/w/PROACTIVE_PREFERENCES.md",
@@ -154,6 +155,7 @@ def test_bootstrap_pending_variants():
 def test_workspace_context_for_a_pending_memory_core_workspace(tmp_path):
     initialize_agent_workspace(
         tmp_path,
+        layout=EXTENDED_WORKSPACE_LAYOUT,
         templates={
             "AGENTS.md": "# Rules\n",
             "PROACTIVE_PREFERENCES.md": "Morning digest\n",
@@ -165,7 +167,7 @@ def test_workspace_context_for_a_pending_memory_core_workspace(tmp_path):
     (tmp_path / "HEARTBEAT.md").write_text("- check calendar\n", encoding="utf-8")
     (tmp_path / "TOOLS.md").write_text("- rg\n", encoding="utf-8")
 
-    context = build_workspace_context(tmp_path, path_style="relative")
+    context = build_workspace_context(tmp_path, layout=EXTENDED_WORKSPACE_LAYOUT, path_style="relative")
 
     assert context.bootstrap_status == "pending"
     assert context.bootstrap_mode == "full"
@@ -254,7 +256,7 @@ def test_extension_dirs_are_never_injected_or_indexed(tmp_path):
         path.parent.mkdir(parents=True, exist_ok=True)
         path.write_text(content, encoding="utf-8")
 
-    loaded = load_workspace_bootstrap_files(tmp_path, MEMORY_CORE_WORKSPACE_LAYOUT)
+    loaded = load_workspace_bootstrap_files(tmp_path, EXTENDED_WORKSPACE_LAYOUT)
     context = build_workspace_context(tmp_path)
     indexed = MemoryWorkspace(tmp_path).discover_memory_files()
 
@@ -312,7 +314,7 @@ def test_exclude_files_drops_files_before_budgeting(tmp_path):
     assert "MEMORY.md" not in excluded.stable_text
     # seed_bootstrap=False completes setup, so the root BOOTSTRAP.md is filtered too.
     assert [file.name for file in excluded.bootstrap_files] == [
-        name for name in MEMORY_CORE_WORKSPACE_LAYOUT.load_order if name not in ("MEMORY.md", "BOOTSTRAP.md")
+        name for name in DEFAULT_WORKSPACE_LAYOUT.load_order if name not in ("MEMORY.md", "BOOTSTRAP.md")
     ]
     assert _paths(single.files) == ["AGENTS.md"]
 

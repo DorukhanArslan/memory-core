@@ -40,12 +40,11 @@ from demo import (
 from demo.chat_engine import DEFAULT_OPENAI_BASE_URL, DEFAULT_OPENAI_MODEL
 from demo.lab_events import LabEventBus, Snapshot, WorkspaceSnapshots, diff_snapshots
 from demo.live_task_demo import LiveTaskDemo
-from demo.workspace_context import DEMO_WORKSPACE_TEMPLATES
+from demo.workspace_context import DEMO_WORKSPACE_LAYOUT, DEMO_WORKSPACE_TEMPLATES
 from memory_core.bootstrap import (
     DEFAULT_BOOTSTRAP_MAX_CHARS,
     DEFAULT_BOOTSTRAP_TOTAL_MAX_CHARS,
     OPENCLAW_COMPAT_LAYOUT,
-    MEMORY_CORE_WORKSPACE_LAYOUT,
     WorkspaceInitResult,
     WorkspaceLayout,
     bootstrap_status,
@@ -86,7 +85,7 @@ LAB_SESSION_SOURCE = "lab"
 SAFE_ID_RE = re.compile(r"^[A-Za-z0-9_-]{1,64}$")
 SESSION_KINDS = ("main", "group", "channel", "direct", "subagent", "cron", "heartbeat")
 LAYOUTS: dict[str, WorkspaceLayout] = {
-    MEMORY_CORE_WORKSPACE_LAYOUT.name: MEMORY_CORE_WORKSPACE_LAYOUT,
+    DEMO_WORKSPACE_LAYOUT.name: DEMO_WORKSPACE_LAYOUT,
     # The upstream v2026.9.6 map alone (no OpenClaw brand in the Lab UI).
     "upstream": OPENCLAW_COMPAT_LAYOUT,
 }
@@ -305,7 +304,7 @@ class LabSettings:
     chat_model: str | None = None
     embedding_base_url: str | None = None
     embedding_model: str | None = None
-    layout: str = MEMORY_CORE_WORKSPACE_LAYOUT.name
+    layout: str = DEMO_WORKSPACE_LAYOUT.name
     max_chars: int = DEFAULT_BOOTSTRAP_MAX_CHARS
     total_max_chars: int = DEFAULT_BOOTSTRAP_TOTAL_MAX_CHARS
     warning_mode: str = "always"

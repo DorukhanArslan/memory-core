@@ -131,6 +131,23 @@ An incarnation-specific grant is revalidated around the read. This API does not 
 cached search hit as permission to expand an arbitrary old transcript. `memory_get` retains
 its memory-file read contract.
 
+## Compressed archive reads
+
+The standalone corpus reads the current compressed frame on every visit. With
+`OPENCLAW_COMPAT_RUNTIME_IDENTITY`, an admitted archive in a durable POSIX catalog can
+reuse its first frame when an in-place rewrite keeps both the byte length and the
+modification time through the same millisecond. A changed length, millisecond, inode,
+or owner starts a fresh read. Set `cache_compressed_archives=False` on
+`MemoryCoreSessionCorpus` to require fresh bytes on every visit.
+
+The shared cache stores compressed frames in a private directory beside the catalog.
+Each read reopens the source, checks applicable tombstones and applies current filters
+and redaction. A managed origins ledger records the catalog location so forgetting a
+session can evict its frames through either authority. A busy cache retries queued
+evictions on its next access. Unavailable private storage and platforms without POSIX
+ownership checks use the admitted source directly. Cache access also sweeps frames
+older than 24 hours.
+
 ## Verification boundary
 
 The active reference is OpenClaw `v2026.9.9`, commit

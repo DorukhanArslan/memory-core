@@ -3,6 +3,10 @@
 Use the [plain-language parity completion tracker](parity-completion-checklist.md)
 to follow the acceptance score, remaining comparison differences and final finish criteria.
 
+On 26 November, the full comparison of `bb40b5c` reached **122/128 (+3)**. Transcript archive reads, bootstrap file selection and promotion ranking each gained one boundary condition. All 39 heartbeat storage and migration cases still passed. The separate heartbeat reconstruction and repair boundary remains one of six open conditions. Four registered cases still differ, and the full gate returned exit code 1. [Full comparison](https://github.com/DorukhanArslan/memory-core/actions/runs/45840190038) · [Independent recount](https://github.com/DorukhanArslan/memory-core/blob/45ac3284219ac82bcec99353c5d5b896bdbae5d7/independent-review/remaining-memory-conditions/README.md)
+
+## Earlier measurements and integration history
+
 The 23 November run of `fc4aad3` matched all 39 storage and migration examples across 69 paired process phases. All 8 query synchronization boundary examples passed on the same source, restoring the search retry condition and bringing the total to **119/128 (+1)**. Heartbeat repair guidance after reconstruction remains open. [Full comparison](https://github.com/DorukhanArslan/memory-core/actions/runs/45153594838) · [Independent recount](https://github.com/DorukhanArslan/memory-core/blob/9430a2cb23a6660f281adbeadb0fb1b926687fa4/independent-review/search-retry/README.md)
 
 The 21 November measurement of candidate `f040ac1` verified `heartbeat.scratch.outcomes`. All 39 storage and migration cases matched, including archive recovery and reading the note after restart. A previous search retry condition reopened, leaving the net score at **118/128**. The separate heartbeat reconstruction and repair guidance condition remains open. [Full comparison](https://github.com/DorukhanArslan/memory-core/actions/runs/44927413199) · [Independent recount](https://github.com/DorukhanArslan/memory-core/blob/5bd9ac41dfa66b7732a6898b6a4e02366dd836de/independent-review/heartbeat-home/README.md)
@@ -20,8 +24,8 @@ verifies only the original `prompt.runtime-context.outcomes` and
 completing this contract at **2/2**. All 82 prior conditions, all 14 complete-family
 gates and all ten prompt whole-pair raw replays are independently authenticated.
 The old 14 SDK public mismatch hashes are unchanged; only the uncredited Native
-warm-flush hash changed. The 14 differences remain open; the four older value
-investigations stay on hold. The full scope gate still fails (actual exit 1,
+warm-flush hash changed. That run left 14 differences open. The four older value
+investigations were on hold. The full scope gate failed (actual exit 1,
 `fullScopePassed: false`), with **42 uncovered and two registered unresolved
 conditions**. Actual prompt composition and data labels match under the declared
 sequential manual, non-incognito profile; model obedience and broader runtime

@@ -1,10 +1,20 @@
 # Promotion Ranking Comparison Closeout
 
-Fixed contract #42 remains partial. Independent review approved **one qualified outcomes condition**
+The SDK's read-only ranking and store views follow OpenClaw when a stored JSON
+primitive appears in the provenance field. Such a value supplies no provenance
+in the preview. Scheduled dreaming and promotion apply read the stored origin
+with stricter rules. They reject malformed provenance before passing text to the
+model or writing notes. An imported candidate whose recall row has disappeared
+needs an explicit owner or agent origin to authorize a direct write.
+
+On 26 November, all sixteen ranking cases matched on product `bb40b5c`, verifying both `promotion.ranking-gates` conditions. In the previously different case, both previews returned one candidate for a persisted record with numeric provenance. The SDK's stored recall and phase files had identical hashes before and after the preview. [Full comparison](https://github.com/DorukhanArslan/memory-core/actions/runs/45840190038) · [Independent recount](https://github.com/DorukhanArslan/memory-core/blob/45ac3284219ac82bcec99353c5d5b896bdbae5d7/independent-review/remaining-memory-conditions/README.md)
+
+## Historical partial result
+
+Fixed contract #42 was partial in the measurement below. Independent review approved **one qualified outcomes condition**
 using all fifteen proper-object case families. All sixteen cases cover the boundary condition,
-including a deliberate primitive-provenance mismatch. That boundary condition remains unverified.
-Registration does not assign points before the integrated gate, and the known mismatch remains
-visible in the default report.
+including a primitive-provenance mismatch. The boundary was open on `f3d2363`.
+The [current checklist](full-equivalence-checklist.md#4-implement-and-verify-the-fixed-memory-behavior-contract) records integrated credit.
 
 ## Frozen evidence
 
@@ -28,7 +38,7 @@ identity; the integrated gate must validate the final combined source.
 `promotion.ranking-gates.boundaries` requires all sixteen, including
 `promotion-ranking-primitive-provenance-safety-diagnostic`.
 The default tag map gives both tags to each proper-object case and only the boundary tag to the
-primitive case. The latter remains an actual failing comparison.
+primitive case. It differed in the frozen sixteen-case report.
 
 The production-free `equivalence/promotion_ranking_acceptance.py` guard runs during scope
 validation, before any oracle call or point claim. Whenever either ranking point is claimed,
@@ -62,9 +72,9 @@ inputs or determine whether compared outputs match.
 | `limit-boundaries` | Negative/fractional limits and explicit null/boolean invalid-limit controls. |
 | `numeric-gate-normalization` | Fractional/negative counts, fractional age and out-of-range score inputs. |
 | `current-default-query-diversity` | Current original three-query fallback and explicit configurable two-query threshold. |
-| `primitive-provenance-safety-diagnostic` | Visible stronger SDK privacy policy; boundary-only and mismatched. |
+| `primitive-provenance-safety-diagnostic` | Boundary-only. The ranking preview differed on `f3d2363`. |
 
-## Scope and deliberate privacy difference
+## Scope and historical privacy difference
 
 The qualified outcomes cut uses ordinary JSON with explicit ISO timestamps, proper-object
 provenance and the declared typed numeric score/count/age controls. Explicit null/boolean limit
@@ -72,10 +82,9 @@ controls are compared as declared invalid-limit inputs. This does not claim arbi
 number coercion, arbitrary date parsing or arbitrary malformed provenance equivalence.
 
 For primitive `provenance: 1`, the original store normalizer removes provenance and its ranker
-returns an eligible candidate. The SDK records an untrusted origin and returns no candidate.
-This deliberate stronger privacy policy remains unchanged. It is a real ordinary-JSON boundary
-difference, retained under the original boundary condition rather than moved elsewhere or hidden
-by a comparison codec. The outcomes qualification applies only to the fifteen proper-object families.
+returns an eligible candidate. On `f3d2363` the SDK recorded an untrusted origin
+and returned no candidate. This ordinary JSON input still exercises the original
+boundary condition. The outcomes qualification covers the fifteen proper-object families.
 
 Both implementations execute their genuine rank owners over real persisted stores. The public
 comparison retains complete ordered candidates and logical before/after recall/phase state.

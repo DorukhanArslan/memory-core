@@ -1,11 +1,8 @@
 # Bootstrap discovery: native comparison evidence
 
-This package compares the real OpenClaw bootstrap callers with the Python SDK.
-It does not claim full workspace lifecycle equivalence. Following the final
-paired run and independent review, the nine qualified outcomes scenarios cover
-the outcomes condition; all eleven still cover boundaries. Coverage registration
-does not turn the two boundary failures into passes. Integrated credit remains
-subject to the full repository gate.
+On 26 November, product `bb40b5c` matched OpenClaw in all eleven original bootstrap cases. Both `prompt.bootstrap-discovery` conditions are verified. With the optional preferences file on disk, the default prompt selection omitted it on both sides. With the legacy workspace state, both setup checks reported that migration was required. Prompt selection still succeeded with an empty file list. [Full comparison](https://github.com/DorukhanArslan/memory-core/actions/runs/45840190038) · [Independent recount](https://github.com/DorukhanArslan/memory-core/blob/45ac3284219ac82bcec99353c5d5b896bdbae5d7/independent-review/remaining-memory-conditions/README.md)
+
+The current SDK uses the six-role default and separates prompt file selection from strict routing, status and provisioning. The earlier nine-of-eleven result and its original evidence are recorded below.
 
 The fixed condition is `prompt.bootstrap-discovery`:
 
@@ -134,9 +131,7 @@ comparison; they do not assert that a repaired API is still unsupported.
 
 Boundaries require **all eleven** cases, including
 `bootstrap-discovery-memory-core-layout-extension` and
-`bootstrap-discovery-legacy-state-gate`. Their actual different outputs must
-remain covering that boundary requirement. A successful qualified outcomes
-review cannot turn those failures into passes or claim the full two points.
+`bootstrap-discovery-legacy-state-gate`. Both cases differed on `a583b17`. That run verified the outcomes condition.
 
 The built-in classifier is now implemented through real filesystem paths and
 `MemoryArtifactProvenanceStore`, reusing the index's `classify_memory_path` owner.
@@ -144,18 +139,15 @@ The built-in classifier is now implemented through real filesystem paths and
 observes the actual nested classifier and store returns without replacing them.
 The final run matched all nine required outcomes. Independent review verified
 the clean source identity, unchanged input values, actual configured classifier
-owners and complete result before approving this limited registration. The full
-gate must retain both ordinary boundary differences. Only one of the two fixed
-conditions can qualify from this package.
+owners and complete result before approving this limited registration. The two boundary cases stayed registered after that review.
 
-## Remaining differences
+## Boundary differences observed on `a583b17`
 
-- The default SDK layout deliberately adds `PROACTIVE_PREFERENCES.md` and its
-  extension directories. The explicit `OPENCLAW_COMPAT_LAYOUT` retains the six
-  Native roles. The default extension is kept visible in the ordinary packet.
-- The SDK's legacy-state gate fails closed and exposes its own complete error
-  fields. Native context selection catches setup errors and can continue.
-  This stronger SDK behavior and the error differences remain visible.
+- The default SDK layout added `PROACTIVE_PREFERENCES.md` and its
+  extension directories. The explicit `OPENCLAW_COMPAT_LAYOUT` used the six
+  Native roles. The ordinary packet included the default extension.
+- The SDK's legacy-state gate stopped selection and returned its error fields.
+  Native context selection caught the setup error and continued.
 
 The configured classifier mismatch at the eight-match checkpoint was a genuine
 missing SDK composition. The final run verifies its repair through the real
@@ -163,8 +155,7 @@ filesystem and trust-store owners. Third-party registered OpenClaw memory
 runtimes, remote access, hooks and personal-profile overlays are outside the
 qualified built-in local scope; no callback fabricates their outputs.
 
-Neither the default layout mode nor the legacy boundary is removed from the
-packet. The complete eleven-case result remains mismatched.
+The historical eleven-case packet retained both boundary cases and recorded two mismatches.
 
 ## Integration commits
 

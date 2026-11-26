@@ -436,7 +436,7 @@ def filter_bootstrap_files(
     root: str | os.PathLike[str],
     layout: WorkspaceLayout = DEFAULT_WORKSPACE_LAYOUT,
     session_kind: SessionKind | None = "main",
-    setup_completed: bool = False,
+    setup_completed: bool | None = None,
     context_mode: BootstrapContextMode = "full",
     warn: Callable[[str], None] | None = None,
     config: Mapping[str, Any] | None = None,
@@ -455,6 +455,13 @@ def filter_bootstrap_files(
     after its bootstrap hooks; memory-core has no hooks, so the second pass changes nothing.
     ``warn`` receives the path-dedupe warnings, like upstream's ``warn`` option.
     """
+    if setup_completed is None:
+        # Selection reads setup opportunistically. Explicit setup/status and
+        # provisioning APIs retain their strict maintenance gate.
+        from memory_core.bootstrap.lifecycle import is_workspace_setup_completed_for_context
+
+        setup_completed = is_workspace_setup_completed_for_context(root)
+
     from memory_core.bootstrap.classification import filter_automatic_bootstrap_memory
 
     automatic = filter_automatic_bootstrap_memory(files, root=root, config=config,

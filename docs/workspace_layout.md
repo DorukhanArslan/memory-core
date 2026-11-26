@@ -29,7 +29,7 @@ injecting BOOTSTRAP.md and `## Bootstrap Pending`; call
 
 ## Layouts
 
-Two presets ship; `DEFAULT_WORKSPACE_LAYOUT` is `MEMORY_CORE_WORKSPACE_LAYOUT`.
+The SDK default (`MEMORY_CORE_WORKSPACE_LAYOUT`) and `OPENCLAW_COMPAT_LAYOUT` use the same six roles. To include the extra preference file and directories, pass `layout=EXTENDED_WORKSPACE_LAYOUT` from `memory_core.bootstrap` when initializing and loading a workspace. Existing files are preserved in either mode.
 
 | File | Load / render order | Render priority | Seeded | Absent | subagent | cron |
 |---|---|---|---|---|---|---|
@@ -45,7 +45,7 @@ Two presets ship; `DEFAULT_WORKSPACE_LAYOUT` is `MEMORY_CORE_WORKSPACE_LAYOUT`.
   (AGENTS, SOUL, IDENTITY, USER, BOOTSTRAP, MEMORY), the generated owner documents
   `GENERATED_WORKSPACE_BOOTSTRAP_FILENAMES` (AGENTS, SOUL, IDENTITY, USER), and the
   rows above without PROACTIVE_PREFERENCES.md.
-- `MEMORY_CORE_WORKSPACE_LAYOUT` adds PROACTIVE_PREFERENCES.md (when and how the agent
+- `EXTENDED_WORKSPACE_LAYOUT` adds PROACTIVE_PREFERENCES.md (when and how the agent
   may act or reach out unprompted) and the folders `user/` (user-supplied files) and
   `workspace/` (agent-made artifacts). The folders are created on initialization and
   are never injected or indexed. These are memory-core extensions with no upstream
@@ -109,8 +109,11 @@ Setup state. Upstream keeps it in its shared SQLite state database; memory-core 
 `.openclaw/workspace-state.json`, or an interrupted doctor claim of either) makes
 state-reading lifecycle calls raise `WorkspaceStateMigrationRequiredError`, as upstream refuses the
 workspace until `openclaw doctor --fix`; `migrate_legacy_workspace_state(root)` ports
-doctor's strict import (imports the first source unless memory-core already has state,
-archives each source beside itself as `<source>.migrated.<sha256>.<uuid>`, removes it).
+the same import through Python. The exception also offers `error.repair()`. If OpenClaw Doctor
+performs the migration, the SDK reads its milestones from the active state directory when
+the database contains a completed migration for this workspace. The Python repair
+imports the first source unless memory-core already has state,
+archives each source beside itself as `<source>.migrated.<sha256>.<uuid>`, and removes it.
 A `.memory-core` that is not a directory reads as no state; writing the state then fails.
 
 - Create memory files after initialization, or the workspace counts as set up and no

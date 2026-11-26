@@ -219,7 +219,7 @@ def prepare_light_phase(
     root = config.workspace_dir
     now_iso = iso_ms(now_ms)
     with memory_workspace_lock(root, now_ms=now_ms):
-        store = read_canonical_recall_store(recall_store_path(root), now_ms)
+        store = read_canonical_recall_store(recall_store_path(root), now_ms, for_publication=True)
         signals_path = phase_signal_store_path(root)
         signals = read_canonical_phase_signal_store(signals_path, now_ms)
         entries = filter_recall_entries_within_lookback(
@@ -279,7 +279,7 @@ def prepare_light_phase(
         recorded = 0
         if selected:
             # Publication may invoke a host callback which updates memory under this reentrant lock.
-            store = read_canonical_recall_store(recall_store_path(root), now_ms)
+            store = read_canonical_recall_store(recall_store_path(root), now_ms, for_publication=True)
             signals = read_canonical_phase_signal_store(signals_path, now_ms)
             for entry in selected:
                 key = entry["key"]

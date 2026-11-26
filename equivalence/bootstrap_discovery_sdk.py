@@ -229,11 +229,8 @@ def _phase(request):
             run_loaded, error = call(label, "load_workspace_bootstrap_files", {"root": workspace, "layout": layout},
                                      lambda: load_workspace_bootstrap_files(workspace, layout))
             if error is None:
-                completed, error = call(label, "is_workspace_setup_completed", {"root": workspace},
-                                        lambda: is_workspace_setup_completed(workspace))
-            if error is None:
                 arguments = {"root": workspace, "layout": layout, "session_kind": run["sessionKind"],
-                             "setup_completed": completed, "context_mode": run.get("contextMode", "full"), "warn": warnings.append}
+                             "context_mode": run.get("contextMode", "full"), "warn": warnings.append}
                 arguments.update({key: item for key, item in run.items() if key in {"config", "bootstrapUserProfileId"}})
                 if "config" in run:
                     arguments["artifact_provenance"] = provenance

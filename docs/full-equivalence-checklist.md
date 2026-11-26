@@ -57,6 +57,18 @@ Comparisons must not normalize away behavior. A platform-specific path, generate
 Entries remain pending until their complete acceptance conditions are verified against `v2026.9.9`. Their detailed acceptance points and stable identifiers are in [scope.json](../equivalence/scope.json). A helper that already exists in Python still needs the new differential evidence. A known difference must stay visible until its implementation and tests agree. Bounded passing subsets are recorded below without closing the containing contract.
 
 <!-- CURRENT-VERIFICATION-START -->
+On 26 November, independent review verified **122/128 conditions (+3)** on product `bb40b5c` against OpenClaw v2026.9.9 (`bcfc888`). All 119 previously verified conditions passed again. Of 1,663 cases, 1,659 matched and four differed. No cases were blocked and neither engine reported an error. Six conditions still lack coverage. No covered condition remains unresolved. The full scope gate returned `fullScopePassed: false` and exit code 1. [Full comparison](https://github.com/DorukhanArslan/memory-core/actions/runs/45840190038) · [Independent recount](https://github.com/DorukhanArslan/memory-core/blob/45ac3284219ac82bcec99353c5d5b896bdbae5d7/independent-review/remaining-memory-conditions/README.md)
+
+| Newly verified condition | What matched |
+| --- | --- |
+| `sessions.transcript-filtering.boundaries` | All nine archive and transcript cases matched. In OpenClaw compatibility mode, replacing a compressed archive with one of equal size in the same millisecond returned the cached text. Changing the revision refreshed it, and deleting the archive made it unavailable. |
+| `prompt.bootstrap-discovery.boundaries` | All eleven cases matched. The default selection omitted the optional preferences file. In the legacy workspace, setup reported that migration was required and prompt selection returned an empty file list. |
+| `promotion.ranking-gates.boundaries` | All sixteen ranking cases matched. Both previews returned one candidate when its stored provenance was a number. The SDK still requires trusted provenance to publish the note. |
+
+Four registered examples still differ. They cover the first search after a flush (F03), reuse of a tool result after redaction (F08 and F09), and legacy date parsing (F15). The separate six open conditions and the release requirements are listed in the [completion tracker](parity-completion-checklist.md).
+
+**Earlier measurements**
+
 On 23 November the independent recount verified **119/128 conditions (+1)** on product `fc4aad3`. All 8 query synchronization boundary cases and all 39 heartbeat storage and migration cases matched. The warm retry used one index revision for the query and its stale-index warning. The next search found the note. Of 1,662 cases, 1,654 matched and 8 differed, with zero blocked cases or engine errors. 7 conditions lack coverage and 2 have unresolved comparisons. The full scope gate remains open (`fullScopePassed: false`, process exit 1). [Full comparison](https://github.com/DorukhanArslan/memory-core/actions/runs/45153594838) · [Independent recount](https://github.com/DorukhanArslan/memory-core/blob/9430a2cb23a6660f281adbeadb0fb1b926687fa4/independent-review/search-retry/README.md)
 
 The 21 November candidate `f040ac1` measured **118/128, net zero**. All 39 heartbeat scratch outcomes matched across 69 paired process phases. The warm-failure retry case reopened `indexing.query-sync.boundaries`. The complete run matched 1,653 of 1,662 cases, with nine differences, zero blocked cases and zero engine errors. Seven conditions lack coverage and three registered conditions remain unresolved. [PR #32](https://github.com/DorukhanArslan/memory-core/pull/32) · [Measurement](https://github.com/DorukhanArslan/memory-core/actions/runs/44927413199) · [Independent recount](https://github.com/DorukhanArslan/memory-core/blob/5bd9ac41dfa66b7732a6898b6a4e02366dd836de/independent-review/heartbeat-home/README.md)
@@ -342,10 +354,10 @@ reaching 66/128 before the update/isolation and natural next-turn packages.
 
 | Contract status | Contracts | Verified conditions | Remaining conditions |
 | --- | ---: | ---: | ---: |
-| Complete | 55 | 110 | 0 |
-| Partial | 9 | 9 | 9 |
+| Complete | 58 | 116 | 0 |
+| Partial | 6 | 6 | 6 |
 | Pending verification | 0 | 0 | 0 |
-| Total | 64 | 119 | 9 |
+| Total | 64 | 122 | 6 |
 
 Pending verification can include existing implementation. Partial contracts retain one open
 condition. Infrastructure sections 1–3 remain **20/22 tasks completed**; infrastructure and
@@ -382,11 +394,11 @@ Current status of all 64 contracts:
 | 24 | `tools.deadline-cooldown` | Complete | 2/2 |
 | 25 | `tools.unavailable-partial` | Complete | 2/2 |
 | 26 | `sessions.corpus-admission` | Complete | 2/2 |
-| 27 | `sessions.transcript-filtering` | Partial | 1/2 |
+| 27 | `sessions.transcript-filtering` | Complete | 2/2 |
 | 28 | `sessions.visibility-lineage` | Complete | 2/2 |
 | 29 | `sessions.reset-hook` | Partial | 1/2 |
 | 30 | `sessions.durable-context` | Complete | 2/2 |
-| 31 | `prompt.bootstrap-discovery` | Partial | 1/2 |
+| 31 | `prompt.bootstrap-discovery` | Complete | 2/2 |
 | 32 | `prompt.bootstrap-budget` | Complete | 2/2 |
 | 33 | `prompt.runtime-context` | Complete | 2/2 |
 | 34 | `prompt.history-repair` | Complete | 2/2 |
@@ -397,7 +409,7 @@ Current status of all 64 contracts:
 | 39 | `compaction.context-assembly` | Complete | 2/2 |
 | 40 | `compaction.provider-overflow` | Complete | 2/2 |
 | 41 | `promotion.recall-signals` | Complete | 2/2 |
-| 42 | `promotion.ranking-gates` | Partial | 1/2 |
+| 42 | `promotion.ranking-gates` | Complete | 2/2 |
 | 43 | `promotion.apply-reconcile` | Complete | 2/2 |
 | 44 | `promotion.deep-consolidation` | Complete | 2/2 |
 | 45 | `dreaming.light` | Complete | 2/2 |
@@ -476,14 +488,14 @@ pre-open race authority, full raw filesystem evidence and broader SDK-only limit
 ### Sessions and transcript
 
 - [x] **`sessions.corpus-admission` — Match session corpus admission.** Compare accepted session kinds, ownership, participants, archives and generated maintenance sessions. Provide the same host metadata and compare included and excluded entries.
-- [ ] **`sessions.transcript-filtering` — Match transcript extraction and filtering.** Compare JSONL trees, tool rows, heartbeat markers, recalled content and failed or mirrored messages. Exercise reset fences, malformed rows and supported archives without inventing stored text.
+- [x] **`sessions.transcript-filtering` — Match transcript extraction and filtering.** Compare JSONL trees, tool rows, heartbeat markers, recalled content and failed or mirrored messages. Exercise reset fences, malformed rows and supported archives without inventing stored text.
 - [x] **`sessions.visibility-lineage` — Match source-session visibility and lineage.** Vary visible sessions, source identities, trust and forgotten origins. Compare hits, provenance and source reads before and after reset or deletion.
 - [ ] **`sessions.reset-hook` — Match new/reset memory capture.** Compare transcript projection, naming, timezone, slug behavior and exclusive publication. Verify source lines, trust records, collision handling and recall after the hook. The boundary condition is verified through seven complete real-owner cases, including whole source/trust/search/get results and failure recovery. The outcomes condition and broader concurrent/automatic/host lifecycle behavior remain open.
 - [x] **`sessions.durable-context` — Preserve durable conversation context.** Persist actual transcript and session metadata and reconstruct the host in a fresh process. Compare continuation, ordering and retained context without relying on process-local lists.
 
 ### Prompt and bootstrap
 
-- [ ] **`prompt.bootstrap-discovery` — Match workspace bootstrap selection.** Exercise setup states, session kinds, available files and compatibility layouts. Compare ensure decisions, selected files and their order under the same inputs.
+- [x] **`prompt.bootstrap-discovery` — Match workspace bootstrap selection.** Exercise setup states, session kinds, available files and compatibility layouts. Compare ensure decisions, selected files and their order under the same inputs.
 - [x] **`prompt.bootstrap-budget` — Match bootstrap clipping and notices.** Exercise per-file, USER.md and aggregate UTF-16 limits and exact boundary values. Compare clipping, omitted files, warning modes and once-per-session state.
 - [x] **`prompt.runtime-context` — Match memory and runtime prompt composition.** Compare memory guidance, tools, runtime markers and fixed clock/timezone fragments. Compare insertion order and isolation of untrusted or recalled text. Both original conditions are verified by the [complete runtime-context family](prompt_runtime_context_closeout.md) under its declared sequential manual, non-incognito profile. Actual composition and data labels are compared; model obedience and broader provider/lifecycle modes remain unproved.
 - [x] **`prompt.history-repair` — Match history windowing and tool repair.** Exercise missing results, duplicate or invalid calls, failed turns and provider replay metadata. Compare repaired model-visible messages while preserving the original durable transcript.
@@ -500,7 +512,7 @@ pre-open race authority, full raw filesystem evidence and broader SDK-only limit
 ### Recall and promotion
 
 - [x] **`promotion.recall-signals` — Match recall recording.** Compare filtering, deduplication, query hashes, day boundaries, retention and recall events. Verify ground truth source ranges and origin recording before published recall state. Both original conditions are verified by all six frozen real-owner cases, including actual appender-produced ranges, durable origins and real origin-insert failure before recall publication.
-- [ ] **`promotion.ranking-gates` — Match promotion ranking and gates.** Compare scores, custom weights, tie order, diversity, age, trust and visibility gates. Include exact score thresholds and promoted-entry visibility.
+- [x] **`promotion.ranking-gates` — Match promotion ranking and gates.** Compare scores, custom weights, tie order, diversity, age, trust and visibility gates. Include exact score thresholds and promoted-entry visibility.
 - [x] **`promotion.apply-reconcile` — Match promotion application and reconciliation.** Compare MEMORY.md/DREAMS.md, markers, authoritative candidates and applied/rejected receipts. Interleave candidate changes and verify lock-time rechecks and publication order. Verified through all eight frozen provider-free whole-operation families, complete callback envelopes, physical/API readbacks and live owner receipts; general model plans and origin-reservation behavior remain separate.
 - [x] **`promotion.deep-consolidation` — Match model-assisted consolidation.** Feed identical deterministic model plans for added, merged, superseded and rejected entries. Compare preimages, loss safeguards, history, origin changes and deterministic fallback.
 
@@ -605,6 +617,8 @@ repairing or fetching anything. The official release's matching build-commit att
 not reproduce its source build; reports retain `sourceBuildReproduced: false`. Tracked
 TypeScript sources and compiled release files/traces remain separate evidence sets.
 
+
+The dated entries below preserve each measurement as recorded on its own source commit. [Section 4](#4-implement-and-verify-the-fixed-memory-behavior-contract) contains the current results.
 
 ## Initial rebuilt baseline — 2026-11-07
 

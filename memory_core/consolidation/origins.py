@@ -44,6 +44,7 @@ from typing import Literal, Protocol
 from memory_core.bootstrap._js import js_trim
 from memory_core.consolidation.markers import PROMOTION_MARKER_PREFIXES, extract_promotion_markers
 from memory_core.runtime_identity import RuntimeIdentity
+from memory_core.session_archive_cache import discard_session_archives
 
 OriginClass = Literal["owner", "agent", "untrusted", "system"]
 
@@ -158,7 +159,7 @@ class MemoryEntryOriginLedger:
         path = self.database_path(agent_id)
         if not path.exists():
             return None
-        return sqlite3.connect(f"file:{path}?mode=ro", uri=True, isolation_level=None, timeout=30)
+        return sqlite3.connect(path.absolute().as_uri() + "?mode=ro", uri=True, isolation_level=None, timeout=30)
 
     @staticmethod
     def _table_exists(db: sqlite3.Connection, name: str) -> bool:
@@ -363,6 +364,7 @@ class MemoryEntryOriginLedger:
             except BaseException:
                 db.execute("ROLLBACK")
                 raise
+        discard_session_archives(self.database_path(agent_id), agent_id, unique)
         return recorded
 
     def record_session_tombstones_if_lineage_current(
@@ -412,6 +414,7 @@ class MemoryEntryOriginLedger:
                 if db.in_transaction:
                     db.execute("ROLLBACK")
                 raise
+        discard_session_archives(self.database_path(agent_id), agent_id, unique)
         return True
 
     def index_revision(self, agent_id: str) -> int | None:

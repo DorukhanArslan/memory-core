@@ -1339,6 +1339,12 @@ class MemorySessionCatalog:
                        (self.agent_id, archive_name, session_id, session_key, str(archive_path)))
             self._changed(db)
 
+    def is_session_tombstoned(self, session_id: str) -> bool:
+        connection = self._connect() if self._memory_uri else sqlite3.connect(self.path.as_uri() + "?mode=ro", uri=True)
+        with closing(connection) as db:
+            return db.execute("SELECT 1 FROM memory_session_tombstones WHERE agent=? AND session_id=?",
+                              (self.agent_id, session_id)).fetchone() is not None
+
     def tombstone_session(self, session_id: str, *, session_key: str | None = None) -> None:
         catalog = self._transcript_catalog(session_id, session_key)
         if catalog is None:
@@ -1349,6 +1355,10 @@ class MemorySessionCatalog:
         with closing(self._connect()) as db, db:
             db.execute("INSERT OR IGNORE INTO memory_session_tombstones VALUES(?,?)", (self.agent_id, session_id))
             self._changed(db)
+        from memory_core.session_archive_cache import discard_session_archives
+
+        if self._memory_uri is None:
+            discard_session_archives(self.path, self.agent_id, [session_id])
 
     def snapshot(self) -> SessionCatalogSnapshot:
         with closing(self._connect()) as db:

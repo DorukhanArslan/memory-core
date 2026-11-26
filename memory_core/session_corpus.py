@@ -17,7 +17,8 @@ from memory_core.heartbeat import (
     is_heartbeat_user_message,
     is_silent_reply_payload_text,
 )
-from memory_core.runtime_identity import MEMORY_CORE_RUNTIME_IDENTITY, RuntimeIdentity
+from memory_core.runtime_identity import MEMORY_CORE_RUNTIME_IDENTITY, OPENCLAW_COMPAT_RUNTIME_IDENTITY, RuntimeIdentity
+from memory_core import session_archive_cache
 from memory_core.redact import capture_sensitive_text_redaction_snapshot, create_sensitive_text_redactor
 from memory_core.secret_registry import get_secret_redaction_registry_revision
 from memory_core.session_artifacts import (
@@ -88,6 +89,8 @@ class MemoryCoreSessionCorpus:
         redact_text: Callable[[str], str] | None = None,
         is_forgotten: Callable[[str], bool] | None = None,
         catalog: MemorySessionCatalog | None = None,
+        cache_compressed_archives: bool | None = None,
+        archive_origins_path: Path | None = None,
     ):
         # A forgotten session (a tombstone in the origins ledger) is never indexed again:
         # ``is_forgotten(session_id)`` (upstream: manager-session-sync-ops.ts filters the corpus
@@ -99,6 +102,9 @@ class MemoryCoreSessionCorpus:
         # dropped; transcripts written by an OpenClaw runtime need
         # OPENCLAW_COMPAT_RUNTIME_IDENTITY.
         self.runtime_identity = runtime_identity
+        self.archive_origins_path = archive_origins_path
+        self.cache_compressed_archives = (runtime_identity == OPENCLAW_COMPAT_RUNTIME_IDENTITY
+                                          if cache_compressed_archives is None else cache_compressed_archives)
         # Host redaction of every indexed text (upstream: redactSensitiveText, mode tools).
         self.redact_text = redact_text
         if catalog is not None and catalog.agent_id != normalize_session_agent_id(agent_id):
@@ -391,14 +397,45 @@ class MemoryCoreSessionCorpus:
                     })
                 return entry
             raise MemoryToolError("Session transcript redaction changed during preparation; retry the operation.")
+        archive = (self.catalog is not None and self.catalog._memory_uri is None
+                  and file.abs_path.name.endswith(".zst")
+                  and file.artifact_kind == "archive-artifact" and bool(file.session_id)
+                  and not is_incognito_session_key(file.session_key or ""))
+        cached = archive and self.cache_compressed_archives and (self.is_forgotten is None or self.archive_origins_path is not None)
         try:
-            return self._read_file_index_entry(file, on_transcript_message=on_transcript_message)
+            if archive and self._forgotten_archive(file.session_id):
+                session_archive_cache.discard_archive(self.catalog.path, self.catalog.agent_id, file.abs_path)
+                return None
+            result = self._read_file_index_entry(file, on_transcript_message=on_transcript_message, cached=cached)
+            # A successful forget may have raced the cache write. Never return
+            # that generation or leave a cached frame after its tombstone.
+            if archive and (result is None or self._forgotten_archive(file.session_id)):
+                session_archive_cache.discard_archive(self.catalog.path, self.catalog.agent_id, file.abs_path)
+                return None
+            return result
+        except OSError:
+            if cached:
+                session_archive_cache.discard_archive(self.catalog.path, self.catalog.agent_id, file.abs_path)
+            return None
         except Exception:
             return None
+
+    def _forgotten_archive(self, session_id: str) -> bool:
+        if self.is_forgotten and self.is_forgotten(session_id):
+            return True
+        if self.catalog and self.catalog.is_session_tombstoned(session_id):
+            return True
+        if self.archive_origins_path is not None:
+            from memory_core.consolidation.origins import MemoryEntryOriginLedger
+
+            ledger = MemoryEntryOriginLedger(lambda _: self.archive_origins_path)
+            return bool(ledger.list_session_tombstones(self.agent_id, [session_id]))
+        return False
 
     def _read_file_index_entry(
         self, file: SessionCorpusFile, *,
         on_transcript_message: Callable[[object, int], None] | None = None,
+        cached: bool = False,
     ) -> SessionEntry | None:
         info = file.abs_path.lstat()
         if not stat.S_ISREG(info.st_mode):
@@ -412,8 +449,15 @@ class MemoryCoreSessionCorpus:
             if (not stat.S_ISREG(opened.st_mode)
                     or (opened.st_dev, opened.st_ino) != (info.st_dev, info.st_ino)):
                 return None
-            raw = stream.read()
-        if file.abs_path.name.endswith(".zst"):
+            if cached:
+                raw = session_archive_cache.read_archive(stream, self.catalog.path, self.archive_origins_path,
+                                                         self.catalog.agent_id, self.agent_id, file.session_id,
+                                                         file.abs_path, opened, mtime_ms, self._forgotten_archive)
+                if raw is None:
+                    return None
+            else:
+                raw = stream.read()
+        if not cached and file.abs_path.name.endswith(".zst"):
             from memory_core.session_archive_codec import decode_session_transcript_bytes
 
             raw = decode_session_transcript_bytes(raw, compressed=True)

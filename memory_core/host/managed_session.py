@@ -33,7 +33,7 @@ from memory_core.host.session import SessionState, apply_turn_usage
 from memory_core.host.session_publication import Scheduler, SessionPublicationController
 from memory_core.index.sqlite_store import read_index_source
 from memory_core.model_prompt import RuntimePromptInput
-from memory_core.runtime_identity import MEMORY_CORE_RUNTIME_IDENTITY, RuntimeIdentity
+from memory_core.runtime_identity import MEMORY_CORE_RUNTIME_IDENTITY, OPENCLAW_COMPAT_RUNTIME_IDENTITY, RuntimeIdentity
 from memory_core.session_catalog import MemorySessionCatalog, normalize_session_agent_id
 from memory_core.session_visibility import SessionVisibilityContext
 from memory_core.turn_tool_dispatch import TurnTool
@@ -101,6 +101,8 @@ class ManagedHostSession:
             raise ValueError("The managed owner supplies its own scoped curation policy")
         policy = deepcopy(dict(source_policy)) if source_policy is not None else None
         workspace = MemoryWorkspace(root, agent_id=config.agent_id, session_catalog=catalog,
+                                    cache_compressed_session_archives=identity == OPENCLAW_COMPAT_RUNTIME_IDENTITY,
+                                    archive_origins_path=config.resolved_store_path(),
                                     index_sources=policy["sources"] if policy is not None else None)
         index = config.resolved_store_path().resolve()
         ledger = artifact_provenance or MemoryArtifactProvenanceStore(index.with_name(f"{index.stem}.provenance.sqlite"))

@@ -52,7 +52,7 @@
           "path": "memory_core/workspace.py",
           "symbol": "MemoryWorkspace.discover_indexable_files",
           "anchor": "    def discover_indexable_files(",
-          "line": 614
+          "line": 619
         },
         {
           "path": "memory_core/workspace.py",
@@ -137,7 +137,7 @@
           "path": "memory_core/workspace.py",
           "symbol": "MemoryWorkspace.resolve_memory_read_path",
           "anchor": "    def resolve_memory_read_path(self, raw_path: str) -> tuple[str, Path | None]:",
-          "line": 667
+          "line": 672
         },
         {
           "path": "memory_core/tools/get_paths.py",
@@ -161,7 +161,7 @@
           "path": "memory_core/workspace.py",
           "symbol": "MemoryWorkspace.resolve_memory_path",
           "anchor": "    def resolve_memory_path(self, rel_path: str) -> Path:",
-          "line": 658
+          "line": 663
         },
         {
           "path": "memory_core/workspace.py",
@@ -1129,7 +1129,7 @@
           "path": "memory_core/workspace.py",
           "symbol": "MemoryWorkspace.discover_indexable_files",
           "anchor": "    def discover_indexable_files(",
-          "line": 614
+          "line": 619
         },
         {
           "path": "memory_core/index/sqlite_store.py",
@@ -1141,13 +1141,13 @@
           "path": "memory_core/session_corpus.py",
           "symbol": "MemoryCoreSessionCorpus.read_index_entry",
           "anchor": "    def read_index_entry(",
-          "line": 342
+          "line": 348
         },
         {
           "path": "memory_core/workspace.py",
           "symbol": "MemoryWorkspace.discover_session_transcript_files",
           "anchor": "    def discover_session_transcript_files(",
-          "line": 571
+          "line": 575
         },
         {
           "path": "memory_core/index/publication.py",
@@ -1194,7 +1194,7 @@
           "path": "memory_core/consolidation/origins.py",
           "symbol": "IndexRevisionFence",
           "anchor": "class IndexRevisionFence:",
-          "line": 477
+          "line": 480
         },
         {
           "path": "memory_core/index/sqlite_store.py",
@@ -3274,7 +3274,7 @@
           "path": "memory_core/session_corpus.py",
           "symbol": "MemoryCoreSessionCorpus",
           "anchor": "class MemoryCoreSessionCorpus:",
-          "line": 81
+          "line": 82
         },
         {
           "path": "memory_core/consolidation/session_ingestion.py",
@@ -3286,37 +3286,37 @@
           "path": "memory_core/session_corpus.py",
           "symbol": "MemoryCoreSessionCorpus.read_index_entry",
           "anchor": "    def read_index_entry(",
-          "line": 342
+          "line": 348
         },
         {
           "path": "memory_core/workspace.py",
           "symbol": "MemoryWorkspace.discover_session_transcript_files",
           "anchor": "    def discover_session_transcript_files(",
-          "line": 571
+          "line": 575
         },
         {
           "path": "memory_core/session_corpus.py",
           "symbol": "MemoryCoreSessionCorpus.discover_entries",
           "anchor": "    def discover_entries(",
-          "line": 183
+          "line": 189
         },
         {
           "path": "memory_core/session_corpus.py",
           "symbol": "MemoryCoreSessionCorpus.discover_admitted_entries",
           "anchor": "    def discover_admitted_entries(",
-          "line": 284
+          "line": 290
         },
         {
           "path": "memory_core/session_corpus.py",
           "symbol": "MemoryCoreSessionCorpus.read_source_entry",
           "anchor": "    def read_source_entry(",
-          "line": 441
+          "line": 485
         },
         {
           "path": "memory_core/session_corpus.py",
           "symbol": "is_memory_session_indexable",
           "anchor": "def is_memory_session_indexable(",
-          "line": 63
+          "line": 64
         },
         {
           "path": "memory_core/session_catalog.py",
@@ -3334,13 +3334,13 @@
           "path": "memory_core/session_catalog.py",
           "symbol": "MemorySessionCatalog.snapshot",
           "anchor": "    def snapshot(",
-          "line": 1353
+          "line": 1363
         },
         {
           "path": "memory_core/session_catalog.py",
           "symbol": "MemorySessionCatalog.read_transcript",
           "anchor": "    def read_transcript(",
-          "line": 1440
+          "line": 1450
         },
         {
           "path": "memory_core/session_catalog.py",
@@ -3358,7 +3358,7 @@
           "path": "memory_core/workspace.py",
           "symbol": "MemoryWorkspace.discover_indexable_files",
           "anchor": "    def discover_indexable_files(",
-          "line": 614
+          "line": 619
         },
         {
           "path": "memory_core/consolidation/session_ingestion.py",
@@ -3382,7 +3382,7 @@
           "path": "memory_core/session_catalog.py",
           "symbol": "MemorySessionCatalog.load_session_metadata",
           "anchor": "    def load_session_metadata(",
-          "line": 1530
+          "line": 1540
         },
         {
           "path": "memory_core/session_visibility.py",
@@ -3568,7 +3568,7 @@
           "path": "memory_core/session_corpus.py",
           "symbol": "MemoryCoreSessionCorpus.read_index_entry",
           "anchor": "    def read_index_entry(",
-          "line": 342
+          "line": 348
         },
         {
           "path": "memory_core/workspace.py",
@@ -3586,13 +3586,13 @@
           "path": "memory_core/session_catalog.py",
           "symbol": "MemorySessionCatalog.read_transcript",
           "anchor": "    def read_transcript(",
-          "line": 1440
+          "line": 1450
         },
         {
           "path": "memory_core/session_corpus.py",
           "symbol": "MemoryCoreSessionCorpus.read_source_entry",
           "anchor": "    def read_source_entry(",
-          "line": 441
+          "line": 485
         },
         {
           "path": "memory_core/session_archive_codec.py",
@@ -3700,7 +3700,7 @@
           "path": "memory_core/session_corpus.py",
           "symbol": "MemoryCoreSessionCorpus",
           "anchor": "class MemoryCoreSessionCorpus:",
-          "line": 81
+          "line": 82
         },
         {
           "path": "memory_core/consolidation/recall.py",
@@ -3766,25 +3766,25 @@
           "path": "memory_core/session_catalog.py",
           "symbol": "MemorySessionCatalog.read_transcript",
           "anchor": "    def read_transcript(",
-          "line": 1440
+          "line": 1450
         },
         {
           "path": "memory_core/session_catalog.py",
           "symbol": "MemorySessionCatalog.read_reset_cutoff",
           "anchor": "    def read_reset_cutoff(",
-          "line": 1468
+          "line": 1478
         },
         {
           "path": "memory_core/session_catalog.py",
           "symbol": "MemorySessionCatalog.snapshot",
           "anchor": "    def snapshot(",
-          "line": 1353
+          "line": 1363
         },
         {
           "path": "memory_core/session_catalog.py",
           "symbol": "MemorySessionCatalog.tombstone_session",
           "anchor": "    def tombstone_session(",
-          "line": 1342
+          "line": 1348
         },
         {
           "path": "memory_core/tools/memory_search.py",
@@ -4056,7 +4056,7 @@
           "path": "memory_core/session_catalog.py",
           "symbol": "MemorySessionCatalog.read_continuation",
           "anchor": "    def read_continuation(",
-          "line": 1474
+          "line": 1484
         },
         {
           "path": "memory_core/session_catalog.py",
@@ -4068,7 +4068,7 @@
           "path": "memory_core/session_catalog.py",
           "symbol": "MemorySessionCatalog.list_transcript_instances",
           "anchor": "    def list_transcript_instances(",
-          "line": 1374
+          "line": 1384
         },
         {
           "path": "memory_core/session_context.py",
@@ -5561,7 +5561,7 @@
           "path": "memory_core/consolidation/origins.py",
           "symbol": "MemoryEntryOriginLedger",
           "anchor": "class MemoryEntryOriginLedger:",
-          "line": 133
+          "line": 134
         },
         {
           "path": "memory_core/consolidation/session_ingestion.py",
@@ -5607,7 +5607,7 @@
           "path": "memory_core/consolidation/origins.py",
           "symbol": "IndexRevisionFence",
           "anchor": "class IndexRevisionFence:",
-          "line": 477
+          "line": 480
         },
         {
           "path": "memory_core/index/sqlite_store.py",
@@ -5713,7 +5713,7 @@
           "path": "memory_core/session_corpus.py",
           "symbol": "MemoryCoreSessionCorpus.read_index_entry",
           "anchor": "    def read_index_entry(",
-          "line": 342
+          "line": 348
         },
         {
           "path": "memory_core/tools/common.py",
@@ -6119,7 +6119,7 @@
           "path": "memory_core/session_corpus.py",
           "symbol": "MemoryCoreSessionCorpus._is_heartbeat_row",
           "anchor": "    def _is_heartbeat_row(self, raw_text: str, role: str) -> bool:",
-          "line": 457
+          "line": 501
         }
       ],
       "implementation": "partial",
@@ -6782,13 +6782,13 @@
           "path": "memory_core/host/managed_session.py",
           "symbol": "ManagedHostSession.maintenance_status",
           "anchor": "    def maintenance_status(",
-          "line": 138
+          "line": 140
         },
         {
           "path": "memory_core/host/managed_session.py",
           "symbol": "ManagedHostSessionRunner.run_turn",
           "anchor": "    async def run_turn(",
-          "line": 537
+          "line": 539
         }
       ],
       "implementation": "present",
@@ -6827,7 +6827,7 @@
           "path": "memory_core/session_corpus.py",
           "symbol": "MemoryCoreSessionCorpus",
           "anchor": "class MemoryCoreSessionCorpus:",
-          "line": 81
+          "line": 82
         },
         {
           "path": "memory_core/host/kit.py",

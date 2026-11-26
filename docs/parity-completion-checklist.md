@@ -70,6 +70,18 @@ Her satır mevcut bir kabul koşuludur. Doğrulanınca **+1** getirir. Süreler 
 
 Ölçüm ve kapsam için [ana kontrol listesine](full-equivalence-checklist.md), [başlangıç dosyalarına](bootstrap_discovery_equivalence.md), [kaynak bilgisinin etkisine](promotion_ranking_closeout.md) ve [yoklama notlarının taşınmasına](promotion_heartbeat_integration_closeout.md) bakılabilir.
 
+## Ayrı sürüm araştırması · Aynı anda kapanan iki sohbet
+
+26 Kasım 2026’da iki farklı sohbeti aynı çalışma alanında aynı dakika içinde kapattık. İkisi de not için aynı dosya adını istedi. Sonunda diskte kalan dosyaları açıp her birinin hangi sohbetin metnini içerdiğini kontrol ettik.
+
+| Sürüm | Diskte kalan not | İçerik kontrolü |
+| --- | ---: | --- |
+| OpenClaw v2026.9.9 · ana hedef | 1 | İki sohbetin metinlerinden yalnızca biri kaldı. |
+| OpenClaw v2026.9.35 | 2 | Her iki metin de SDK’nın sakladığı karşılığıyla bayt bayt eşleşti. |
+| OpenClaw v2026.11.10 | 2 | İkinci sohbet sonuna `-2` eklenen bir dosyaya yazıldı. Her iki metin de SDK ile eşleşti. |
+
+Bu davranış için doğrulanmış güncel hedef **v2026.11.10**. Deneme iki OpenClaw sohbetinin aynı anda kapanmasını kapsıyor. Ana kontrol listesi v2026.9.9 sürümünü ölçüyor ve bu sürümde `sessions.reset-hook.outcomes` açık. [Ölçüm kaydı](https://github.com/DorukhanArslan/memory-core/blob/3a287e8725b016b5d15e14df38629fc6d9829b26/independent-review/remaining-memory-conditions/reset-release-research.md) · [v2026.11.10 dosya seçimi ve yazımı](https://github.com/openclaw/openclaw/blob/6ea542fd97e2876aa4c871ccc494ed5419a03c5c/src/hooks/bundled/session-memory/handler.ts#L338)
+
 ## “Tamamlandı” diyebilmek için
 
 İşaretler, yanındaki kanıtla kapanır. Bu kutular ayrı bir yüzde veya puan değildir.

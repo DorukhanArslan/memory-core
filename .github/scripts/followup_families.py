@@ -29,6 +29,7 @@ from equivalence import provider_overflow_cases
 from followup_overflow import replay_overflow
 
 
+from equivalence import transcript_boundary_acceptance
 from equivalence import configured_redaction
 from followup_configured_redaction import replay_configured_redaction
 import followup_secret_boundaries
@@ -39,7 +40,19 @@ from equivalence import heartbeat_scratch_acceptance
 from followup_scratch import replay_scratch
 
 
+def replay_transcript_boundaries(data, cases, args, runtime):
+    receipts = []
+    for case in cases:
+        parts = data["followupRows"][case["id"]]
+        receipts.append(transcript_boundary_acceptance.replay(
+            case, parts["case"], parts["native"], parts["python"], parts["trace"],
+            args.report.parent / "transcript-boundaries"))
+    return receipts
+
+
 FAMILIES = {
+    transcript_boundary_acceptance.OPERATION: (
+        transcript_boundary_acceptance, "transcriptBoundariesComplete", replay_transcript_boundaries),
     heartbeat_scratch_acceptance.OPERATION: (heartbeat_scratch_acceptance, "heartbeatScratchOutcomesComplete", replay_scratch),
     date_boundaries.POINT: (date_boundaries, "datetimeRegexBoundaryComplete", date_boundaries.replay),
     configured_redaction.POINT: (configured_redaction, "configuredRedactionOutcomesComplete", replay_configured_redaction),
@@ -121,8 +134,13 @@ def replay_followup(data, definitions, args, metrics, replay_rank):
             evidence = replay(data, cases, args, runtime)
         if [r["id"] for r in evidence] != [case["id"] for case in cases]:
             raise ValueError("Physical replay omitted or substituted a case")
-        passed = (all(r["publicMatch"] is (r["id"] != date_boundaries.DIAGNOSTIC) for r in evidence)
-                  if op == date_boundaries.POINT else all(r["publicMatch"] is True for r in evidence))
+        passed = all(r["publicMatch"] is True for r in evidence)
+        if op == date_boundaries.POINT:
+            passed = date_boundaries.replay_passed(cases, evidence)
+        elif op == engine_unicode_collation.OPERATION:
+            passed = passed and all(r["previousTiePublicMatch"] and
+                                    r["previousTie"]["python"] == engine_unicode_collation.MEASURED_SDK_F01_SHA256
+                                    for r in evidence)
         if not (data[field] is family.family_complete(data["cases"]) is metrics["families"][op] is passed):
             raise ValueError("Appended family gate disagrees with the independent physical replay")
         results[op] = {"gate": field, "passed": passed, "cases": evidence,

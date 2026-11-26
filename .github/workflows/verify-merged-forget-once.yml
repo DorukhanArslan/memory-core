@@ -1,10 +1,10 @@
-name: Compare 1,662 cases after validating the first search retry
+name: Measure the complete memory contract against the previous 119 conditions
 # One frozen full measurement; retain the first result without retrying.
-# Both independent 118/128 decisions and the complete 1,662-case catalog are pinned.
+# The previous 119/128 decision and its 1,662 literal case definitions are pinned.
 
 on:
   push:
-    branches: [verify/heartbeat-search-retry-119-once]
+    branches: [verify/remaining-memory-conditions-20261126]
     paths: [.github/workflows/verify-merged-forget-once.yml]
 
 permissions:
@@ -67,10 +67,13 @@ jobs:
           version: "0.9.18"
       - name: Install frozen development stack
         run: uv sync --frozen
-      - name: Verify the search while a real file watcher recovers
+      - name: Check the changed SDK paths before running the full comparison
         run: >-
           uv run --frozen python -m pytest -q
           tests/unit/test_managed_on_search_publication.py::test_warm_retry_keeps_its_generation_when_file_watcher_recovers_during_search
+          tests/unit/test_bootstrap_lifecycle.py::test_doctor_milestones_require_matching_workspace_migration
+          tests/unit/test_promotion_apply.py::test_primitive_provenance_preview_cannot_authorize_a_durable_write
+          tests/unit/test_session_transcript_boundaries.py::test_archive_source_keeps_blank_malformed_and_nonrecord_line_ordinals
       - name: Verify current source locations
         run: uv run --frozen python -m equivalence.source_map --reference .reference/openclaw
       - name: Prepare authenticated source dependencies
@@ -79,23 +82,6 @@ jobs:
         run: uv run --frozen python -m equivalence.release_runtime --reference .reference/openclaw --destination .reference/release-runtime --install
       - name: Stage the scheduler dependency pinned by OpenClaw
         run: uv run --frozen python -m equivalence.heartbeat_dependency --reference .reference/openclaw --destination .reference/heartbeat-dependencies/archives
-      - name: Check the real first retry against the pinned OpenClaw release
-        run: >-
-          uv run --frozen python scripts/check_query_sync_boundaries.py
-          --case query-sync-boundaries-warm-failure-natural-retry
-          --reference .reference/openclaw --node "$(command -v node)"
-          --release-runtime .reference/release-runtime
-          --output "$RUNNER_TEMP/query-retry-preflight"
-      - name: Retain the original preflight replies and replay receipt
-        if: always()
-        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
-        with:
-          name: query-retry-preflight
-          path: |
-            ${{ runner.temp }}/query-retry-preflight/report.json
-            ${{ runner.temp }}/query-retry-preflight/query-sync-boundaries-warm-failure-natural-retry/stdout.json
-            ${{ runner.temp }}/query-retry-preflight/query-sync-boundaries-warm-failure-natural-retry/sdk-output.json
-          if-no-files-found: warn
       - name: Run exactly one full comparison
         id: comparison
         continue-on-error: true

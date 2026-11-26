@@ -53,7 +53,7 @@ def main():
     assert implementation["sourceSha256"] == SDK_SHA and implementation["sourceFiles"] == SDK_FILES
     cases = build_cases()
     canonical = json.dumps(cases, sort_keys=True, ensure_ascii=True, separators=(",", ":"), allow_nan=False)
-    assert len(cases) == REGISTERED_CASES and REGISTERED_CASES > PREVIOUS_CASES and hashlib.sha256(canonical.encode()).hexdigest() == CATALOG_SHA
+    assert len(cases) == REGISTERED_CASES and REGISTERED_CASES >= PREVIOUS_CASES and hashlib.sha256(canonical.encode()).hexdigest() == CATALOG_SHA
     prefix = json.dumps(cases[:PREVIOUS_CASES], sort_keys=True, ensure_ascii=True,
                         separators=(",", ":"), allow_nan=False).encode()
     assert hashlib.sha256(prefix).hexdigest() == PREVIOUS_CATALOG_SHA

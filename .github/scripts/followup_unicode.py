@@ -43,10 +43,10 @@ def replay_unicode(data, cases, args, runtime):
         raise ValueError("Unicode comparisons did not all execute the original TypeScript source")
     previous = data["unicodeTiePair"]
     tie_hashes = {side: sha(previous[side]) for side in ("openclaw", "python")}
-    same(tie_hashes, {"openclaw": family.PRIOR_NATIVE_F01_SHA256, "python": family.MEASURED_SDK_F01_SHA256},
-         "An entire historical native or newly measured SDK tie result changed")
+    same(tie_hashes["openclaw"], family.PRIOR_NATIVE_F01_SHA256,
+         "The entire tie result differs from the original authenticated native output")
     same(previous["python"], run_hybrid_scoring(original["input"]), "Unable to reproduce the SDK tie")
-    same(previous["openclaw"], previous["python"], "The reference/SDK tie resolution no longer agrees")
+    tie_match = _same_json(previous["openclaw"], previous["python"])
     results = []
     for case in cases:
         cid = case["id"]
@@ -65,5 +65,5 @@ def replay_unicode(data, cases, args, runtime):
                         "tiedHits": len(native["merge"]["merged"]),
                         "slices": sum(len(r["slices"]) for r in native["texts"]),
                         "truncations": sum(len(r["truncated"]) for r in native["texts"]),
-                        "runtime": data["unicodeRuntime"], "previousTie": tie_hashes})
+                        "runtime": data["unicodeRuntime"], "previousTie": tie_hashes, "previousTiePublicMatch": tie_match})
     return results

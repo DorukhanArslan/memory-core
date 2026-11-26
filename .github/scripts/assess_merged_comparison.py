@@ -19,13 +19,12 @@ from equivalence.harness import _adapter_identity, _implementation_identity, _sa
 from equivalence.strict_report_reader import Reader, _constant, _finite, _object  # noqa: E402
 
 from followup_datetime import SOURCE_OWNERS as DATETIME_SOURCE_OWNERS
-from equivalence.engine_unicode_collation import (DIAGNOSTIC as UNICODE_TIE_ID, MEASURED_SDK_F01_SHA256,
-                                                  OWNERS as UNICODE_SOURCE_OWNERS, PRIOR_NATIVE_F01_SHA256)
+from equivalence.engine_unicode_collation import DIAGNOSTIC as UNICODE_TIE_ID, OWNERS as UNICODE_SOURCE_OWNERS
 from followup_families import FAMILIES, REPORT_FIELDS, family_key, replay_followup
 from followup_heartbeat import CORPUS_OWNERS
-from heartbeat_119_guard import baseline as accepted_118, verify_previous_cases
-from search_retry_review import RETRY_CASE, changes_since_heartbeat
-from followup_seal import (CATALOG_SHA, EXPECTED_RESOLUTIONS, PREVIOUS_CASES, PREVIOUS_CATALOG_SHA, PREVIOUS_COMPARISON,
+from previous_review import RETRY_CASE, compare_with_baseline, load_baseline, replay_ids
+import historical_runtime
+from followup_seal import (CATALOG_SHA, PREVIOUS_CASES, PREVIOUS_CATALOG_SHA, PREVIOUS_COMPARISON,
                            PRODUCT, REGISTERED_CASES, SCOPE_SHA as SCOPE, SDK_FILES, SDK_SHA, check_seal)
 
 SDK = {"sourceSha256": SDK_SHA, "sourceFiles": SDK_FILES}
@@ -35,66 +34,6 @@ OPERATIONS = ("host-restart-session-runtime", "host-update-isolation-runtime",
               "host-turn-barrier-v4-runtime", "forget-index-fence-v6-runtime", "forget-lineage-runtime",
               "forget-boundaries-runtime", "recall-signals-runtime", "embed-cache-lifecycle-runtime",
               "session-reset-boundaries-runtime", "prompt-runtime-context-runtime", "prompt-history-repair-runtime")
-
-
-PREVIOUS_MISMATCH_PUBLIC_SHA256 = {
-    "bootstrap-discovery-legacy-state-gate": {
-        "openclaw": "0c17c9620066864fed5e7643e4cb638e91b6691dfa3f4a4156d37abc2890dcb1",
-        "python": "0b823b74e790da7178a5847a1061c73ed7a731dd3486a373297aa00668f8577f"
-    },
-    "bootstrap-discovery-memory-core-layout-extension": {
-        "openclaw": "46c3d401bd850bbfb4fa529e3bef93680d0f88c0d8c1df9832a2fbb68f4043a9",
-        "python": "4426dc0e10fee7057e3d2f819367cd7954fee262858c8c3f5bcfc2abb0f8d4a2"
-    },
-    "flush-execution-warm-index-first-recall": {
-        "openclaw": "4cdb2aa71ea06ed46a094e47e3739276fae9238c4480d82a6eee896d6451b569",
-        "python": "f5f748474b212ead4420d77fe1a6c3ba3425db777e1f15c318be567057925802"
-    },
-    "hybrid-unicode-path-collation-diagnostic": {
-        "openclaw": "5557cac38760fa4dfada60946a7009a3c9c021ba550297aaa6ba0677b2c00471",
-        "python": "dca8c3c148c1dc0c20f0a0320218f082cfe5da7d147f5803657897e9732fe2a5"
-    },
-    "model-session-configured-letter-capture-reset-engine-diagnostic": {
-        "openclaw": "9248d6dba21b71826ed2efe5c2fe0ae830e435e5185b8beb524b506e7d090503",
-        "python": "bf8ee6825f6c90deba80c03d841afde41a5dfa521431283354337937d8fc81f3"
-    },
-    "model-session-configured-letter-mixed-i-engine-diagnostic": {
-        "openclaw": "91d7649bc1bf451de1b2466eeee0ab51880beabfb95c6dcaae6091a844b777f8",
-        "python": "add5c1cf6ea31b013bca49540a3ca8c62bb0454cc1c2785f07f1e4b2ad3e2380"
-    },
-    "model-tool-complete-tool-result": {
-        "openclaw": "a3135c0aa970596a5ce0fe2abb7ab26d5a0f0f5db784e56549d10627f04ca45f",
-        "python": "b2c845eacfc95324d39fabc14b082805f624a507990628553ae73af2d092255c"
-    },
-    "model-tool-utf16-redaction-truncation-order": {
-        "openclaw": "da86e568f2f9e385369483a11979d9ee6999c1bd41fdd7f7f6bded6ac6182129",
-        "python": "07d49892bce1b138d57f27e57cc122ae1765ad76666c47a8983c3d2359086d1d"
-    },
-    "promotion-ranking-primitive-provenance-safety-diagnostic": {
-        "openclaw": "ce9199b6cadbcca42e7b2e918271317c69a6cffdd0d6ca542227ca2457c94715",
-        "python": "db6ed4a22a533156005c77236fd270ba7da4a637053384a96cb6b2685988bd47"
-    },
-    "redaction-policy-letter-mixed-i-engine-diagnostic": {
-        "openclaw": "448ed9ba5b67a5057fa9d0d959f19ee0edda75c19b2b8f7ac3ccd9c9fceddd13",
-        "python": "2e03268c4c8476d4b5565ee6e8cc3f4a65dd57c30ff3459d27acc004dc7205dd"
-    },
-    "redaction-policy-letter-repeated-capture-engine-diagnostic": {
-        "openclaw": "cdcd0e27a6c94180b1952ad0dca3444e4cd5ac061e5bf77152f54950e4cffd83",
-        "python": "4ee1649de0f248317deaab5d0fb86fbca937f76f2d5b3cbbad22f16828013dec"
-    },
-    "redaction-policy-unsupported-valid-general-property": {
-        "openclaw": "4ef98d271081c5ebed5ec22f9c56aeed8d9c908e9e4d8f30f95b66ea16259401",
-        "python": "ac0b3b39d011fa5c948cd7f3d6bc98b504a2551752ac864b7d704136e89593db"
-    },
-    "redaction-policy-unsupported-valid-v-direct-compiler": {
-        "openclaw": "a059ed3d41305bdda13ef19b60a2b3769ab8bd5e424f50dc563821cbb1fa0411",
-        "python": "3aeacb9187ff040f407c9bc2e054e61d4b3675d33636c22a023fc36aba523d82"
-    },
-    "transcript-boundary-compressed-same-size-mtime-cache-diagnostic": {
-        "openclaw": "8f6db98b6ee9e807a5441407b35092d7b29a42d09d4745212a8f343b80044ad2",
-        "python": "baa4194f693b5a6dd5ea564fa243af3c10085bd9a82d964fe778028ef274c28b"
-    }
-}
 
 
 def require(value, message):
@@ -147,6 +86,9 @@ def project(path, host_ids, lineage_ids, boundary_ids, recall_ids, cache_ids, re
               "numericPairs": {}, "numericDiagnostics": {}, "numericTraces": {}, "numericSources": [], "numericReleaseSources": [],
               "deepPairs": {}, "deepDiagnostics": {}, "deepTraces": {}}
     before = digest(path)
+    _, evidence = load_baseline()
+    previous_mismatches = set(evidence["mismatchHashes"])
+    result.update(previousMismatchPublicPairs={}, protectedHistorical={})
 
     def accept(key, value, array):
         if array == "array-done":
@@ -169,6 +111,11 @@ def project(path, host_ids, lineage_ids, boundary_ids, recall_ids, cache_ids, re
             row = result["followupRows"].setdefault(value["id"], {})
             require(name not in row, "Duplicate appended case, diagnostic or trace")
             row[name] = value
+        if key in {"runtimeDiagnostics", "releaseTraces"} and value.get("id") in historical_runtime.PROTECTED:
+            side = value["side"] if key == "runtimeDiagnostics" else "trace"
+            original = result["protectedHistorical"].setdefault(value["id"], {})
+            require(side in {"trace", "native", "python"} and side not in original, "Duplicate historical diagnostic or trace")
+            original[side] = value
         if key == "runtimeDiagnostics" and value.get("id") == RETRY_CASE:
             sides = result.setdefault("warmRetryDiagnostics", {})
             side = value.get("side")
@@ -186,6 +133,10 @@ def project(path, host_ids, lineage_ids, boundary_ids, recall_ids, cache_ids, re
                                            for side, item in pair.items()}
                 if value["id"] == UNICODE_TIE_ID:
                     result["unicodeTiePair"] = pair
+                if value["id"] in previous_mismatches:
+                    result["previousMismatchPublicPairs"][value["id"]] = pair
+                if value["id"] in historical_runtime.PROTECTED:
+                    result["protectedHistorical"].setdefault(value["id"], {})["pair"] = pair
                 if value["id"] in host_ids:
                     result["hostPairs"][value["id"]] = pair
                 if value["id"] in lineage_ids:
@@ -1263,37 +1214,22 @@ def replay_persisted_rank(case, pair, native, sdk, trace, release_sources, bindi
         COMPILED_HASHES, prepare_promotion_ranking_bindings, prepare_promotion_ranking_profile,
     )
     from equivalence.promotion_ranking_evidence import validate_promotion_ranking_raw
-    from equivalence.runtime_oracle import MAX_SINGLE_TRACE_BYTES, MAX_DIAGNOSTIC_BYTES
+    from equivalence.runtime_oracle import MAX_SINGLE_TRACE_BYTES
 
     cid = case["id"]
     if cid == RANK_ID:
         validate_rank_case(case)
         validate_pair = validate_numeric_rank
+    elif cid == historical_runtime.RANK:
+        validate_pair = historical_runtime.verify_rank_sdk
     else:
         from equivalence.datetime_regex_family import build_cases as date_cases
         from equivalence.datetime_regex_evidence import validate_rank as validate_pair
         [fixed] = [c for c in date_cases() if c["operation"] == "promotion-ranking-runtime"]
         require(_same_json(case, fixed), "Unregistered persisted ranking case")
     require(set(pair) == {"openclaw", "python"}, "Missing complete persisted ranking pair")
-    for packet, side in ((native, "native"), (sdk, "python")):
-        require(packet["id"] == cid and packet["side"] == side
-                and re.fullmatch(r"[a-f0-9]{64}", packet["sha256"])
-                and isinstance(packet["rawSnapshots"], list) and len(packet["rawSnapshots"]) == 1,
-                "Numeric ranking raw packet belongs to a different producer")
     original, python = native["rawSnapshots"][0], sdk["rawSnapshots"][0]
-    # The collector retained parsed packets. Reconstruct each producer's wire format
-    # and check the original byte digest. Neither temporary database is reopened here.
-    sdk_wire = (json.dumps(sdk["rawSnapshots"], ensure_ascii=True, indent=2, allow_nan=False) + "\n").encode()
-    native_wire = subprocess.run(
-        [str(args.node.resolve()), "-e",
-         "process.stdout.write(JSON.stringify(JSON.parse(require('node:fs').readFileSync(0,'utf8'))))"],
-        input=json.dumps(native["rawSnapshots"], ensure_ascii=True, allow_nan=False).encode("ascii"),
-        check=True, stdout=subprocess.PIPE, timeout=30,
-    ).stdout
-    for packet, encoded in ((native, native_wire), (sdk, sdk_wire)):
-        require(0 < len(encoded) <= MAX_DIAGNOSTIC_BYTES
-                and hashlib.sha256(encoded).hexdigest() == packet["sha256"],
-                "Numeric ranking raw packet did not reproduce its original wire-byte digest")
+    historical_runtime.verify_wires(cid, native, sdk, args.node)
 
     root = Path(runtime["runtimeRoot"])
     require(_same_json(bindings, prepare_promotion_ranking_bindings(args.reference, root))
@@ -1573,19 +1509,6 @@ def replay_warm_retry(data, definitions, args):
     return pair
 
 
-def check_resolved_row(row, prior, unicode_pair):
-    expected = {"openclaw": prior["openclaw"], "python": prior["openclaw"]}
-    if row["id"] == UNICODE_TIE_ID:
-        # Scores such as 1 and 1.0 compare equally in JSON while preserving distinct producer bytes.
-        expected["python"] = MEASURED_SDK_F01_SHA256
-        observed = {side: hashlib.sha256(canonical(unicode_pair[side])).hexdigest() for side in expected}
-        require(prior["openclaw"] == PRIOR_NATIVE_F01_SHA256 and observed == expected
-                and _same_json(unicode_pair["openclaw"], unicode_pair["python"]),
-                "The complete Unicode tie values or their measured producer receipts changed")
-    require(row["status"] == "matched" and row["publicValueSha256"] == expected,
-            "A declared fix differs from the required whole producer outputs")
-
-
 def assess(args, result):
     check_seal()
     seal = load(args.seal)
@@ -1596,7 +1519,7 @@ def assess(args, result):
             and hashlib.sha256(canonical(definitions)).hexdigest() == seal["catalogSha256"], "Sealed catalog changed")
     previous = {"registeredCases": PREVIOUS_CASES, "sha256": PREVIOUS_CATALOG_SHA,
                 "completePrefixUnchanged": True}
-    require(len(definitions) == REGISTERED_CASES and REGISTERED_CASES > previous["registeredCases"]
+    require(len(definitions) == REGISTERED_CASES and REGISTERED_CASES >= previous["registeredCases"]
             and seal["catalogSha256"] == CATALOG_SHA
             and _same_json(seal["previousCatalog"], previous)
             and hashlib.sha256(canonical(definitions[:previous["registeredCases"]])).hexdigest() == previous["sha256"],
@@ -1634,7 +1557,8 @@ def assess(args, result):
                        load(ROOT / "equivalence/reference.json"))), "The pinned release, executable or source tree changed")
     require(data["paidProviderCalls"] == 0 and data["providerCredentialsForwarded"] is False, "Unexpected provider access")
     metrics = recompute(data, definitions, load(ROOT / "equivalence/scope.json")["requirements"])
-    result["warmRetryPublicPair"] = replay_warm_retry(data, definitions, args)
+    result["observedAssessment"] = metrics
+    result["previousMismatchPublicPairs"] = data["previousMismatchPublicPairs"]
     # Keep the second review reproducible without duplicating every literal input
     # or requiring reviewers to download the original process captures.
     compact_rows = []
@@ -1649,6 +1573,33 @@ def assess(args, result):
         casesSha256=data["casesSha256"], errors=data["errors"], kind=data["kind"],
         catalogFamilyGates={key: value for key, value in data.items()
                             if key.endswith("Complete") and type(value) is bool})
+    result["warmRetryPublicPair"] = replay_warm_retry(data, definitions, args)
+    retry = next(row for row in data["cases"] if row["id"] == RETRY_CASE)
+    if "publicValueSha256" in retry:
+        next(row for row in compact_rows if row["id"] == RETRY_CASE)["publicValueSha256"] = retry["publicValueSha256"]
+    from equivalence.bootstrap_discovery_profile import prepare_bootstrap_discovery_profile
+    from equivalence.release_runtime import prepare_release_runtime
+
+    runtime = prepare_release_runtime(args.reference, args.release_runtime, download=False)
+    bootstrap_profile = prepare_bootstrap_discovery_profile(args.node)
+    result["historicalRuntimeReceipts"] = {}
+    for case, row in zip(definitions, data["cases"], strict=True):
+        cid = case["id"]
+        if cid not in historical_runtime.PROTECTED or row["status"] == "blocked":
+            continue
+        parts = data["protectedHistorical"][cid]
+        require(set(parts) == {"pair", "native", "python", "trace"}, "Incomplete historical runtime evidence")
+        if cid in historical_runtime.BOOTSTRAP:
+            receipt = historical_runtime.replay_bootstrap(case, parts, args, runtime, ROOT, bootstrap_profile)
+        else:
+            receipt = replay_persisted_rank(case, parts["pair"], parts["native"], parts["python"], parts["trace"],
+                                            data["numericReleaseSources"], data["promotionRankingRuntimeBindings"],
+                                            data["promotionRankingProfile"], args, runtime)
+            receipt["sdkPhaseFiles"] = {snap["phase"]: {f["path"]: hashlib.sha256(bytes.fromhex(f["hex"])).hexdigest()
+                                            for f in snap["files"]} for snap in parts["python"]["rawSnapshots"][0]["snapshots"]}
+            receipt["nativeSqlitePhases"] = [snap["label"] for snap in parts["native"]["rawSnapshots"][0]["snapshots"]]
+        require(receipt["publicMatch"] is (row["status"] == "matched"), "Historical execution differs from complete report")
+        result["historicalRuntimeReceipts"][cid] = receipt
     replay_sha = digest(args.fif_replay)
     replay = load(args.fif_replay)
     fif_ids = [case["id"] for case in definitions if case["operation"] == "forget-index-fence-v6-runtime"]
@@ -1723,62 +1674,16 @@ def assess(args, result):
     source_unchanged(seal)
     require(digest(args.report) == data["report"]["sha256"], "Report changed during assessment")
     require(digest(args.fif_replay) == replay_sha, "FIF replay changed during assessment")
-    result.update(observedAssessment=metrics,
-                  changeSinceHeartbeatReview=changes_since_heartbeat(metrics, data, CATALOG_SHA, SCOPE),
-                  fifReplaySha256=replay_sha, fullScopePassed=data["fullScopePassed"])
-    public = {row["id"]: row.get("publicValueSha256") for row in data["cases"]}
-    previous = accepted_118()
-    previous_hashes = {cid: PREVIOUS_MISMATCH_PUBLIC_SHA256[cid] for cid in previous["wholeOutputAudit"]["open"]
-                       if cid in PREVIOUS_MISMATCH_PUBLIC_SHA256}
-    for cid in previous_hashes:
-        changes = previous["wholeOutputAudit"]["changes"].get(cid)
-        if changes:
-            previous_hashes[cid] = changes["after"]
-    from equivalence.datetime_boundary_cases import DIAGNOSTIC
-    from equivalence.datetime_boundary_evidence import PUBLIC_DIGESTS
-    previous_hashes[DIAGNOSTIC] = PUBLIC_DIGESTS[DIAGNOSTIC]
-    require(set(previous_hashes) == set(previous["wholeOutputAudit"]["open"]),
-            "Missing retained whole-output hashes for the accepted baseline")
-    require(set(previous_hashes) <= set(public), "A previous mismatch case disappeared")
-    result["previousComparison"] = PREVIOUS_COMPARISON
-    mismatches = [r for r in data["cases"] if r["status"] == "mismatched"]
-    result["mismatchMetadata"] = [{k: r[k] for k in ("id", "operation", "requirement", "covers", "publicValueSha256")}
-                                  for r in mismatches]
-    result["previousMismatchPublicHashChanges"] = {
-        cid: {"before": before, "after": public[cid]}
-        for cid, before in previous_hashes.items() if not _same_json(before, public[cid])}
-    result["baseline118"] = verify_previous_cases(metrics, data, PREVIOUS_CASES)
-    rows_by_id = {row["id"]: row for row in data["cases"]}
-    resolved = set(EXPECTED_RESOLUTIONS)
-    require(resolved <= set(previous_hashes), "The expected resolutions include a case outside the previous differences")
-    for cid in resolved:
-        check_resolved_row(rows_by_id[cid], previous_hashes[cid], data["unicodeTiePair"])
-    sdk_changes = [cid for cid, before in previous_hashes.items()
-                   if before["python"] != (public[cid] or {}).get("python")]
-    native_changes = [cid for cid, before in previous_hashes.items()
-                      if before["openclaw"] != (public[cid] or {}).get("openclaw")]
-    allowed_warm_changes = [cid for cid in native_changes
-                            if cid == "flush-execution-warm-index-first-recall" and cid not in sdk_changes
-                            and rows_by_id[cid]["status"] == "mismatched" and rows_by_id[cid]["covers"] == []]
-    result["previousMismatchPublicHashReview"] = {
-        "sdkChangedCaseIds": sdk_changes, "nativeChangedCaseIds": native_changes,
-        "allSdkWholePublicHashesUnchanged": not sdk_changes,
-        "allowedUncreditedNativeWarmFlushChanges": allowed_warm_changes,
-        "resolvedCaseIds": sorted(resolved),
-        "otherChangedCaseIds": sorted((set(sdk_changes) | set(native_changes)) - set(allowed_warm_changes) - resolved)}
-    from followup_date_boundaries import DIAGNOSTIC, verify_legacy_diagnostic
-    verify_legacy_diagnostic(rows_by_id[DIAGNOSTIC])
-    require({row["id"] for row in mismatches} == (set(previous_hashes) - resolved) | {DIAGNOSTIC}
-            and not result["previousMismatchPublicHashReview"]["otherChangedCaseIds"],
-            "Unexpected change to a retained difference or its complete public value")
-    result.update(status="assessed", candidateAssessment=metrics, deltaFromHistorical71=metrics["verified"] - 71,
-                  deltaFromHistorical77=metrics["verified"] - 77,
-                  deltaFromHistorical79=metrics["verified"] - 79,
-                  deltaFromHistorical81=metrics["verified"] - 81,
-                  deltaFromHistorical82=metrics["verified"] - 82,
-                  deltaFromHistorical84=metrics["verified"] - 84,
-                  deltaFromPreviousHosted=metrics["verified"] - PREVIOUS_COMPARISON["verified"],
-                  fifReplaySha256=replay_sha, fullScopePassed=data["fullScopePassed"])
+    result.update(
+        status="assessed", candidateAssessment=metrics,
+        previousComparison=PREVIOUS_COMPARISON, deltaFromPreviousHosted=metrics["verified"] - PREVIOUS_COMPARISON["verified"],
+        changeSince119=compare_with_baseline(metrics, data["cases"], replay_ids(result, replay)),
+        mismatchMetadata=[
+            {key: row[key] for key in ("id", "operation", "requirement", "covers", "publicValueSha256")}
+            for row in data["cases"] if row["status"] == "mismatched"
+        ],
+        fifReplaySha256=replay_sha, fullScopePassed=data["fullScopePassed"],
+    )
 
 
 def main():

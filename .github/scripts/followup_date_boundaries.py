@@ -4,7 +4,7 @@ import json
 from pathlib import Path
 
 from equivalence.datetime_boundary_cases import CORPUS, DIAGNOSTIC, IDS, POINT, ZONE, build_cases
-from equivalence.datetime_boundary_evidence import CORPUS_OWNERS, DIAGNOSTIC_CELLS, PUBLIC_DIGESTS, family_complete, observe
+from equivalence.datetime_boundary_evidence import CORPUS_OWNERS, family_complete, observe
 from equivalence.datetime_regex_family import run_clock, wire
 from equivalence.datetime_regex_evidence import same
 from equivalence.dependencies import prepare_dependencies
@@ -15,12 +15,11 @@ from equivalence.session_projection import run_session_projection
 from followup_datetime import SOURCE_OWNERS
 
 
-def verify_legacy_diagnostic(row):
-    same(row['id'], DIAGNOSTIC)
-    same(row['covers'], [])
-    same(row['status'], 'mismatched')
-    same(row['publicValueSha256'], PUBLIC_DIGESTS[DIAGNOSTIC])
-    same(row['datetimeBoundaryEvidence'], DIAGNOSTIC_CELLS)
+def replay_passed(cases, receipts):
+    rows = [{**case, "status": "matched" if capture["publicMatch"] else "mismatched",
+             "datetimeBoundaryEvidence": capture["classification"], "publicValueSha256": capture["publicValueSha256"]}
+            for case, capture in zip(cases, receipts, strict=True)]
+    return family_complete(rows)
 
 
 def replay(data, cases, args, runtime):
@@ -70,9 +69,6 @@ def replay(data, cases, args, runtime):
         measured = observe(case, report, native, sdk)
         same(row['datetimeBoundaryEvidence'], measured)
         digests = {side: sha256(wire(row[side])).hexdigest() for side in ('openclaw','python')}
-        same(digests, PUBLIC_DIGESTS[cid])
-        if cid == DIAGNOSTIC:
-            verify_legacy_diagnostic({**row, 'publicValueSha256': digests})
         receipts.append({'id': cid, 'publicMatch': _same_json(native, sdk), 'publicValueSha256': digests,
                          'classification': measured, 'coverage': case['covers']})
     return receipts

@@ -1,0 +1,176 @@
+{
+  "implementation": {
+    "gitCommit": "c20903bdd9d38bc792387c3e6840ec5bc33362d2",
+    "trackedWorkingTreeDirty": false,
+    "sourceSha256": "c7cfd4da2d41d285d0da837c26bc5759b6e4925fd7114d8838e2f2b7be56bbce",
+    "sourceFiles": 184
+  },
+  "reportSha256": "333015fa62c7083c94e09640b41acb310d13800f2383343fd18d23ab671cca3a",
+  "durationSeconds": 34.455995,
+  "transcriptBoundariesComplete": true,
+  "cases": [
+    {
+      "id": "transcript-boundary-jsonl-physical-order-malformed-observer",
+      "validated": true,
+      "source": "jsonl",
+      "physicalReads": 1,
+      "mutations": 1,
+      "publicMatch": true,
+      "threads": 1,
+      "nativeSha256": "353bbf5e50fc12500d42c9e0aaa9155a5820c4234d6b4d616b6a97c962836b5a",
+      "sdkSha256": "b7bc44116eb8a403ac22789b96f4f14213b07cc94674e64a5d609e809bd086da",
+      "rawFiles": {
+        "native": "native-attempt-iiu91y5a/native-raw.json",
+        "python": "sdk-attempt-wul_vjig/python-raw.json"
+      },
+      "traceSha256": {
+        "18085-0.jsonl": "4951b3768bac5aa1446f793f80cd7b5904ddd22f006935149ae394e3c15b098c"
+      }
+    },
+    {
+      "id": "transcript-boundary-sqlite-ordered-forks-latest-reset",
+      "validated": true,
+      "source": "sqlite",
+      "physicalReads": 4,
+      "mutations": 3,
+      "publicMatch": true,
+      "threads": 2,
+      "nativeSha256": "c243e075a5a16a0adf53951eb8edb0273fb8c6131e160ebbd91406cd005fffd7",
+      "sdkSha256": "0fca73893789b4bc759d76142ec8d61908d8194458492c7522bdf4ca3189f5b6",
+      "rawFiles": {
+        "native": "native-attempt-6sg5ueek/native-raw.json",
+        "python": "sdk-attempt-mizvi6ib/python-raw.json"
+      },
+      "traceSha256": {
+        "18097-0.jsonl": "6a37176f5687a1a78231a3a07ad19fd96319dc19fe942ac280318a1af3b73c76",
+        "18097-1.jsonl": "dede54821636d3f66d64cc0a8139673b60ff5bf7dc69c774991e99bcde57cc09"
+      }
+    },
+    {
+      "id": "transcript-boundary-plain-file-lifecycle",
+      "validated": true,
+      "source": "jsonl",
+      "physicalReads": 5,
+      "mutations": 4,
+      "publicMatch": true,
+      "threads": 1,
+      "nativeSha256": "50dc305cd4ec21964b841cceb1d33b71e9d1447e393fa1ead2833bd2054dc73f",
+      "sdkSha256": "52a404b34496e40cfd17de56b5788673c44281a7ca4c853ebd3030f2043d6636",
+      "rawFiles": {
+        "native": "native-attempt-n81vtb9y/native-raw.json",
+        "python": "sdk-attempt-hcmwugi9/python-raw.json"
+      },
+      "traceSha256": {
+        "18110-0.jsonl": "11942bb1fe88fc9dd09801c852e2ccf015848431909f3cd38af13728a2c585ea"
+      }
+    },
+    {
+      "id": "transcript-boundary-compressed-archive-replaced-deleted",
+      "validated": true,
+      "source": "jsonl",
+      "physicalReads": 3,
+      "mutations": 3,
+      "publicMatch": true,
+      "threads": 1,
+      "nativeSha256": "a8d2ee56a7caeb832a27b920e70198830a4e11850d2dd13512e8e27a3e8f7ec7",
+      "sdkSha256": "adc04312474a277b880a104fb6b126b49bcc98c64055ba40f67a644c1e7b328b",
+      "rawFiles": {
+        "native": "native-attempt-fw4nmg0o/native-raw.json",
+        "python": "sdk-attempt-3u_90uzb/python-raw.json"
+      },
+      "traceSha256": {
+        "18122-0.jsonl": "3a25c5ff945d86be522a1141c0b3154643c70367b7d85603b894f50436fefd11"
+      }
+    },
+    {
+      "id": "transcript-boundary-compressed-codec-boundaries",
+      "validated": true,
+      "source": "jsonl",
+      "physicalReads": 5,
+      "mutations": 4,
+      "publicMatch": true,
+      "threads": 1,
+      "nativeSha256": "9b3fc23eca612b6efb14151afeb7bf1fc069e9eeed99692aa4e4112b48ccbee9",
+      "sdkSha256": "fa594a3b1fd9ec51f188c9c36d4c9121c7a758d1c06aae6de7948b3cdb8a6246",
+      "rawFiles": {
+        "native": "native-attempt-gve99wmu/native-raw.json",
+        "python": "sdk-attempt-gkehvr26/python-raw.json"
+      },
+      "traceSha256": {
+        "18134-0.jsonl": "50ba27d9a9a8e2aec31543abe166c696735cea0a4794c8abf73a45bf7c81060c"
+      }
+    },
+    {
+      "id": "transcript-boundary-jsonl-observer-error",
+      "validated": true,
+      "source": "jsonl",
+      "physicalReads": 1,
+      "mutations": 1,
+      "publicMatch": true,
+      "threads": 1,
+      "nativeSha256": "03619920c4907480646f164c70d14a1cb5f9c0353a5e07005e9d52bf62bae674",
+      "sdkSha256": "d2f2bad4cffa6484b502fbaeea225bc20e03d972393cea5accb8dab491e4bc6a",
+      "rawFiles": {
+        "native": "native-attempt-i56587tx/native-raw.json",
+        "python": "sdk-attempt-bm0o_th4/python-raw.json"
+      },
+      "traceSha256": {
+        "18156-0.jsonl": "23daccb89d738b4b25594abfe5a6309b2d4f861be2e459ef439a021ea83cb40e"
+      }
+    },
+    {
+      "id": "transcript-boundary-sqlite-observer-error",
+      "validated": true,
+      "source": "sqlite",
+      "physicalReads": 1,
+      "mutations": 1,
+      "publicMatch": true,
+      "threads": 1,
+      "nativeSha256": "ada268d9a636a75138a926caa117fe3801b1b4e10fb41d275027a087dbb404ff",
+      "sdkSha256": "4f928cef99b7d6fd2d48b22a75fd5a25adb1824119ab904c298dc4f6f92e0ea3",
+      "rawFiles": {
+        "native": "native-attempt-t7a8rguv/native-raw.json",
+        "python": "sdk-attempt-_d6u8nqh/python-raw.json"
+      },
+      "traceSha256": {
+        "18189-0.jsonl": "7faf6aeb5d210352fed0e1a0e3176ade3abaa106000416268e20102efd39808e"
+      }
+    },
+    {
+      "id": "transcript-boundary-compressed-same-size-mtime-cache-diagnostic",
+      "validated": true,
+      "source": "jsonl",
+      "physicalReads": 2,
+      "mutations": 2,
+      "publicMatch": true,
+      "threads": 1,
+      "nativeSha256": "148b24b785fc97956a3621f42c8f996c39badd5d3e2e07e4bd5b253306f209e3",
+      "sdkSha256": "045f513d51f2704a91666f19045f1ea78f90f5a931edc3d211370e6c172ef1fa",
+      "rawFiles": {
+        "native": "native-attempt-upwfsbex/native-raw.json",
+        "python": "sdk-attempt-9zcudlgj/python-raw.json"
+      },
+      "traceSha256": {
+        "18202-0.jsonl": "559bd5b51e034cfa8755d48bc44c665c5f32051f6a836c7fba1273b0cf9d9372"
+      }
+    },
+    {
+      "id": "transcript-boundary-compressed-malformed-reset-replacement",
+      "validated": true,
+      "source": "jsonl",
+      "physicalReads": 4,
+      "mutations": 4,
+      "publicMatch": true,
+      "threads": 1,
+      "nativeSha256": "bc5f8907e5c7028367755ff92453b02c8b725b5f4c9758683677fee6dd4f61a7",
+      "sdkSha256": "f867c2cb25eebfa791df7ee887f000ca0145ff6d47874f0e19d9208dc73bc674",
+      "rawFiles": {
+        "native": "native-attempt-ohz6zgiz/native-raw.json",
+        "python": "sdk-attempt-ssm6m9mg/python-raw.json"
+      },
+      "traceSha256": {
+        "18242-0.jsonl": "076cfc6ba880927ac24accc28d29553d10107768b9ef1b7fd0ce6e5b44e640cf"
+      }
+    }
+  ]
+}

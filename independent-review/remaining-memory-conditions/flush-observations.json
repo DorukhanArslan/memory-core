@@ -1,0 +1,399 @@
+{
+  "caseId": "flush-execution-warm-index-first-recall",
+  "product": "2168fc0733ed7b4427668ee4673d11e25044b93c",
+  "openclaw": "bcfc88812a35243893585dbeca87ca41b48272ca",
+  "scope": "Unscored warm first recall on the existing bare HostKit. Scheduling probe uses the real optional managed on-search HostKit, which is a different publication policy.",
+  "caseDefinitionSha256": "cb49532cf6dabc48ecbdf2924b4a1d7ec8f148a9fddcacd9cafc1829bd66f229",
+  "defaultPolicyPairedRuns": [
+    {
+      "native": {
+        "obsoletekiwi": {
+          "available": true,
+          "results": []
+        },
+        "freshmangosteen": {
+          "available": true,
+          "results": [
+            {
+              "path": "memory/2026-05-03.md",
+              "startLine": 1,
+              "endLine": 2,
+              "snippet": "obsoletekiwi\nfreshmangosteen"
+            }
+          ]
+        }
+      },
+      "sdk": {
+        "obsoletekiwi": {
+          "available": true,
+          "results": [
+            {
+              "path": "memory/2026-05-03.md",
+              "startLine": 1,
+              "endLine": 2,
+              "snippet": "obsoletekiwi\nfreshmangosteen"
+            }
+          ]
+        },
+        "freshmangosteen": {
+          "available": true,
+          "results": [
+            {
+              "path": "memory/2026-05-03.md",
+              "startLine": 1,
+              "endLine": 2,
+              "snippet": "obsoletekiwi\nfreshmangosteen"
+            }
+          ]
+        }
+      },
+      "nativeWholeResponseSha256": "4cdb2aa71ea06ed46a094e47e3739276fae9238c4480d82a6eee896d6451b569",
+      "sdkWholeResponseSha256": "f5f748474b212ead4420d77fe1a6c3ba3425db777e1f15c318be567057925802",
+      "nativeProtectedWorkers": 8,
+      "status": "mismatched"
+    },
+    {
+      "native": {
+        "obsoletekiwi": {
+          "available": true,
+          "results": [
+            {
+              "path": "memory/2026-05-03.md",
+              "startLine": 1,
+              "endLine": 2,
+              "snippet": "obsoletekiwi\n"
+            }
+          ]
+        },
+        "freshmangosteen": {
+          "available": true,
+          "results": []
+        }
+      },
+      "sdk": {
+        "obsoletekiwi": {
+          "available": true,
+          "results": [
+            {
+              "path": "memory/2026-05-03.md",
+              "startLine": 1,
+              "endLine": 2,
+              "snippet": "obsoletekiwi\nfreshmangosteen"
+            }
+          ]
+        },
+        "freshmangosteen": {
+          "available": true,
+          "results": [
+            {
+              "path": "memory/2026-05-03.md",
+              "startLine": 1,
+              "endLine": 2,
+              "snippet": "obsoletekiwi\nfreshmangosteen"
+            }
+          ]
+        }
+      },
+      "nativeWholeResponseSha256": "cb844e6214b8fd7526c42e6e3dd968c97ea9963230260e4c29ce178f0fb94ec5",
+      "sdkWholeResponseSha256": "f5f748474b212ead4420d77fe1a6c3ba3425db777e1f15c318be567057925802",
+      "nativeProtectedWorkers": 8,
+      "status": "mismatched"
+    }
+  ],
+  "postSyncBothRuns": {
+    "obsoletekiwi": {
+      "available": true,
+      "results": [
+        {
+          "path": "memory/2026-05-03.md",
+          "startLine": 1,
+          "endLine": 2,
+          "snippet": "obsoletekiwi\nfreshmangosteen"
+        }
+      ]
+    },
+    "freshmangosteen": {
+      "available": true,
+      "results": [
+        {
+          "path": "memory/2026-05-03.md",
+          "startLine": 1,
+          "endLine": 2,
+          "snippet": "obsoletekiwi\nfreshmangosteen"
+        }
+      ]
+    }
+  },
+  "onlyPublicFieldDiffering": [
+    "firstRecall"
+  ],
+  "runtimeObserver": {
+    "source": "a70687b",
+    "publicFirstRecall": {
+      "obsoletekiwi": {
+        "available": true,
+        "results": []
+      },
+      "freshmangosteen": {
+        "available": true,
+        "results": [
+          {
+            "path": "memory/2026-05-03.md",
+            "startLine": 1,
+            "endLine": 2,
+            "snippet": "obsoletekiwi\nfreshmangosteen"
+          }
+        ]
+      }
+    },
+    "raw": [
+      {
+        "mark": "before-warm-sync",
+        "time": 4461.440915,
+        "dirty": true,
+        "rows": [],
+        "sources": [],
+        "syncing": false
+      },
+      {
+        "mark": "after-warm-sync",
+        "time": 6741.95883,
+        "dirty": false,
+        "rows": [
+          {
+            "path": "memory/2026-05-03.md",
+            "text": "obsoletekiwi\n"
+          }
+        ],
+        "sources": [
+          {
+            "path": "memory/2026-05-03.md",
+            "hash": "d641edb0cf1b09ea4b6adb4b0fc74bbc6c35c40fd38d384696baf49975fe92c2"
+          }
+        ],
+        "syncing": false
+      },
+      {
+        "mark": "before-obsoletekiwi",
+        "time": 11648.017701,
+        "dirty": true,
+        "rows": [
+          {
+            "path": "memory/2026-05-03.md",
+            "text": "obsoletekiwi\n"
+          }
+        ],
+        "sources": [
+          {
+            "path": "memory/2026-05-03.md",
+            "hash": "d641edb0cf1b09ea4b6adb4b0fc74bbc6c35c40fd38d384696baf49975fe92c2"
+          }
+        ],
+        "syncing": false
+      },
+      {
+        "mark": "after-obsoletekiwi",
+        "time": 12469.424886,
+        "dirty": false,
+        "rows": [
+          {
+            "path": "memory/2026-05-03.md",
+            "text": "obsoletekiwi\nfreshmangosteen"
+          }
+        ],
+        "sources": [
+          {
+            "path": "memory/2026-05-03.md",
+            "hash": "d87f3ba4b799d3367963d33e778a340a502bb85045b0afaf12b4b9702499aad6"
+          }
+        ],
+        "syncing": false
+      },
+      {
+        "mark": "before-freshmangosteen",
+        "time": 12469.608928,
+        "dirty": false,
+        "rows": [
+          {
+            "path": "memory/2026-05-03.md",
+            "text": "obsoletekiwi\nfreshmangosteen"
+          }
+        ],
+        "sources": [
+          {
+            "path": "memory/2026-05-03.md",
+            "hash": "d87f3ba4b799d3367963d33e778a340a502bb85045b0afaf12b4b9702499aad6"
+          }
+        ],
+        "syncing": false
+      },
+      {
+        "mark": "after-freshmangosteen",
+        "time": 12476.791788,
+        "dirty": false,
+        "rows": [
+          {
+            "path": "memory/2026-05-03.md",
+            "text": "obsoletekiwi\nfreshmangosteen"
+          }
+        ],
+        "sources": [
+          {
+            "path": "memory/2026-05-03.md",
+            "hash": "d87f3ba4b799d3367963d33e778a340a502bb85045b0afaf12b4b9702499aad6"
+          }
+        ],
+        "syncing": false
+      },
+      {
+        "mark": "before-obsoletekiwi",
+        "time": 12478.464697,
+        "dirty": false,
+        "rows": [
+          {
+            "path": "memory/2026-05-03.md",
+            "text": "obsoletekiwi\nfreshmangosteen"
+          }
+        ],
+        "sources": [
+          {
+            "path": "memory/2026-05-03.md",
+            "hash": "d87f3ba4b799d3367963d33e778a340a502bb85045b0afaf12b4b9702499aad6"
+          }
+        ],
+        "syncing": false
+      },
+      {
+        "mark": "after-obsoletekiwi",
+        "time": 12482.741162,
+        "dirty": false,
+        "rows": [
+          {
+            "path": "memory/2026-05-03.md",
+            "text": "obsoletekiwi\nfreshmangosteen"
+          }
+        ],
+        "sources": [
+          {
+            "path": "memory/2026-05-03.md",
+            "hash": "d87f3ba4b799d3367963d33e778a340a502bb85045b0afaf12b4b9702499aad6"
+          }
+        ],
+        "syncing": false
+      },
+      {
+        "mark": "before-freshmangosteen",
+        "time": 12482.845316,
+        "dirty": false,
+        "rows": [
+          {
+            "path": "memory/2026-05-03.md",
+            "text": "obsoletekiwi\nfreshmangosteen"
+          }
+        ],
+        "sources": [
+          {
+            "path": "memory/2026-05-03.md",
+            "hash": "d87f3ba4b799d3367963d33e778a340a502bb85045b0afaf12b4b9702499aad6"
+          }
+        ],
+        "syncing": false
+      },
+      {
+        "mark": "after-freshmangosteen",
+        "time": 12487.204434,
+        "dirty": false,
+        "rows": [
+          {
+            "path": "memory/2026-05-03.md",
+            "text": "obsoletekiwi\nfreshmangosteen"
+          }
+        ],
+        "sources": [
+          {
+            "path": "memory/2026-05-03.md",
+            "hash": "d87f3ba4b799d3367963d33e778a340a502bb85045b0afaf12b4b9702499aad6"
+          }
+        ],
+        "syncing": false
+      }
+    ]
+  },
+  "controlledOrder": {
+    "source": "1917260",
+    "nativePublicResponseSha256": "cb844e6214b8fd7526c42e6e3dd968c97ea9963230260e4c29ce178f0fb94ec5",
+    "managedSdkPublicResponseSha256": "cb844e6214b8fd7526c42e6e3dd968c97ea9963230260e4c29ce178f0fb94ec5",
+    "wholePublicResponsesEqual": true,
+    "nativeActualPublisherEvents": [
+      {
+        "mark": "enter-producer",
+        "reason": "search",
+        "purpose": "maintenance"
+      },
+      {
+        "mark": "release-producer"
+      },
+      {
+        "mark": "continue-producer",
+        "reason": "search",
+        "purpose": "maintenance"
+      }
+    ],
+    "sdkActualPublisherEvents": [
+      [
+        "worker-before",
+        "search",
+        1
+      ],
+      [
+        "worker-after",
+        "search",
+        1
+      ]
+    ],
+    "publicBeforeRelease": {
+      "obsoletekiwi": {
+        "available": true,
+        "results": [
+          {
+            "path": "memory/2026-05-03.md",
+            "startLine": 1,
+            "endLine": 2,
+            "snippet": "obsoletekiwi\n"
+          }
+        ]
+      },
+      "freshmangosteen": {
+        "available": true,
+        "results": []
+      }
+    },
+    "publicAfterBarrier": {
+      "obsoletekiwi": {
+        "available": true,
+        "results": [
+          {
+            "path": "memory/2026-05-03.md",
+            "startLine": 1,
+            "endLine": 2,
+            "snippet": "obsoletekiwi\nfreshmangosteen"
+          }
+        ]
+      },
+      "freshmangosteen": {
+        "available": true,
+        "results": [
+          {
+            "path": "memory/2026-05-03.md",
+            "startLine": 1,
+            "endLine": 2,
+            "snippet": "obsoletekiwi\nfreshmangosteen"
+          }
+        ]
+      }
+    },
+    "covers": []
+  },
+  "result": "unresolved",
+  "scoreAdded": 0
+}

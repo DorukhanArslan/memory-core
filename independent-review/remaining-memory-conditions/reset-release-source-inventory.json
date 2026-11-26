@@ -1,0 +1,207 @@
+{
+  "checkedOn": "2026-11-26",
+  "path": "src/hooks/bundled/session-memory/handler.ts",
+  "observedNpmChannels": {
+    "extended-stable": "2026.10.34",
+    "latest": "2026.11.10",
+    "beta": "2026.11.10"
+  },
+  "stableReleaseSourceFiles": [
+    {
+      "tag": "v2026.9.9",
+      "published": "2026-10-08T09:38:01.687Z",
+      "handlerSha256": "1304d092f59d97dc42abcdfc9ab2b5d497adc96112d52be36f6279fc4ef37807",
+      "callsAtomicCreate": false,
+      "callsReplaceCapableWrite": true
+    },
+    {
+      "tag": "v2026.10.1",
+      "published": "2026-10-10T22:45:05.897Z",
+      "handlerSha256": "01497e542a5a1b9e9739290354163e1bc1660c44f5ac989661e96071729c2888",
+      "callsAtomicCreate": false,
+      "callsReplaceCapableWrite": true
+    },
+    {
+      "tag": "v2026.10.2",
+      "published": "2026-10-12T05:28:25.059Z",
+      "handlerSha256": "01497e542a5a1b9e9739290354163e1bc1660c44f5ac989661e96071729c2888",
+      "callsAtomicCreate": false,
+      "callsReplaceCapableWrite": true
+    },
+    {
+      "tag": "v2026.10.3",
+      "published": "2026-10-13T13:43:36.600Z",
+      "handlerSha256": "01497e542a5a1b9e9739290354163e1bc1660c44f5ac989661e96071729c2888",
+      "callsAtomicCreate": false,
+      "callsReplaceCapableWrite": true
+    },
+    {
+      "tag": "v2026.9.33",
+      "published": "2026-10-15T10:05:43.246Z",
+      "handlerSha256": "1304d092f59d97dc42abcdfc9ab2b5d497adc96112d52be36f6279fc4ef37807",
+      "callsAtomicCreate": false,
+      "callsReplaceCapableWrite": true
+    },
+    {
+      "tag": "v2026.10.4",
+      "published": "2026-10-15T23:58:28.695Z",
+      "handlerSha256": "01497e542a5a1b9e9739290354163e1bc1660c44f5ac989661e96071729c2888",
+      "callsAtomicCreate": false,
+      "callsReplaceCapableWrite": true
+    },
+    {
+      "tag": "v2026.10.5",
+      "published": "2026-10-18T21:16:43.569Z",
+      "handlerSha256": "bdec4b5167f7161c678070bd50e288d1578a0b05dbd26a77ae54950dcb4358d9",
+      "callsAtomicCreate": false,
+      "callsReplaceCapableWrite": true
+    },
+    {
+      "tag": "v2026.10.6",
+      "published": "2026-10-22T12:44:56.648Z",
+      "handlerSha256": "bdec4b5167f7161c678070bd50e288d1578a0b05dbd26a77ae54950dcb4358d9",
+      "callsAtomicCreate": false,
+      "callsReplaceCapableWrite": true
+    },
+    {
+      "tag": "v2026.10.7",
+      "published": "2026-10-24T07:36:46.919Z",
+      "handlerSha256": "bdec4b5167f7161c678070bd50e288d1578a0b05dbd26a77ae54950dcb4358d9",
+      "callsAtomicCreate": false,
+      "callsReplaceCapableWrite": true
+    },
+    {
+      "tag": "v2026.9.34",
+      "published": "2026-10-24T11:17:24.107Z",
+      "handlerSha256": "1304d092f59d97dc42abcdfc9ab2b5d497adc96112d52be36f6279fc4ef37807",
+      "callsAtomicCreate": false,
+      "callsReplaceCapableWrite": true
+    },
+    {
+      "tag": "v2026.9.35",
+      "published": "2026-10-27T01:59:12.847Z",
+      "handlerSha256": "c4a49d8592e25c904c8097f67ac1db2aca25365ed5e91c7bb91cbe2f0afc33ce",
+      "callsAtomicCreate": true,
+      "callsReplaceCapableWrite": false
+    },
+    {
+      "tag": "v2026.10.8",
+      "published": "2026-10-27T11:24:29.436Z",
+      "handlerSha256": "6855cf85fd9b56ce3a13fe84e25230c8609ba7037f54ad10f48c8f347bfd4c8c",
+      "callsAtomicCreate": true,
+      "callsReplaceCapableWrite": false
+    },
+    {
+      "tag": "v2026.10.9",
+      "published": "2026-10-29T15:46:49.267Z",
+      "handlerSha256": "6855cf85fd9b56ce3a13fe84e25230c8609ba7037f54ad10f48c8f347bfd4c8c",
+      "callsAtomicCreate": true,
+      "callsReplaceCapableWrite": false
+    },
+    {
+      "tag": "v2026.9.36",
+      "published": "2026-10-29T19:40:15.886Z",
+      "handlerSha256": "c4a49d8592e25c904c8097f67ac1db2aca25365ed5e91c7bb91cbe2f0afc33ce",
+      "callsAtomicCreate": true,
+      "callsReplaceCapableWrite": false
+    },
+    {
+      "tag": "v2026.10.10",
+      "published": "2026-11-03T02:26:08.904Z",
+      "handlerSha256": "bdec4b5167f7161c678070bd50e288d1578a0b05dbd26a77ae54950dcb4358d9",
+      "callsAtomicCreate": false,
+      "callsReplaceCapableWrite": true
+    },
+    {
+      "tag": "v2026.11.1",
+      "published": "2026-11-05T09:41:26.297Z",
+      "handlerSha256": "6855cf85fd9b56ce3a13fe84e25230c8609ba7037f54ad10f48c8f347bfd4c8c",
+      "callsAtomicCreate": true,
+      "callsReplaceCapableWrite": false
+    },
+    {
+      "tag": "v2026.11.2",
+      "published": "2026-11-08T09:48:24.847Z",
+      "handlerSha256": "6855cf85fd9b56ce3a13fe84e25230c8609ba7037f54ad10f48c8f347bfd4c8c",
+      "callsAtomicCreate": true,
+      "callsReplaceCapableWrite": false
+    },
+    {
+      "tag": "v2026.11.3",
+      "published": "2026-11-10T17:59:44.785Z",
+      "handlerSha256": "6855cf85fd9b56ce3a13fe84e25230c8609ba7037f54ad10f48c8f347bfd4c8c",
+      "callsAtomicCreate": true,
+      "callsReplaceCapableWrite": false
+    },
+    {
+      "tag": "v2026.9.37",
+      "published": "2026-11-10T20:16:24.913Z",
+      "handlerSha256": "c4a49d8592e25c904c8097f67ac1db2aca25365ed5e91c7bb91cbe2f0afc33ce",
+      "callsAtomicCreate": true,
+      "callsReplaceCapableWrite": false
+    },
+    {
+      "tag": "v2026.11.4",
+      "published": "2026-11-16T04:06:42.253Z",
+      "handlerSha256": "6855cf85fd9b56ce3a13fe84e25230c8609ba7037f54ad10f48c8f347bfd4c8c",
+      "callsAtomicCreate": true,
+      "callsReplaceCapableWrite": false
+    },
+    {
+      "tag": "v2026.11.5",
+      "published": "2026-11-17T09:59:33.472Z",
+      "handlerSha256": "33f374b0d9eb418dc9cb84501e03438907017488ccffce9d84ee8cb8fabd97e8",
+      "callsAtomicCreate": true,
+      "callsReplaceCapableWrite": false
+    },
+    {
+      "tag": "v2026.10.33",
+      "published": "2026-11-18T03:11:16.913Z",
+      "handlerSha256": "6855cf85fd9b56ce3a13fe84e25230c8609ba7037f54ad10f48c8f347bfd4c8c",
+      "callsAtomicCreate": true,
+      "callsReplaceCapableWrite": false
+    },
+    {
+      "tag": "v2026.11.6",
+      "published": "2026-11-19T16:52:13.687Z",
+      "handlerSha256": "33f374b0d9eb418dc9cb84501e03438907017488ccffce9d84ee8cb8fabd97e8",
+      "callsAtomicCreate": true,
+      "callsReplaceCapableWrite": false
+    },
+    {
+      "tag": "v2026.11.7",
+      "published": "2026-11-23T01:21:13.567Z",
+      "handlerSha256": "33f374b0d9eb418dc9cb84501e03438907017488ccffce9d84ee8cb8fabd97e8",
+      "callsAtomicCreate": true,
+      "callsReplaceCapableWrite": false
+    },
+    {
+      "tag": "v2026.11.8",
+      "published": "2026-11-24T10:14:12.508Z",
+      "handlerSha256": "33f374b0d9eb418dc9cb84501e03438907017488ccffce9d84ee8cb8fabd97e8",
+      "callsAtomicCreate": true,
+      "callsReplaceCapableWrite": false
+    },
+    {
+      "tag": "v2026.11.9",
+      "published": "2026-11-25T00:33:15.923Z",
+      "handlerSha256": "33f374b0d9eb418dc9cb84501e03438907017488ccffce9d84ee8cb8fabd97e8",
+      "callsAtomicCreate": true,
+      "callsReplaceCapableWrite": false
+    },
+    {
+      "tag": "v2026.11.10",
+      "published": "2026-11-25T05:07:34.288Z",
+      "handlerSha256": "33f374b0d9eb418dc9cb84501e03438907017488ccffce9d84ee8cb8fabd97e8",
+      "callsAtomicCreate": true,
+      "callsReplaceCapableWrite": false
+    },
+    {
+      "tag": "v2026.10.34",
+      "published": "2026-11-26T00:42:32.120Z",
+      "handlerSha256": "6855cf85fd9b56ce3a13fe84e25230c8609ba7037f54ad10f48c8f347bfd4c8c",
+      "callsAtomicCreate": true,
+      "callsReplaceCapableWrite": false
+    }
+  ]
+}

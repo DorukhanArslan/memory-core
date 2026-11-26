@@ -1,0 +1,503 @@
+{
+  "measurement": "Unscored diagnostic, physical local production callers; no acceptance gate or upstream mutation",
+  "sdkCommit": "2168fc0733ed7b4427668ee4673d11e25044b93c",
+  "upstreamCommit": "bcfc88812a35243893585dbeca87ca41b48272ca",
+  "release": "v2026.9.9",
+  "node": {
+    "path": "/workspace/memory-core/work/node-v24.16.0-linux-x64/bin/node",
+    "sha256": "b2959781cc5a74c357ffa02367efa8a0330cbb1c9cb347732fdfaaaca381cbcd"
+  },
+  "points": {
+    "sessions.reset-hook.outcomes": {
+      "reset1": {
+        "inputs": [
+          "left",
+          "right"
+        ],
+        "files": {
+          "2026-11-18-1106.md": {
+            "sha256": "7b4386117f7ba6d25814101f3cf8a46543a16aea925c765a617db9db0f865bb7",
+            "bytes": 190,
+            "sessionId": "probe-right"
+          }
+        },
+        "originalLogMessages": [
+          {
+            "filename": "2026-11-18-1106.md",
+            "path": "$OPENCLAW_HOME/workspace/memory/2026-11-18-1106.md"
+          },
+          {
+            "filename": "2026-11-18-1106.md",
+            "path": "$OPENCLAW_HOME/workspace/memory/2026-11-18-1106.md"
+          },
+          "Session context saved to $OPENCLAW_HOME/workspace/memory/2026-11-18-1106.md",
+          "Session context saved to $OPENCLAW_HOME/workspace/memory/2026-11-18-1106.md"
+        ]
+      },
+      "sdkreset1": {
+        "inputs": [
+          "left",
+          "right"
+        ],
+        "files": {
+          "2026-11-18-1106-2.md": {
+            "sha256": "f60c8d9f8c4c2ed13a1b9547cd957888ddb7877f1e77b221824b89159aff94b2",
+            "bytes": 186,
+            "sessionId": "probe-left"
+          },
+          "2026-11-18-1106.md": {
+            "sha256": "7b4386117f7ba6d25814101f3cf8a46543a16aea925c765a617db9db0f865bb7",
+            "bytes": 190,
+            "sessionId": "probe-right"
+          }
+        }
+      },
+      "receipts": [
+        {
+          "path": "/tmp/n26-recovery-probe/reset1/reset.json",
+          "sha256": "1ff4cec13f0ea5dbab5ccfed1678c631250dcb0924562cec3a1f5d1beb3dcb13"
+        },
+        {
+          "path": "/tmp/n26-recovery-probe/sdkreset1/reset.json",
+          "sha256": "a84c968a0a6422d228ca3e9e7e73516d9b172a01be7ae22e88eb0d7db7598f92"
+        }
+      ]
+    },
+    "flush.plan-target.boundaries": {
+      "flush1": {
+        "modelCalls": 1,
+        "stamp": {
+          "kind": "succeeded",
+          "compactionCount": 0
+        },
+        "failures": [],
+        "links": 2,
+        "bytes": 27,
+        "sha256": "61df65badda47855a623e16fe0a4f7377014538d3670cbba4b151285a595172d"
+      },
+      "sdkflush1": {
+        "modelCalls": 0,
+        "stamp": {
+          "kind": "failed",
+          "failureCount": 1
+        },
+        "failures": [
+          {
+            "phase": "flush-prepare",
+            "error_type": "MemoryFlushFailure",
+            "message": "memory/2026-05-03.md has more than one hard link",
+            "committed": false,
+            "publication": null
+          }
+        ],
+        "links": 2,
+        "bytes": 27,
+        "sha256": "61df65badda47855a623e16fe0a4f7377014538d3670cbba4b151285a595172d"
+      },
+      "receipts": [
+        {
+          "path": "/tmp/n26-recovery-probe/flush1/flush.json",
+          "sha256": "8b7011b49777b9bc6e4d4e5ef025f082dbdcafba68fe4ae08bdaa43d8d6680e1"
+        },
+        {
+          "path": "/tmp/n26-recovery-probe/sdkflush1/flush.json",
+          "sha256": "12213c743a208346e580ab7f43e6a93b5e5ad086418a00e71e24d74c29fdc3db"
+        }
+      ]
+    },
+    "recovery.failure-publication.boundaries": {
+      "sample1": {
+        "cutPid": 7818,
+        "nextPid": 7953,
+        "cutFileSha256": "6e2e61008a60642f4f523e7fc6f387a58763c460fca3ffeadd33d5a639806b0a",
+        "reopenedFileSha256": "6e2e61008a60642f4f523e7fc6f387a58763c460fca3ffeadd33d5a639806b0a",
+        "rolesOnDiskAtCut": [
+          "user",
+          "assistant"
+        ],
+        "reachedNextProvider": true,
+        "actualToolResults": [
+          {
+            "id": "tbbsave0",
+            "isError": true,
+            "text": "[openclaw] missing tool result in session history; inserted synthetic error result for transcript repair."
+          }
+        ],
+        "terminalDelivery": [
+          "Read-only follow-up admitted."
+        ],
+        "ownedCleanup": [
+          {
+            "label": "memory-managers",
+            "ok": true
+          },
+          {
+            "label": "mcp-runtime",
+            "ok": true
+          },
+          {
+            "label": "scheduler",
+            "ok": true
+          },
+          {
+            "label": "agent-databases",
+            "ok": true
+          }
+        ]
+      },
+      "sample2": {
+        "cutPid": 7959,
+        "nextPid": 8303,
+        "cutFileSha256": "6e2e61008a60642f4f523e7fc6f387a58763c460fca3ffeadd33d5a639806b0a",
+        "reopenedFileSha256": "8331e781f5d4154791fd9ce8f555a43f629dea129737ec21f87ab036dd300fd8",
+        "rolesOnDiskAtCut": [
+          "user",
+          "assistant"
+        ],
+        "reachedNextProvider": true,
+        "actualToolResults": [
+          {
+            "id": "tbbsave0",
+            "isError": true,
+            "text": "[openclaw] missing tool result in session history; inserted synthetic error result for transcript repair."
+          }
+        ],
+        "terminalDelivery": [
+          "Read-only follow-up admitted."
+        ],
+        "ownedCleanup": [
+          {
+            "label": "memory-managers",
+            "ok": true
+          },
+          {
+            "label": "mcp-runtime",
+            "ok": true
+          },
+          {
+            "label": "scheduler",
+            "ok": true
+          },
+          {
+            "label": "agent-databases",
+            "ok": true
+          }
+        ]
+      },
+      "sample3": {
+        "cutPid": 8597,
+        "nextPid": 9193,
+        "cutFileSha256": "6e2e61008a60642f4f523e7fc6f387a58763c460fca3ffeadd33d5a639806b0a",
+        "reopenedFileSha256": "8331e781f5d4154791fd9ce8f555a43f629dea129737ec21f87ab036dd300fd8",
+        "rolesOnDiskAtCut": [
+          "user",
+          "assistant"
+        ],
+        "reachedNextProvider": true,
+        "actualToolResults": [
+          {
+            "id": "tbbsave0",
+            "isError": true,
+            "text": "[openclaw] missing tool result in session history; inserted synthetic error result for transcript repair."
+          },
+          {
+            "id": "followupindependent",
+            "isError": false,
+            "text": "Successfully wrote 45 bytes to /tmp/n26-recovery-probe/sample3/workspace/memory/followup-local.md"
+          }
+        ],
+        "terminalDelivery": [
+          "Follow-up completed."
+        ],
+        "ownedCleanup": [
+          {
+            "label": "memory-managers",
+            "ok": true
+          },
+          {
+            "label": "mcp-runtime",
+            "ok": true
+          },
+          {
+            "label": "scheduler",
+            "ok": true
+          },
+          {
+            "label": "agent-databases",
+            "ok": true
+          }
+        ],
+        "newFileBytes": 45
+      },
+      "sdk1": {
+        "cutPid": 8190,
+        "nextPid": 8297,
+        "cutFileSha256": "6e2e61008a60642f4f523e7fc6f387a58763c460fca3ffeadd33d5a639806b0a",
+        "reopenedFileSha256": "6e2e61008a60642f4f523e7fc6f387a58763c460fca3ffeadd33d5a639806b0a",
+        "rolesOnDiskAtCut": [
+          "user",
+          "assistant"
+        ],
+        "intentStage": "intent",
+        "modelCalls": 0,
+        "failures": [
+          {
+            "phase": "publication-reconciliation",
+            "message": "Acknowledge current memory files for pending turn n26-save before admitting another message"
+          }
+        ]
+      },
+      "sdk2": {
+        "cutPid": 8290,
+        "nextPid": 8707,
+        "cutFileSha256": "6e2e61008a60642f4f523e7fc6f387a58763c460fca3ffeadd33d5a639806b0a",
+        "reopenedFileSha256": "8331e781f5d4154791fd9ce8f555a43f629dea129737ec21f87ab036dd300fd8",
+        "rolesOnDiskAtCut": [
+          "user",
+          "assistant"
+        ],
+        "intentStage": "intent",
+        "modelCalls": 0,
+        "failures": [
+          {
+            "phase": "publication-reconciliation",
+            "message": "Acknowledge current memory files for pending turn n26-save before admitting another message"
+          }
+        ]
+      },
+      "receipts": [
+        {
+          "path": "/tmp/n26-recovery-probe/sample1/cut.json",
+          "sha256": "7992ab6c7175b37de7ddd3a548533e6219afd11a44a35f68a84493a7fce71fb6"
+        },
+        {
+          "path": "/tmp/n26-recovery-probe/sample1/next.json",
+          "sha256": "8307cd32a0bd3e6b54f814707b449edbd1dfa359570c68b21b0f65dd39bf1e6c"
+        },
+        {
+          "path": "/tmp/n26-recovery-probe/sample1/native-raw.json",
+          "sha256": "501f299cf1dd709a9267dbea763700e015aaafc2e3df36576d5c146bec81e2d7"
+        },
+        {
+          "path": "/tmp/n26-recovery-probe/sample2/cut.json",
+          "sha256": "6d327df470bd56f1785b0a13e2185719ff3ffc236eddcec72b2ba1fefde51e59"
+        },
+        {
+          "path": "/tmp/n26-recovery-probe/sample2/next.json",
+          "sha256": "ad28b6543085ed2d5f82f6e75a1f120bcd26686fbeaff10cfc3b2184aa43293a"
+        },
+        {
+          "path": "/tmp/n26-recovery-probe/sample2/native-raw.json",
+          "sha256": "24eb76b63413aba6be2abce0fd9f9e6ad605a4dc656707dd047287514ef4b2c4"
+        },
+        {
+          "path": "/tmp/n26-recovery-probe/sample3/cut.json",
+          "sha256": "4e5efb0aacd8e5fc02fb99ee60c568f1c13fa4fbbfba904567cfc44f41639657"
+        },
+        {
+          "path": "/tmp/n26-recovery-probe/sample3/next.json",
+          "sha256": "68c347ad8e615a7bac779e42ac2cf8e572f9e988d21a434359c958df63f34224"
+        },
+        {
+          "path": "/tmp/n26-recovery-probe/sample3/native-raw.json",
+          "sha256": "5e7cca047c1c3464d5d91b6686d8990c75dc105990f3363fdceeda775d728061"
+        },
+        {
+          "path": "/tmp/n26-recovery-probe/sdk1/cut.json",
+          "sha256": "6932093e47745fc9d0ac9a349b342dde7654001895f198dfac03129a89d11c58"
+        },
+        {
+          "path": "/tmp/n26-recovery-probe/sdk1/next.json",
+          "sha256": "6568e2d21f7a322d5d4cd688116fcf9407695d155366cafa8d988c1877d6d670"
+        },
+        {
+          "path": "/tmp/n26-recovery-probe/sdk2/cut.json",
+          "sha256": "7561f3da6dfa102bf38adc4ea7c84b6ccbef4a2731b5733ec747c729c0e41dfd"
+        },
+        {
+          "path": "/tmp/n26-recovery-probe/sdk2/next.json",
+          "sha256": "39c51043b5a10d20f99ee098f24209948ea3c27cbf2ad2149019ac3ec037ceda"
+        }
+      ]
+    },
+    "heartbeat.scratch.boundaries": {
+      "officialCLIExitCodes": [
+        0,
+        0
+      ],
+      "workspaces": [
+        "/tmp/n26-heartbeat-adoption-smjfv_pl/workspace-a",
+        "/tmp/n26-heartbeat-adoption-smjfv_pl/workspace-b"
+      ],
+      "nativeScratchAfterA": [
+        {
+          "store_key": "/tmp/n26-heartbeat-adoption-smjfv_pl/state/cron/jobs.json",
+          "job_id": "41ca5c83-15ea-42c9-a190-ef170427acf0",
+          "content": "- Retain a shared checklist.\n",
+          "revision": 1,
+          "source_sha256": "aeb62843196786e70833fc79b609236320393d66bf49b88201966619f9764ed4",
+          "updated_at_ms": 1795702941775
+        },
+        {
+          "store_key": "/tmp/n26-heartbeat-adoption-smjfv_pl/state/cron/jobs.json",
+          "job_id": "c631d302-8453-4748-a702-c556dda6eea1",
+          "content": "- Retain a shared checklist.\n",
+          "revision": 1,
+          "source_sha256": "aeb62843196786e70833fc79b609236320393d66bf49b88201966619f9764ed4",
+          "updated_at_ms": 1795702941773
+        }
+      ],
+      "nativeJobsAfterA": [
+        {
+          "store_key": "/tmp/n26-heartbeat-adoption-smjfv_pl/state/cron/jobs.json",
+          "job_id": "41ca5c83-15ea-42c9-a190-ef170427acf0",
+          "owner_agent_id": null,
+          "agent_id": "ops",
+          "declaration_key": "heartbeat:ops"
+        },
+        {
+          "store_key": "/tmp/n26-heartbeat-adoption-smjfv_pl/state/cron/jobs.json",
+          "job_id": "c631d302-8453-4748-a702-c556dda6eea1",
+          "owner_agent_id": null,
+          "agent_id": "main",
+          "declaration_key": "heartbeat:main"
+        }
+      ],
+      "unchangedAfterSwitchToB": {
+        "scratch": true,
+        "jobs": true,
+        "archiveFiles": true,
+        "migrationSourceRows": true
+      },
+      "nativeArchiveFiles": {
+        "backups/heartbeat-migration/main-aeb62843196786e70833fc79b609236320393d66bf49b88201966619f9764ed4.md": "aeb62843196786e70833fc79b609236320393d66bf49b88201966619f9764ed4",
+        "backups/heartbeat-migration/main-aeb62843196786e70833fc79b609236320393d66bf49b88201966619f9764ed4.md.o2K66r/HEARTBEAT.md": "aeb62843196786e70833fc79b609236320393d66bf49b88201966619f9764ed4"
+      },
+      "nativeMigrationSourceTargets": [
+        "auth_profile_state",
+        "auth_profile_stores"
+      ],
+      "preexistingSDKOwners": [
+        {
+          "root": "/tmp/n26-heartbeat-adoption-smjfv_pl/workspace-a",
+          "store": "/tmp/n26-heartbeat-adoption-smjfv_pl/workspace-a/.memory-core/automation.json",
+          "sha256": "bfedda49553f7123f78f401f3e99c867284007d5987034b860f33ae7f04fe654",
+          "agents": {
+            "main": {
+              "owner": {
+                "agent_id": "main",
+                "job_id": "29e5a915-c001-4584-8f5f-41eb35c69d4d",
+                "generation": 1
+              },
+              "revision": 0,
+              "scratch": null
+            },
+            "ops": {
+              "owner": {
+                "agent_id": "ops",
+                "job_id": "d3f05066-1ed8-45e6-9d98-2e206ba47d76",
+                "generation": 1
+              },
+              "revision": 0,
+              "scratch": null
+            }
+          }
+        },
+        {
+          "root": "/tmp/n26-heartbeat-adoption-smjfv_pl/workspace-b",
+          "store": "/tmp/n26-heartbeat-adoption-smjfv_pl/workspace-b/.memory-core/automation.json",
+          "sha256": "d5281bcda925e916cd4265e62ba318d7745853f8452a8fc983d41fddf620bd04",
+          "agents": {
+            "main": {
+              "owner": {
+                "agent_id": "main",
+                "job_id": "deb57b77-ef7f-4e29-affe-7e786b2677bb",
+                "generation": 1
+              },
+              "revision": 0,
+              "scratch": null
+            },
+            "ops": {
+              "owner": {
+                "agent_id": "ops",
+                "job_id": "d05a4c88-e449-4821-a75c-35d63607e447",
+                "generation": 1
+              },
+              "revision": 0,
+              "scratch": null
+            }
+          }
+        }
+      ],
+      "SDKDataIdenticalBeforeAndAfterBothCommands": true,
+      "receipts": [
+        {
+          "path": "/tmp/n26-heartbeat-adoption-smjfv_pl/a.json",
+          "sha256": "366202fc334d3e8dbb62fecc8d43137ad048e4a319192f7490ecf2679b0dbece"
+        },
+        {
+          "path": "/tmp/n26-heartbeat-adoption-smjfv_pl/b.json",
+          "sha256": "affb76d7041ee0a6b10ceeb9828c21964cf093c701edb3b904c23c2f7d3526bb"
+        },
+        {
+          "path": "/tmp/n26-heartbeat-adoption-smjfv_pl/sdk-before-after.json",
+          "sha256": "b445180c6d1ce91f93001ed7e6a42fd6eb835bba30cef17961d4cdb47bd4a434"
+        },
+        {
+          "path": "/workspace/scratch/heartbeat-boundary-120/openclaw-komutu.json",
+          "sha256": "fefe54828a8f01e0d02ac8c5a3a487c8cde945efa9861a21442190ccd132e4b9"
+        },
+        {
+          "path": "/workspace/scratch/heartbeat-boundary-120/diagnostic-fields.json",
+          "sha256": "8f2f04918441502d13bc14997ee96b5d6ed3605abf24b843bfd6bf346febe51d"
+        },
+        {
+          "path": "/workspace/scratch/heartbeat-boundary-120/sdk-repair.json",
+          "sha256": "6ecbc85213662ca6c52c7c1e6d8dc3762aeab5e70821449a883d8965b9de29cc"
+        }
+      ]
+    }
+  },
+  "sourceSha256": {
+    "upstream": {
+      "src/hooks/bundled/session-memory/handler.ts": "1304d092f59d97dc42abcdfc9ab2b5d497adc96112d52be36f6279fc4ef37807",
+      "src/auto-reply/reply/memory-flush-session.ts": "3014bd23b500b37bf0b4bc41896e370a22b53a864208a1fd6361257ccc4c2cbe",
+      "src/auto-reply/reply/agent-runner-memory.ts": "283089b92cfd44840aaf5cdea08cec5148015ba93d86668e5e0a2b41fcfe8878",
+      "packages/agent-core/src/harness/session/tool-result-pairing.ts": "432a3ab386709ea2341f6f336c42eb78eae7ef323ff5f293a69ece53ebb1701b",
+      "src/commands/doctor-heartbeat-scratch-migration.ts": "399665e53f07d9f65206bc510bd503c1cfc10e81d921f18e4223e8710fab93ad",
+      "src/cron/scratch-store.ts": "04dc0f6937aa65dc0aaec4ed4eefa9115b1578b26ac65b47af926260b7583712"
+    },
+    "sdk": {
+      "memory_core/session_memory.py": "d2a5213df8bb27b10ae0765bd993817dcc29479faf5df1298916b0a9c89e2e1f",
+      "memory_core/memory_flush.py": "6bed311ec3115b5b0371f58947013af18abf3dad34264eea3eabdf6897dcb43b",
+      "memory_core/host/lifecycle.py": "8ed2050e5109988d26fafd82e2f466a9ea6f726c300ed6fd8fc6ebb38f11c4be",
+      "memory_core/heartbeat_migration.py": "f3095b47eab11309448a264a84e702f9fc79002c00e13c3d52923f546e8abcd8",
+      "memory_core/automation.py": "27bd1071d5e041256bcf1bce4ec7de65f1139dfafbc7b9e88d66709e4ff4bd20",
+      "tests/unit/test_host_publication_settlement.py": "88cf4bd17de01d0e53172fa33611509425e29042a6b4d99059191501d488805e",
+      "tests/unit/test_flush_target_authority.py": "52aa5260fb23c67d45739c719fa691b535a8c7c4f8ed85fa48312078984e62da",
+      "equivalence/heartbeat-doctor-codec.proposal.json": "86671a5b11a40cfcd5299c5a867a7c8f27898112055bdaa7c3bbc2eeccd54a38"
+    },
+    "releaseRuntime": {
+      "openclaw.mjs": "aa8606ca0d62ff133ef5b7bd2323ec8ff3f8eb384404399cd5e742918d63b0a1",
+      "dist/bundled/session-memory/handler.js": "2279d7ebb3f1ed5789aae0ca8b226ede49c4241569b70b7c126f901551fc59ea",
+      "dist/agent-runner-memory-Cc4lCZcs.mjs": "9a87aeee70d84d41eb6bf764a70c0334fb679a2f1e21d817c44c5eb306d5620e",
+      "dist/dispatch-from-config-BG9rT_X3.mjs": "a110ec6fe2d59a34d40267aeb84f1df136999c6b47bd9aeeeab410d1c3610fd1"
+    }
+  },
+  "replay": {
+    "path": "/workspace/scratch/nov26-parity/four-point-replay.pyz",
+    "sha256": "80a833eb1a9daed405416bb16f3aedfb4ed7ccbefc931cc606726a795b508a11"
+  },
+  "independentReplay": {
+    "outputDirectory": "/tmp/n26-four-independent-replay2",
+    "exitCode": 0,
+    "originalNodeCallerTeardownAwaited": true,
+    "allFourObservableDifferencesReproduced": true,
+    "setup": {
+      "SDKCommit": "2168fc0733ed7b4427668ee4673d11e25044b93c",
+      "upstreamCommit": "bcfc88812a35243893585dbeca87ca41b48272ca",
+      "packagedDriverSha256": "80a833eb1a9daed405416bb16f3aedfb4ed7ccbefc931cc606726a795b508a11"
+    },
+    "consoleSha256": "0e0b23dbb1e33c96a12eef8e29d2833144d2aee39cf157f45991e41ca299106f"
+  }
+}

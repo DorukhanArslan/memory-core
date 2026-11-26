@@ -1,0 +1,105 @@
+{
+  "product": "2168fc0733ed7b4427668ee4673d11e25044b93c",
+  "upstream": "bcfc88812a35243893585dbeca87ca41b48272ca",
+  "sdkPython": "3.12.14",
+  "packetSha256": "a7fcb4aa5aef646a5e28ecb3595e483527694ab50733b52739349577096c635d",
+  "releaseAuthenticationBeforeEqualsAfter": true,
+  "cases": [
+    {
+      "id": "complete-tool-result",
+      "allPublicValuesMatch": true,
+      "allIdentityRelationsMatch": false,
+      "upstream": {
+        "sanitizedOutputReuse": true,
+        "originalInputReuse": true
+      },
+      "sdk": {
+        "sanitizedOutputReuse": true,
+        "originalInputReuse": false
+      }
+    },
+    {
+      "id": "utf16-redaction-truncation-order",
+      "allPublicValuesMatch": true,
+      "allIdentityRelationsMatch": false,
+      "upstream": {
+        "sanitizedOutputReuse": true,
+        "originalInputReuse": true
+      },
+      "sdk": {
+        "sanitizedOutputReuse": true,
+        "originalInputReuse": false
+      }
+    },
+    {
+      "id": "prepared-nonidempotent-storage",
+      "allPublicValuesMatch": true,
+      "allIdentityRelationsMatch": true,
+      "upstream": {
+        "preparedBlockReuse": true,
+        "storageMessageReuse": true,
+        "storageBlockPrepared": true
+      },
+      "sdk": {
+        "preparedBlockReuse": true,
+        "storageMessageReuse": true,
+        "storageBlockPrepared": true
+      }
+    },
+    {
+      "id": "prepared-cloned-block-storage",
+      "allPublicValuesMatch": true,
+      "allIdentityRelationsMatch": true,
+      "upstream": {
+        "preparedBlockReuse": true,
+        "storageMessageReuse": false,
+        "storageBlockPrepared": true
+      },
+      "sdk": {
+        "preparedBlockReuse": true,
+        "storageMessageReuse": false,
+        "storageBlockPrepared": true
+      }
+    },
+    {
+      "id": "prepared-registry-invalidation-storage",
+      "allPublicValuesMatch": true,
+      "allIdentityRelationsMatch": true,
+      "upstream": {
+        "preparedBlockReuse": true,
+        "storageMessageReuse": false,
+        "storageBlockPrepared": false
+      },
+      "sdk": {
+        "preparedBlockReuse": true,
+        "storageMessageReuse": false,
+        "storageBlockPrepared": false
+      }
+    },
+    {
+      "id": "prepared-text-mutation-storage",
+      "allPublicValuesMatch": true,
+      "allIdentityRelationsMatch": true,
+      "upstream": {
+        "preparedBlockReuse": true,
+        "storageMessageReuse": false,
+        "storageBlockPrepared": false
+      },
+      "sdk": {
+        "preparedBlockReuse": true,
+        "storageMessageReuse": false,
+        "storageBlockPrepared": false
+      }
+    }
+  ],
+  "weakReferenceSupport": {
+    "dict": "cannot create weak reference to 'dict' object",
+    "list": "cannot create weak reference to 'list' object"
+  },
+  "ordinaryDistinctInputCanReuseFormerAddress": {
+    "sameNestedReferences": true,
+    "sameContent": true,
+    "firstSanitizedOutputStillLive": true,
+    "numberOfNewObjectsBeforeSameAddress": 558
+  }
+}

@@ -1,0 +1,561 @@
+{
+  "title": "Same-minute concurrent OpenClaw command:reset on different real sessions",
+  "asOf": "2026-11-26",
+  "sdkBaselineCommit": "2168fc0733ed7b4427668ee4673d11e25044b93c",
+  "originalTargetRemains": "v2026.9.9",
+  "pointsAwarded": 0,
+  "npmTags": {
+    "extended-stable": "2026.10.34",
+    "latest": "2026.11.10",
+    "beta": "2026.11.10"
+  },
+  "artifacts": [
+    {
+      "version": "2026.9.35",
+      "published": "2026-10-27T01:59:12.847Z",
+      "tarball": "https://registry.npmjs.org/openclaw/-/openclaw-2026.9.35.tgz",
+      "integrity": "sha512-1wVhWrYXsEgy4iVHAg0CEd4J7Vp4blc8XvIKVg463UYNxYVgUitg3pWdCKPxDIRgetQ6t5ViEftSn5J0UI7x9A==",
+      "sha1": "14a3fa1b43c1b6304bf207ebad180fa14efbd336",
+      "signatures": [
+        {
+          "keyid": "SHA256:DhQ8wR5APBvFHLF/+Tc+AYvPOdTpcIDqOhxsBHRwC7U",
+          "valid": true
+        },
+        {
+          "keyid": "SHA256:DhQ8wR5APBvFHLF/+Tc+AYvPOdTpcIDqOhxsBHRwC7U",
+          "valid": true
+        }
+      ],
+      "slsaWorkflowDependency": [
+        {
+          "uri": "git+https://github.com/openclaw/openclaw@refs/tags/release-publish/733b96cc02a5-1793047666",
+          "digest": {
+            "gitCommit": "733b96cc02a5bf29e406f07417d4ac755ff531b8"
+          }
+        }
+      ],
+      "slsaPublishedBy": {
+        "ref": "refs/tags/release-publish/733b96cc02a5-1793047666",
+        "repository": "https://github.com/openclaw/openclaw",
+        "path": ".github/workflows/openclaw-npm-release.yml"
+      },
+      "slsaURL": "https://registry.npmjs.org/-/npm/v1/attestations/openclaw@2026.9.35",
+      "buildInfo": {
+        "version": "2026.9.35",
+        "commit": "2ff91b9c5ed26aff603c6d5466fc642ae9d50e72",
+        "builtAt": "2026-10-26T22:59:36.322Z",
+        "buildId": "2026.9.35-release-2ff91b9c5ed2-2026-10-26T22-59-36.322Z"
+      }
+    },
+    {
+      "version": "2026.11.10",
+      "published": "2026-11-25T05:07:34.288Z",
+      "tarball": "https://registry.npmjs.org/openclaw/-/openclaw-2026.11.10.tgz",
+      "integrity": "sha512-/FKDjxY1ZdUSXHx1a9b4EUpPRZywM3uv4181g22XImJfp/5+h+fFUZ7B7HthNrdYzq//05zH0Yf7mefzIlWFaQ==",
+      "sha1": "de2d2f67c1bd1256b81d373bbd0af433cf9191f6",
+      "signatures": [
+        {
+          "keyid": "SHA256:DhQ8wR5APBvFHLF/+Tc+AYvPOdTpcIDqOhxsBHRwC7U",
+          "valid": true
+        },
+        {
+          "keyid": "SHA256:DhQ8wR5APBvFHLF/+Tc+AYvPOdTpcIDqOhxsBHRwC7U",
+          "valid": true
+        }
+      ],
+      "slsaWorkflowDependency": [
+        {
+          "uri": "git+https://github.com/openclaw/openclaw@refs/tags/release-publish/75b3f1732e10-1795574151",
+          "digest": {
+            "gitCommit": "75b3f1732e100fc3c75314845fd846411ed9ad76"
+          }
+        }
+      ],
+      "slsaPublishedBy": {
+        "ref": "refs/tags/release-publish/75b3f1732e10-1795574151",
+        "repository": "https://github.com/openclaw/openclaw",
+        "path": ".github/workflows/openclaw-npm-release.yml"
+      },
+      "slsaURL": "https://registry.npmjs.org/-/npm/v1/attestations/openclaw@2026.11.10",
+      "buildInfo": {
+        "version": "2026.11.10",
+        "commit": "6ea542fd97e2876aa4c871ccc494ed5419a03c5c",
+        "builtAt": "2026-11-24T23:17:47.129Z",
+        "buildId": "2026.11.10-release-6ea542fd97e2-2026-11-24T23-17-47.129Z"
+      }
+    }
+  ],
+  "sourceRefs": [
+    {
+      "ref": "v2026.9.35",
+      "commit": "2ff91b9c5ed26aff603c6d5466fc642ae9d50e72",
+      "blob": "8c557b05c857129adacfe524737514f20f16439e",
+      "lines": [
+        [
+          253,
+          "    const memoryFilePath = await withFileLock("
+        ],
+        [
+          267,
+          "          commit: () => memoryRoot.create(filename, entry, { encoding: \"utf-8\", atomic: true }),"
+        ]
+      ]
+    },
+    {
+      "ref": "733b96cc02a5bf29e406f07417d4ac755ff531b8",
+      "commit": "733b96cc02a5bf29e406f07417d4ac755ff531b8",
+      "blob": "840eacc2efd176b41b405f53c98759d2de287da6",
+      "lines": [
+        [
+          338,
+          "    const memoryFilePath = await withFileLock("
+        ],
+        [
+          352,
+          "          commit: () => memoryRoot.create(filename, entry, { encoding: \"utf-8\", atomic: true }),"
+        ]
+      ]
+    },
+    {
+      "ref": "v2026.10.10",
+      "commit": "7dc3350cb9f08fcf9a0af5c4845a20d5b2f1a8be",
+      "blob": "be90e8b8e34c2e4a13e0881067494fb27296ed9b",
+      "lines": [
+        [
+          254,
+          "    const commit = () => memoryRoot.write(filename, entry, { encoding: \"utf-8\" });"
+        ]
+      ]
+    },
+    {
+      "ref": "v2026.11.10",
+      "commit": "6ea542fd97e2876aa4c871ccc494ed5419a03c5c",
+      "blob": "840eacc2efd176b41b405f53c98759d2de287da6",
+      "lines": [
+        [
+          338,
+          "    const memoryFilePath = await withFileLock("
+        ],
+        [
+          352,
+          "          commit: () => memoryRoot.create(filename, entry, { encoding: \"utf-8\", atomic: true }),"
+        ]
+      ]
+    },
+    {
+      "ref": "75b3f1732e100fc3c75314845fd846411ed9ad76",
+      "commit": "75b3f1732e100fc3c75314845fd846411ed9ad76",
+      "blob": "840eacc2efd176b41b405f53c98759d2de287da6",
+      "lines": [
+        [
+          338,
+          "    const memoryFilePath = await withFileLock("
+        ],
+        [
+          352,
+          "          commit: () => memoryRoot.create(filename, entry, { encoding: \"utf-8\", atomic: true }),"
+        ]
+      ]
+    }
+  ],
+  "scope": "Two cooperating hook processes on one local Linux workspace, same fallback slug and timestamp, durable files, provenance, exclusive kernel publication. Independent late writer first creating a target is outside this successful two-reset observation.",
+  "method": "Separate Node processes with network disabled. Seed two real SQLite session transcripts with differing text and send real internal command:reset events. Pause the left actor after fs.promises.access actually failed with ENOENT but before returning that identical error to the hook. Start the right actor before releasing the left. Release only after the right actor actually completed the baseline write, or strace proved the authentic newer lock rejected simultaneous acquisition with EEXIST. Production name allocation, provenance and file publication are unmodified.",
+  "test": [
+    {
+      "version": "2026.9.9",
+      "buildInfo": {
+        "version": "2026.9.9",
+        "commit": "bcfc88812a35243893585dbeca87ca41b48272ca",
+        "builtAt": "2026-10-08T06:26:41.967Z",
+        "buildId": "2026.9.9-release-bcfc88812a35-2026-10-08T06-26-41.967Z"
+      },
+      "nodeSha256": "b2959781cc5a74c357ffa02367efa8a0330cbb1c9cb347732fdfaaaca381cbcd",
+      "handlerSha256": "2279d7ebb3f1ed5789aae0ca8b226ede49c4241569b70b7c126f901551fc59ea",
+      "filePublisher": {
+        "libraryVersion": "0.21.1",
+        "nativePackage": "0.21.1"
+      },
+      "files": {
+        "2026-11-18-1106.md": {
+          "sha256": "f60c8d9f8c4c2ed13a1b9547cd957888ddb7877f1e77b221824b89159aff94b2",
+          "body": "# Session: 2026-11-18 11:06:40 UTC\n\n- **Session Key**: agent:main:reset-probe-left\n- **Session ID**: probe-left\n- **Source**: sample-left\n\n## Conversation Summary\n\nuser: \"End left note\"\n"
+        }
+      },
+      "rightBeforeLeftRelease": [
+        "ready",
+        "dispatch",
+        "name-check",
+        "finished"
+      ],
+      "nameChecks": {
+        "left": [
+          {
+            "name": "2026-11-18-1106.md",
+            "result": "ENOENT"
+          }
+        ],
+        "right": [
+          {
+            "name": "2026-11-18-1106.md",
+            "result": "ENOENT"
+          }
+        ]
+      },
+      "rightLockConflict": [],
+      "exclusivePublicationKernelRecord": [],
+      "finalProvenanceRows": [
+        {
+          "relativePath": "memory/2026-11-18-1106.md",
+          "provenance": {
+            "fileHash": "f60c8d9f8c4c2ed13a1b9547cd957888ddb7877f1e77b221824b89159aff94b2",
+            "originClass": "untrusted",
+            "observedAt": 1795000000000,
+            "sessionId": "probe-left",
+            "sessionKey": "agent:main:reset-probe-left"
+          }
+        }
+      ],
+      "rawReceiptSha256": "778a2db3b73d3e72a19759677e576ae91175d450058fce342eaa649c89ba3e60",
+      "kernelTraceSha256": "553b6b5d71aa7b7d262a17af5a4e6c154bd15527cf0b6e84fc14ea56cc7ec323"
+    },
+    {
+      "version": "2026.9.35",
+      "buildInfo": {
+        "version": "2026.9.35",
+        "commit": "2ff91b9c5ed26aff603c6d5466fc642ae9d50e72",
+        "builtAt": "2026-10-26T22:59:36.322Z",
+        "buildId": "2026.9.35-release-2ff91b9c5ed2-2026-10-26T22-59-36.322Z"
+      },
+      "nodeSha256": "b2959781cc5a74c357ffa02367efa8a0330cbb1c9cb347732fdfaaaca381cbcd",
+      "handlerSha256": "3bb7c5fdba6413e2331ea84fb7fedb646760066fede784392fe20a7134083891",
+      "filePublisher": {
+        "libraryVersion": "0.21.1",
+        "nativePackage": "0.21.1"
+      },
+      "files": {
+        "2026-11-18-1106-2.md": {
+          "sha256": "7b4386117f7ba6d25814101f3cf8a46543a16aea925c765a617db9db0f865bb7",
+          "body": "# Session: 2026-11-18 11:06:40 UTC\n\n- **Session Key**: agent:main:reset-probe-right\n- **Session ID**: probe-right\n- **Source**: sample-right\n\n## Conversation Summary\n\nuser: \"End right note\"\n"
+        },
+        "2026-11-18-1106.md": {
+          "sha256": "f60c8d9f8c4c2ed13a1b9547cd957888ddb7877f1e77b221824b89159aff94b2",
+          "body": "# Session: 2026-11-18 11:06:40 UTC\n\n- **Session Key**: agent:main:reset-probe-left\n- **Session ID**: probe-left\n- **Source**: sample-left\n\n## Conversation Summary\n\nuser: \"End left note\"\n"
+        }
+      },
+      "rightBeforeLeftRelease": [
+        "ready",
+        "dispatch"
+      ],
+      "nameChecks": {
+        "left": [
+          {
+            "name": "2026-11-18-1106.md",
+            "result": "ENOENT"
+          }
+        ],
+        "right": [
+          {
+            "name": "2026-11-18-1106.md",
+            "result": "exists"
+          },
+          {
+            "name": "2026-11-18-1106-2.md",
+            "result": "ENOENT"
+          }
+        ]
+      },
+      "rightLockConflict": [
+        "20276 openat2(34, \".session-memory.lock\", {flags=O_WRONLY|O_CREAT|O_EXCL|O_LARGEFILE|O_NOFOLLOW|O_CLOEXEC, mode=0600, resolve=RESOLVE_NO_MAGICLINKS|RESOLVE_BENEATH}, 24) = -1 EEXIST (File exists)"
+      ],
+      "exclusivePublicationKernelRecord": [
+        "20276 renameat2(32, \".fs-safe-87e81dff-f3a7-4982-b743-bb51661f9301.tmp\", 32, \"2026-11-18-1106-2.md\", RENAME_NOREPLACE <unfinished ...>",
+        "20276 <... renameat2 resumed>)          = 0"
+      ],
+      "finalProvenanceRows": [
+        {
+          "relativePath": "memory/2026-11-18-1106.md",
+          "provenance": {
+            "fileHash": "f60c8d9f8c4c2ed13a1b9547cd957888ddb7877f1e77b221824b89159aff94b2",
+            "originClass": "untrusted",
+            "observedAt": 1795000000000,
+            "sessionId": "probe-left",
+            "sessionKey": "agent:main:reset-probe-left"
+          }
+        },
+        {
+          "relativePath": "memory/2026-11-18-1106-2.md",
+          "provenance": {
+            "fileHash": "7b4386117f7ba6d25814101f3cf8a46543a16aea925c765a617db9db0f865bb7",
+            "originClass": "untrusted",
+            "observedAt": 1795000000000,
+            "sessionId": "probe-right",
+            "sessionKey": "agent:main:reset-probe-right"
+          }
+        }
+      ],
+      "rawReceiptSha256": "cc565a2c0325e8d0aa71ebf4b369d5cf492dbc31ce214b4cf91996b00ee16c1f",
+      "kernelTraceSha256": "1aba0e31e8dec50bfad75d2de16609a7e0d237098283825e9ce99c71fa5836a3"
+    },
+    {
+      "version": "2026.11.10",
+      "buildInfo": {
+        "version": "2026.11.10",
+        "commit": "6ea542fd97e2876aa4c871ccc494ed5419a03c5c",
+        "builtAt": "2026-11-24T23:17:47.129Z",
+        "buildId": "2026.11.10-release-6ea542fd97e2-2026-11-24T23-17-47.129Z"
+      },
+      "nodeSha256": "b2959781cc5a74c357ffa02367efa8a0330cbb1c9cb347732fdfaaaca381cbcd",
+      "handlerSha256": "365d649e514611c5813bbc4d2939bac802b5bb76a8f3256fece97958059e98df",
+      "filePublisher": {
+        "libraryVersion": "0.27.1",
+        "nativePackage": "0.27.1"
+      },
+      "files": {
+        "2026-11-18-1106-2.md": {
+          "sha256": "7b4386117f7ba6d25814101f3cf8a46543a16aea925c765a617db9db0f865bb7",
+          "body": "# Session: 2026-11-18 11:06:40 UTC\n\n- **Session Key**: agent:main:reset-probe-right\n- **Session ID**: probe-right\n- **Source**: sample-right\n\n## Conversation Summary\n\nuser: \"End right note\"\n"
+        },
+        "2026-11-18-1106.md": {
+          "sha256": "f60c8d9f8c4c2ed13a1b9547cd957888ddb7877f1e77b221824b89159aff94b2",
+          "body": "# Session: 2026-11-18 11:06:40 UTC\n\n- **Session Key**: agent:main:reset-probe-left\n- **Session ID**: probe-left\n- **Source**: sample-left\n\n## Conversation Summary\n\nuser: \"End left note\"\n"
+        }
+      },
+      "rightBeforeLeftRelease": [
+        "seed-receipt",
+        "ready",
+        "dispatch"
+      ],
+      "nameChecks": {
+        "left": [
+          {
+            "name": "2026-11-18-1106.md",
+            "result": "ENOENT"
+          }
+        ],
+        "right": [
+          {
+            "name": "2026-11-18-1106.md",
+            "result": "exists"
+          },
+          {
+            "name": "2026-11-18-1106-2.md",
+            "result": "ENOENT"
+          }
+        ]
+      },
+      "rightLockConflict": [
+        "20401 openat2(71, \".session-memory.lock\", {flags=O_WRONLY|O_CREAT|O_EXCL|O_LARGEFILE|O_NOFOLLOW|O_CLOEXEC, mode=0600, resolve=RESOLVE_NO_MAGICLINKS|RESOLVE_BENEATH}, 24) = -1 EEXIST (File exists)"
+      ],
+      "exclusivePublicationKernelRecord": [
+        "20419 renameat2(81, \".fs-safe-309a468c-b834-4d53-8bf4-a9eb62c036e9.tmp\", 81, \"2026-11-18-1106-2.md\", RENAME_NOREPLACE) = 0"
+      ],
+      "finalProvenanceRows": [
+        {
+          "relativePath": "memory/2026-11-18-1106.md",
+          "provenance": {
+            "fileHash": "f60c8d9f8c4c2ed13a1b9547cd957888ddb7877f1e77b221824b89159aff94b2",
+            "originClass": "untrusted",
+            "observedAt": 1795000000000,
+            "sessionId": "probe-left",
+            "sessionKey": "agent:main:reset-probe-left"
+          }
+        },
+        {
+          "relativePath": "memory/2026-11-18-1106-2.md",
+          "provenance": {
+            "fileHash": "7b4386117f7ba6d25814101f3cf8a46543a16aea925c765a617db9db0f865bb7",
+            "originClass": "untrusted",
+            "observedAt": 1795000000000,
+            "sessionId": "probe-right",
+            "sessionKey": "agent:main:reset-probe-right"
+          }
+        }
+      ],
+      "rawReceiptSha256": "f85f8e45d2c4b0397fb7e554e21607849cb1b44357224ee0b97114888f49a36a",
+      "kernelTraceSha256": "9a9c3a7e878f7bf4552d996345dcb7e050d97ffd880fe1b2e9d3c0ce9bd538c7"
+    }
+  ],
+  "discovery": {
+    "publishedStableNpmVersionsNewer": 27,
+    "scannedReleaseSources": 27,
+    "sources": [
+      {
+        "version": "v2026.9.9",
+        "published": "2026-10-08T09:38:01.687Z",
+        "atomicCreateInHook": false,
+        "handlerSha256": "1304d092f59d97dc42abcdfc9ab2b5d497adc96112d52be36f6279fc4ef37807"
+      },
+      {
+        "version": "v2026.9.33",
+        "published": "2026-10-15T10:05:43.246Z",
+        "atomicCreateInHook": false,
+        "handlerSha256": "1304d092f59d97dc42abcdfc9ab2b5d497adc96112d52be36f6279fc4ef37807"
+      },
+      {
+        "version": "v2026.9.34",
+        "published": "2026-10-24T11:17:24.107Z",
+        "atomicCreateInHook": false,
+        "handlerSha256": "1304d092f59d97dc42abcdfc9ab2b5d497adc96112d52be36f6279fc4ef37807"
+      },
+      {
+        "version": "v2026.9.35",
+        "published": "2026-10-27T01:59:12.847Z",
+        "atomicCreateInHook": true,
+        "handlerSha256": "c4a49d8592e25c904c8097f67ac1db2aca25365ed5e91c7bb91cbe2f0afc33ce"
+      },
+      {
+        "version": "v2026.9.36",
+        "published": "2026-10-29T19:40:15.886Z",
+        "atomicCreateInHook": true,
+        "handlerSha256": "c4a49d8592e25c904c8097f67ac1db2aca25365ed5e91c7bb91cbe2f0afc33ce"
+      },
+      {
+        "version": "v2026.9.37",
+        "published": "2026-11-10T20:16:24.913Z",
+        "atomicCreateInHook": true,
+        "handlerSha256": "c4a49d8592e25c904c8097f67ac1db2aca25365ed5e91c7bb91cbe2f0afc33ce"
+      },
+      {
+        "version": "v2026.10.1",
+        "published": "2026-10-10T22:45:05.897Z",
+        "atomicCreateInHook": false,
+        "handlerSha256": "01497e542a5a1b9e9739290354163e1bc1660c44f5ac989661e96071729c2888"
+      },
+      {
+        "version": "v2026.10.2",
+        "published": "2026-10-12T05:28:25.059Z",
+        "atomicCreateInHook": false,
+        "handlerSha256": "01497e542a5a1b9e9739290354163e1bc1660c44f5ac989661e96071729c2888"
+      },
+      {
+        "version": "v2026.10.3",
+        "published": "2026-10-13T13:43:36.600Z",
+        "atomicCreateInHook": false,
+        "handlerSha256": "01497e542a5a1b9e9739290354163e1bc1660c44f5ac989661e96071729c2888"
+      },
+      {
+        "version": "v2026.10.4",
+        "published": "2026-10-15T23:58:28.695Z",
+        "atomicCreateInHook": false,
+        "handlerSha256": "01497e542a5a1b9e9739290354163e1bc1660c44f5ac989661e96071729c2888"
+      },
+      {
+        "version": "v2026.10.5",
+        "published": "2026-10-18T21:16:43.569Z",
+        "atomicCreateInHook": false,
+        "handlerSha256": "bdec4b5167f7161c678070bd50e288d1578a0b05dbd26a77ae54950dcb4358d9"
+      },
+      {
+        "version": "v2026.10.6",
+        "published": "2026-10-22T12:44:56.648Z",
+        "atomicCreateInHook": false,
+        "handlerSha256": "bdec4b5167f7161c678070bd50e288d1578a0b05dbd26a77ae54950dcb4358d9"
+      },
+      {
+        "version": "v2026.10.7",
+        "published": "2026-10-24T07:36:46.919Z",
+        "atomicCreateInHook": false,
+        "handlerSha256": "bdec4b5167f7161c678070bd50e288d1578a0b05dbd26a77ae54950dcb4358d9"
+      },
+      {
+        "version": "v2026.10.8",
+        "published": "2026-10-27T11:24:29.436Z",
+        "atomicCreateInHook": true,
+        "handlerSha256": "6855cf85fd9b56ce3a13fe84e25230c8609ba7037f54ad10f48c8f347bfd4c8c"
+      },
+      {
+        "version": "v2026.10.9",
+        "published": "2026-10-29T15:46:49.267Z",
+        "atomicCreateInHook": true,
+        "handlerSha256": "6855cf85fd9b56ce3a13fe84e25230c8609ba7037f54ad10f48c8f347bfd4c8c"
+      },
+      {
+        "version": "v2026.10.10",
+        "published": "2026-11-03T02:26:08.904Z",
+        "atomicCreateInHook": false,
+        "handlerSha256": "bdec4b5167f7161c678070bd50e288d1578a0b05dbd26a77ae54950dcb4358d9"
+      },
+      {
+        "version": "v2026.10.33",
+        "published": "2026-11-18T03:11:16.913Z",
+        "atomicCreateInHook": true,
+        "handlerSha256": "6855cf85fd9b56ce3a13fe84e25230c8609ba7037f54ad10f48c8f347bfd4c8c"
+      },
+      {
+        "version": "v2026.10.34",
+        "published": "2026-11-26T00:42:32.120Z",
+        "atomicCreateInHook": true,
+        "handlerSha256": "6855cf85fd9b56ce3a13fe84e25230c8609ba7037f54ad10f48c8f347bfd4c8c"
+      },
+      {
+        "version": "v2026.11.1",
+        "published": "2026-11-05T09:41:26.297Z",
+        "atomicCreateInHook": true,
+        "handlerSha256": "6855cf85fd9b56ce3a13fe84e25230c8609ba7037f54ad10f48c8f347bfd4c8c"
+      },
+      {
+        "version": "v2026.11.2",
+        "published": "2026-11-08T09:48:24.847Z",
+        "atomicCreateInHook": true,
+        "handlerSha256": "6855cf85fd9b56ce3a13fe84e25230c8609ba7037f54ad10f48c8f347bfd4c8c"
+      },
+      {
+        "version": "v2026.11.3",
+        "published": "2026-11-10T17:59:44.785Z",
+        "atomicCreateInHook": true,
+        "handlerSha256": "6855cf85fd9b56ce3a13fe84e25230c8609ba7037f54ad10f48c8f347bfd4c8c"
+      },
+      {
+        "version": "v2026.11.4",
+        "published": "2026-11-16T04:06:42.253Z",
+        "atomicCreateInHook": true,
+        "handlerSha256": "6855cf85fd9b56ce3a13fe84e25230c8609ba7037f54ad10f48c8f347bfd4c8c"
+      },
+      {
+        "version": "v2026.11.5",
+        "published": "2026-11-17T09:59:33.472Z",
+        "atomicCreateInHook": true,
+        "handlerSha256": "33f374b0d9eb418dc9cb84501e03438907017488ccffce9d84ee8cb8fabd97e8"
+      },
+      {
+        "version": "v2026.11.6",
+        "published": "2026-11-19T16:52:13.687Z",
+        "atomicCreateInHook": true,
+        "handlerSha256": "33f374b0d9eb418dc9cb84501e03438907017488ccffce9d84ee8cb8fabd97e8"
+      },
+      {
+        "version": "v2026.11.7",
+        "published": "2026-11-23T01:21:13.567Z",
+        "atomicCreateInHook": true,
+        "handlerSha256": "33f374b0d9eb418dc9cb84501e03438907017488ccffce9d84ee8cb8fabd97e8"
+      },
+      {
+        "version": "v2026.11.8",
+        "published": "2026-11-24T10:14:12.508Z",
+        "atomicCreateInHook": true,
+        "handlerSha256": "33f374b0d9eb418dc9cb84501e03438907017488ccffce9d84ee8cb8fabd97e8"
+      },
+      {
+        "version": "v2026.11.9",
+        "published": "2026-11-25T00:33:15.923Z",
+        "atomicCreateInHook": true,
+        "handlerSha256": "33f374b0d9eb418dc9cb84501e03438907017488ccffce9d84ee8cb8fabd97e8"
+      },
+      {
+        "version": "v2026.11.10",
+        "published": "2026-11-25T05:07:34.288Z",
+        "atomicCreateInHook": true,
+        "handlerSha256": "33f374b0d9eb418dc9cb84501e03438907017488ccffce9d84ee8cb8fabd97e8"
+      }
+    ],
+    "firstPublicationWithAtomicSource": "v2026.9.35"
+  },
+  "matchingSdkHashes": {
+    "left": "f60c8d9f8c4c2ed13a1b9547cd957888ddb7877f1e77b221824b89159aff94b2",
+    "right": "7b4386117f7ba6d25814101f3cf8a46543a16aea925c765a617db9db0f865bb7"
+  },
+  "retainedRawAndReplay": {
+    "name": "reset-release-replay.zip",
+    "sha256": "539a1ebfbeb842fe87552138895d92da3193bde5d545f786d57f06de02538a7b"
+  }
+}

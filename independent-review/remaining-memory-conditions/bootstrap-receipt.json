@@ -1,0 +1,557 @@
+{
+  "kind": "focused-bootstrap-discovery-physical-evidence",
+  "scope": "11 bootstrap pairs, including two pre-existing mismatches; no global gate measurement",
+  "before": {
+    "implementation": {
+      "gitCommit": "2168fc0733ed7b4427668ee4673d11e25044b93c",
+      "trackedWorkingTreeDirty": false,
+      "sourceSha256": "df9cb99bb5b8423bf1e45d2b5c7eb018f1c55622f300d37e1ffffe47950e3bd6",
+      "sourceFiles": 183
+    },
+    "reference": {
+      "tag": "v2026.9.9",
+      "commit": "bcfc88812a35243893585dbeca87ca41b48272ca",
+      "tree": "702b8f6a50264e8de42f105992aff6406b073275",
+      "nodeVersion": "v24.16.0",
+      "packageVersion": "2026.9.9",
+      "packageSha256": "09f313df5a3b93723c7f408bba1887e9978156bbcfd4fa0b3c3bccb61c4779c8"
+    },
+    "reportSha256": "bea1eea8c05b19fd49f7203480d8e317a06f4264ea44965b4f5f03e4f55d3952",
+    "summary": {
+      "matched": 0,
+      "mismatched": 2,
+      "blocked": 0,
+      "uncoveredAcceptance": 127
+    },
+    "pairedCases": {
+      "bootstrap-discovery-memory-core-layout-extension": "mismatched",
+      "bootstrap-discovery-legacy-state-gate": "mismatched"
+    },
+    "physicalEvidence": {
+      "bootstrap-discovery-memory-core-layout-extension": {
+        "native": {
+          "rawCaptureSha256": "26c828710a36fafba0e4970d14545c8c06914cd751fcc4f4bccf9088bd4e2080",
+          "capturedWorkspaceEntries": [
+            "AGENTS.md",
+            "BOOTSTRAP.md",
+            "IDENTITY.md",
+            "PROACTIVE_PREFERENCES.md",
+            "SOUL.md",
+            "USER.md"
+          ],
+          "capturedFileBytesSha256": {
+            "PROACTIVE_PREFERENCES.md": "fbad5c309743f78c2a747695122a8b2d75e24a4ebe725dc5e04726d730a54fd3"
+          },
+          "actualOwnersCalled": [
+            "ensureAgentWorkspace",
+            "loadWorkspaceBootstrapFiles",
+            "resolveBootstrapFilesForRun",
+            "resolveBootstrapFilesForRun",
+            "resolveBootstrapFilesForRun",
+            "readWorkspaceStateSnapshot",
+            "resolveWorkspaceBootstrapStatus",
+            "isWorkspaceSetupCompleted"
+          ],
+          "ensure": {
+            "bootstrapPending": true
+          },
+          "bootstrapStatus": "pending",
+          "setupCompleted": false,
+          "publicRuns": [
+            {
+              "kind": "main",
+              "files": [
+                "AGENTS.md",
+                "SOUL.md",
+                "IDENTITY.md",
+                "USER.md",
+                "BOOTSTRAP.md"
+              ]
+            },
+            {
+              "kind": "subagent",
+              "files": [
+                "AGENTS.md"
+              ]
+            },
+            {
+              "kind": "cron",
+              "files": [
+                "AGENTS.md",
+                "SOUL.md",
+                "IDENTITY.md",
+                "USER.md"
+              ]
+            }
+          ]
+        },
+        "python": {
+          "rawCaptureSha256": "8c4f4a5c94f2fa84bc02572f8875ad2c735bc0528835c23bc115dc7cdf594866",
+          "capturedWorkspaceEntries": [
+            ".memory-core",
+            ".memory-core/workspace-state.json",
+            "AGENTS.md",
+            "BOOTSTRAP.md",
+            "IDENTITY.md",
+            "PROACTIVE_PREFERENCES.md",
+            "SOUL.md",
+            "USER.md",
+            "user",
+            "workspace"
+          ],
+          "capturedFileBytesSha256": {
+            "PROACTIVE_PREFERENCES.md": "fbad5c309743f78c2a747695122a8b2d75e24a4ebe725dc5e04726d730a54fd3"
+          },
+          "actualOwnersCalled": [
+            "initialize_agent_workspace",
+            "load_workspace_bootstrap_files",
+            "load_workspace_bootstrap_files",
+            "is_workspace_setup_completed",
+            "filter_bootstrap_files",
+            "load_workspace_bootstrap_files",
+            "is_workspace_setup_completed",
+            "filter_bootstrap_files",
+            "load_workspace_bootstrap_files",
+            "is_workspace_setup_completed",
+            "filter_bootstrap_files",
+            "read_workspace_setup_state",
+            "bootstrap_status",
+            "is_workspace_setup_completed"
+          ],
+          "ensure": {
+            "bootstrapPending": true
+          },
+          "bootstrapStatus": "pending",
+          "setupCompleted": false,
+          "publicRuns": [
+            {
+              "kind": "main",
+              "files": [
+                "AGENTS.md",
+                "SOUL.md",
+                "IDENTITY.md",
+                "USER.md",
+                "PROACTIVE_PREFERENCES.md",
+                "BOOTSTRAP.md"
+              ]
+            },
+            {
+              "kind": "subagent",
+              "files": [
+                "AGENTS.md"
+              ]
+            },
+            {
+              "kind": "cron",
+              "files": [
+                "AGENTS.md",
+                "SOUL.md",
+                "IDENTITY.md",
+                "USER.md",
+                "PROACTIVE_PREFERENCES.md"
+              ]
+            }
+          ]
+        }
+      },
+      "bootstrap-discovery-legacy-state-gate": {
+        "native": {
+          "rawCaptureSha256": "3639850b70b2eebc260f10fc42b1611c033e1bc4ed30a0c96995e0c7f5983ba8",
+          "capturedWorkspaceEntries": [
+            "openclaw-workspace-state.json"
+          ],
+          "capturedFileBytesSha256": {
+            "openclaw-workspace-state.json": "82add41fb267b82ff7c3f6a4be1211b6febfd1209334c1d22bee57570372917a"
+          },
+          "actualOwnersCalled": [
+            "ensureAgentWorkspace",
+            "loadWorkspaceBootstrapFiles",
+            "resolveBootstrapFilesForRun",
+            "readWorkspaceStateSnapshot",
+            "resolveWorkspaceBootstrapStatus",
+            "isWorkspaceSetupCompleted"
+          ],
+          "ensure": {
+            "error": {
+              "name": "StartupMaintenanceRequiredError",
+              "message": "Legacy workspace setup state requires migration for $FIXTURE/workspace; run openclaw doctor --fix.",
+              "kind": "legacy-workspace",
+              "code": "gateway.maintenance_required"
+            }
+          },
+          "bootstrapStatus": {
+            "error": {
+              "name": "StartupMaintenanceRequiredError",
+              "message": "Legacy workspace setup state requires migration for $FIXTURE/workspace; run openclaw doctor --fix.",
+              "kind": "legacy-workspace",
+              "code": "gateway.maintenance_required"
+            }
+          },
+          "setupCompleted": {
+            "error": {
+              "name": "StartupMaintenanceRequiredError",
+              "message": "Legacy workspace setup state requires migration for $FIXTURE/workspace; run openclaw doctor --fix.",
+              "kind": "legacy-workspace",
+              "code": "gateway.maintenance_required"
+            }
+          },
+          "publicRuns": [
+            {
+              "kind": "main",
+              "files": [
+                "AGENTS.md",
+                "SOUL.md",
+                "IDENTITY.md",
+                "BOOTSTRAP.md"
+              ]
+            }
+          ]
+        },
+        "python": {
+          "rawCaptureSha256": "afec71786661b10e0b1d82d9c99305fb2119a3029bc0a63cf88a0d695d822fad",
+          "capturedWorkspaceEntries": [
+            "openclaw-workspace-state.json"
+          ],
+          "capturedFileBytesSha256": {
+            "openclaw-workspace-state.json": "82add41fb267b82ff7c3f6a4be1211b6febfd1209334c1d22bee57570372917a"
+          },
+          "actualOwnersCalled": [
+            "initialize_agent_workspace",
+            "load_workspace_bootstrap_files",
+            "load_workspace_bootstrap_files",
+            "is_workspace_setup_completed",
+            "read_workspace_setup_state",
+            "bootstrap_status",
+            "is_workspace_setup_completed"
+          ],
+          "ensure": {
+            "error": {
+              "name": "WorkspaceStateMigrationRequiredError",
+              "message": "Legacy workspace setup state requires migration for $FIXTURE/workspace; run memory_core.bootstrap.migrate_legacy_workspace_state().",
+              "workspace_dir": "$FIXTURE/workspace",
+              "blocked_paths": [
+                "$FIXTURE/workspace/openclaw-workspace-state.json"
+              ]
+            }
+          },
+          "bootstrapStatus": {
+            "error": {
+              "name": "WorkspaceStateMigrationRequiredError",
+              "message": "Legacy workspace setup state requires migration for $FIXTURE/workspace; run memory_core.bootstrap.migrate_legacy_workspace_state().",
+              "workspace_dir": "$FIXTURE/workspace",
+              "blocked_paths": [
+                "$FIXTURE/workspace/openclaw-workspace-state.json"
+              ]
+            }
+          },
+          "setupCompleted": {
+            "error": {
+              "name": "WorkspaceStateMigrationRequiredError",
+              "message": "Legacy workspace setup state requires migration for $FIXTURE/workspace; run memory_core.bootstrap.migrate_legacy_workspace_state().",
+              "workspace_dir": "$FIXTURE/workspace",
+              "blocked_paths": [
+                "$FIXTURE/workspace/openclaw-workspace-state.json"
+              ]
+            }
+          },
+          "publicRuns": [
+            {
+              "kind": "main",
+              "error": {
+                "name": "WorkspaceStateMigrationRequiredError",
+                "message": "Legacy workspace setup state requires migration for $FIXTURE/workspace; run memory_core.bootstrap.migrate_legacy_workspace_state().",
+                "workspace_dir": "$FIXTURE/workspace",
+                "blocked_paths": [
+                  "$FIXTURE/workspace/openclaw-workspace-state.json"
+                ]
+              }
+            }
+          ]
+        }
+      }
+    }
+  },
+  "after": {
+    "implementation": {
+      "gitCommit": "b2cad7f8312b81f4a395ffced3c2c9af368b5d63",
+      "trackedWorkingTreeDirty": false,
+      "sourceSha256": "b0db65e8a7ac5eae91ce90869dd8e3c6e5013d734a89fb57d4ff26dfc18a4e26",
+      "sourceFiles": 183
+    },
+    "reference": {
+      "tag": "v2026.9.9",
+      "commit": "bcfc88812a35243893585dbeca87ca41b48272ca",
+      "tree": "702b8f6a50264e8de42f105992aff6406b073275",
+      "nodeVersion": "v24.16.0",
+      "packageVersion": "2026.9.9",
+      "packageSha256": "09f313df5a3b93723c7f408bba1887e9978156bbcfd4fa0b3c3bccb61c4779c8"
+    },
+    "reportSha256": "200d1561ac4233813ea23b1f56e9f0f2a3f310364877e5dec11ef6e9ecc58b93",
+    "summary": {
+      "matched": 11,
+      "mismatched": 0,
+      "blocked": 0,
+      "uncoveredAcceptance": 126
+    },
+    "pairedCases": {
+      "bootstrap-discovery-initial-whole-exports": "matched",
+      "bootstrap-discovery-canonical-sparse-and-exact-case": "matched",
+      "bootstrap-discovery-custom-three-templates-and-optional-skip": "matched",
+      "bootstrap-discovery-same-session-repeat-after-write": "matched",
+      "bootstrap-discovery-memory-core-layout-extension": "matched",
+      "bootstrap-discovery-unsupported-purpose": "matched",
+      "bootstrap-discovery-unsupported-runtime-managed-provisioning": "matched",
+      "bootstrap-discovery-unsupported-configured-classification": "matched",
+      "bootstrap-discovery-unsupported-ensure-bootstrap-false": "matched",
+      "bootstrap-discovery-guarded-available-file-reads": "matched",
+      "bootstrap-discovery-legacy-state-gate": "matched"
+    },
+    "physicalEvidence": {
+      "bootstrap-discovery-memory-core-layout-extension": {
+        "native": {
+          "rawCaptureSha256": "22c42febb1681385b977ed57ce9a37433343525c4992d0e44e15ae0367eb9ac7",
+          "capturedWorkspaceEntries": [
+            "AGENTS.md",
+            "BOOTSTRAP.md",
+            "IDENTITY.md",
+            "PROACTIVE_PREFERENCES.md",
+            "SOUL.md",
+            "USER.md"
+          ],
+          "capturedFileBytesSha256": {
+            "PROACTIVE_PREFERENCES.md": "fbad5c309743f78c2a747695122a8b2d75e24a4ebe725dc5e04726d730a54fd3"
+          },
+          "actualOwnersCalled": [
+            "ensureAgentWorkspace",
+            "loadWorkspaceBootstrapFiles",
+            "resolveBootstrapFilesForRun",
+            "resolveBootstrapFilesForRun",
+            "resolveBootstrapFilesForRun",
+            "readWorkspaceStateSnapshot",
+            "resolveWorkspaceBootstrapStatus",
+            "isWorkspaceSetupCompleted"
+          ],
+          "ensure": {
+            "bootstrapPending": true
+          },
+          "bootstrapStatus": "pending",
+          "setupCompleted": false,
+          "publicRuns": [
+            {
+              "kind": "main",
+              "files": [
+                "AGENTS.md",
+                "SOUL.md",
+                "IDENTITY.md",
+                "USER.md",
+                "BOOTSTRAP.md"
+              ]
+            },
+            {
+              "kind": "subagent",
+              "files": [
+                "AGENTS.md"
+              ]
+            },
+            {
+              "kind": "cron",
+              "files": [
+                "AGENTS.md",
+                "SOUL.md",
+                "IDENTITY.md",
+                "USER.md"
+              ]
+            }
+          ]
+        },
+        "python": {
+          "rawCaptureSha256": "18060c25e22201ef991ced12d876b188fbdba4c1818a912cd18a327382337c4c",
+          "capturedWorkspaceEntries": [
+            ".memory-core",
+            ".memory-core/workspace-state.json",
+            "AGENTS.md",
+            "BOOTSTRAP.md",
+            "IDENTITY.md",
+            "PROACTIVE_PREFERENCES.md",
+            "SOUL.md",
+            "USER.md"
+          ],
+          "capturedFileBytesSha256": {
+            "PROACTIVE_PREFERENCES.md": "fbad5c309743f78c2a747695122a8b2d75e24a4ebe725dc5e04726d730a54fd3"
+          },
+          "actualOwnersCalled": [
+            "initialize_agent_workspace",
+            "load_workspace_bootstrap_files",
+            "load_workspace_bootstrap_files",
+            "filter_bootstrap_files",
+            "load_workspace_bootstrap_files",
+            "filter_bootstrap_files",
+            "load_workspace_bootstrap_files",
+            "filter_bootstrap_files",
+            "read_workspace_setup_state",
+            "bootstrap_status",
+            "is_workspace_setup_completed"
+          ],
+          "ensure": {
+            "bootstrapPending": true
+          },
+          "bootstrapStatus": "pending",
+          "setupCompleted": false,
+          "publicRuns": [
+            {
+              "kind": "main",
+              "files": [
+                "AGENTS.md",
+                "SOUL.md",
+                "IDENTITY.md",
+                "USER.md",
+                "BOOTSTRAP.md"
+              ]
+            },
+            {
+              "kind": "subagent",
+              "files": [
+                "AGENTS.md"
+              ]
+            },
+            {
+              "kind": "cron",
+              "files": [
+                "AGENTS.md",
+                "SOUL.md",
+                "IDENTITY.md",
+                "USER.md"
+              ]
+            }
+          ]
+        }
+      },
+      "bootstrap-discovery-legacy-state-gate": {
+        "native": {
+          "rawCaptureSha256": "a40bbd82047b0f609407e92af52601d83c7690183fe57c66290a1087ae52dbbf",
+          "capturedWorkspaceEntries": [
+            "openclaw-workspace-state.json"
+          ],
+          "capturedFileBytesSha256": {
+            "openclaw-workspace-state.json": "82add41fb267b82ff7c3f6a4be1211b6febfd1209334c1d22bee57570372917a"
+          },
+          "actualOwnersCalled": [
+            "ensureAgentWorkspace",
+            "loadWorkspaceBootstrapFiles",
+            "resolveBootstrapFilesForRun",
+            "readWorkspaceStateSnapshot",
+            "resolveWorkspaceBootstrapStatus",
+            "isWorkspaceSetupCompleted"
+          ],
+          "ensure": {
+            "error": {
+              "name": "StartupMaintenanceRequiredError",
+              "message": "Legacy workspace setup state requires migration for $FIXTURE/workspace; run openclaw doctor --fix.",
+              "kind": "legacy-workspace",
+              "code": "gateway.maintenance_required"
+            }
+          },
+          "bootstrapStatus": {
+            "error": {
+              "name": "StartupMaintenanceRequiredError",
+              "message": "Legacy workspace setup state requires migration for $FIXTURE/workspace; run openclaw doctor --fix.",
+              "kind": "legacy-workspace",
+              "code": "gateway.maintenance_required"
+            }
+          },
+          "setupCompleted": {
+            "error": {
+              "name": "StartupMaintenanceRequiredError",
+              "message": "Legacy workspace setup state requires migration for $FIXTURE/workspace; run openclaw doctor --fix.",
+              "kind": "legacy-workspace",
+              "code": "gateway.maintenance_required"
+            }
+          },
+          "publicRuns": [
+            {
+              "kind": "main",
+              "files": [
+                "AGENTS.md",
+                "SOUL.md",
+                "IDENTITY.md",
+                "BOOTSTRAP.md"
+              ]
+            }
+          ]
+        },
+        "python": {
+          "rawCaptureSha256": "85d606b03bed2b4058fed4c9d40ab855caa89a8fd0d23d9ca864056b4c2c92a8",
+          "capturedWorkspaceEntries": [
+            "openclaw-workspace-state.json"
+          ],
+          "capturedFileBytesSha256": {
+            "openclaw-workspace-state.json": "82add41fb267b82ff7c3f6a4be1211b6febfd1209334c1d22bee57570372917a"
+          },
+          "actualOwnersCalled": [
+            "initialize_agent_workspace",
+            "load_workspace_bootstrap_files",
+            "load_workspace_bootstrap_files",
+            "filter_bootstrap_files",
+            "read_workspace_setup_state",
+            "bootstrap_status",
+            "is_workspace_setup_completed"
+          ],
+          "ensure": {
+            "error": {
+              "name": "StartupMaintenanceRequiredError",
+              "message": "Legacy workspace setup state requires migration for $FIXTURE/workspace; run openclaw doctor --fix.",
+              "code": "gateway.maintenance_required",
+              "kind": "legacy-workspace"
+            }
+          },
+          "bootstrapStatus": {
+            "error": {
+              "name": "StartupMaintenanceRequiredError",
+              "message": "Legacy workspace setup state requires migration for $FIXTURE/workspace; run openclaw doctor --fix.",
+              "code": "gateway.maintenance_required",
+              "kind": "legacy-workspace"
+            }
+          },
+          "setupCompleted": {
+            "error": {
+              "name": "StartupMaintenanceRequiredError",
+              "message": "Legacy workspace setup state requires migration for $FIXTURE/workspace; run openclaw doctor --fix.",
+              "code": "gateway.maintenance_required",
+              "kind": "legacy-workspace"
+            }
+          },
+          "publicRuns": [
+            {
+              "kind": "main",
+              "files": [
+                "AGENTS.md",
+                "SOUL.md",
+                "IDENTITY.md",
+                "BOOTSTRAP.md"
+              ]
+            }
+          ]
+        }
+      }
+    }
+  },
+  "standaloneRepair": {
+    "command": [
+      "openclaw",
+      "doctor",
+      "--fix"
+    ],
+    "isolatedNetwork": "socket/connect/bind/sendto denied via seccomp",
+    "commandEntrySha256": "aa8606ca0d62ff133ef5b7bd2323ec8ff3f8eb384404399cd5e742918d63b0a1",
+    "exit": 0,
+    "sourcePresentAfter": false,
+    "archivedSourceSha256": "82add41fb267b82ff7c3f6a4be1211b6febfd1209334c1d22bee57570372917a",
+    "migrationKind": "legacy-workspace-setup-files",
+    "migrationStatus": "completed",
+    "removedSource": 1,
+    "canonicalWorkspaceKey": "e920ba80e982fc5eabc8e7ff9d36d626479dc91620cf732b1c9d63d7b241e8c9",
+    "nativeCompletedAt": "2026-11-09T00:00:00.000Z",
+    "sdkCompletedAt": "2026-11-09T00:00:00.000Z",
+    "sdkIsCompleted": true
+  }
+}

@@ -28,14 +28,13 @@ workspace/
   SOUL.md
   IDENTITY.md
   USER.md                    # skipped when absent; fixed 4000-char cap
-  PROACTIVE_PREFERENCES.md   # memory-core extension, no upstream counterpart
   BOOTSTRAP.md               # first run only
   MEMORY.md                  # not injected into subject prompts by default
-  user/  workspace/          # created by initialize_agent_workspace, never injected
 ```
 
-This is the OpenClaw v2026.9.6 map (`WORKSPACE_BOOTSTRAP_FILENAMES`) plus the memory-core
-extensions. TOOLS.md and HEARTBEAT.md are no longer bootstrap files: move an old TOOLS.md
+To also seed the `user/` and `workspace/` folders and read `PROACTIVE_PREFERENCES.md`,
+pass `layout=EXTENDED_WORKSPACE_LAYOUT` from `memory_core.bootstrap` to both the
+initializer and the live identity loader. TOOLS.md and HEARTBEAT.md are no longer bootstrap files: move an old TOOLS.md
 into AGENTS.md with `memory_core.bootstrap.migrate_tools_md(root)` (upstream's doctor
 migration); a leftover HEARTBEAT.md is moved into the heartbeat monitor scratch and its
 `tasks:` into automation jobs by `memory_core.heartbeat_migration` (the heartbeat never reads it).
@@ -47,7 +46,7 @@ marked complete right away).
 `to_prompt_section()` returns, in upstream order: `## Bootstrap Pending` and
 `## Bootstrap Context Notice` when they apply, `## Workspace Files (injected)`
 with its intro line, and `# Project Context` with one `## <path>` block per file in
-render order (AGENTS, SOUL, IDENTITY, USER, PROACTIVE_PREFERENCES, BOOTSTRAP,
+render order (AGENTS, SOUL, IDENTITY, USER, BOOTSTRAP,
 MEMORY). There is no cache boundary marker and no dynamic block (the tag renders all
 Project Context above the boundary), and the Workspace Files lines are left out when no
 file is injected. With `openclaw_compatible=True` the intro line names OpenClaw

@@ -3,9 +3,9 @@
 This package compares the real OpenClaw bootstrap callers with the Python SDK.
 It does not claim full workspace lifecycle equivalence. Following the final
 paired run and independent review, the nine qualified outcomes scenarios cover
-the outcomes condition; all eleven still cover boundaries. Coverage registration
-does not turn the two boundary failures into passes. Integrated credit remains
-subject to the full repository gate.
+the outcomes condition; all eleven still cover boundaries. The two historical boundary failures are recorded below. The current SDK uses the six-file
+default and separates opportunistic file selection from strict routing, status and
+provisioning. Integrated credit remains subject to the full repository gate.
 
 The fixed condition is `prompt.bootstrap-discovery`:
 

@@ -214,7 +214,7 @@ def test_identity_loader_can_reject_unknown_markdown_files(tmp_path: Path):
 def test_identity_loader_strict_mode_accepts_layout_and_known_workspace_files(tmp_path: Path):
     identity_dir = tmp_path / "identity"
     identity_dir.mkdir()
-    for name in (*MEMORY_CORE_WORKSPACE_LAYOUT.load_order, "BOOT.md", "DREAMS.md"):
+    for name in (*MEMORY_CORE_WORKSPACE_LAYOUT.load_order, "BOOT.md", "DREAMS.md", "PROACTIVE_PREFERENCES.md"):
         (identity_dir / name).write_text(f"{name} text", encoding="utf-8")
     for folder in ("user", "workspace", "memory", "skills", "subjects", "notes.md"):
         (identity_dir / folder).mkdir()
@@ -225,7 +225,7 @@ def test_identity_loader_strict_mode_accepts_layout_and_known_workspace_files(tm
     injected = [path for path, _ in identity.sections]
     assert "BOOT.md" not in injected and "DREAMS.md" not in injected
     assert "MEMORY.md" not in injected
-    assert "PROACTIVE_PREFERENCES.md" in injected
+    assert "PROACTIVE_PREFERENCES.md" not in injected
 
 
 def test_identity_loader_truncates_with_upstream_markers(tmp_path: Path):

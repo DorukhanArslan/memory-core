@@ -13,6 +13,7 @@ from memory_core.bootstrap import (
     DEFAULT_BOOTSTRAP_MAX_CHARS,
     DEFAULT_BOOTSTRAP_TOTAL_MAX_CHARS,
     DEFAULT_WORKSPACE_LAYOUT,
+    PROACTIVE_PREFERENCES_FILENAME,
     ContextFile,
     WorkspaceLayout,
     build_workspace_context,
@@ -884,7 +885,8 @@ def _validate_unknown_identity_files(
         raise IdentityLoadError(f"unknown identity file policy: {policy}")
     # Root-level Markdown files only; folders (user/, workspace/, memory/,
     # skills/, subjects/) are never workspace bootstrap files.
-    allowed = frozenset(layout.load_order) | NON_INJECTED_WORKSPACE_FILES | RETIRED_WORKSPACE_FILES
+    allowed = set(layout.load_order) | NON_INJECTED_WORKSPACE_FILES | RETIRED_WORKSPACE_FILES
+    allowed.add(PROACTIVE_PREFERENCES_FILENAME)
     unknown = sorted(
         path.name
         for path in root.iterdir()

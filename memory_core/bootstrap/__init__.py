@@ -2,7 +2,8 @@
 
 Ports the OpenClaw workspace bootstrap surface at the parity pin v2026.9.6 (see each
 module's docstring for upstream anchors) and adds memory-core's default layout
-(``MEMORY_CORE_WORKSPACE_LAYOUT``) with extensions that have no upstream reference.
+(``MEMORY_CORE_WORKSPACE_LAYOUT``) with the six upstream roles.
+``EXTENDED_WORKSPACE_LAYOUT`` opts into the additional preference file and folders.
 ``OPENCLAW_COMPAT_LAYOUT`` is upstream's map alone. ``migrate_tools_md`` retires a
 TOOLS.md into AGENTS.md ``## Tools`` (``tools_md_migration_findings`` and
 ``WorkspaceContext.migration_findings`` report one that is still there);
@@ -59,6 +60,7 @@ from memory_core.bootstrap.files import (
 )
 from memory_core.bootstrap.layout import (
     DEFAULT_WORKSPACE_LAYOUT,
+    EXTENDED_WORKSPACE_LAYOUT,
     GENERATED_WORKSPACE_BOOTSTRAP_FILENAMES,
     OPENCLAW_COMPAT_LAYOUT,
     PROACTIVE_PREFERENCES_FILENAME,
@@ -122,6 +124,7 @@ __all__ = [
     "DEFAULT_BOOTSTRAP_TOTAL_MAX_CHARS",
     "USER_BOOTSTRAP_MAX_CHARS",
     "DEFAULT_WORKSPACE_LAYOUT",
+    "EXTENDED_WORKSPACE_LAYOUT",
     "GENERATED_WORKSPACE_BOOTSTRAP_FILENAMES",
     "MAX_WORKSPACE_BOOTSTRAP_FILE_BYTES",
     "OPENCLAW_COMPAT_LAYOUT",

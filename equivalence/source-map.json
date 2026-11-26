@@ -260,7 +260,7 @@
           "path": "memory_core/bootstrap/lifecycle.py",
           "symbol": "_write_file_if_missing",
           "anchor": "def _write_file_if_missing(path: Path, content: str) -> bool:",
-          "line": 297
+          "line": 383
         },
         {
           "path": "memory_core/consolidation/promotion.py",
@@ -332,19 +332,19 @@
           "path": "memory_core/live/__init__.py",
           "symbol": "SubjectMemory.open",
           "anchor": "class SubjectMemory:",
-          "line": 390
+          "line": 391
         },
         {
           "path": "memory_core/live/__init__.py",
           "symbol": "_resolve_subject_workspace",
           "anchor": "def _resolve_subject_workspace(",
-          "line": 813
+          "line": 814
         },
         {
           "path": "memory_core/live/__init__.py",
           "symbol": "_rebase_config_onto_subject",
           "anchor": "def _rebase_config_onto_subject(config: MemoryConfig, workspace: Path) -> MemoryConfig:",
-          "line": 832
+          "line": 833
         },
         {
           "path": "memory_core/client.py",
@@ -4156,7 +4156,7 @@
           "path": "memory_core/bootstrap/lifecycle.py",
           "symbol": "initialize_agent_workspace",
           "anchor": "def initialize_agent_workspace(",
-          "line": 424
+          "line": 510
         },
         {
           "path": "memory_core/bootstrap/files.py",
@@ -6839,7 +6839,7 @@
           "path": "demo/lab_runtime.py",
           "symbol": "process-local Lab sessions",
           "anchor": "self.sessions: dict[str, LabSession] = {}",
-          "line": 426
+          "line": 425
         },
         {
           "path": "memory_core/host/lifecycle.py",
@@ -6938,7 +6938,7 @@
           "path": "memory_core/live/__init__.py",
           "symbol": "SubjectMemory",
           "anchor": "class SubjectMemory:",
-          "line": 390
+          "line": 391
         },
         {
           "path": "memory_core/host/managed_session.py",

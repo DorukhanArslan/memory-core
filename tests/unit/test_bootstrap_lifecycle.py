@@ -1,10 +1,14 @@
+import hashlib
 import json
+import sqlite3
+import unicodedata
 from pathlib import Path
 
 import pytest
 
 from memory_core.bootstrap import (
     OPENCLAW_COMPAT_LAYOUT,
+    EXTENDED_WORKSPACE_LAYOUT,
     MEMORY_CORE_WORKSPACE_LAYOUT,
     WorkspaceSetupState,
     WorkspaceStateMigrationError,
@@ -27,7 +31,7 @@ def _state_file(root):
     return root / ".memory-core" / "workspace-state.json"
 
 
-def test_fresh_memory_core_workspace_seeds_empty_files_dirs_and_bootstrap(tmp_path):
+def test_fresh_default_workspace_seeds_only_the_six_role_layout(tmp_path):
     root = tmp_path / "ws"
 
     result = initialize_agent_workspace(root, now_ms=NOW_MS)
@@ -38,10 +42,9 @@ def test_fresh_memory_core_workspace_seeds_empty_files_dirs_and_bootstrap(tmp_pa
         "SOUL.md",
         "IDENTITY.md",
         "USER.md",
-        "PROACTIVE_PREFERENCES.md",
         "BOOTSTRAP.md",
     )
-    assert result.created_dirs == ("user", "workspace")
+    assert result.created_dirs == ()
     assert result.bootstrap_seeded is True
     assert result.bootstrap_status == "pending"
     assert result.state == WorkspaceSetupState(bootstrap_seeded_at=NOW_ISO)
@@ -157,14 +160,14 @@ def test_agent_deleting_bootstrap_completes_setup(tmp_path):
 
 
 def test_completed_setup_does_not_recreate_optional_files(tmp_path):
-    initialize_agent_workspace(tmp_path, layout=MEMORY_CORE_WORKSPACE_LAYOUT)
+    initialize_agent_workspace(tmp_path, layout=EXTENDED_WORKSPACE_LAYOUT)
     (tmp_path / "USER.md").write_text("configured", encoding="utf-8")
-    initialize_agent_workspace(tmp_path)
+    initialize_agent_workspace(tmp_path, layout=EXTENDED_WORKSPACE_LAYOUT)
     (tmp_path / "SOUL.md").unlink()
     (tmp_path / "PROACTIVE_PREFERENCES.md").unlink()
     (tmp_path / "AGENTS.md").unlink()
 
-    result = initialize_agent_workspace(tmp_path)
+    result = initialize_agent_workspace(tmp_path, layout=EXTENDED_WORKSPACE_LAYOUT)
 
     assert result.created_files == ("AGENTS.md",)
     assert not (tmp_path / "SOUL.md").exists()
@@ -218,21 +221,58 @@ def test_upstream_legacy_state_fails_closed_until_migrated(tmp_path, legacy):
     real = str(tmp_path.resolve())
     message = (
         f"Legacy workspace setup state requires migration for {real}; "
-        "run memory_core.bootstrap.migrate_legacy_workspace_state()."
+        "run openclaw doctor --fix."
     )
 
     for call in (
         read_workspace_setup_state,
         is_workspace_setup_completed,
         bootstrap_status,
-        build_workspace_context,
         initialize_agent_workspace,
+        build_workspace_context,
     ):
         with pytest.raises(WorkspaceStateMigrationRequiredError) as raised:
             call(tmp_path)
         assert str(raised.value) == message
+        assert raised.value.workspace_dir == real and raised.value.blocked_paths == (str(path),)
+        assert raised.value.code == "gateway.maintenance_required" and raised.value.kind == "legacy-workspace"
     # The refused ensure wrote nothing.
     assert sorted(item.name for item in tmp_path.iterdir()) == [Path(legacy).parts[0]]
+
+
+def test_doctor_milestones_require_matching_workspace_migration(tmp_path, monkeypatch):
+    workspace = tmp_path / "Cafe\u0301"
+    workspace.mkdir()
+    (tmp_path / "state").mkdir()
+    monkeypatch.setenv("OPENCLAW_STATE_DIR", str(tmp_path))
+    canonical = unicodedata.normalize("NFC", str(workspace.resolve()))
+    workspace_key = hashlib.sha256(canonical.encode()).hexdigest()
+    source = str(workspace / "openclaw-workspace-state.json")
+    with sqlite3.connect(tmp_path / "state" / "openclaw.sqlite") as db:
+        db.execute("CREATE TABLE workspace_setup_state(workspace_key, workspace_path, version, bootstrap_seeded_at, setup_completed_at)")
+        db.execute("CREATE TABLE migration_sources(migration_kind, target_table, status, removed_source, source_path)")
+        db.execute("INSERT INTO workspace_setup_state VALUES (?, ?, 1, NULL, ?)", (workspace_key, canonical, NOW_ISO))
+        db.execute("INSERT INTO migration_sources VALUES ('legacy-workspace-setup-files', 'workspace_setup_state', 'completed', 1, ?)", (source + ".other",))
+        db.commit()
+        assert not is_workspace_setup_completed(workspace)
+        db.execute("UPDATE migration_sources SET source_path = ?", (source,))
+        db.commit()
+        assert read_workspace_setup_state(workspace).setup_completed_at == NOW_ISO
+        db.execute("UPDATE workspace_setup_state SET setup_completed_at = 7")
+        db.commit()
+        with pytest.raises(WorkspaceStateMigrationError, match="timestamp is invalid"):
+            initialize_agent_workspace(workspace)
+    assert list(workspace.iterdir()) == []
+
+
+def test_maintenance_command_uses_active_profile_or_container(tmp_path, monkeypatch):
+    (tmp_path / "openclaw-workspace-state.json").touch()
+    monkeypatch.setenv("OPENCLAW_PROFILE", "team-west")
+    with pytest.raises(WorkspaceStateMigrationRequiredError, match="openclaw --profile team-west doctor --fix"):
+        bootstrap_status(tmp_path)
+    monkeypatch.setenv("OPENCLAW_CONTAINER_HINT", "team.dev")
+    with pytest.raises(WorkspaceStateMigrationRequiredError, match="openclaw --container team.dev doctor --fix"):
+        bootstrap_status(tmp_path)
 
 
 def test_migrate_legacy_state_imports_archives_and_removes(tmp_path):
@@ -241,7 +281,9 @@ def test_migrate_legacy_state_imports_archives_and_removes(tmp_path):
     raw = '{"onboardingCompletedAt": "2026-01-02T03:04:05.006Z"}'
     legacy.write_text(raw, encoding="utf-8")
 
-    result = migrate_legacy_workspace_state(tmp_path)
+    with pytest.raises(WorkspaceStateMigrationRequiredError) as raised:
+        is_workspace_setup_completed(tmp_path)
+    result = raised.value.repair()
 
     assert result.imported == str(legacy.resolve())
     assert result.state == WorkspaceSetupState(setup_completed_at="2026-01-02T03:04:05.006Z")

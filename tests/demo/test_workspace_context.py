@@ -13,7 +13,7 @@ from demo.workspace_context import (
 from memory_core.bootstrap import (
     DEFAULT_BOOTSTRAP_MAX_CHARS,
     DEFAULT_BOOTSTRAP_TOTAL_MAX_CHARS,
-    MEMORY_CORE_WORKSPACE_LAYOUT,
+    EXTENDED_WORKSPACE_LAYOUT,
     bootstrap_status,
     trim_bootstrap_content,
 )
@@ -24,7 +24,7 @@ def _heading(root: Path, name: str) -> str:
 
 
 def test_demo_uses_the_default_memory_core_layout():
-    assert DEMO_WORKSPACE_LAYOUT is MEMORY_CORE_WORKSPACE_LAYOUT
+    assert DEMO_WORKSPACE_LAYOUT.load_order == EXTENDED_WORKSPACE_LAYOUT.load_order
     # The v2026.9.6 map plus the PROACTIVE_PREFERENCES.md extension; no TOOLS.md or
     # HEARTBEAT.md in either order.
     assert workspace_file_names() == [
@@ -145,7 +145,7 @@ USER_LINE = (
 
 
 def _write_marker_files(root: Path) -> None:
-    for rel_path in MEMORY_CORE_WORKSPACE_LAYOUT.load_order:
+    for rel_path in DEMO_WORKSPACE_LAYOUT.load_order:
         marker = rel_path.removesuffix(".md")[0]
         (root / rel_path).write_text(f"# {marker}\n", encoding="utf-8")
 
@@ -275,7 +275,7 @@ def test_workspace_prompt_truncates_each_file_to_its_budget(tmp_path):
 
 
 def test_workspace_prompt_stops_injecting_at_total_budget(tmp_path):
-    for rel_path in MEMORY_CORE_WORKSPACE_LAYOUT.load_order:
+    for rel_path in DEMO_WORKSPACE_LAYOUT.load_order:
         (tmp_path / rel_path).write_text("y" * (DEFAULT_BOOTSTRAP_MAX_CHARS * 2), encoding="utf-8")
 
     context = build_workspace_prompt(tmp_path)

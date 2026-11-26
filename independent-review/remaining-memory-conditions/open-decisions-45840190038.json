@@ -1,0 +1,60 @@
+{
+  "run": 45840190038,
+  "independentDecisionSha256": "411c1163d761dccad92c3ca23cfade637d6fb0a0de493948c0b12411ccadb51e",
+  "remaining": [
+    {
+      "condition": "sessions.reset-hook.outcomes",
+      "verifiedInRun": false,
+      "coveringCaseIds": [],
+      "matchedCaseIds": [],
+      "separateLocalObservation": "Two simultaneous saves can select one filename in v2026.9.9. The SDK keeps both notes.",
+      "localObservationArtifact": "four-point-review.json",
+      "localObservationSha256": "88d2fc13e8d9bfeb4ce9498b9d0075817d0a497aae818e6349778d13fc4fcba1"
+    },
+    {
+      "condition": "flush.plan-target.boundaries",
+      "verifiedInRun": false,
+      "coveringCaseIds": [],
+      "matchedCaseIds": [],
+      "separateLocalObservation": "Two directory entries pointing to one file reach the provider in OpenClaw, while the SDK stops at file preparation.",
+      "localObservationArtifact": "four-point-review.json",
+      "localObservationSha256": "88d2fc13e8d9bfeb4ce9498b9d0075817d0a497aae818e6349778d13fc4fcba1"
+    },
+    {
+      "condition": "flush.execute-finalize.boundaries",
+      "verifiedInRun": false,
+      "coveringCaseIds": [],
+      "matchedCaseIds": [],
+      "separateLocalObservation": "The default first search can observe a different index generation immediately after a saved note. A secondary managed configuration alone cannot establish the default behavior.",
+      "localObservationArtifact": "observations.json",
+      "localObservationSha256": "02013bb7223a174fdfc936908385a215af5bba66b5f0d6526d090f1820680649"
+    },
+    {
+      "condition": "trust.secret-redaction.outcomes",
+      "verifiedInRun": false,
+      "coveringCaseIds": [],
+      "matchedCaseIds": [],
+      "separateLocalObservation": "The returned content and input-object reuse are distinct observable properties. The two frozen tool examples still differ.",
+      "localObservationArtifact": "redaction-input-identity.json",
+      "localObservationSha256": "8f7c40adf3252ef8443d62e98a5137e7b335b47838d4d3bb96f979095a906c95"
+    },
+    {
+      "condition": "heartbeat.scratch.boundaries",
+      "verifiedInRun": false,
+      "coveringCaseIds": [],
+      "matchedCaseIds": [],
+      "separateLocalObservation": "A previously migrated scratch record lacks the identity needed to select its originating SDK workspace and owner.",
+      "localObservationArtifact": "four-point-review.json",
+      "localObservationSha256": "88d2fc13e8d9bfeb4ce9498b9d0075817d0a497aae818e6349778d13fc4fcba1"
+    },
+    {
+      "condition": "recovery.failure-publication.boundaries",
+      "verifiedInRun": false,
+      "coveringCaseIds": [],
+      "matchedCaseIds": [],
+      "separateLocalObservation": "After a stopped writer leaves no tool-result receipt, OpenClaw can accept a later request. The SDK requests confirmation before proceeding.",
+      "localObservationArtifact": "four-point-review.json",
+      "localObservationSha256": "88d2fc13e8d9bfeb4ce9498b9d0075817d0a497aae818e6349778d13fc4fcba1"
+    }
+  ]
+}

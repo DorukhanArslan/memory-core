@@ -10,6 +10,8 @@ izler; yeni kabul koşulu veya puan eklemez. **128/128 tek başına bitiş deği
 
 **123/128 koşul doğrulandı. 27 Kasım’daki tam koşuda +1, kalan 5.** Önceki 122 koşulun tamamı yeniden geçti. 1.667 karşılaştırmada 1.663 eşleşme, dört eski fark ve sıfır engel görüldü. [Genel karşılaştırma](https://github.com/DorukhanArslan/memory-core/actions/runs/45987128881) · [Bağımsız sayım](https://github.com/DorukhanArslan/memory-core/blob/95b108408409255cdf36c92ef627b50b0062440b/independent-review/interrupted-turn/README.md)
 
+**Günlük notun hazırlanması · Üç yerel örnek eşleşti.** Günlüğün tek adı veya iki adı olduğunda her iki sistem de bakım kontrolünü tamamladı ve içeriği korudu. Dosyanın yerinde dolu bir klasör olduğunda ikisi de modeli çağırmadan durdu. 124. puan için genel koşu sürüyor. [Genel karşılaştırma](https://github.com/DorukhanArslan/memory-core/actions/runs/46020719989) · [PR #35](https://github.com/DorukhanArslan/memory-core/pull/35)
+
 **Kesintiden sonra sıradaki mesaj · 4/4 eşleşme.** Uyumluluk seçeneğinde, bir not yazılırken sohbet kapansa bile sonraki soru yanıtlandı. Eski not sonradan düzenlenmişse düzenleme korundu. İlk yazı diske hiç ulaşmamışsa eski not oluşturulmadı. İki durumda da kullanıcı açıkça 27 Kasım’ı istediğinde, tarih 10 Kasım olmasına rağmen yeni not 27 Kasım’ın günlüğüne yazıldı. Varsayılan SDK ayarı kesinti sonrasında onay bekliyor. [PR #34](https://github.com/DorukhanArslan/memory-core/pull/34)
 
 **Aynı dört örneğin ilk denemesi, 2/4.**
@@ -79,7 +81,7 @@ Her satır doğrulandığında **+1** getirir. Beş koşul için de kayıtlı ö
 | --- | --- | ---: |
 | **Yeni notu hemen bulmak** · `flush.execute-finalize.boundaries` | Aynı notta ilk arama OpenClaw’ın iki çalıştırmasında farklı sonuç verdi. Varsayılan SDK hemen güncel metni buldu. İlk aramanın hangi güncellemeyi bekleyeceği ortak bir kurala bağlanmalı. | 2–4 gün |
 | **Aynı adlı iki sohbet notu** · `sessions.reset-hook.outcomes` | Aynı dakikada kapanan iki sohbet için v2026.9.9 tek not bıraktı. SDK ikisini sakladı. Yeni sürümlerde doğrulanan çözüm aşağıda ayrı hedef olarak izleniyor. | Yeni sürüm araştırması tamamlandı. Sabit sürüm için süre verilemiyor. |
-| **Günlük not dosyasını açmak** · `flush.plan-target.boundaries` | İki ad aynı fiziksel notu gösterdiğinde OpenClaw modeli çağırdı, SDK hazırlıkta durdu. Yazma güvenliğini koruyan ortak bir dosya açma kuralı gerekiyor. | 2–4 gün |
+| **Günlük not dosyasını açmak** · `flush.plan-target.boundaries` | Taslak SDK uyumluluk modunda aynı notun iki adı varken yazısız bakımı tamamlıyor. Gerçek yazma isteği mevcut korumadan geçiyor. | Genel karşılaştırma ve bağımsız sayım bekleniyor. |
 | **Aynı araç cevabındaki gizli bilgiyi temizlemek** · `trust.secret-redaction.outcomes` | Ekranda görünen metin aynı. OpenClaw aynı ham cevap için önceki temiz kopyayı geri veriyor. SDK yeni kopya üretiyor. Ham parolanın saklanma süresini uzatmadan aynı davranış sağlanmalı. | 2–5 gün |
 | **Kesilen takip notu taşıması** · `heartbeat.scratch.boundaries` | Onarılan notun hangi çalışma alanından geldiği eski kayıttan belirlenemiyor. SDK’nın doğru depoyu tanıyıp o depoda çalışan onarımı önermesi gerekiyor. | 1–3 gün |
 

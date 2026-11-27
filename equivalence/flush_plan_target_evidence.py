@@ -7,8 +7,8 @@ from itertools import groupby
 from pathlib import Path
 
 from equivalence.flush_execution_bindings import COMPILED_HASHES
-from equivalence.flush_plan_target import PROVIDER, canonical, published_workspace, validate_case
-from equivalence.flush_plan_target_sdk import snapshot
+from equivalence.flush_plan_target import BOUNDARY, PROVIDER, canonical, published_workspace, validate_case
+from equivalence.flush_plan_target_sdk import alias_witness, snapshot
 from equivalence.model_runtime_authority import APPROVED_NODE_RUNTIME
 
 
@@ -31,6 +31,9 @@ def seed_tree(value):
         tree[name] = {"kind": "directory"}
     for name, text in value["files"].items():
         tree[name] = {"kind": "file", "base64": base64.b64encode(text.encode()).decode("ascii")}
+    if pair := value.get("readOnlyAlias"):
+        entry = {**tree[pair["target"]], "linkedAs": sorted(pair.values())}
+        tree.update({name: entry for name in pair.values()})
     return tree
 
 
@@ -43,7 +46,17 @@ def check_raw(case, snapshots, directory, kind):
     same(raw["initial"], seed_tree(case["input"]), "Flush literal files were not installed")
     root = Path(directory) / "workspace"
     require(root.is_dir() and not root.is_symlink(), "The retained physical workspace is missing")
-    same(snapshot(root), raw["final"], "The physical workspace no longer matches its recorded bytes")
+    pair = case["input"].get("readOnlyAlias")
+    same(snapshot(root, pair), raw["final"], "The physical workspace no longer matches its recorded bytes")
+    if pair:
+        witness = alias_witness(root, pair)
+        same(witness["target"], witness["alias"], "The retained paths address different files")
+        require(witness["target"]["nlink"] == 2, "The retained note requires the two registered names")
+        models = raw["modelStarts"] if kind == "native-flush-plan-target" else raw["deliveries"]
+        same(raw["aliasWitnesses"], [witness] * (2 + len(models)), "Read-only target identity changed during maintenance")
+        for tree in [raw["initial"], *(call["files"] for call in models), raw["final"]]:
+            for name in pair.values():
+                same(tree[name], raw["initial"][name], "A read-only note changed during maintenance")
     return raw
 
 
@@ -94,6 +107,13 @@ def check_plans(value, plans):
                 "Incomplete native or SDK flush plan")
         require(all(plan["relativePath"] in plan[k] for k in ("prompt", "systemPrompt")),
                 "Flush plan prompts lost their generated daily target")
+
+
+def silent_replies(messages):
+    for message in messages:
+        require(message["role"] == "assistant", "The silent reply requires a model response")
+        same(message["content"], [{"type": "text", "text": "NO_REPLY"}], "Unexpected model content in read-only maintenance")
+    return {"replies": [message["content"][0]["text"] for message in messages]}
 
 
 def validate_native(case, public, snapshots, evidence_directory, loaded):
@@ -157,8 +177,12 @@ def validate_native(case, public, snapshots, evidence_directory, loaded):
             "Incomplete native progress and model capture")
     stamp = raw["result"]["sessionEntry"].get("memoryFlush")
     same(raw["persisted"].get("memoryFlush"), stamp, "Native flush result was not durable")
+    replies = {}
+    if case["covers"] == [BOUNDARY]:
+        same(raw["toolResults"], [], "A maintenance tool ran during the read-only flush")
+        replies = silent_replies([call["emittedAssistant"] for call in calls])
     same(public, {"provider": "none", "plans": plans, "selection": select[0] if select else None,
-                  "candidates": routes, "outcome": raw["result"]["outcome"], "stamp": stamp, "files": raw["final"]},
+                  "candidates": routes, "outcome": raw["result"]["outcome"], "stamp": stamp, "files": raw["final"], **replies},
          "Native output disagrees with its original calls and physical files")
 
 
@@ -201,8 +225,12 @@ def validate_sdk(case, public, snapshots, directory):
     outcome = "skipped" if stamp is None else "completed" if stamp["kind"] == "succeeded" else "failed"
     require(raw["result"]["$type"].endswith(".HostTurnOutcome") and
             bool(raw["result"]["fields"]["failures"]) == (outcome == "failed"), "Missing SDK outcome/error")
+    replies = {}
+    if case["covers"] == [BOUNDARY]:
+        same(raw["result"]["fields"]["tools"], [], "The SDK executed a tool during the read-only flush")
+        replies = silent_replies([d["recordedAssistant"] for d in deliveries])
     same(public, {"provider": "none", "plans": plans, "outcome": outcome, "stamp": stamp,
                   "selection": deliveries[0]["selection"] if deliveries else None,
-                  "candidates": [d["candidate"] for d in deliveries],
+                  "candidates": [d["candidate"] for d in deliveries], **replies,
                   "files": published_workspace(raw["initial"], raw["beforeMaintenance"], raw["final"])},
          "SDK result disagrees with its model calls or physical filesystem")

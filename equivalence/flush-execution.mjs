@@ -83,9 +83,10 @@ export async function runFlushExecution(input, config, planObserver) {
       .filter(([, value]) => value.sessionKey?.includes(":internal-session-effects:"))
       .map(([runId, value]) => ({ runId, sessionId: value.sessionId, sessionKey: value.sessionKey,
         isControlUiVisible: value.isControlUiVisible, projectSessionMessages: value.projectSessionMessages }));
-    modelCalls.push({ model: { id: model.id, provider: model.provider, api: model.api },
+    const call = { model: { id: model.id, provider: model.provider, api: model.api },
       context: jsonValue(context), reply: jsonValue(reply), runContexts,
-      ...(planObserver && { files: planObserver.snapshot(workspace) }) });
+      ...(planObserver && { files: planObserver.snapshot(workspace) }) };
+    modelCalls.push(call);
     const content = reply.toolCalls?.length ? reply.toolCalls.map((call, index) => ({
       type: "toolCall", id: call.id ?? `fixture-${replyIndex}-${index}`, name: call.name,
       arguments: { ...call.arguments, ...(call.arguments.path === "@target" ? { path: target } : {}) },
@@ -110,6 +111,7 @@ export async function runFlushExecution(input, config, planObserver) {
         if (reply.error || reply.cancel) result.push({ type: "error", reason: assistant.stopReason, error: assistant });
         else result.push({ type: "done", reason: assistant.stopReason, message: assistant });
         result.end(assistant);
+        if (planObserver?.captureReplies) call.emittedAssistant = jsonValue(assistant);
       } catch (error) {
         assistant.stopReason = "error";
         assistant.errorMessage = error.message;
@@ -252,7 +254,7 @@ export async function runFlushExecution(input, config, planObserver) {
       progress(`after-native-run:${step.label}`);
       entry = result.sessionEntry;
       if (planObserver) {
-        await planObserver.finish({workspace, result, before, modelCalls, progress: progressRows, pluginRegistryProof,
+        await planObserver.finish({workspace, result, before, modelCalls, toolEvents, progress: progressRows, pluginRegistryProof,
           visibleErrors, persisted: sessions.loadSessionEntry(sourceScope), source: sessions.loadTranscriptEventsSync(transcriptScope)});
         continue;
       }

@@ -628,16 +628,22 @@ request `after_turn` builds for a due flush (target file first, the same message
 `reason` `forced`. A target that cannot be created raises (`UnsafeMemoryPathError`, `OSError`) and
 records nothing: the forced run is outside upstream's gate, so there is no strike to mirror.
 
-`memory_core/memory_flush.py:ensure_memory_flush_target_file(root, relative_path, *, assert_current=None)` (port of
+`memory_core/memory_flush.py:ensure_memory_flush_target_file(root, relative_path, *, assert_current=None, identity=MEMORY_CORE_RUNTIME_IDENTITY)` (port of
 `ensureMemoryFlushTargetFile`): a blank or absolute path raises `UnsafeMemoryPathError("Invalid
 memory flush target path")`, one that resolves outside the root raises `... "Memory flush target
 path must stay inside the workspace"` (upstream messages, script-extracted); it then creates the
-parent directories and opens the file for append, creating it empty. Stricter than upstream
-(documented deviation): it refuses a symlinked or non-directory parent and a target that is a
-symlink, a non-regular file or has more than one hard link, the same refusal as the flush write.
+parent directories and opens the file for append, creating it empty. The SDK refuses a
+symlinked or non-directory parent and a symlink or non-regular target. By default it also
+refuses a regular file with more than one hard link.
+
+With `identity=OPENCLAW_COMPAT_RUNTIME_IDENTITY`, a regular daily note that already has
+multiple names satisfies preparation without opening the file. A maintenance run can then
+answer `NO_REPLY`, preserving the contents under both names. An actual append still checks
+the target and refuses a shared file. This applies to automatic and host-requested flushes.
+On this path the host's authority is checked before taking the lock and again before returning.
 
 The optional `assert_current` callback must raise when the host cancels or revokes the flush.
-It is synchronous, returns promptly, and its return value is ignored. Target preparation calls
+It is synchronous, returns promptly, and its return value is ignored. Ordinary target creation calls
 it before creating directories, after directory creation and after opening the target. The last
 two checks run under the file's write lock; the opened descriptor is closed in `finally`, including
 when the final check raises. Cancellation may therefore leave the directory or empty target

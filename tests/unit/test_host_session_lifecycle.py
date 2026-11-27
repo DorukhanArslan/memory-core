@@ -12,6 +12,7 @@ from memory_core.config import MemoryConfig
 from memory_core.flags import FeatureFlags
 from memory_core.host.lifecycle import HostModelResult, HostSessionRunner
 from memory_core.host.session import SessionState, TurnUsage
+from memory_core.runtime_identity import OPENCLAW_COMPAT_RUNTIME_IDENTITY
 from memory_core.session_catalog import MemorySessionCatalog
 from memory_core.turn_tool_dispatch import TurnTool
 
@@ -317,6 +318,48 @@ def test_due_flush_executes_actual_append_before_next_turn_and_state_reopens(tmp
             return _answer(turn)
         assert (await reopened.run_turn("Find my saved tea preference.", execute=recall)).ready
     asyncio.run(scenario())
+
+
+@pytest.mark.parametrize(("options", "write"), [
+    ({}, False), ({"identity": OPENCLAW_COMPAT_RUNTIME_IDENTITY}, False),
+    ({"identity": OPENCLAW_COMPAT_RUNTIME_IDENTITY}, True),
+], ids=["strict", "openclaw-no-reply", "openclaw-write-refused"])
+def test_due_flush_on_a_shared_daily_note(tmp_path, options, write):
+    runner = _runner(tmp_path, **options)
+    target = runner.kit.memory.workspace.root / "memory/2026-11-09.md"
+    target.parent.mkdir(exist_ok=True)
+    target.write_text("Meeting notes.\n")
+    alias = target.with_name("meeting-notes.txt")
+    alias.hardlink_to(target)
+    modified = target.stat().st_mtime_ns
+
+    async def chat(turn):
+        turn.record_message({"role": "assistant", "content": "The meeting is over."})
+        return HostModelResult(TurnUsage(176_000, 10))
+
+    async def flush(turn):
+        if write:
+            arguments = {"path": turn.flush_request.target, "content": "New meeting note.\n"}
+            _call(turn, "write", arguments, "append")
+            await turn.dispatch_async("append", "write", arguments)
+        turn.record_message({"role": "assistant", "content": "NO_REPLY"})
+        return HostModelResult(payloads=({"text": "NO_REPLY"},))
+
+    outcome = asyncio.run(runner.run_turn("Close the meeting.", execute=chat, execute_flush=flush))
+    recorded = runner.catalog.get_session_entry(KEY)["memoryFlush"]
+    assert outcome.transcript_committed and not outcome.memory_writes_committed
+    if not options:
+        assert outcome.flush is None and outcome.failures[0].phase == "flush-prepare"
+        assert recorded == {"kind": "failed", "failureCount": 1}
+    elif write:
+        result = outcome.tools[0]["result"]
+        assert result["status"] == "error" and "hard link" in result["error"]
+        assert recorded == {"kind": "failed", "failureCount": 1}
+    else:
+        assert outcome.ready and outcome.flush.entries == () and not outcome.tools
+        assert recorded == {"kind": "succeeded", "compactionCount": 0}
+    assert alias.samefile(target) and target.stat().st_mtime_ns == modified
+    assert alias.read_text() == target.read_text() == "Meeting notes.\n"
 
 
 def test_shared_catalog_key_serializes_distinct_runner_instances(tmp_path):

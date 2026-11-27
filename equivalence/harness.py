@@ -2719,6 +2719,8 @@ def run_suite(*, checkout: Path, node: Path, smoke: bool = False,
         report["promptHistoryRepairFamilyComplete"] = history_complete
         flush_plan_complete = flush_plan_target.family_complete(report["cases"])
         report["flushPlanTargetFamilyComplete"] = flush_plan_complete
+        flush_boundaries = flush_plan_target.boundaries_complete(report["cases"])
+        report["flushPlanTargetBoundariesComplete"] = flush_boundaries
         secret_boundaries_complete = secret_boundary_evidence.family_complete(report["cases"])
         report["secretRedactionBoundariesComplete"] = secret_boundaries_complete
         from equivalence.configured_redaction import family_complete as configured_complete, POINT as configured_point
@@ -2837,6 +2839,7 @@ def run_suite(*, checkout: Path, node: Path, smoke: bool = False,
                                                       and (point["id"] != heartbeat_boundary or heartbeat_complete)
                                                       and (point["id"] != restart_point or restarts_complete)
                                                       and (point["id"] not in flush_plan_target.POINTS or flush_plan_complete)
+                                                      and (point["id"] != flush_plan_target.BOUNDARY or flush_boundaries)
                                                       and (point["id"] not in secret_boundary_inputs.POINTS or secret_boundaries_complete)
                                                       and (point["id"] != heartbeat_outcome or heartbeat_outcomes)
                                                       and (point["id"] != transcript_family.POINT or transcript_complete)

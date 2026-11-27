@@ -11,9 +11,10 @@ import json
 from pathlib import Path
 import sys
 import os
+import stat
 import tempfile
 
-from equivalence.flush_plan_target import PROVIDER, published_workspace, validate_case
+from equivalence.flush_plan_target import BOUNDARY, PROVIDER, published_workspace, validate_case
 from equivalence.promotion_apply_runtime import _json_value
 from memory_core.config import MemoryConfig
 from memory_core.flags import FeatureFlags
@@ -25,16 +26,38 @@ from memory_core.runtime_identity import OPENCLAW_COMPAT_RUNTIME_IDENTITY
 from memory_core.session_catalog import MemorySessionCatalog
 
 
-def snapshot(workspace):
+def alias_witness(workspace, pair):
+    """Observe the two seeded directory entries without following any links."""
+    entries = {}
+    for role in ("target", "alias"):
+        path = workspace / pair[role]
+        if not path.is_relative_to(workspace) or path.resolve(strict=True) != path.absolute():
+            raise ValueError("Invalid flush fixture path")
+        info = path.lstat()
+        if not stat.S_ISREG(info.st_mode):
+            raise ValueError("The shared flush fixture must be a regular file")
+        entries[role] = {"dev": str(info.st_dev), "ino": str(info.st_ino), "nlink": info.st_nlink}
+    return entries
+
+
+def snapshot(workspace, read_only_alias=None):
     result = {}
+    linked_names = []
+    if read_only_alias:
+        identity = alias_witness(workspace, read_only_alias)
+        if identity["target"] == identity["alias"] and identity["target"]["nlink"] == 2:
+            linked_names = sorted(read_only_alias.values())
     for file in sorted(workspace.rglob("*")):
         name = file.relative_to(workspace).as_posix()
         if file.is_symlink():
             raise ValueError("Unexpected link in flush workspace")
         if file.is_dir():
             result[name] = {"kind": "directory"}
-        elif file.is_file() and file.stat().st_nlink == 1 and file.stat().st_size <= 4 * 1024 * 1024:
+        elif (file.is_file() and (file.stat().st_nlink == 1 or name in linked_names)
+              and file.stat().st_size <= 4 * 1024 * 1024):
             result[name] = {"kind": "file", "base64": base64.b64encode(file.read_bytes()).decode("ascii")}
+            if name in linked_names:
+                result[name]["linkedAs"] = linked_names
         else:
             raise ValueError("Unexpected flush file kind")
     return result
@@ -82,7 +105,17 @@ async def _run(case, directory):
         file = workspace / rel
         file.parent.mkdir(parents=True, exist_ok=True)
         file.write_bytes(content.encode("utf8"))
-    raw["initial"] = snapshot(workspace)
+    alias = value.get("readOnlyAlias")
+    if alias:
+        os.link(workspace / alias["target"], workspace / alias["alias"])
+        raw["aliasWitnesses"] = []
+
+    def files(*, witness=False):
+        if alias and witness:
+            raw["aliasWitnesses"].append(alias_witness(workspace, alias))
+        return snapshot(workspace, alias)
+
+    raw["initial"] = files(witness=True)
     session = SessionState.new(session_key="agent:main:main", session_id="session")
     # The source session has an ordinary existing catalog clock. The host separately
     # supplies the flush evaluation time, as the native plan resolver does.
@@ -105,12 +138,12 @@ async def _run(case, directory):
                                  "return": _json_value(arg), "result": wire_plan(arg)})
         elif frame.f_code is ensure_memory_flush_target_file.__code__ and event in {"call", "return"}:
             raw["prepareCalls"].append({"event": event, "target": frame.f_locals["relative_path"],
-                                        "return": _json_value(arg), "files": snapshot(workspace)})
+                                        "return": _json_value(arg), "files": files()})
 
     async def foreground(turn):
         nonlocal host_clock
         raw["foreground"].append(turn.model_request())
-        raw["beforeMaintenance"] = snapshot(workspace)
+        raw["beforeMaintenance"] = files()
         host_clock = value["nowMs"]
         return HostModelResult(usage=TurnUsage(prompt_tokens=176000))
 
@@ -120,10 +153,12 @@ async def _run(case, directory):
         raw["deliveries"].append({"selection": wire_selection(selection),
                                   "candidate": {"provider": candidate.provider, "model": model}, "reply": reply,
                                   "request": {"tools": turn.tools, "messages": turn.messages}, "target": turn.flush_request.target,
-                                  "files": snapshot(workspace)})
+                                  "files": files(witness=True)})
         if reply == "unavailable":
             raise FlushModelUnavailable("429 rate limit for selected fixture model")
-        turn.record_message({"role": "assistant", "content": [{"type": "text", "text": reply}]})
+        saved = turn.record_message({"role": "assistant", "content": [{"type": "text", "text": reply}]})
+        if case["covers"] == [BOUNDARY]:
+            raw["deliveries"][-1]["recordedAssistant"] = saved
         return HostModelResult()
 
     executor = FlushModelExecutor(provider=PROVIDER, model=value["primary"],
@@ -134,7 +169,7 @@ async def _run(case, directory):
         result = await runner.run_turn("Remember my field note.", execute=foreground, execute_flush=executor,
                                        context_window_tokens=value["contextWindowTokens"])
         raw["result"] = _json_value(result)
-        raw["final"] = snapshot(workspace)
+        raw["final"] = files(witness=True)
         raw["stamp"] = deepcopy(result.session.entry.get("memoryFlush"))
         raw["complete"] = True
     except Exception as error:
@@ -144,7 +179,12 @@ async def _run(case, directory):
         sys.setprofile(previous)
         (directory / "python-raw.json").write_text(json.dumps([raw], ensure_ascii=True, allow_nan=False, separators=(",", ":")))
     selection = raw["deliveries"][0]["selection"] if raw["deliveries"] else None
-    return {"provider": "none", "plans": [p["result"] for p in raw["plans"]], "selection": selection,
-            "candidates": [d["candidate"] for d in raw["deliveries"]], "files": published_workspace(raw["initial"], raw["beforeMaintenance"], raw["final"]),
-            "outcome": "skipped" if raw["stamp"] is None else "completed" if raw["stamp"]["kind"] == "succeeded" else "failed",
-            "stamp": raw["stamp"]}
+    public = {"provider": "none", "plans": [p["result"] for p in raw["plans"]], "selection": selection,
+              "candidates": [d["candidate"] for d in raw["deliveries"]],
+              "files": published_workspace(raw["initial"], raw["beforeMaintenance"], raw["final"]),
+              "outcome": "skipped" if raw["stamp"] is None else "completed" if raw["stamp"]["kind"] == "succeeded" else "failed",
+              "stamp": raw["stamp"]}
+    if case["covers"] == [BOUNDARY]:
+        public["replies"] = [block["text"] for d in raw["deliveries"]
+                             for block in d["recordedAssistant"]["content"] if block["type"] == "text"]
+    return public

@@ -31,8 +31,11 @@ if (context.dreamPhaseProfile !== undefined) {
 }
 if (context.flushPlanTargetProfile !== undefined) {
   const profile = context.flushPlanTargetProfile;
+  const boundaries = ["flush-plan-boundary-two-names-read-only", "flush-plan-boundary-single-name-read-only",
+    "flush-plan-boundary-occupied-daily-directory"];
   if (!profile || Object.keys(profile).sort().join() !== "caseId,inputSha256,nodeRuntime,operation" ||
-      profile.operation !== "flush-plan-target-runtime" || !profile.caseId?.startsWith("flush-plan-target-") ||
+      profile.operation !== "flush-plan-target-runtime" ||
+      (!profile.caseId?.startsWith("flush-plan-target-") && !boundaries.includes(profile.caseId)) ||
       !/^[a-f0-9]{64}$/.test(profile.inputSha256) ||
       JSON.stringify(profile.nodeRuntime) !== JSON.stringify(context.approvedNodeRuntime) ||
       Object.keys(context).some(k => k.endsWith("Profile") && k !== "flushPlanTargetProfile") ||

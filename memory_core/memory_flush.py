@@ -61,9 +61,9 @@ from memory_core.current_time import (
     calendar_instants,
     year_of_era,
 )
-from memory_core.memory_paths import UnsafeMemoryPathError, validate_daily_memory_path
-from memory_core.runtime_identity import MEMORY_CORE_RUNTIME_IDENTITY, RuntimeIdentity
-from memory_core.workspace import check_writable_memory_file, workspace_file_lock
+from memory_core.memory_paths import UnsafeMemoryPathError, is_daily_memory_path, validate_daily_memory_path
+from memory_core.runtime_identity import MEMORY_CORE_RUNTIME_IDENTITY, OPENCLAW_COMPAT_RUNTIME_IDENTITY, RuntimeIdentity
+from memory_core.workspace import check_writable_memory_file, has_multiple_memory_file_links, workspace_file_lock
 
 __all__ = [
     "DEFAULT_AGENT_COMPACTION_RESERVE_TOKENS_FLOOR",
@@ -811,6 +811,7 @@ def ensure_memory_flush_target_file(
     relative_path: str,
     *,
     assert_current: Callable[[], None] | None = None,
+    identity: RuntimeIdentity = MEMORY_CORE_RUNTIME_IDENTITY,
 ) -> Path:
     """Create the flush target empty before the flush run; returns its path.
 
@@ -827,6 +828,8 @@ def ensure_memory_flush_target_file(
     Deviation (stricter than upstream): under the file's write lock, a symlinked or non-directory
     parent and a target that is a symlink, not a regular file or hard-linked are refused
     (``memory_core.workspace.check_writable_memory_file``), as the flush write refuses them.
+    In the OpenClaw profile a regular daily file with multiple links already exists,
+    so preparation can finish without opening it. Actual appends still verify their target.
     """
     relative = js_trim(relative_path) if isinstance(relative_path, str) else ""
     if not relative or os.path.isabs(relative):
@@ -839,6 +842,11 @@ def ensure_memory_flush_target_file(
     if assert_current is not None:
         assert_current()
     with workspace_file_lock(workspace_root, inside):
+        if (identity == OPENCLAW_COMPAT_RUNTIME_IDENTITY and is_daily_memory_path(relative)
+                and has_multiple_memory_file_links(workspace_root, inside)):
+            if assert_current is not None:
+                assert_current()
+            return target
         check_writable_memory_file(workspace_root, inside)
         target.parent.mkdir(parents=True, exist_ok=True)
         if assert_current is not None:

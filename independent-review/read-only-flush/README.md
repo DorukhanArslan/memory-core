@@ -50,3 +50,7 @@ cmp "$review_dir/recount.json" "$audit_dir/independent-46020719989.json"
 ```
 
 Sayım çıktısının SHA-256 değeri `0083ddf9c10484aae9e071deccf098912dee1c2085a561ebc3429365a53b9b40`. Önceki bağımsız doğrulayıcıları içeren Git commit’leri `95b10840`, `45ac3284`, `9430a2cb`, `5bd9ac41` ve `34b52d79`.
+
+## Main doğrulaması
+
+PR #35, `64eb7c509f7ae662f4edab2be7360fb0a4addd27` olarak main’e birleşti. Uzak main’den alınan bu sürüm ile ölçülen `232aa039` sürümünün `memory_core` dizini aynı Git ağacına sahip (`3cff7b7f57c222f960ec162dd144bcb2695ad3f1`). PR’ın son sürümü `1b87774f` ile birleşmiş sürümün tüm dosyaları da aynı. [Birleşen PR](https://github.com/DorukhanArslan/memory-core/pull/35) · [Main’deki takip listesi](https://github.com/DorukhanArslan/memory-core/blob/64eb7c509f7ae662f4edab2be7360fb0a4addd27/docs/parity-completion-checklist.md)

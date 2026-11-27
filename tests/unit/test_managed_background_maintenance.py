@@ -29,7 +29,7 @@ STATE = SessionState.new(session_key=KEY, session_id=ID)
 FACT = "The maintenance calibration token is SAFFRON-673.\n"
 
 
-def _owner(tmp_path, *, maintenance="background", flush_config=None):
+def _owner(tmp_path, *, maintenance="background", flush_config=None, **options):
     root = tmp_path / "workspace"
     root.mkdir(exist_ok=True)
     catalog = MemorySessionCatalog(tmp_path / "catalog.sqlite", clock_ms=lambda: NOW)
@@ -38,7 +38,7 @@ def _owner(tmp_path, *, maintenance="background", flush_config=None):
     policy = resolve_memory_search_source_policy(["memory"], remember_across_conversations=False)
     return ManagedHostSession.open(root, catalog=catalog, config=config, source_policy=policy,
         maintenance=maintenance, memory_publication="on-search", timezone="UTC", now_ms=lambda: NOW, flush_config=flush_config,
-        identity=OPENCLAW_COMPAT_RUNTIME_IDENTITY)
+        identity=OPENCLAW_COMPAT_RUNTIME_IDENTITY, **options)
 
 
 def _answer(turn, *, due=False):
@@ -66,13 +66,64 @@ async def _join(owner):
         await asyncio.wait_for(job.join(), 5)
 
 
+@pytest.mark.parametrize("option", ["maintenance", "interrupted_publication"])
 @pytest.mark.parametrize("value", ["later", None, True])
-def test_invalid_maintenance_policy_is_rejected_before_workspace_creation(tmp_path, value):
+def test_invalid_maintenance_policy_is_rejected_before_workspace_creation(tmp_path, value, option):
     catalog = MemorySessionCatalog(tmp_path / "catalog.sqlite")
     root = tmp_path / "absent"
-    with pytest.raises(ValueError, match="maintenance"):
-        ManagedHostSession.open(root, catalog=catalog, maintenance=value)
+    with pytest.raises(ValueError, match=option):
+        ManagedHostSession.open(root, catalog=catalog, **{option: value})
     assert not root.exists()
+
+
+def test_new_compatibility_turn_can_flush_without_restarting_old_maintenance(tmp_path):
+    async def scenario():
+        owner = _owner(tmp_path, interrupted_publication="openclaw")
+        runner = owner.runner(STATE)
+        old = {"turnId": "old", "publication": "uncertain", "stage": "intent",
+               "workspace": str(owner.kit.memory.workspace.root), "indexPath": str(owner.store.path),
+               "provenancePath": str(runner.artifact_provenance.path)}
+        owner.catalog.upsert_session(KEY, {"sessionId": ID, "sdkHostLifecycle": {
+            "version": 1, "lastTurnId": "old", "publicationMode": "managed",
+            "needsIndex": True, "needsMemoryIndex": True, "pendingMemoryPublication": old}})
+        flushes = []
+
+        async def flush(turn):
+            flushes.append(turn.turn_id)
+            await _write(turn)
+
+        try:
+            duplicate = await runner.run_turn("Old request", execute=_due, execute_flush=flush, request_id="old")
+            assert not duplicate.transcript_committed and not owner.maintenance_status()["jobs"]
+            reply = await runner.run_turn("Save the new calibration", execute=_due,
+                                          execute_flush=flush, request_id="new")
+            assert not reply.failures, reply.failures
+            assert reply.transcript_committed
+            await _join(owner)
+            assert len(flushes) == 1
+            assert (owner.kit.memory.workspace.root / "memory/2026-11-09.md").read_text() == FACT
+            assert owner.publication_status()["memoryIndexStatus"] == "pending"
+            owner.reindex(force=True)
+            metadata = owner.catalog.get_session_entry(KEY)["sdkHostLifecycle"]
+            assert metadata["interruptedMemoryPublications"] == [old]
+            assert metadata["needsMemoryIndex"] is False
+            assert "pendingMemoryPublication" not in metadata and "lastMemoryPublicationAcknowledgment" not in metadata
+        finally:
+            await owner.aclose()
+
+        strict = _owner(tmp_path)
+        try:
+            blocked = await strict.runner(STATE).run_turn("Next", execute=_ordinary, request_id="after-restart")
+            assert not blocked.transcript_committed and not strict.maintenance_status()["jobs"]
+            await strict.runner(STATE).acknowledge_memory_publication(expected_turn_id="old")
+            metadata = strict.catalog.get_session_entry(KEY)["sdkHostLifecycle"]
+            assert metadata["interruptedMemoryPublications"] == [{**old, "acknowledgedAt": NOW}]
+            continued = await strict.runner(STATE).run_turn("Next", execute=_ordinary, request_id="after-restart")
+            assert continued.transcript_committed and not continued.failures
+        finally:
+            await strict.aclose()
+
+    asyncio.run(scenario())
 
 
 def test_pending_due_work_yields_before_body_and_usage_is_not_applied_twice(tmp_path):

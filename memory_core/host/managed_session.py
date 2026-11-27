@@ -24,8 +24,10 @@ from memory_core.consolidation.artifact_provenance import MemoryArtifactProvenan
 from memory_core.flags import FeatureFlags
 from memory_core.host.kit import HostKit
 from memory_core.host.lifecycle import (
-    HostModelResult, HostSessionRunner, HostTurn, HostTurnOutcome, _Admission, _RunCapture,
-    _acquire_lane, _current_lanes, _failure, _memory_publication, _memory_wrote, _stored_pending_publication,
+    HostModelResult, HostSessionRunner, HostTurn, HostTurnOutcome, InterruptedPublicationPolicy, _Admission, _RunCapture,
+    _acquire_lane, _current_lanes, _failure, _memory_publication, _memory_wrote,
+    _stored_interrupted_publications, _stored_pending_publication,
+    _validate_interrupted_publication,
 )
 from memory_core.host.managed_maintenance import OptionalMaintenance, reserve_foreground, schedule_optional
 from memory_core.host.managed_index import ManagedSQLiteMemoryStore
@@ -56,9 +58,11 @@ class ManagedHostSession:
 
     def __init__(self, kit: HostKit, catalog: MemorySessionCatalog,
                  controller: SessionPublicationController, *,
-                 maintenance: Literal["inline", "background"] = "inline") -> None:
+                 maintenance: Literal["inline", "background"] = "inline",
+                 interrupted_publication: InterruptedPublicationPolicy = "require-acknowledgment") -> None:
         if not isinstance(maintenance, str) or maintenance not in {"inline", "background"}:
             raise ValueError("maintenance must be inline or background")
+        self._interrupted_publication = _validate_interrupted_publication(interrupted_publication)
         if not isinstance(kit.memory.store, ManagedSQLiteMemoryStore):
             raise TypeError("A managed host requires ManagedSQLiteMemoryStore")
         if kit._curation_index_sources != ("memory",) or not kit._defer_cold_index:
@@ -88,11 +92,13 @@ class ManagedHostSession:
              initialize: bool = False,
              memory_publication: Literal["on-write", "on-search"] = "on-write",
              maintenance: Literal["inline", "background"] = "inline",
+             interrupted_publication: InterruptedPublicationPolicy = "require-acknowledgment",
              **kit_options: Any) -> ManagedHostSession:
         if not isinstance(memory_publication, str) or memory_publication not in {"on-write", "on-search"}:
             raise ValueError("memory_publication must be on-write or on-search")
         if not isinstance(maintenance, str) or maintenance not in {"inline", "background"}:
             raise ValueError("maintenance must be inline or background")
+        _validate_interrupted_publication(interrupted_publication)
         root = Path(workspace_dir).resolve()
         config = config or MemoryConfig(root, agent_id=catalog.agent_id, flags=FeatureFlags(vector_search=False))
         if Path(config.workspace_dir).resolve() != root or normalize_session_agent_id(config.agent_id) != catalog.agent_id:
@@ -115,7 +121,7 @@ class ManagedHostSession:
                       curation_index_sources=("memory",), defer_cold_index=True, **kit_options)
         if initialize:
             kit.ensure()
-        return cls(kit, catalog, controller, maintenance=maintenance)
+        return cls(kit, catalog, controller, maintenance=maintenance, interrupted_publication=interrupted_publication)
 
     @property
     def kit(self) -> HostKit:
@@ -349,7 +355,8 @@ class ManagedHostSessionRunner(HostSessionRunner):
                  extra_tools: Sequence[TurnTool] = ()) -> None:
         self.owner = owner
         self._background_job: OptionalMaintenance | None = None
-        super().__init__(owner.kit, owner.catalog, session=session, extra_tools=extra_tools)
+        super().__init__(owner.kit, owner.catalog, session=session, extra_tools=extra_tools,
+                         interrupted_publication=owner._interrupted_publication)
 
     async def _run_after_turn(self, state, **options):
         if self.owner._maintenance_policy == "inline":
@@ -428,13 +435,19 @@ class ManagedHostSessionRunner(HostSessionRunner):
                 raise asyncio.CancelledError("Optional maintenance lost foreground authority")
             state, continuation, _ = worker._load()
             capture.state = state
-            if _stored_pending_publication(continuation["instanceEntry"]) is not None:
+            entry = continuation["instanceEntry"]
+            if _stored_pending_publication(entry) is not None:
                 raise RuntimeError("An unresolved memory publication cannot admit optional maintenance")
-            if state.entry.get("sdkHostLifecycle", {}).get("lastTurnId") != turn_id:
+            for marker in _stored_interrupted_publications(entry):
+                worker._assert_publication_owner(marker)
+                if self.owner._interrupted_publication != "openclaw" or marker["turnId"] == turn_id:
+                    raise RuntimeError("An interrupted memory publication cannot resume optional maintenance")
+            if entry.get("sdkHostLifecycle", {}).get("lastTurnId") != turn_id:
                 raise asyncio.CancelledError("Session changed before optional maintenance admission")
+            messages, _ = worker._session_messages(continuation)
             admitted = True
             state = await HostSessionRunner._run_after_turn(worker, state, result=HostModelResult(),
-                messages=continuation["llmMessages"], continuation=continuation,
+                messages=messages, continuation=continuation,
                 trust=specification["trust"], turn_id=turn_id,
                 execute_flush=specification["execute_flush"],
                 context_window_tokens=specification["context_window_tokens"],

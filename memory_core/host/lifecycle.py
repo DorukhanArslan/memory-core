@@ -13,6 +13,8 @@ from copy import deepcopy
 from dataclasses import dataclass, replace
 import json
 import inspect
+import os
+import socket
 from pathlib import Path
 import threading
 from typing import Any, Literal
@@ -22,16 +24,19 @@ from memory_core.bootstrap._js import js_trim
 from memory_core.compaction_replay import CompactionTracker, build_openai_responses_reasoning_replay_metadata
 from memory_core.config import MemoryConfig
 from memory_core.consolidation.artifact_provenance import MemoryArtifactProvenanceStore
+from memory_core.consolidation.file_lock import pid_definitely_dead, process_start_time
 from memory_core.curation import APPEND_DAILY_NOTE, CURATION_OPERATIONS
 from memory_core.host.flush import FlushOutcome, FlushRequest
 from memory_core.host.kit import HostKit, TurnContext
+from memory_core.host.recovery_history import recovered_session_messages
 from memory_core.host.session import SessionState, TurnUsage, apply_turn_usage
 from memory_core.memory_write_provenance import _observe_memory_write_entry
 from memory_core.model_prompt import ModelPrompt, RuntimePromptInput, serialize_model_tool_json
 from memory_core.queued_user import merge_text as merge_queued_user_text, trailing_user
 from memory_core.responses_converter import build_responses_transport_input
+from memory_core.responses_egress import OPENAI_RESPONSES_APIS
 from memory_core.session_catalog import MemorySessionCatalog, normalize_session_agent_id
-from memory_core.session_transcript_append import resolve_message_append_parent, timestamp_ms_to_iso
+from memory_core.session_transcript_append import message_idempotency_key, resolve_message_append_parent, timestamp_ms_to_iso
 from memory_core.transcript_tree import select_visible_transcript_events
 from memory_core.session_visibility import is_incognito_session_key, resolve_session_agent_id
 from memory_core.tools.common import format_error_message
@@ -44,6 +49,51 @@ _STATE = "sdkHostLifecycle"
 _KEEP_PUBLICATION = object()
 _ENTRY_FIELDS = ("sessionId", "compactionCount", "totalTokens", "totalTokensFresh",
                  "totalTokensVersion", "memoryFlush")
+
+
+InterruptedPublicationPolicy = Literal["require-acknowledgment", "openclaw"]
+
+
+def _validate_interrupted_publication(policy: InterruptedPublicationPolicy) -> InterruptedPublicationPolicy:
+    if policy not in ("require-acknowledgment", "openclaw"):
+        raise ValueError("interrupted_publication must be 'require-acknowledgment' or 'openclaw'")
+    return policy
+
+
+def _writer_process() -> dict[str, Any]:
+    owner = {"host": socket.gethostname(), "pid": os.getpid(), "start": process_start_time(os.getpid())}
+    try:
+        owner["machine"] = Path("/etc/machine-id").read_text().strip()
+    except OSError:
+        pass
+    try:
+        owner["boot"] = Path("/proc/sys/kernel/random/boot_id").read_text().strip()
+        owner["namespace"] = os.readlink("/proc/self/ns/pid")
+    except OSError:
+        pass
+    return owner
+
+
+def _assert_writer_stopped(auxiliary: Mapping[str, Any]) -> None:
+    if "activeMemoryPublicationProcess" not in auxiliary:
+        return
+    owner = auxiliary["activeMemoryPublicationProcess"]
+    here = _writer_process()
+    # Our foreground and managed workers all acquire this same session's
+    # process lane. By the time it can be reacquired, their sources have joined.
+    if owner == here:
+        return
+    if (isinstance(owner, dict) and owner.get("host") == here["host"]
+            and owner.get("machine") == here.get("machine")
+            and type(owner.get("pid")) is int and 0 < owner["pid"] <= 2**31 - 1):
+        if owner.get("machine") and owner.get("boot") and here.get("boot") and owner["boot"] != here["boot"]:
+            return
+        if owner.get("boot") == here.get("boot") and owner.get("namespace") == here.get("namespace"):
+            started = process_start_time(owner["pid"])
+            if (pid_definitely_dead(owner["pid"]) or
+                    (type(owner.get("start")) is int and started is not None and owner["start"] != started)):
+                return
+    raise RuntimeError("A memory publication writer may still be active")
 
 
 @dataclass(frozen=True)
@@ -203,7 +253,8 @@ class HostTurn:
                  trust: TurnTrust, *, flush: FlushRequest | None = None,
                  publication_turn_id: str | None = None,
                  projection_messages: Sequence[Mapping[str, Any]] | None = None,
-                 model_prompt: ModelPrompt | None = None, context_window_tokens: int | None = None) -> None:
+                 model_prompt: ModelPrompt | None = None, context_window_tokens: int | None = None,
+                 responses: bool = False) -> None:
         self._runner = runner
         self.turn_id = turn_id
         self._publication_turn_id = publication_turn_id or turn_id
@@ -215,6 +266,7 @@ class HostTurn:
         self._messages = list(deepcopy(messages))
         self._projection_messages = list(deepcopy(projection_messages if projection_messages is not None else messages))
         self._model_prompt = model_prompt
+        self._responses = responses
         self._context_window_tokens = context_window_tokens
         self._appends: list[dict[str, Any]] = []
         self._receipts: list[dict[str, Any]] = []
@@ -277,9 +329,10 @@ class HostTurn:
     def _restore_provider_context(self, continuation):
         """Switch the active request to the newly committed branch while retaining admitted tool IDs."""
         with self._guard:
-            self._messages = deepcopy(continuation["llmMessages"])
-            self._projection_messages = deepcopy(continuation["context"]["messages"])
             owner = self._model_prompt
+            messages, projection = self._runner._session_messages(continuation, responses=self._responses)
+            self._messages = deepcopy(messages)
+            self._projection_messages = deepcopy(projection)
             if owner is not None and owner.canonical_user is not None:
                 positions = [i for i, row in enumerate(self._projection_messages) if row == owner.canonical_user]
                 if len(positions) != 1:
@@ -592,7 +645,9 @@ class HostSessionRunner:
     """
 
     def __init__(self, kit: HostKit, catalog: MemorySessionCatalog, *, session: SessionState,
-                 extra_tools: Sequence[TurnTool] = ()) -> None:
+                 extra_tools: Sequence[TurnTool] = (),
+                 interrupted_publication: InterruptedPublicationPolicy = "require-acknowledgment") -> None:
+        self.interrupted_publication = _validate_interrupted_publication(interrupted_publication)
         if not isinstance(kit, HostKit) or not isinstance(catalog, MemorySessionCatalog):
             raise TypeError("A runner requires HostKit and MemorySessionCatalog")
         if not isinstance(session, SessionState) or not session.session_key or not session.session_id:
@@ -640,8 +695,11 @@ class HostSessionRunner:
     @classmethod
     def open(cls, workspace_dir: str | Path, *, catalog: MemorySessionCatalog, session: SessionState,
              config: MemoryConfig | None = None, extra_tools: Sequence[TurnTool] = (),
-             artifact_provenance: MemoryArtifactProvenanceStore | None = None, **kit_options) -> HostSessionRunner:
+             artifact_provenance: MemoryArtifactProvenanceStore | None = None,
+             interrupted_publication: InterruptedPublicationPolicy = "require-acknowledgment",
+             **kit_options) -> HostSessionRunner:
         """Create the ledger before the immutable kit; pass its normal provider options."""
+        _validate_interrupted_publication(interrupted_publication)
         if is_incognito_session_key(session.session_key):
             raise ValueError("Incognito host lifecycle writes are unsupported; use the volatile catalog APIs directly")
         config = config or MemoryConfig(workspace_dir=Path(workspace_dir).resolve(), agent_id=catalog.agent_id)
@@ -656,7 +714,7 @@ class HostSessionRunner:
         ledger = artifact_provenance or MemoryArtifactProvenanceStore(index.with_name(f"{index.stem}.provenance.sqlite"))
         kit = HostKit.open(workspace_dir, config=config, session_catalog=catalog,
                            artifact_provenance=ledger, **kit_options)
-        return cls(kit, catalog, session=session, extra_tools=extra_tools)
+        return cls(kit, catalog, session=session, extra_tools=extra_tools, interrupted_publication=interrupted_publication)
 
     def _clock(self) -> int:
         return int(self.catalog.now_ms())
@@ -763,6 +821,15 @@ class HostSessionRunner:
                 or ledger is None or pending["provenancePath"] != str(ledger.path.resolve())):
             raise RuntimeError("The pending memory publication belongs to a different workspace, index or provenance store")
 
+    def _session_messages(self, continuation, *, responses=False):
+        records = _stored_interrupted_publications(continuation["instanceEntry"], include_acknowledged=True)
+        if not records:
+            return continuation["llmMessages"], continuation["context"]["messages"]
+        for record in records:
+            self._assert_publication_owner(record)
+        return recovered_session_messages(continuation, {record["turnId"] for record in records},
+            now_ms=self._clock(), responses=responses)
+
     def _ensure_memory_intent(self, state: SessionState, *, turn_id: str) -> None:
         """Record custody before the first owned memory producer may mutate."""
         with self._intent_guard:
@@ -774,7 +841,7 @@ class HostSessionRunner:
             self._assert_identity()
             self._persist(state, needs_index=True, turn_id=turn_id,
                 pending_memory_publication=_publication_marker(turn_id, self.kit, stage="intent"),
-                index_scope="memory")
+                index_scope="memory", active_writer=True)
             self._intent_turn_id = turn_id
 
     def _load(self) -> tuple[SessionState, dict[str, Any], bool]:
@@ -807,6 +874,8 @@ class HostSessionRunner:
                  pending_memory_publication: object = _KEEP_PUBLICATION,
                  expected_pending_turn_id: str | None = None,
                  acknowledgment: Mapping[str, Any] | None = None,
+                 active_writer: bool = False,
+                 runtime_admission: Mapping[str, Any] | None = None,
                  index_scope: Literal["all", "memory", "transcript"] = "all") -> None:
         current = self.catalog.get_session_entry(state.session_key)
         if current is None or current.get("sessionId") != state.session_id:
@@ -814,10 +883,22 @@ class HostSessionRunner:
         continuation = self.catalog.read_continuation(state.session_id, session_key=state.session_key)
         if continuation is None:
             raise RuntimeError("The current transcript disappeared during this turn")
-        entry = deepcopy(continuation["instanceEntry"])
+        previous = continuation["instanceEntry"]
+        entry = deepcopy(previous)
         auxiliary = deepcopy(dict(entry.get(_STATE, {})))
+        pending = _stored_pending_publication(entry)
+        if pending is not None and pending["turnId"] != turn_id:
+            raise RuntimeError("The pending memory publication belongs to another turn")
+        history = _stored_interrupted_publications(entry, include_acknowledged=True)
+        if any(item["turnId"] == turn_id for item in history):
+            raise RuntimeError("The interrupted turn may not publish again")
+        if runtime_admission is not None:
+            if auxiliary != runtime_admission:
+                raise RuntimeError("The host lifecycle state changed before runtime admission")
+        elif active_writer or history or self.interrupted_publication == "openclaw":
+            if auxiliary.get("lastTurnId") != turn_id:
+                raise RuntimeError("A newer turn owns this session")
         if expected_pending_turn_id is not None:
-            pending = _stored_pending_publication(entry)
             if pending is None or pending["turnId"] != expected_pending_turn_id:
                 raise RuntimeError("The pending memory publication changed; acknowledge its current turn id")
             self._assert_publication_owner(pending)
@@ -831,6 +912,10 @@ class HostSessionRunner:
             "completedBootstrapTurn": state.completed_bootstrap_turn, "needsIndex": needs_index, "lastTurnId": turn_id})
         self._decorate_index_metadata(auxiliary, needs_index=needs_index, scope=index_scope)
         if pending_memory_publication is not _KEEP_PUBLICATION:
+            if active_writer:
+                auxiliary["activeMemoryPublicationProcess"] = _writer_process()
+            else:
+                auxiliary.pop("activeMemoryPublicationProcess", None)
             if pending_memory_publication is None:
                 auxiliary.pop("pendingMemoryPublication", None)
             else:
@@ -839,7 +924,7 @@ class HostSessionRunner:
             auxiliary["lastMemoryPublicationAcknowledgment"] = deepcopy(dict(acknowledgment))
         entry[_STATE] = auxiliary
         entry["updatedAt"] = self._clock()
-        self.catalog.upsert_session(state.session_key, entry)
+        self.catalog.upsert_session(state.session_key, entry, _expected_host_entry=previous)
 
     async def acknowledge_memory_publication(self, *, expected_turn_id: str) -> None:
         """Accept CURRENT files, reindex them and release the matching uncertainty.
@@ -864,9 +949,15 @@ class HostSessionRunner:
         async def acknowledge() -> None:
             self._assert_identity()
             state, continuation, _ = self._load()
-            pending = _stored_pending_publication(continuation["instanceEntry"])
-            if pending is None or pending["turnId"] != expected_turn_id:
-                raise RuntimeError("No matching pending memory publication; inspect its current turn id")
+            entry = continuation["instanceEntry"]
+            active = _stored_pending_publication(entry)
+            historical = next((record for record in _stored_interrupted_publications(entry)
+                               if record["turnId"] == expected_turn_id), None)
+            if historical is None:
+                if active is None or active["turnId"] != expected_turn_id:
+                    raise RuntimeError("No matching pending memory publication; inspect its current turn id")
+                _assert_writer_stopped(entry[_STATE])
+            pending = historical or active
             self._assert_publication_owner(pending)
             if cancelled.is_set():
                 raise asyncio.CancelledError("The memory publication acknowledgment was cancelled")
@@ -877,12 +968,29 @@ class HostSessionRunner:
                 raise asyncio.CancelledError("The memory publication acknowledgment was cancelled")
             # Read the live metadata after IO, preserving independent edits.
             self._assert_identity()
-            state, _, _ = self._load()
-            self._persist(state, needs_index=False, turn_id=expected_turn_id,
-                pending_memory_publication=None, expected_pending_turn_id=expected_turn_id,
-                acknowledgment={"turnId": expected_turn_id, "acknowledgedAt": self._clock(),
-                    "workspace": pending["workspace"], "indexPath": pending["indexPath"],
-                    "provenancePath": pending["provenancePath"]})
+            state, continuation, _ = self._load()
+            entry = continuation["instanceEntry"]
+            acknowledgment = {"turnId": expected_turn_id, "acknowledgedAt": self._clock(),
+                              "workspace": pending["workspace"], "indexPath": pending["indexPath"],
+                              "provenancePath": pending["provenancePath"]}
+            if historical is None:
+                if _stored_pending_publication(entry) != pending:
+                    raise RuntimeError("The pending memory publication changed during acknowledgment")
+                self._persist(state, needs_index=False, turn_id=expected_turn_id,
+                    pending_memory_publication=None, expected_pending_turn_id=expected_turn_id,
+                    acknowledgment=acknowledgment)
+            else:
+                if historical not in _stored_interrupted_publications(entry):
+                    raise RuntimeError("The interrupted memory publication changed during acknowledgment")
+                expected = entry[_STATE]
+                updated = deepcopy(expected)
+                for record in updated["interruptedMemoryPublications"]:
+                    if record["turnId"] == expected_turn_id:
+                        record["acknowledgedAt"] = acknowledgment["acknowledgedAt"]
+                updated["lastMemoryPublicationAcknowledgment"] = acknowledgment
+                # A current turn may have incurred its own search-index debt.
+                self.catalog.upsert_session(state.session_key, {**entry, _STATE: updated},
+                                            _expected_host_entry=entry)
             self.session = state
 
         producer = asyncio.create_task(acknowledge())
@@ -1189,20 +1297,37 @@ class HostSessionRunner:
         try:
             state, continuation, needs_index = self._load()
             capture.state = state
-            pending = _stored_pending_publication(continuation["instanceEntry"])
-            if pending is not None:
+            entry = continuation["instanceEntry"]
+            auxiliary = entry.get(_STATE, {})
+            pending = _stored_pending_publication(entry)
+            history = _stored_interrupted_publications(entry, include_acknowledged=True)
+            unresolved = [record for record in history if "acknowledgedAt" not in record]
+            interrupted = pending or (unresolved[0] if unresolved else None)
+            if interrupted is not None:
                 capture.memory_publication = "uncertain"
                 phase = "publication-reconciliation"
-                failures.append(HostTurnFailure(phase, "MemoryPublicationUncertain",
-                    format_error_message(
-                        f"Acknowledge current memory files for pending turn {pending['turnId']} before admitting another message"),
-                    publication="uncertain"))
-                return HostTurnOutcome(turn_id, state, (), (), (), False, False, "not-run",
-                    tuple(failures), memory_publication="uncertain")
+                if self.interrupted_publication == "require-acknowledgment":
+                    failures.append(HostTurnFailure(phase, "MemoryPublicationUncertain",
+                        format_error_message(
+                            f"Acknowledge current memory files for pending turn {interrupted['turnId']} before admitting another message"),
+                        publication="uncertain"))
+                    return HostTurnOutcome(turn_id, state, (), (), (), False, False, "not-run",
+                        tuple(failures), memory_publication="uncertain")
+            interrupted_ids = {record["turnId"] for record in history}
+            for record in history:
+                self._assert_publication_owner(record)
+            if pending:
+                self._assert_publication_owner(pending)
+                _assert_writer_stopped(auxiliary)
+                interrupted_ids.add(pending["turnId"])
+            if interrupted_ids and _retries_interrupted_request(continuation, interrupted_ids, turn_id, user_message):
+                raise RuntimeError("This interrupted request was already admitted; no model turn was repeated")
+            guarded_admission = bool(interrupted_ids) or self.interrupted_publication == "openclaw"
             if needs_index:
                 phase = "index-repair"
                 published = await self._blocking(self._refresh_index, True)
-                self._persist(state, needs_index=not published, turn_id=turn_id)
+                if not guarded_admission:
+                    self._persist(state, needs_index=not published, turn_id=turn_id)
             phase = "before-turn"
             context = self.kit.before_turn(state)
             state = context.session
@@ -1238,6 +1363,13 @@ class HostSessionRunner:
                             queued_append["detach_queued_user"] = queued[0]["id"]
                             queued_history = queued_history[:-(1 + len(queued[1]))]
                 user = {**user, "content": prompt_owner.session_prompt}
+            skip = prompt_owner is not None and prompt_owner.skip_submission
+            suppress = prompt_context is not None and prompt_context.suppress_next_user_message_persistence
+            runtime_only = prompt_owner is not None and prompt_owner.prompt_submission.get("runtimeOnly")
+            if pending and (skip or suppress or runtime_only):
+                raise RuntimeError("Recovering an interrupted publication requires a new persisted user message")
+            if pending and self._cancel_requested.is_set():
+                raise asyncio.CancelledError("Interrupted publication recovery was cancelled")
             from memory_core.host.provider_overflow import ProviderTurnExecutor
             if isinstance(execute, ProviderTurnExecutor) and not (prompt_owner is not None and prompt_owner.skip_submission):
                 if prompt_owner is None:
@@ -1250,14 +1382,21 @@ class HostSessionRunner:
                     execute._emit("terminal", {"kind":"precheck","text":None})
                     failures.append(_failure("precheck", preflight.prompt_error or RuntimeError("Preflight skipped the provider request")))
                     return HostTurnOutcome(turn_id, state, tuple(prior["llmMessages"]), (), (), False, False,
-                                           "not-run", tuple(failures))
+                                           "not-run", tuple(failures), memory_publication=capture.memory_publication)
                 if checkpoints:
                     if self._cancel_requested.is_set():
                         raise RuntimeError("The provider turn was cancelled before publishing recovery")
                     queued_append["admission_compactions"] = checkpoints
-            skip = prompt_owner is not None and prompt_owner.skip_submission
-            suppress = prompt_context is not None and prompt_context.suppress_next_user_message_persistence
             if not skip and not suppress:
+                if guarded_admission:
+                    if self._cancel_requested.is_set():
+                        raise asyncio.CancelledError("Interrupted publication recovery was cancelled")
+                    updated = {**auxiliary, "lastTurnId": turn_id}
+                    if pending:
+                        updated.pop("pendingMemoryPublication")
+                        updated.pop("activeMemoryPublicationProcess", None)
+                        updated["interruptedMemoryPublications"] = [*history, pending]
+                    queued_append["_host_admission"] = (auxiliary, updated)
                 saved = self.catalog.append_message(state.session_id, user, session_key=state.session_key,
                     event_id=f"{turn_id}:user", now_ms=self._clock(), cwd=str(self.kit.memory.workspace.root),
                     **queued_append)
@@ -1269,10 +1408,14 @@ class HostSessionRunner:
                                                 "summary": checkpoint["summary"]})
             accepted = True
             capture.accepted = True
-            self._persist(state, needs_index=True, turn_id=turn_id, index_scope="transcript")
+            capture.memory_publication = "none"
+            self._persist(state, needs_index=True, turn_id=turn_id, index_scope="transcript",
+                          runtime_admission=auxiliary if guarded_admission and (skip or suppress) else None)
             continuation = self.catalog.read_continuation(state.session_id, session_key=state.session_key)
-            model_messages = continuation["llmMessages"]
-            projection_messages = continuation["context"]["messages"]
+            replay = prompt_owner.history_replay if prompt_owner else None
+            responses = (replay.is_responses if replay is not None else
+                         isinstance(execute, ProviderTurnExecutor) and execute.model.api in OPENAI_RESPONSES_APIS)
+            model_messages, projection_messages = self._session_messages(continuation, responses=responses)
             if suppress and not skip:
                 model_messages = [*model_messages, deepcopy(user)]
                 projection_messages = [*projection_messages, deepcopy(user)]
@@ -1284,7 +1427,8 @@ class HostSessionRunner:
                 prompt_owner.history_replay.prepare(projection_messages)
                 self._append_model_snapshot(prompt_owner)
             turn = HostTurn(self, turn_id, state, context, model_messages, trust,
-                projection_messages=projection_messages, model_prompt=prompt_owner, context_window_tokens=context_window_tokens)
+                projection_messages=projection_messages, model_prompt=prompt_owner,
+                context_window_tokens=context_window_tokens, responses=responses)
             self._active_turn = turn
             phase = "model"
             try:
@@ -1415,7 +1559,13 @@ def _stored_pending_publication(entry):
     auxiliary = entry.get(_STATE, {})
     pending = auxiliary.get("pendingMemoryPublication")
     if pending is None:
+        if "activeMemoryPublicationProcess" in auxiliary:
+            raise ValueError("The stored memory publication writer has no pending intent")
         return None
+    return _validate_publication_marker(pending)
+
+
+def _validate_publication_marker(pending):
     fields = {"turnId", "publication", "workspace", "indexPath", "provenancePath"}
     if (not isinstance(pending, Mapping) or set(pending) not in (fields, fields | {"stage"})
             or not isinstance(pending["turnId"], str) or not pending["turnId"]
@@ -1424,3 +1574,38 @@ def _stored_pending_publication(entry):
             or pending["publication"] != "uncertain" or pending.get("stage", "uncertain") not in {"intent", "uncertain"}):
         raise ValueError("The stored memory publication uncertainty is invalid")
     return pending
+
+
+def _stored_interrupted_publications(entry, *, include_acknowledged=False):
+    auxiliary = entry.get(_STATE, {})
+    history = auxiliary.get("interruptedMemoryPublications", [])
+    if not isinstance(history, list):
+        raise ValueError("The stored interrupted memory publications are invalid")
+    active = _stored_pending_publication(entry)
+    known = {active["turnId"]} if active else set()
+    records = []
+    for item in history:
+        if not isinstance(item, Mapping):
+            raise ValueError("The stored interrupted memory publication is invalid")
+        marker = dict(item)
+        acknowledged = marker.pop("acknowledgedAt", None)
+        _validate_publication_marker(marker)
+        if marker["turnId"] in known or ("acknowledgedAt" in item and type(acknowledged) is not int):
+            raise ValueError("The stored interrupted memory publication is invalid")
+        known.add(marker["turnId"])
+        if acknowledged is None or include_acknowledged:
+            records.append(item)
+    return records
+
+
+def _retries_interrupted_request(continuation, interrupted_ids, turn_id, user_message):
+    if turn_id in interrupted_ids:
+        return True
+    key = message_idempotency_key(user_message) or js_trim(turn_id)
+    if key in interrupted_ids:
+        return True
+    # A host may have supplied an idempotency key different from request_id.
+    user_ids = {f"{prior}:user" for prior in interrupted_ids}
+    return any(isinstance(event, Mapping) and event.get("id") in user_ids
+               and message_idempotency_key(event.get("message")) == key
+               for event in continuation["events"])

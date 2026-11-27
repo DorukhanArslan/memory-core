@@ -1,6 +1,6 @@
 # OpenClaw bellek eşdeğerliği: bitiş ve ilerleme takibi
 
-**Durum: tamamlanmadı. Son güncelleme: 26 Kasım 2026.**
+**Durum: tamamlanmadı. Son güncelleme: 27 Kasım 2026.**
 
 Hedef, sabitlenmiş **OpenClaw v2026.9.9 bellek sözleşmesi** için eşdeğerliktir.
 Bu sayfa mevcut [ana planın bitiş şartlarını](full-equivalence-checklist.md#5-completion-evidence-and-release-decision)
@@ -8,7 +8,13 @@ izler; yeni kabul koşulu veya puan eklemez. **128/128 tek başına bitiş deği
 
 ## Şimdi neredeyiz?
 
-**122/128 koşul doğrulandı. Bu çalışmada +3, kalan 6.** `bb40b5c` sürümünde önceki 119 koşulun tamamı yeniden geçti. Dört eski karşılaştırma farkı kapandı. [Genel karşılaştırma](https://github.com/DorukhanArslan/memory-core/actions/runs/45840190038) · [Bağımsız sayım](https://github.com/DorukhanArslan/memory-core/blob/45ac3284219ac82bcec99353c5d5b896bdbae5d7/independent-review/remaining-memory-conditions/README.md)
+**122/128 koşul doğrulandı. 26 Kasım’daki tam koşuda +3, kalan 6.** `bb40b5c` sürümünde önceki 119 koşulun tamamı yeniden geçti. Dört eski karşılaştırma farkı kapandı. [Genel karşılaştırma](https://github.com/DorukhanArslan/memory-core/actions/runs/45840190038) · [Bağımsız sayım](https://github.com/DorukhanArslan/memory-core/blob/45ac3284219ac82bcec99353c5d5b896bdbae5d7/independent-review/remaining-memory-conditions/README.md)
+
+**27 Kasım · Kesintiden sonra sıradaki mesaj · 2/4 yerel eşleşme, +0.**
+Not yazılırken süreç kapatılıp sohbet yeniden açıldığında iki sistem de yeni soruyu
+yanıtladı ve arada yapılan düzenlemeyi korudu. Diğer iki örnekte kullanıcı 27 Kasım’ın
+günlüğüne yazılmasını istedi. Deneme saati 10 Kasım’dı. OpenClaw 27 Kasım’ın dosyasına,
+SDK 10 Kasım’ın dosyasına yazdı. Bu koşul açık. [Dört örneğin tanımı](../equivalence/interrupted_turn_acceptance.py)
 
 | Kapanan koşul | Kullanıcı ne görür? | Eşleşme |
 | --- | --- | ---: |

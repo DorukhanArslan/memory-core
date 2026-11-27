@@ -692,7 +692,7 @@ class HostKit:
 
         try:
             ensure_memory_flush_target_file(
-                self._root, plan.relative_path, assert_current=check_current
+                self._root, plan.relative_path, assert_current=check_current, identity=self._identity
             )
         except (UnsafeMemoryPathError, OSError) as error:
             if error is authority_error:
@@ -759,7 +759,7 @@ class HostKit:
 
         try:
             ensure_memory_flush_target_file(
-                self._root, plan.relative_path, assert_current=check_current
+                self._root, plan.relative_path, assert_current=check_current, identity=self._identity
             )
         except BaseException as error:
             if authority_error is not None and error is not authority_error:

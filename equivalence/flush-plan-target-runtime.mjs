@@ -1,7 +1,7 @@
 // Literal delivery-only model and files for the automatic production flush runner.
 import { createHash } from "node:crypto";
 import fs from "node:fs/promises";
-import { lstatSync, readdirSync, readFileSync } from "node:fs";
+import { closeSync, constants, fstatSync, lstatSync, openSync, readdirSync, readFileSync } from "node:fs";
 import path from "node:path";
 import { observeFlushSelection } from "./flush-plan-selection.mjs";
 import { runFlushExecution } from "./flush-execution.mjs";
@@ -23,9 +23,15 @@ const approved = new Set([
   "0000099ff54f7abd0d7ef80047844bdb503667ba252ebdd9bc081b3bf8b05ed1",
   "4f309babd19d21467c85bf1917a7093e06f07ed784e65bc8ea714ddaeec35b1b"
 ]);
+const boundaries = new Set([
+  "c18ee0c441206ccc5283171bd96cbe21b2079e1762cf61c3ea0edd30dc328e94",
+  "e4256f085c00122aea01d8662f76c4b97c60c6754251276b55d360fcb789c7fd",
+  "67a374e9bca404d3f3b034da119e2df5eeeffd3d90d45b0a11e23502c2068679",
+]);
 
 export async function runFlushPlanTarget(input, runtime) {
-  if (!approved.has(createHash("sha256").update(JSON.stringify(stable(input))).digest("hex"))) {
+  const inputHash = createHash("sha256").update(JSON.stringify(stable(input))).digest("hex");
+  if (!approved.has(inputHash) && !boundaries.has(inputHash)) {
     throw Error("Memory flush requires an exact bound input before filesystem setup");
   }
   const evidence = runtime.evidenceDirectory;
@@ -34,14 +40,30 @@ export async function runFlushPlanTarget(input, runtime) {
   const state = {kind: "native-flush-plan-target", input, plans: [], modelStarts: [],
     process: {pid: process.pid, ppid: process.ppid, executable: process.execPath, version: process.version,
       sha256: createHash("sha256").update(await fs.readFile(process.execPath)).digest("hex")}};
+  const pair = input.readOnlyAlias;
+  const names = pair ? Object.values(pair).sort() : [];
+  if (pair) state.aliasWitnesses = [];
   function filesystem(workspace) {
     const tree = {};
+    const witness = {};
     function visit(target) {
       const relative = path.relative(workspace, target);
       const info = lstatSync(target);
       if (info.isDirectory()) {
         if (relative) tree[relative] = {kind: "directory"};
         for (const name of readdirSync(target).sort()) visit(path.join(target, name));
+      } else if (names.includes(relative)) {
+        const fd = openSync(target, constants.O_RDONLY | constants.O_NOFOLLOW);
+        try {
+          const stat = fstatSync(fd, {bigint: true});
+          if (!stat.isFile() || stat.nlink !== 2n || stat.size > 4n * 1024n * 1024n) {
+            throw Error("Missing read-only note pair");
+          }
+          witness[relative === pair.target ? "target" : "alias"] = {
+            dev: stat.dev.toString(), ino: stat.ino.toString(), nlink: Number(stat.nlink),
+          };
+          tree[relative] = {kind: "file", base64: readFileSync(fd).toString("base64"), linkedAs: names};
+        } finally { closeSync(fd); }
       } else if (info.isFile() && info.size <= 4 * 1024 * 1024 && info.nlink === 1) {
         tree[relative] = {kind: "file", base64: readFileSync(target).toString("base64")};
       } else {
@@ -49,9 +71,16 @@ export async function runFlushPlanTarget(input, runtime) {
       }
     }
     visit(workspace);
+    if (pair) {
+      if (!witness.target || !witness.alias || witness.target.ino !== witness.alias.ino || witness.target.dev !== witness.alias.dev) {
+        throw Error("The two read-only paths no longer refer to the original file");
+      }
+      state.aliasWitnesses.push(witness);
+    }
     return tree;
   }
   const observe = {
+    captureReplies: boundaries.has(inputHash),
     snapshot: filesystem,
     setup: async (workspace, cfg, provider) => {
       state.workspace = workspace;
@@ -69,6 +98,7 @@ export async function runFlushPlanTarget(input, runtime) {
         await fs.mkdir(path.dirname(path.join(workspace, relative)), {recursive: true});
         await fs.writeFile(path.join(workspace, relative), text, {flag: "wx"});
       }
+      if (pair) await fs.link(path.join(workspace, pair.target), path.join(workspace, pair.alias));
       state.cfg = structuredClone(cfg);
       state.initial = await filesystem(workspace);
     },
@@ -81,13 +111,16 @@ export async function runFlushPlanTarget(input, runtime) {
       if (answer === "unavailable") return {error: "429 rate limit for selected fixture model"};
       throw Error("Unexpected model selection in bound fixture");
     },
-    finish: async ({workspace, result, before, modelCalls, progress, pluginRegistryProof, visibleErrors, persisted, source}) => {
+    finish: async ({workspace, result, before, modelCalls, toolEvents, progress, pluginRegistryProof, visibleErrors, persisted, source}) => {
       Object.assign(state, {visibleErrors, persisted, source});
       state.before = before;
       state.modelStarts = structuredClone(modelCalls);
+      if (boundaries.has(inputHash)) state.toolResults = structuredClone(toolEvents);
       state.result = structuredClone(result);
       state.final = filesystem(workspace);
-      await fs.cp(workspace, path.join(evidence, "workspace"), {recursive: true, errorOnExist: true, force: false});
+      const retained = path.join(evidence, "workspace");
+      if (pair) await fs.rename(workspace, retained);
+      else await fs.cp(workspace, retained, {recursive: true, errorOnExist: true, force: false});
       state.progress = structuredClone(progress);
       state.pluginRegistryProof = pluginRegistryProof;
     },
@@ -103,6 +136,8 @@ export async function runFlushPlanTarget(input, runtime) {
     if (selection.length > 1) throw Error("Unexpected repeated native model selection");
     return {provider: "none", plans: state.plans.map(p => p.result), selection: selection[0]?.values ?? null,
       candidates: receipts.filter(r => r.site === "candidate").map(r => r.values),
+      ...(boundaries.has(inputHash) && {replies: state.modelStarts.flatMap(call =>
+        call.emittedAssistant.content.filter(block => block.type === "text").map(block => block.text))}),
       outcome: state.result.outcome, stamp: state.result.sessionEntry.memoryFlush ?? null, files: state.final};
   } catch (error) {
     state.error = {name: error.name, message: error.message, stack: error.stack};

@@ -10,7 +10,12 @@ izler; yeni kabul koşulu veya puan eklemez. **128/128 tek başına bitiş deği
 
 **122/128 koşul doğrulandı. 26 Kasım’daki tam koşuda +3, kalan 6.** `bb40b5c` sürümünde önceki 119 koşulun tamamı yeniden geçti. Dört eski karşılaştırma farkı kapandı. [Genel karşılaştırma](https://github.com/DorukhanArslan/memory-core/actions/runs/45840190038) · [Bağımsız sayım](https://github.com/DorukhanArslan/memory-core/blob/45ac3284219ac82bcec99353c5d5b896bdbae5d7/independent-review/remaining-memory-conditions/README.md)
 
-**27 Kasım · Kesintiden sonra sıradaki mesaj · 2/4 yerel eşleşme, +0.**
+**27 Kasım · Kesintiden sonra sıradaki mesaj · 4/4 yerel eşleşme, genel koşu sürüyor.**
+Uyumluluk seçeneğinde, deneme saati 10 Kasım olduğu halde 27 Kasım için istenen iki
+not doğru dosyaya yazıldı. Önceden düzenlenen not korundu ve yarım kalan yazı tekrarlanmadı.
+`4a65fc2` sürümü için bağımsız sayım bekleniyor. [Genel karşılaştırma](https://github.com/DorukhanArslan/memory-core/actions/runs/45987128881)
+
+**Aynı dört örneğin ilk denemesi, 2/4.**
 Not yazılırken süreç kapatılıp sohbet yeniden açıldığında iki sistem de yeni soruyu
 yanıtladı ve arada yapılan düzenlemeyi korudu. Diğer iki örnekte kullanıcı 27 Kasım’ın
 günlüğüne yazılmasını istedi. Deneme saati 10 Kasım’dı. OpenClaw 27 Kasım’ın dosyasına,
@@ -78,7 +83,7 @@ Her satır doğrulandığında **+1** getirir. Altı koşul için de kayıtlı �
 | **Günlük not dosyasını açmak** · `flush.plan-target.boundaries` | İki ad aynı fiziksel notu gösterdiğinde OpenClaw modeli çağırdı, SDK hazırlıkta durdu. Yazma güvenliğini koruyan ortak bir dosya açma kuralı gerekiyor. | 2–4 gün |
 | **Aynı araç cevabındaki gizli bilgiyi temizlemek** · `trust.secret-redaction.outcomes` | Ekranda görünen metin aynı. OpenClaw aynı ham cevap için önceki temiz kopyayı geri veriyor. SDK yeni kopya üretiyor. Ham parolanın saklanma süresini uzatmadan aynı davranış sağlanmalı. | 2–5 gün |
 | **Kesilen takip notu taşıması** · `heartbeat.scratch.boundaries` | Onarılan notun hangi çalışma alanından geldiği eski kayıttan belirlenemiyor. SDK’nın doğru depoyu tanıyıp o depoda çalışan onarımı önermesi gerekiyor. | 1–3 gün |
-| **Kesintiden sonra sıradaki mesaj** · `recovery.failure-publication.boundaries` | Taslak sürümde iki sistem de yeni mesajı işledi. Açık karar, kullanıcı başka bir günün günlüğünü istediğinde SDK’nın hangi dosyaya yazacağı. [PR #34](https://github.com/DorukhanArslan/memory-core/pull/34) | Açıkça istenen tarihi destekleme kararı çıkarsa 20–40 dk geliştirme, ardından 2–3 saat genel karşılaştırma. |
+| **Kesintiden sonra sıradaki mesaj** · `recovery.failure-publication.boundaries` | Taslak sürümde yeni mesaj ve açıkça istenen tarihe yazma dört örnekte de eşleşti. [PR #34](https://github.com/DorukhanArslan/memory-core/pull/34) | Genel karşılaştırma ve bağımsız sayım sürüyor. Tahmini toplam 2–3 saat. |
 
 [İlk arama denemeleri](https://github.com/DorukhanArslan/memory-core/blob/3a287e8725b016b5d15e14df38629fc6d9829b26/independent-review/remaining-memory-conditions/flush-review.md) · [Gizli bilgi denemesi](https://github.com/DorukhanArslan/memory-core/blob/3a287e8725b016b5d15e14df38629fc6d9829b26/independent-review/remaining-memory-conditions/redaction-input-identity.json) · [Diğer dört davranışın ölçümü](https://github.com/DorukhanArslan/memory-core/blob/3a287e8725b016b5d15e14df38629fc6d9829b26/independent-review/remaining-memory-conditions/four-point-review.md)
 

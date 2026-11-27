@@ -154,7 +154,7 @@ def boundary_prerequisites_complete(rows):
     relevant = [row for row in rows if row.get("requirement") == "flush.plan-target" and BOUNDARY not in row["covers"]]
     return (len(relevant) == len(build_cases()) + 92 and all(row.get("status") == "matched" and
             (row["operation"] != OPERATION or row.get("referenceMode") == "authenticated-official-release") and
-            ("openclaw" not in row or ("python" in row and _same_json(row["openclaw"], row["python"]))) for row in relevant))
+            "openclaw" in row and "python" in row and _same_json(row["openclaw"], row["python"]) for row in relevant))
 
 
 def confirms_boundary(case, public):

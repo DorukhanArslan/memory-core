@@ -39,8 +39,20 @@ def test_boundary_append_keeps_old_outcome_credit_and_rejects_missing_preparatio
     rows = [dict(case, status="matched", runtimeEvidenceValidated=True,
                  referenceMode="authenticated-official-release")
             for case in full if case["requirement"] == "flush.plan-target"]
+    assert not boundary_prerequisites_complete(rows)
+    for row in rows:
+        row.update(openclaw={"sample": True}, python={"sample": True})
     assert boundary_prerequisites_complete(rows)
     assert not boundaries_complete(rows)
-    next(row for row in rows if row["covers"] == [])["status"] = "mismatched"
+    helper = next(row for row in rows if row["covers"] == [])
+    host = next(row for row in rows if row["covers"] == ["flush.plan-target.outcomes"])
+    for row in (helper, host):
+        for side in ("openclaw", "python"):
+            saved = row.pop(side)
+            assert not boundary_prerequisites_complete(rows)
+            row[side] = {"sample": 1}
+            assert not boundary_prerequisites_complete(rows)
+            row[side] = saved
+    helper["status"] = "mismatched"
     assert family_complete(rows)
     assert not boundary_prerequisites_complete(rows)

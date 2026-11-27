@@ -2646,6 +2646,8 @@ def run_suite(*, checkout: Path, node: Path, smoke: bool = False,
                     # Reject non-JSON outputs and non-finite values explicitly.
                     python = _json(json.dumps(python, ensure_ascii=False, allow_nan=False))
                     row["status"] = "matched" if _same_json(python, native_comparison) else "mismatched"
+                    if case["requirement"] == "flush.plan-target":
+                        row.update(openclaw=native_comparison, python=python)
                     if row["status"] == "matched" and any(
                         cell["comparison"] == "uncovered" for cell in row.get("datetimeBoundaryEvidence", ())
                     ):

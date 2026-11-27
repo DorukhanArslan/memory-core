@@ -15,6 +15,7 @@ sys.path.insert(0, str(ROOT))
 
 from equivalence.cases import build_cases  # noqa: E402
 from equivalence.catalog_migration import definition_authority  # noqa: E402
+from equivalence.interrupted_turn_acceptance import OPERATION as INTERRUPTED_TURN  # noqa: E402
 from equivalence.harness import _adapter_identity, _implementation_identity, _same_json  # noqa: E402
 from equivalence.strict_report_reader import Reader, _constant, _finite, _object  # noqa: E402
 
@@ -88,7 +89,7 @@ def project(path, host_ids, lineage_ids, boundary_ids, recall_ids, cache_ids, re
     before = digest(path)
     _, evidence = load_baseline()
     previous_mismatches = set(evidence["mismatchHashes"])
-    result.update(previousMismatchPublicPairs={}, protectedHistorical={})
+    result.update(previousMismatchPublicPairs={}, resolvedHistoricalPublicPairs={}, protectedHistorical={})
 
     def accept(key, value, array):
         if array == "array-done":
@@ -131,10 +132,14 @@ def project(path, host_ids, lineage_ids, boundary_ids, recall_ids, cache_ids, re
                 pair = {side: value[side] for side in ("openclaw", "python")}
                 row["publicValueSha256"] = {side: hashlib.sha256(canonical(item)).hexdigest()
                                            for side, item in pair.items()}
+                if value.get("operation") == INTERRUPTED_TURN:
+                    row.update(pair)
                 if value["id"] == UNICODE_TIE_ID:
                     result["unicodeTiePair"] = pair
                 if value["id"] in previous_mismatches:
                     result["previousMismatchPublicPairs"][value["id"]] = pair
+                if value["id"] in evidence["resolvedHistoricalHashes"]:
+                    result["resolvedHistoricalPublicPairs"][value["id"]] = pair
                 if value["id"] in historical_runtime.PROTECTED:
                     result["protectedHistorical"].setdefault(value["id"], {})["pair"] = pair
                 if value["id"] in host_ids:
@@ -1469,7 +1474,9 @@ def verify_process_exit(args, data):
 
 def compact_case(row, definition):
     receipt = {key: value for key, value in row.items()
-               if key in {"id", "status", "publicValueSha256", "datetimeRegexValidated", "datetimeBoundaryEvidence", "heartbeatScratchEvidence", "referenceMode"} or key.endswith("EvidenceValidated")}
+               if key in {"id", "status", "publicValueSha256", "datetimeRegexValidated", "datetimeBoundaryEvidence", "heartbeatScratchEvidence", "interruptedTurnEvidence", "referenceMode"} or key.endswith("EvidenceValidated")}
+    if definition.get("operation") == INTERRUPTED_TURN and row["status"] == "blocked":
+        receipt.update(code=row["code"], evidenceError=row["evidenceError"])
     omitted = sorted(definition.keys() - row.keys())
     if omitted:
         receipt["omittedDefinitionFields"] = omitted
@@ -1559,6 +1566,10 @@ def assess(args, result):
     metrics = recompute(data, definitions, load(ROOT / "equivalence/scope.json")["requirements"])
     result["observedAssessment"] = metrics
     result["previousMismatchPublicPairs"] = data["previousMismatchPublicPairs"]
+    result["resolvedHistoricalPublicPairs"] = data["resolvedHistoricalPublicPairs"]
+    result["interruptedTurnPublicPairs"] = {
+        row["id"]: {side: row[side] for side in ("openclaw", "python")}
+        for row in data["cases"] if row["operation"] == INTERRUPTED_TURN and row["status"] != "blocked"}
     # Keep the second review reproducible without duplicating every literal input
     # or requiring reviewers to download the original process captures.
     compact_rows = []
@@ -1677,7 +1688,7 @@ def assess(args, result):
     result.update(
         status="assessed", candidateAssessment=metrics,
         previousComparison=PREVIOUS_COMPARISON, deltaFromPreviousHosted=metrics["verified"] - PREVIOUS_COMPARISON["verified"],
-        changeSince119=compare_with_baseline(metrics, data["cases"], replay_ids(result, replay)),
+        changeSince122=compare_with_baseline(metrics, data["cases"], replay_ids(result, replay)),
         mismatchMetadata=[
             {key: row[key] for key in ("id", "operation", "requirement", "covers", "publicValueSha256")}
             for row in data["cases"] if row["status"] == "mismatched"

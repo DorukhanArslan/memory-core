@@ -29,7 +29,7 @@ from equivalence import provider_overflow_cases
 from followup_overflow import replay_overflow
 
 
-from equivalence import transcript_boundary_acceptance
+from equivalence import interrupted_turn_acceptance, transcript_boundary_acceptance
 from equivalence import configured_redaction
 from followup_configured_redaction import replay_configured_redaction
 import followup_secret_boundaries
@@ -50,7 +50,22 @@ def replay_transcript_boundaries(data, cases, args, runtime):
     return receipts
 
 
+def replay_interrupted_turns(data, cases, args, runtime):
+    from equivalence.interrupted_turn_native import authenticate_native
+
+    authority = authenticate_native(args.reference, args.node, args.release_runtime)
+    evidence_root = args.report.parent / "interrupted-turn-recovery"
+    receipts = []
+    for case in cases:
+        row = data["followupRows"][case["id"]]["case"]
+        receipts.append(interrupted_turn_acceptance.replay(
+            case, row, evidence_root, checkout=args.reference, node=args.node, runtime=authority))
+    return receipts
+
+
 FAMILIES = {
+    interrupted_turn_acceptance.OPERATION: (
+        interrupted_turn_acceptance, "interruptedTurnRecoveryComplete", replay_interrupted_turns),
     transcript_boundary_acceptance.OPERATION: (
         transcript_boundary_acceptance, "transcriptBoundariesComplete", replay_transcript_boundaries),
     heartbeat_scratch_acceptance.OPERATION: (heartbeat_scratch_acceptance, "heartbeatScratchOutcomesComplete", replay_scratch),
@@ -115,7 +130,8 @@ def replay_followup(data, definitions, args, metrics, replay_rank):
         required = {"case"} if (family_key(case) == HEARTBEAT_GATE and case["operation"] == "session-projection") else {"case", "native", "python", "trace"}
         if family_key(case) in {configured_redaction.POINT, SECRET_BOUNDARIES[0]} and case["operation"] == "redaction-policy-source":
             required = {"case", "python", "sourcePolicy"}
-        if case["operation"] in {engine_unicode_collation.OPERATION, heartbeat_scratch_acceptance.OPERATION}:
+        if case["operation"] in {engine_unicode_collation.OPERATION, heartbeat_scratch_acceptance.OPERATION,
+                                 interrupted_turn_acceptance.OPERATION}:
             required = {"case"}
         if family_key(case) in {datetime_regex_family.REQUIREMENT, date_boundaries.POINT}:
             if case["operation"] in {datetime_regex_family.CLOCK, "session-projection"}:
@@ -135,7 +151,11 @@ def replay_followup(data, definitions, args, metrics, replay_rank):
         if [r["id"] for r in evidence] != [case["id"] for case in cases]:
             raise ValueError("Physical replay omitted or substituted a case")
         passed = all(r["publicMatch"] is True for r in evidence)
-        if op == date_boundaries.POINT:
+        if op == interrupted_turn_acceptance.OPERATION:
+            passed = passed and interrupted_turn_acceptance.prerequisites_complete(data["cases"]) and all(
+                interrupted_turn_acceptance.confirms_boundary(case, rows[case["id"]]["case"]["openclaw"])
+                for case in cases)
+        elif op == date_boundaries.POINT:
             passed = date_boundaries.replay_passed(cases, evidence)
         elif op == engine_unicode_collation.OPERATION:
             passed = passed and all(r["previousTiePublicMatch"] and

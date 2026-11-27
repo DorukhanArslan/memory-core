@@ -1,4 +1,4 @@
-"""Compare observations with the independently reviewed 119/128 decision."""
+"""Compare observations with the independently reviewed 122/128 decision."""
 from __future__ import annotations
 
 from collections import Counter
@@ -8,11 +8,11 @@ import json
 from pathlib import Path
 
 
-REVIEW_COMMIT = "9430a2cb23a6660f281adbeadb0fb1b926687fa4"
-DECISION_SHA = "f717be1b4d89f1fe3cf22cf1f81588567cf65a665d6dbe434c71a65d2ed49c39"
-# The eight pairs come from mismatchMetadata in the authenticated assessment.
-ASSESSMENT_SHA = "01226395fea597373b238b28aa360c8d03785150a39260726e82d63e09ef43f4"
-EVIDENCE_SHA = "bda40fef76a586cb7f3017879d74c601ffd93886d102e321f78593cc0d503f66"
+REVIEW_COMMIT = "45ac3284219ac82bcec99353c5d5b896bdbae5d7"
+DECISION_SHA = "411c1163d761dccad92c3ca23cfade637d6fb0a0de493948c0b12411ccadb51e"
+# The four outstanding pairs come from mismatchMetadata in the authenticated assessment.
+ASSESSMENT_SHA = "6be305de2bcc272f5186f9bb091d57bbb954deb761aae5fef4bcb7e5511c4994"
+EVIDENCE_SHA = "9a41ebd8654ad230933da09e8b88f8b3bd9a021540d74afb020fb493251e5415"
 RETRY_CASE = "query-sync-boundaries-warm-failure-natural-retry"
 
 
@@ -45,15 +45,20 @@ def replay_ids(assessment, forget):
 
 
 def load_baseline():
-    decision_bytes = gzip.decompress(Path(__file__).with_name("baseline-119.json.gz").read_bytes())
-    evidence_bytes = gzip.decompress(Path(__file__).with_name("baseline-119-evidence.json.gz").read_bytes())
+    decision_bytes = gzip.decompress(Path(__file__).with_name("baseline-122.json.gz").read_bytes())
+    evidence_bytes = gzip.decompress(Path(__file__).with_name("baseline-122-evidence.json.gz").read_bytes())
     if hashlib.sha256(decision_bytes).hexdigest() != DECISION_SHA or hashlib.sha256(evidence_bytes).hexdigest() != EVIDENCE_SHA:
         raise ValueError("The previous decision or its original public-value hashes changed")
     decision, evidence = json.loads(decision_bytes), json.loads(evidence_bytes)
     hashes = evidence["mismatchHashes"]
     if list(hashes) != decision["mismatchedCaseIds"] or decision["cases"]["blocked"] != 0:
-        raise ValueError("The previous case statuses do not agree with its eight original public-result pairs")
-    if ({key: len(ids) for key, ids in evidence["originalReplayIds"].items()} != decision["appendedPhysicalReplays"]
+        raise ValueError("The previous case statuses do not agree with its original public-result pairs")
+    for status, pairs in (("mismatched", hashes), ("matched", evidence["resolvedHistoricalHashes"])):
+        expected = {cid: item["after"] for cid, item in decision["previousMismatchWholeValues"].items()
+                    if item["status"] == status}
+        if pairs != expected:
+            raise ValueError("The historical public-value pairs disagree with the independent decision")
+    if ({key: len(ids) for key, ids in evidence["originalReplayIds"].items()} != decision["physicalReplayCounts"]
             or evidence["summaryZipSha256"] != decision["archive"]["sha256"]
             or evidence["assessmentSha256"] != ASSESSMENT_SHA):
         raise ValueError("The previous physical replay inventory or archive identity changed")

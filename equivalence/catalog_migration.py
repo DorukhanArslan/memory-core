@@ -51,7 +51,10 @@ PRE_SCRATCH_SHA256 = "b3defae8b4ffe4cd439ca21decadf585850835e96ad4909a47c14a0098
 PRE_TRANSCRIPT_ARCHIVE_CASES = 1662
 PRE_TRANSCRIPT_ARCHIVE_SHA256 = "1480bb7dbbbda146e7044bc265cfcc510cedcff8f8a316762e558bce2f21021e"
 TRANSCRIPT_ARCHIVE_CASE_SHA256 = "5000ac7c0d2ec162e15ec04fc22bbdabceddcdffa4e8806a996706cbe2e12628"
-REGISTERED_CASES = 1663
+PRE_INTERRUPTED_TURN_CASES = 1663
+PRE_INTERRUPTED_TURN_SHA256 = "f95caff97657df1f3365228fa7353589ce9b025bc78aadf5e7790200e4247a59"
+INTERRUPTED_TURN_APPEND_SHA256 = "665bbc6c7f1c1576b95e7826e5a92bc098b056f9dddd926f22e34ea60f6c1d37"
+REGISTERED_CASES = 1667
 
 # PR22 changes these three policy texts, not the thirteen cases' business inputs,
 # order, coverage or other fields. Reversing only the exact reviewed fragments
@@ -144,7 +147,7 @@ def definition_authority(cases, *, fif_version):
                                   CACHE_REGISTERED_CASES, RESET_REGISTERED_CASES, PROMPT_REGISTERED_CASES,
                                   HISTORY_REGISTERED_CASES, NUMERIC_REGISTERED_CASES, DEEP_REGISTERED_CASES, PRE_RECOVERY_CASES, PRE_FLUSH_PLAN_CASES,
                                   PRE_HEARTBEAT_OUTCOME_CASES, PRE_INTERRUPTION_CASES, PRE_ACTIVE_HISTORY_CASES, PRE_DATETIME_CASES, PRE_UNICODE_CASES, PRE_SECRET_CASES, PRE_CONFIGURED_CASES, PRE_PROVIDER_OVERFLOW_CASES, PRE_SCRATCH_CASES,
-                                  PRE_TRANSCRIPT_ARCHIVE_CASES, REGISTERED_CASES}
+                                  PRE_TRANSCRIPT_ARCHIVE_CASES, PRE_INTERRUPTED_TURN_CASES, REGISTERED_CASES}
             or fif_version == "v5" and len(cases) != HISTORICAL_REGISTERED_CASES):
         raise ValueError("Catalog migration requires one complete exact registered definition set")
     frozen = families[fif_version]
@@ -222,13 +225,19 @@ def definition_authority(cases, *, fif_version):
     if (len(cases) >= PRE_TRANSCRIPT_ARCHIVE_CASES
             and _sha(cases[:PRE_TRANSCRIPT_ARCHIVE_CASES]) != PRE_TRANSCRIPT_ARCHIVE_SHA256):
         raise ValueError("The first 1662 definitions preceding the transcript archive case changed")
-    transcript_archive = cases[PRE_TRANSCRIPT_ARCHIVE_CASES:]
+    transcript_archive = cases[PRE_TRANSCRIPT_ARCHIVE_CASES:PRE_INTERRUPTED_TURN_CASES]
     if transcript_archive:
         if _sha(transcript_archive[0]) != TRANSCRIPT_ARCHIVE_CASE_SHA256:
             raise ValueError("The appended transcript archive definition changed")
         from equivalence.transcript_boundary_acceptance import validate_registration
 
         validate_registration(cases)
+    interrupted_turns = cases[PRE_INTERRUPTED_TURN_CASES:]
+    if interrupted_turns:
+        if _sha(cases[:PRE_INTERRUPTED_TURN_CASES]) != PRE_INTERRUPTED_TURN_SHA256:
+            raise ValueError("The first 1663 definitions of the accepted 122 conditions changed")
+        if _sha(interrupted_turns) != INTERRUPTED_TURN_APPEND_SHA256:
+            raise ValueError("The four registered interrupted-turn recovery inputs changed")
     maintenance = cases[DEEP_REGISTERED_CASES:PRE_TRANSCRIPT_ARCHIVE_CASES]
     if maintenance:
         from equivalence import automation_job_outcomes, automation_job_state, compaction_assembly, heartbeat_turn_boundaries, workspace_lock_cases
@@ -383,4 +392,8 @@ def definition_authority(cases, *, fif_version):
         result["transcriptArchiveAppend"] = [{"index": PRE_TRANSCRIPT_ARCHIVE_CASES,
                                              "id": transcript_archive[0]["id"],
                                              "definitionSha256": TRANSCRIPT_ARCHIVE_CASE_SHA256}]
+    if interrupted_turns:
+        result["interruptedTurnRecoveryAppend"] = [
+            {"index": index, "id": case["id"], "definitionSha256": _sha(case)}
+            for index, case in enumerate(interrupted_turns, PRE_INTERRUPTED_TURN_CASES)]
     return result

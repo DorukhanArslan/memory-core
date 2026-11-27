@@ -41,7 +41,7 @@ def test_boundary_catalog_explicitly_migrates_only_four_host_and_thirteen_fif_de
 
 
 def test_transcript_archive_extends_the_frozen_catalog_by_one_exact_case():
-    cases = build_cases()
+    cases = build_cases()[:1663]
     historic = definition_authority(cases[:1662], fif_version="v6")
     current = definition_authority(cases, fif_version="v6")
     assert historic["registeredCases"] == 1662
@@ -56,6 +56,19 @@ def test_transcript_archive_extends_the_frozen_catalog_by_one_exact_case():
         definition_authority(cases, fif_version="v6")
     cases[-2], cases[-1] = cases[-1], cases[-2]
     with pytest.raises(ValueError, match="first 1662"):
+        definition_authority(cases, fif_version="v6")
+
+
+def test_interrupted_turns_extend_the_previous_122_without_changing_its_definitions():
+    cases = build_cases()
+    historical = definition_authority(cases[:1663], fif_version="v6")
+    actual = definition_authority(cases, fif_version="v6")
+    suffix = actual.pop("interruptedTurnRecoveryAppend")
+    assert actual == {**historical, "registeredCases": 1667}
+    assert [(row["index"], row["id"]) for row in suffix] == [
+        (index, case["id"]) for index, case in enumerate(cases[1663:], 1663)]
+    cases[-1]["input"]["cut"] = "after-write"
+    with pytest.raises(ValueError, match="four registered interrupted-turn"):
         definition_authority(cases, fif_version="v6")
 
 

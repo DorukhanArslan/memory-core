@@ -35,12 +35,12 @@ class LiteralIOError(OSError):
         super().__init__(message)
 
 
-def _runner(root):
+def _runner(root, **options):
     config = MemoryConfig(workspace_dir=root / "workspace",
         flags=FeatureFlags(vector_search=False, temporal_decay=False))
     return HostSessionRunner.open(config.workspace_dir,
         catalog=MemorySessionCatalog(root / "sessions.sqlite", clock_ms=lambda: NOW),
-        session=SessionState.new(session_key=KEY, session_id=ID), config=config, now_ms=lambda: NOW)
+        session=SessionState.new(session_key=KEY, session_id=ID), config=config, now_ms=lambda: NOW, **options)
 
 
 def _target(runner):
@@ -82,6 +82,119 @@ async def _save(turn):
 
 def _auxiliary(runner):
     return runner.catalog.get_session_entry(KEY)["sdkHostLifecycle"]
+
+
+def _interrupted_turn(runner, *, legacy=False):
+    # Reconstruct a previously persisted turn whose tool-result event never arrived.
+    marker = {"turnId": "interrupted", "publication": "uncertain",
+              "workspace": str(runner.kit.memory.workspace.root), "indexPath": str(runner.kit.memory.store.path),
+              "provenancePath": str(runner.artifact_provenance.path)}
+    if not legacy:
+        marker["stage"] = "intent"
+    runner.catalog.upsert_session(KEY, {"sessionId": ID, "sdkHostLifecycle": {
+        "version": 1, "needsIndex": True, "lastTurnId": "interrupted", "pendingMemoryPublication": marker}})
+    runner.catalog.append_message(ID, {"role": "user", "content": "Remember the old note", "idempotencyKey": "interrupted"},
+                                  session_key=KEY, event_id="interrupted:user", now_ms=NOW)
+    runner.catalog.append_message(ID, {"role": "assistant", "content": [{"type": "toolCall",
+        "id": "old-write", "name": "add_memory_entry", "arguments": {"section": "Notes", "text": "old note"}}]},
+        session_key=KEY, event_id="interrupted:message:1", now_ms=NOW)
+    return marker
+
+
+@pytest.mark.parametrize("legacy", [False, True], ids=["intent", "stage-less"])
+def test_openclaw_continuation_restores_missing_result_only_for_model_and_keeps_old_write(tmp_path, legacy):
+    async def scenario():
+        runner = _runner(tmp_path, interrupted_publication="openclaw")
+        marker = _interrupted_turn(runner, legacy=legacy)
+        previous_file = runner.kit.memory.workspace.root / "MEMORY.md"
+        previous_file.write_text("A later independent edit.\n")
+        prior = runner.catalog.read_continuation(ID, session_key=KEY)["events"]
+        seen = []
+
+        async def followup(turn):
+            request = turn.model_request()
+            seen.extend(m for m in request["messages"] if m.get("toolCallId") == "old-write")
+            assert _call(turn, "append_daily_note", {"text": "A new requested note."}, "new-write")["status"] == "ok"
+            return HostModelResult()
+
+        duplicate = await runner.run_turn("Remember the old note", execute=followup, request_id="interrupted")
+        assert not duplicate.transcript_committed and seen == []
+        duplicate = await runner.run_turn({"role": "user", "content": "Retry", "idempotencyKey": "interrupted"},
+                                          execute=followup, request_id="retry")
+        assert not duplicate.transcript_committed and seen == []
+        assert _auxiliary(runner)["pendingMemoryPublication"] == marker
+        outcome = await runner.run_turn("Save a new note", execute=followup, request_id="new")
+        assert not outcome.failures, outcome.failures
+        assert outcome.transcript_committed and outcome.memory_writes_committed
+        assert [m["isError"] for m in seen] == [True]
+        assert {r["toolCallId"] for r in outcome.tools} == {"new-write"}
+        assert previous_file.read_text() == "A later independent edit.\n"
+        assert (previous_file.parent / "memory/2026-11-09.md").read_text() == "A new requested note.\n"
+        after = runner.catalog.read_continuation(ID, session_key=KEY)["events"]
+        assert after[:len(prior)] == prior
+        assert not any(e.get("message", {}).get("toolCallId") == "old-write" for e in after)
+        assert _auxiliary(runner)["interruptedMemoryPublications"] == [marker]
+        assert "lastMemoryPublicationAcknowledgment" not in _auxiliary(runner)
+
+        strict = _runner(tmp_path)
+        blocked = await strict.run_turn("Another message", execute=followup)
+        assert not blocked.transcript_committed and len(seen) == 1
+        await strict.acknowledge_memory_publication(expected_turn_id="interrupted")
+        assert _auxiliary(strict)["interruptedMemoryPublications"] == [{**marker, "acknowledgedAt": NOW}]
+        assert _auxiliary(strict)["lastMemoryPublicationAcknowledgment"]["turnId"] == "interrupted"
+
+    asyncio.run(scenario())
+
+
+def test_openclaw_continuation_rejects_foreign_owner_before_appending_or_repairing(tmp_path):
+    async def scenario():
+        runner = _runner(tmp_path, interrupted_publication="openclaw")
+        marker = _interrupted_turn(runner)
+        entry = runner.catalog.get_session_entry(KEY)
+        entry["sdkHostLifecycle"]["pendingMemoryPublication"]["indexPath"] = str(tmp_path / "other.sqlite")
+        runner.catalog.upsert_session(KEY, entry)
+        before = runner.catalog.read_continuation(ID, session_key=KEY)
+        index_path = Path(marker["indexPath"])
+        original_index = index_path.read_bytes() if index_path.exists() else None
+        attempts = []
+
+        async def followup(turn):
+            attempts.append(turn.turn_id)
+
+        outcome = await runner.run_turn("New message", execute=followup, request_id="different")
+        assert not outcome.transcript_committed and not attempts
+        assert any("different workspace" in error.message for error in outcome.failures)
+        assert runner.catalog.read_continuation(ID, session_key=KEY) == before
+        assert (index_path.read_bytes() if index_path.exists() else None) == original_index
+
+    asyncio.run(scenario())
+
+
+def test_acknowledging_an_older_interruption_keeps_the_newer_uncertain_write(tmp_path, monkeypatch):
+    async def scenario():
+        runner = _runner(tmp_path, interrupted_publication="openclaw")
+        first = _interrupted_turn(runner)
+        path = _target(runner)
+        original_replace = _fault(monkeypatch, path, stage="uncertain")
+        second = await runner.run_turn("Save another note", execute=_save, request_id="second")
+        assert second.memory_publication == "uncertain"
+        second_marker = _auxiliary(runner)["pendingMemoryPublication"]
+        assert second_marker["turnId"] == "second" and second_marker["stage"] == "uncertain"
+        assert _auxiliary(runner)["interruptedMemoryPublications"] == [first]
+
+        monkeypatch.setattr(os, "replace", original_replace)
+        fresh = _runner(tmp_path)
+        await fresh.acknowledge_memory_publication(expected_turn_id="interrupted")
+        metadata = _auxiliary(fresh)
+        assert metadata["interruptedMemoryPublications"] == [{**first, "acknowledgedAt": NOW}]
+        assert metadata["pendingMemoryPublication"] == second_marker and metadata["lastTurnId"] == "second"
+        blocked = await fresh.run_turn("Next message", execute=_save)
+        assert not blocked.transcript_committed and blocked.memory_publication == "uncertain"
+        await fresh.acknowledge_memory_publication(expected_turn_id="second")
+        assert "pendingMemoryPublication" not in _auxiliary(fresh)
+        assert path.read_text().count("- new\n") == 1
+
+    asyncio.run(scenario())
 
 
 @pytest.mark.parametrize("stage", ["committed", "uncertain"])

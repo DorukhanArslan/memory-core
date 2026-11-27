@@ -248,6 +248,12 @@ a writer that may still be running keeps the session blocked. Older catalogs lac
 identity, so stop the old host process before opting in. The host can acknowledge the
 interrupted request later using its own turn ID.
 
+In the OpenClaw profile, `append_daily_note` accepts an optional `date` for an
+explicitly requested calendar day. For example, if today is November 10 and the user
+asks for the November 27 log, pass `date="2026-11-27"` to append to
+`memory/2026-11-27.md`. Omitting the date uses today in the host's configured time zone.
+An invalid date returns a tool error before writing.
+
 After the host has inspected and accepted the **current** files, acknowledge the exact pending
 turn explicitly:
 

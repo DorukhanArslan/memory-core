@@ -224,7 +224,7 @@
           "path": "memory_core/curation.py",
           "symbol": "MemoryCurator._write_target",
           "anchor": "    def _write_target(self, name: str, before: str | None, content: str) -> None:",
-          "line": 1194
+          "line": 1205
         },
         {
           "path": "memory_core/workspace.py",
@@ -3843,7 +3843,7 @@
           "path": "memory_core/host/kit.py",
           "symbol": "on_new_session",
           "anchor": "def on_new_session(",
-          "line": 776
+          "line": 777
         }
       ],
       "implementation": "partial",
@@ -4308,7 +4308,7 @@
           "path": "memory_core/host/lifecycle.py",
           "symbol": "HostTurn.model_request",
           "anchor": "    def model_request(self) -> dict[str, Any]:",
-          "line": 313
+          "line": 314
         },
         {
           "path": "memory_core/current_time.py",
@@ -4541,25 +4541,25 @@
           "path": "memory_core/host/lifecycle.py",
           "symbol": "HostSessionRunner._prepare_model_prompt",
           "anchor": "    def _prepare_model_prompt(self, effective_prompt, options, context, user_key,",
-          "line": 1243
+          "line": 1244
         },
         {
           "path": "memory_core/host/lifecycle.py",
           "symbol": "HostSessionRunner.run_turn",
           "anchor": "    async def run_turn(self, user_message: str | Mapping[str, Any], *,",
-          "line": 1024
+          "line": 1025
         },
         {
           "path": "memory_core/host/lifecycle.py",
           "symbol": "HostTurn.model_request",
           "anchor": "    def model_request(self) -> dict[str, Any]:",
-          "line": 313
+          "line": 314
         },
         {
           "path": "memory_core/host/lifecycle.py",
           "symbol": "HostTurn.record_message",
           "anchor": "    def record_message(self, message: Mapping[str, Any]) -> dict[str, Any]:",
-          "line": 373
+          "line": 374
         },
         {
           "path": "memory_core/history.py",
@@ -4671,7 +4671,7 @@
           "path": "memory_core/host/lifecycle.py",
           "symbol": "FlushModelExecutor",
           "anchor": "class FlushModelExecutor:",
-          "line": 586
+          "line": 587
         }
       ],
       "implementation": "partial",
@@ -4713,7 +4713,7 @@
           "path": "memory_core/host/kit.py",
           "symbol": "HostKit.prepare_flush",
           "anchor": "    def prepare_flush(",
-          "line": 621
+          "line": 622
         },
         {
           "path": "memory_core/memory_flush.py",
@@ -4749,7 +4749,7 @@
           "path": "memory_core/host/kit.py",
           "symbol": "after_turn",
           "anchor": "def after_turn(",
-          "line": 571
+          "line": 572
         }
       ],
       "implementation": "present",
@@ -4956,13 +4956,13 @@
           "path": "memory_core/host/lifecycle.py",
           "symbol": "HostTurn.responses_input",
           "anchor": "    def responses_input(self) -> list[Any]:",
-          "line": 352
+          "line": 353
         },
         {
           "path": "memory_core/host/lifecycle.py",
           "symbol": "HostTurn.responses_compaction_tracker",
           "anchor": "    def responses_compaction_tracker(self, assistant:",
-          "line": 359
+          "line": 360
         },
         {
           "path": "memory_core/history_replay.py",
@@ -5953,7 +5953,7 @@
           "path": "memory_core/host/kit.py",
           "symbol": "HostKit.after_turn",
           "anchor": "    def after_turn(",
-          "line": 571
+          "line": 572
         },
         {
           "path": "memory_core/turn_trust.py",
@@ -6189,7 +6189,7 @@
           "path": "memory_core/host/kit.py",
           "symbol": "HostKit.heartbeat_task_prompt",
           "anchor": "    def heartbeat_task_prompt(",
-          "line": 896
+          "line": 897
         },
         {
           "path": "memory_core/automation_schedule.py",
@@ -6201,7 +6201,7 @@
           "path": "memory_core/host/kit.py",
           "symbol": "run_heartbeat_task",
           "anchor": "def run_heartbeat_task(",
-          "line": 919
+          "line": 920
         },
         {
           "path": "memory_core/consolidation/dreaming_automation.py",
@@ -6424,7 +6424,7 @@
           "path": "memory_core/host/kit.py",
           "symbol": "HostKit.after_turn",
           "anchor": "    def after_turn(",
-          "line": 571
+          "line": 572
         },
         {
           "path": "memory_core/index/sqlite_store.py",
@@ -6734,7 +6734,7 @@
           "path": "memory_core/host/kit.py",
           "symbol": "HostKit.after_turn",
           "anchor": "    def after_turn(",
-          "line": 571
+          "line": 572
         },
         {
           "path": "demo/lab_chat.py",
@@ -6752,7 +6752,7 @@
           "path": "memory_core/host/lifecycle.py",
           "symbol": "HostSessionRunner.run_turn",
           "anchor": "    async def run_turn(",
-          "line": 1024
+          "line": 1025
         },
         {
           "path": "memory_core/host/managed_session.py",
@@ -6833,7 +6833,7 @@
           "path": "memory_core/host/kit.py",
           "symbol": "HostKit.on_new_session",
           "anchor": "    def on_new_session(",
-          "line": 776
+          "line": 777
         },
         {
           "path": "demo/lab_runtime.py",
@@ -6845,7 +6845,7 @@
           "path": "memory_core/host/lifecycle.py",
           "symbol": "HostSessionRunner._load",
           "anchor": "    def _load(",
-          "line": 847
+          "line": 848
         },
         {
           "path": "memory_core/host/managed_index.py",
@@ -6926,7 +6926,7 @@
           "path": "memory_core/curation.py",
           "symbol": "MemoryCurator.replace_memory_entry",
           "anchor": "    def replace_memory_entry(",
-          "line": 976
+          "line": 987
         },
         {
           "path": "memory_core/host/kit.py",

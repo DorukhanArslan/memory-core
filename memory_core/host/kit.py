@@ -378,7 +378,7 @@ class HostKit:
             now_ms=self._clock(),
         )
 
-    def tools(self) -> list[dict[str, Any]]:
+    def tools(self, *, dated_daily_notes: bool = False) -> list[dict[str, Any]]:
         """Provider-neutral ``{"name", "description", "parameters"}`` specs of the kit's tools.
 
         ``memory_search`` and ``memory_get`` (pin-era definitions until port plan area 5), then
@@ -387,7 +387,7 @@ class HostKit:
         return [
             memory_search_tool_definition(),
             memory_get_tool_definition(),
-            *self._curator.tool_definitions(),
+            *self._curator.tool_definitions(dated_daily_notes=dated_daily_notes),
         ]
 
     def dispatch(
@@ -397,6 +397,7 @@ class HostKit:
         *,
         session: SessionState,
         write_provenance: MemoryWriteProvenanceObserver | None = None,
+        dated_daily_notes: bool = False,
     ) -> dict[str, Any]:
         """Run one tool call of the model and return the payload to send back verbatim.
 
@@ -414,16 +415,15 @@ class HostKit:
             args = read_tool_call(name, arguments)
         except ToolCallRefused as refused:
             return refused.payload
-        if name not in {tool["name"] for tool in self.tools()}:
+        if name not in {tool["name"] for tool in self.tools(dated_daily_notes=dated_daily_notes)}:
             return tool_error(name, f"tool {name} is not available")
         try:
             if name == MEMORY_SEARCH_TOOL_NAME:
                 return self._memory_search(prepare_memory_search_arguments(args), session)
             if name == MEMORY_GET_TOOL_NAME:
                 return execute_memory_get_tool(self._memory.config, args)
-            if write_provenance is None:
-                return self._curator.dispatch(name, args)
-            return self._curator.dispatch(name, args, write_provenance=write_provenance)
+            return self._curator.dispatch(name, args, write_provenance=write_provenance,
+                                          dated_daily_notes=dated_daily_notes)
         except MemoryToolError as error:
             return error.to_tool_error(name)
         except Exception as error:
@@ -490,6 +490,7 @@ class HostKit:
         has_bootstrap_file_access: bool = False,
         offer_tools: bool = True,
         ensure: bool = True,
+        dated_daily_notes: bool = False,
     ) -> TurnContext:
         """The system prompt, runtime block and tools of one turn (docs/host_kit.md, entry 3).
 
@@ -511,7 +512,7 @@ class HostKit:
             context_mode=context_mode,
             has_bootstrap_file_access=has_bootstrap_file_access,
         )
-        tools = tuple(self.tools()) if offer_tools else ()
+        tools = tuple(self.tools(dated_daily_notes=dated_daily_notes)) if offer_tools else ()
         memory_recall = (
             ()
             if session.kind in MINIMAL_PROMPT_KINDS

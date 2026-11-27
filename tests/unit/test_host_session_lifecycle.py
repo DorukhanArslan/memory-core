@@ -21,13 +21,13 @@ KEY = "agent:main:dm:lifecycle"
 ID = "lifecycle-session"
 
 
-def _runner(tmp_path, *, catalog=None, extra_tools=()):
+def _runner(tmp_path, *, catalog=None, extra_tools=(), **options):
     catalog = catalog or MemorySessionCatalog(tmp_path / "sessions.sqlite", clock_ms=lambda: NOW)
     config = MemoryConfig(workspace_dir=tmp_path / "workspace",
         flags=FeatureFlags(vector_search=False, temporal_decay=False))
     return HostSessionRunner.open(config.workspace_dir, catalog=catalog,
         session=SessionState.new(session_key=KEY, session_id=ID), config=config,
-        extra_tools=extra_tools, now_ms=lambda: NOW)
+        extra_tools=extra_tools, now_ms=lambda: NOW, **options)
 
 
 def _call(turn, name, arguments, identifier):
@@ -40,6 +40,41 @@ def _answer(turn, text="Done."):
     turn.record_message({"role": "assistant", "content": [{"type": "text", "text": text}],
                          "usage": {"input": 20, "output": 2}})
     return HostModelResult(TurnUsage(20, 2))
+
+
+@pytest.mark.parametrize(("options", "date_args", "expected_day"), [
+    ({}, {"date": "2024-02-29"}, "2026-11-09"),
+    ({"interrupted_publication": "openclaw"}, {"date": "2024-02-29"}, "2024-02-29"),
+    ({"interrupted_publication": "openclaw"}, {}, "2026-11-09"),
+    ({"interrupted_publication": "openclaw"}, {"date": "2025-02-29"}, None),
+    ({"interrupted_publication": "openclaw"}, {"date": None}, None),
+], ids=["default-today", "leap-day", "unspecified-today", "impossible-date", "null-date"])
+def test_daily_note_date_in_model_request_and_file(tmp_path, options, date_args, expected_day):
+    runner = _runner(tmp_path, **options)
+
+    async def save(turn):
+        tool = next(t for t in turn.model_request()["tools"] if t["name"] == "append_daily_note")
+        schema = tool["parameters"]
+        assert ("date" in schema["properties"]) == (options.get("interrupted_publication") == "openclaw")
+        assert schema["required"] == ["text"]
+        arguments = {"text": "The meeting ended at noon.", **date_args}
+        _call(turn, tool["name"], arguments, "note")
+        await turn.dispatch_async("note", tool["name"], arguments)
+        return _answer(turn)
+
+    outcome = asyncio.run(runner.run_turn("Save this meeting note.", execute=save))
+    assert outcome.transcript_committed
+    assert all(failure.phase == "tool" for failure in outcome.failures), outcome.failures
+    result = outcome.tools[0]["result"]
+    notes = runner.kit.memory.workspace.root / "memory"
+    files = {path.name: path.read_text() for path in notes.glob("*.md")}
+    if expected_day is None:
+        assert result["status"] == "error" and "YYYY-MM-DD" in result["error"]
+        assert not outcome.memory_writes_committed and files == {}
+    else:
+        assert outcome.ready, outcome.failures
+        assert result["path"] == f"memory/{expected_day}.md"
+        assert files == {f"{expected_day}.md": "The meeting ended at noon.\n"}
 
 
 def test_public_model_failure_masks_registered_credentials(tmp_path):

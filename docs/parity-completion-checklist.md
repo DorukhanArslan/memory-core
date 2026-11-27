@@ -133,6 +133,7 @@ Bu davranış için doğrulanmış güncel hedef **v2026.11.10**. Deneme iki Ope
   kaynak kimlikleri ve kapsam sınırları bağımsızca kontrol edilmeli; main'deki
   SDK ölçülen SDK ile aynı olmalı. Komutlar, rapor ve kapanış notları yeniden
   üretilebilir olmalı. `44b4eb2` SDK sürümünde 124/128 koşul bağımsızca doğrulandı.
+  PR #35 ile main’e giren `64eb7c5` sürümünün SDK dosyaları ölçümde kullanılanlarla aynı. İkisinin de SDK ağaç kimliği `3cff7b7f57c222f960ec162dd144bcb2695ad3f1`. [Birleşme sonrası doğrulama](https://github.com/DorukhanArslan/memory-core/blob/4a6e59531fd1f5b5c7166bf50b16640daadd1273/independent-review/read-only-flush/README.md#main-doğrulaması)
   Nihai inceleme, 128 koşul tamamlandığında yapılacak.
 
 ## Puanın dışında kaybolmaması gereken bilinen sınırlar

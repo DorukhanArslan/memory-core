@@ -15,6 +15,7 @@ sys.path.insert(0, str(ROOT))
 
 from equivalence.cases import build_cases  # noqa: E402
 from equivalence.catalog_migration import definition_authority  # noqa: E402
+from equivalence.flush_plan_target import BOUNDARY as FLUSH_BOUNDARY  # noqa: E402
 from equivalence.interrupted_turn_acceptance import OPERATION as INTERRUPTED_TURN  # noqa: E402
 from equivalence.harness import _adapter_identity, _implementation_identity, _same_json  # noqa: E402
 from equivalence.strict_report_reader import Reader, _constant, _finite, _object  # noqa: E402
@@ -55,6 +56,10 @@ def load(path):
     value = json.loads(Path(path).read_text(), object_pairs_hook=_object, parse_constant=_constant)
     _finite(value)
     return value
+
+
+def is_flush_prerequisite(row):
+    return row.get("requirement") == "flush.plan-target" and FLUSH_BOUNDARY not in row["covers"]
 
 
 def project(path, host_ids, lineage_ids, boundary_ids, recall_ids, cache_ids, reset_ids, prompt_ids, history_ids,
@@ -132,7 +137,7 @@ def project(path, host_ids, lineage_ids, boundary_ids, recall_ids, cache_ids, re
                 pair = {side: value[side] for side in ("openclaw", "python")}
                 row["publicValueSha256"] = {side: hashlib.sha256(canonical(item)).hexdigest()
                                            for side, item in pair.items()}
-                if value.get("operation") == INTERRUPTED_TURN:
+                if value.get("operation") == INTERRUPTED_TURN or value.get("requirement") == "flush.plan-target":
                     row.update(pair)
                 if value["id"] == UNICODE_TIE_ID:
                     result["unicodeTiePair"] = pair
@@ -162,6 +167,8 @@ def project(path, host_ids, lineage_ids, boundary_ids, recall_ids, cache_ids, re
                     result["historyPairs"][value["id"]] = pair
                 if value["id"] in prompt_ids:
                     result["promptPairs"][value["id"]] = pair
+            if is_flush_prerequisite(value) and value["status"] != "blocked":
+                require("openclaw" in row and "python" in row, "Flush prerequisite omitted its original public outputs")
             require(value["status"] != "mismatched" or "python" in value, "Mismatch omitted whole public values")
             result["cases"].append(row)
         elif key == "sources" and value["path"] in SOURCE_OWNERS:
@@ -1570,6 +1577,12 @@ def assess(args, result):
     result["interruptedTurnPublicPairs"] = {
         row["id"]: {side: row[side] for side in ("openclaw", "python")}
         for row in data["cases"] if row["operation"] == INTERRUPTED_TURN and row["status"] != "blocked"}
+    result["flushPrerequisitePublicPairs"] = {
+        row["id"]: {side: row[side] for side in ("openclaw", "python")}
+        for row in data["cases"] if is_flush_prerequisite(row) and row["status"] != "blocked"}
+    result["flushBoundaryPublicPairs"] = {
+        row["id"]: {side: row[side] for side in ("openclaw", "python")}
+        for row in data["cases"] if FLUSH_BOUNDARY in row["covers"] and row["status"] != "blocked"}
     # Keep the second review reproducible without duplicating every literal input
     # or requiring reviewers to download the original process captures.
     compact_rows = []
@@ -1688,7 +1701,7 @@ def assess(args, result):
     result.update(
         status="assessed", candidateAssessment=metrics,
         previousComparison=PREVIOUS_COMPARISON, deltaFromPreviousHosted=metrics["verified"] - PREVIOUS_COMPARISON["verified"],
-        changeSince122=compare_with_baseline(metrics, data["cases"], replay_ids(result, replay)),
+        changeSince123=compare_with_baseline(metrics, data["cases"], replay_ids(result, replay)),
         mismatchMetadata=[
             {key: row[key] for key in ("id", "operation", "requirement", "covers", "publicValueSha256")}
             for row in data["cases"] if row["status"] == "mismatched"

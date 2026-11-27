@@ -14,7 +14,7 @@ from followup_datetime import replay_datetime
 import followup_date_boundaries as date_boundaries
 from followup_diary import replay_diary
 from followup_dreams import replay_dreams
-from followup_flush import replay_flush
+import followup_flush
 from equivalence import flush_plan_target
 from followup_heartbeat import HEARTBEAT_GATE, replay_heartbeat
 from followup_heartbeat_outcomes import replay_heartbeat_outcomes
@@ -77,7 +77,8 @@ FAMILIES = {
     recovery_failure.OPERATION: (recovery_failure, "recoveryInterruptionFamilyComplete", replay_interrupted_publication),
     datetime_regex_family.REQUIREMENT: (datetime_regex_family, "datetimeRegexFamilyComplete", replay_datetime),
     provider_overflow_cases.OPERATION: (provider_overflow_cases, "providerOverflowFamilyComplete", replay_overflow),
-    flush_plan_target.OPERATION: (flush_plan_target, "flushPlanTargetFamilyComplete", replay_flush),
+    flush_plan_target.OPERATION: (flush_plan_target, "flushPlanTargetFamilyComplete", followup_flush.replay_flush),
+    flush_plan_target.BOUNDARY: (followup_flush, "flushPlanTargetBoundariesComplete", followup_flush.replay_flush),
     recovery_repair.REQUIREMENT: (recovery_repair, "recoveryRepairFamilyComplete", replay_recovery),
     heartbeat_turn_outcomes.OPERATION: (heartbeat_turn_outcomes, "heartbeatTurnOutcomesComplete", replay_heartbeat_outcomes),
     HEARTBEAT_GATE: (heartbeat_turn_boundaries, "heartbeatExclusionsComplete", replay_heartbeat),
@@ -100,6 +101,8 @@ REPORT_FIELDS = {field for _, field, _ in FAMILIES.values()} | {
 
 
 def family_key(case):
+    if flush_plan_target.BOUNDARY in case.get("covers", ()):
+        return flush_plan_target.BOUNDARY
     if case.get("id") in date_boundaries.IDS:
         return date_boundaries.POINT
     if configured_redaction.POINT in case.get("covers", ()):
@@ -151,7 +154,11 @@ def replay_followup(data, definitions, args, metrics, replay_rank):
         if [r["id"] for r in evidence] != [case["id"] for case in cases]:
             raise ValueError("Physical replay omitted or substituted a case")
         passed = all(r["publicMatch"] is True for r in evidence)
-        if op == interrupted_turn_acceptance.OPERATION:
+        if op == flush_plan_target.BOUNDARY:
+            passed = passed and flush_plan_target.boundary_prerequisites_complete(data["cases"]) and all(
+                flush_plan_target.confirms_boundary(case, rows[case["id"]]["case"]["openclaw"])
+                for case in cases)
+        elif op == interrupted_turn_acceptance.OPERATION:
             passed = passed and interrupted_turn_acceptance.prerequisites_complete(data["cases"]) and all(
                 interrupted_turn_acceptance.confirms_boundary(case, rows[case["id"]]["case"]["openclaw"])
                 for case in cases)

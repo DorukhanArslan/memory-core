@@ -1,4 +1,4 @@
-"""Compare observations with the independently reviewed 122/128 decision."""
+"""Compare observations with the independently reviewed 123/128 decision."""
 from __future__ import annotations
 
 from collections import Counter
@@ -8,11 +8,11 @@ import json
 from pathlib import Path
 
 
-REVIEW_COMMIT = "45ac3284219ac82bcec99353c5d5b896bdbae5d7"
-DECISION_SHA = "411c1163d761dccad92c3ca23cfade637d6fb0a0de493948c0b12411ccadb51e"
+REVIEW_COMMIT = "95b108408409255cdf36c92ef627b50b0062440b"
+DECISION_SHA = "0dd1543d0b46f56080422bc945c22a2e1fff345040150a0d01694fbb7ee2121d"
 # The four outstanding pairs come from mismatchMetadata in the authenticated assessment.
-ASSESSMENT_SHA = "6be305de2bcc272f5186f9bb091d57bbb954deb761aae5fef4bcb7e5511c4994"
-EVIDENCE_SHA = "9a41ebd8654ad230933da09e8b88f8b3bd9a021540d74afb020fb493251e5415"
+ASSESSMENT_SHA = "8d830f0b481fac097c50f8d03f79f02a427606ea6c252eb8af03824ff8117a64"
+EVIDENCE_SHA = "c557bba7bc04fc81e0e80e2461013ce2e12a6572151f2e3f6315b4b89b94ca33"
 RETRY_CASE = "query-sync-boundaries-warm-failure-natural-retry"
 
 
@@ -45,17 +45,18 @@ def replay_ids(assessment, forget):
 
 
 def load_baseline():
-    decision_bytes = gzip.decompress(Path(__file__).with_name("baseline-122.json.gz").read_bytes())
-    evidence_bytes = gzip.decompress(Path(__file__).with_name("baseline-122-evidence.json.gz").read_bytes())
+    decision_bytes = gzip.decompress(Path(__file__).with_name("baseline-123.json.gz").read_bytes())
+    evidence_bytes = gzip.decompress(Path(__file__).with_name("baseline-123-evidence.json.gz").read_bytes())
     if hashlib.sha256(decision_bytes).hexdigest() != DECISION_SHA or hashlib.sha256(evidence_bytes).hexdigest() != EVIDENCE_SHA:
         raise ValueError("The previous decision or its original public-value hashes changed")
     decision, evidence = json.loads(decision_bytes), json.loads(evidence_bytes)
     hashes = evidence["mismatchHashes"]
     if list(hashes) != decision["mismatchedCaseIds"] or decision["cases"]["blocked"] != 0:
         raise ValueError("The previous case statuses do not agree with its original public-result pairs")
-    for status, pairs in (("mismatched", hashes), ("matched", evidence["resolvedHistoricalHashes"])):
-        expected = {cid: item["after"] for cid, item in decision["previousMismatchWholeValues"].items()
-                    if item["status"] == status}
+    for field, status, pairs in (("previousMismatchWholeValues", "mismatched", hashes),
+                                 ("resolvedHistoricalWholeValues", "matched", evidence["resolvedHistoricalHashes"])):
+        values = decision[field]
+        expected = {cid: item["after"] for cid, item in values.items() if item["status"] == status}
         if pairs != expected:
             raise ValueError("The historical public-value pairs disagree with the independent decision")
     if ({key: len(ids) for key, ids in evidence["originalReplayIds"].items()} != decision["physicalReplayCounts"]

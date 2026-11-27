@@ -54,7 +54,10 @@ TRANSCRIPT_ARCHIVE_CASE_SHA256 = "5000ac7c0d2ec162e15ec04fc22bbdabceddcdffa4e880
 PRE_INTERRUPTED_TURN_CASES = 1663
 PRE_INTERRUPTED_TURN_SHA256 = "f95caff97657df1f3365228fa7353589ce9b025bc78aadf5e7790200e4247a59"
 INTERRUPTED_TURN_APPEND_SHA256 = "665bbc6c7f1c1576b95e7826e5a92bc098b056f9dddd926f22e34ea60f6c1d37"
-REGISTERED_CASES = 1667
+PRE_FLUSH_BOUNDARY_CASES = 1667
+PRE_FLUSH_BOUNDARY_SHA256 = "3f8ceb713d0da159aa2a3b6d52b46b057f6131a3213721c2b515af7c7e44162b"
+FLUSH_BOUNDARY_APPEND_SHA256 = "e194cc352dc91c3bc0c88b67c3096c90de4077dccf052596c52f8219135a107c"
+REGISTERED_CASES = 1670
 
 # PR22 changes these three policy texts, not the thirteen cases' business inputs,
 # order, coverage or other fields. Reversing only the exact reviewed fragments
@@ -147,7 +150,7 @@ def definition_authority(cases, *, fif_version):
                                   CACHE_REGISTERED_CASES, RESET_REGISTERED_CASES, PROMPT_REGISTERED_CASES,
                                   HISTORY_REGISTERED_CASES, NUMERIC_REGISTERED_CASES, DEEP_REGISTERED_CASES, PRE_RECOVERY_CASES, PRE_FLUSH_PLAN_CASES,
                                   PRE_HEARTBEAT_OUTCOME_CASES, PRE_INTERRUPTION_CASES, PRE_ACTIVE_HISTORY_CASES, PRE_DATETIME_CASES, PRE_UNICODE_CASES, PRE_SECRET_CASES, PRE_CONFIGURED_CASES, PRE_PROVIDER_OVERFLOW_CASES, PRE_SCRATCH_CASES,
-                                  PRE_TRANSCRIPT_ARCHIVE_CASES, PRE_INTERRUPTED_TURN_CASES, REGISTERED_CASES}
+                                  PRE_TRANSCRIPT_ARCHIVE_CASES, PRE_INTERRUPTED_TURN_CASES, PRE_FLUSH_BOUNDARY_CASES, REGISTERED_CASES}
             or fif_version == "v5" and len(cases) != HISTORICAL_REGISTERED_CASES):
         raise ValueError("Catalog migration requires one complete exact registered definition set")
     frozen = families[fif_version]
@@ -232,12 +235,18 @@ def definition_authority(cases, *, fif_version):
         from equivalence.transcript_boundary_acceptance import validate_registration
 
         validate_registration(cases)
-    interrupted_turns = cases[PRE_INTERRUPTED_TURN_CASES:]
+    interrupted_turns = cases[PRE_INTERRUPTED_TURN_CASES:PRE_FLUSH_BOUNDARY_CASES]
     if interrupted_turns:
         if _sha(cases[:PRE_INTERRUPTED_TURN_CASES]) != PRE_INTERRUPTED_TURN_SHA256:
             raise ValueError("The first 1663 definitions of the accepted 122 conditions changed")
         if _sha(interrupted_turns) != INTERRUPTED_TURN_APPEND_SHA256:
             raise ValueError("The four registered interrupted-turn recovery inputs changed")
+    flush_boundaries = cases[PRE_FLUSH_BOUNDARY_CASES:]
+    if flush_boundaries:
+        if _sha(cases[:PRE_FLUSH_BOUNDARY_CASES]) != PRE_FLUSH_BOUNDARY_SHA256:
+            raise ValueError("The 1667 definitions of the accepted 123 conditions changed")
+        if _sha(flush_boundaries) != FLUSH_BOUNDARY_APPEND_SHA256:
+            raise ValueError("The three registered flush plan boundary inputs changed")
     maintenance = cases[DEEP_REGISTERED_CASES:PRE_TRANSCRIPT_ARCHIVE_CASES]
     if maintenance:
         from equivalence import automation_job_outcomes, automation_job_state, compaction_assembly, heartbeat_turn_boundaries, workspace_lock_cases
@@ -396,4 +405,8 @@ def definition_authority(cases, *, fif_version):
         result["interruptedTurnRecoveryAppend"] = [
             {"index": index, "id": case["id"], "definitionSha256": _sha(case)}
             for index, case in enumerate(interrupted_turns, PRE_INTERRUPTED_TURN_CASES)]
+    if flush_boundaries:
+        result["flushPlanTargetBoundaryAppend"] = [
+            {"index": index, "id": case["id"], "definitionSha256": _sha(case)}
+            for index, case in enumerate(flush_boundaries, PRE_FLUSH_BOUNDARY_CASES)]
     return result

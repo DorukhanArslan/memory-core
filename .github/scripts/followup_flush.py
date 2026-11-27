@@ -5,6 +5,7 @@ import hashlib
 from pathlib import Path
 
 from equivalence import flush_plan_target as family
+from equivalence.flush_plan_target import build_boundary_cases as build_cases, boundaries_complete as family_complete
 from equivalence.flush_execution_bindings import prepare_flush_execution_bindings
 from equivalence.flush_plan_target_evidence import validate_native, validate_sdk
 from equivalence.harness import ROOT, _adapter_identity, _implementation_identity, _json, _same_json
@@ -136,8 +137,10 @@ def original_trace(case, trace, native, directory, runtime, adapters, global_sou
 
 
 def replay_flush(data, cases, args, runtime):
+    boundaries = any(family.BOUNDARY in case["covers"] for case in cases)
+    expected = family.build_boundary_cases() if boundaries else family.build_cases()
+    require(_same_json(cases, expected), "Flush plan replay requires the frozen ordered family")
     family.validate_registration(cases)
-    require(_same_json(cases, family.build_cases()), "Flush plan replay requires the frozen ordered family")
     root = ROOT / ".equivalence-results" / "flush-plan-target"
     require(root.resolve(strict=True) == root, "Flush retention directory is not canonical")
     bindings = prepare_flush_execution_bindings(args.reference, Path(runtime["runtimeRoot"]))
@@ -155,9 +158,10 @@ def replay_flush(data, cases, args, runtime):
         records = data["followupRows"][cid]
         row = records["case"]
         family.validate_case(row)
-        require(row["status"] == "matched" and row.get("runtimeEvidenceValidated") is True and
-                row["referenceMode"] == "authenticated-official-release" and _same_json(row["openclaw"], row["python"]),
-                "Missing equal authenticated public outputs")
+        public_match = _same_json(row["openclaw"], row["python"])
+        require(row["status"] == ("matched" if public_match else "mismatched") and
+                row.get("runtimeEvidenceValidated") is True and row["referenceMode"] == "authenticated-official-release",
+                "Flush status disagrees with authenticated outputs")
         n, s = records["native"], records["python"]
         ndir, nr, nbytes = raw_capture(n, cid, "native", root, used)
         sdir, sr, sbytes = raw_capture(s, cid, "python", root, used)
@@ -169,11 +173,21 @@ def replay_flush(data, cases, args, runtime):
         require(digest(_owned_regular(root, ndir / "native-raw.json", MAX_DIAGNOSTIC_BYTES)) == n["sha256"] and
                 digest(_owned_regular(root, sdir / "python-raw.json", MAX_DIAGNOSTIC_BYTES)) == s["sha256"],
                 "Flush evidence changed during replay")
-        results.append({"id": cid, "publicMatch": True, "validated": True, "nativeRawSha256": n["sha256"],
-                        "sdkRawSha256": s["sha256"], "nativeRawFileBytes": nbytes, "sdkRawFileBytes": sbytes,
-                        "outcome": row["openclaw"]["outcome"], "nativeWorkspaceEntries": len(nr[0]["final"]),
-                        "sdkWorkspaceEntries": len(sr[0]["final"]), "selectedModelCandidates": len(row["python"]["candidates"]),
-                        "nativeModelAttempts": len(nr[0]["modelStarts"]), **trace})
+        receipt = {
+            "id": cid, "publicMatch": public_match, "validated": True,
+            "nativeRawSha256": n["sha256"], "sdkRawSha256": s["sha256"],
+            "nativeRawFileBytes": nbytes, "sdkRawFileBytes": sbytes,
+            "outcome": row["openclaw"]["outcome"], "nativeWorkspaceEntries": len(nr[0]["final"]),
+            "sdkWorkspaceEntries": len(sr[0]["final"]), "selectedModelCandidates": len(row["python"]["candidates"]),
+            "nativeModelAttempts": len(nr[0]["modelStarts"]), **trace,
+        }
+        if boundaries:
+            receipt["aliasWitnesses"] = {"openclaw": nr[0].get("aliasWitnesses", []),
+                                         "python": sr[0].get("aliasWitnesses", [])}
+            receipt["modelReplies"] = {"openclaw": [start["emittedAssistant"] for start in nr[0]["modelStarts"]],
+                                       "python": [call["recordedAssistant"] for call in sr[0]["deliveries"]]}
+            receipt["toolResults"] = {"openclaw": nr[0]["toolResults"], "python": sr[0]["result"]["fields"]["tools"]}
+        results.append(receipt)
     require(_same_json(adapters, _adapter_identity()) and _implementation_identity()["sourceSha256"] == sdk_identity["sourceSha256"],
             "Flush evidence owners changed during replay")
     return results

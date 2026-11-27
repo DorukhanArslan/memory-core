@@ -884,7 +884,13 @@ class ReleaseOracleExecution:
             required = {"release-preload.mjs", "release-oracle.mjs", "index-lifecycle.mjs"}
             if not required <= {Path(path).name for path in self._locals}:
                 raise RuntimeOracleError("Release execution requires all reviewed oracle adapters.")
-            self._temporary = tempfile.TemporaryDirectory(prefix="memory-release-oracle-")
+            temporary_parent = None
+            if self.flush_plan_target_profile and self.flush_plan_target_profile["caseId"] == "flush-plan-boundary-two-names-read-only":
+                # The final evidence retains the actual two-name inode by rename.
+                temporary_parent = ROOT / ".equivalence-results" / "flush-plan-target"
+                temporary_parent.mkdir(parents=True, exist_ok=True)
+                os.close(_owned_directory(ROOT, temporary_parent))
+            self._temporary = tempfile.TemporaryDirectory(prefix="memory-release-oracle-", dir=temporary_parent)
             self.root = Path(self._temporary.name)
             self.trace_directory = self.root / "traces"
             self.evidence_directory = self.root / "evidence"
@@ -2173,15 +2179,18 @@ class ReleaseOracleExecution:
             directory = Path(receipt["retainedNativeRawPath"]).parent
             source = evidence.parent / "workspace"
             os.close(_owned_directory(self.root, source))
-            (directory / "workspace").mkdir()
-            for path in sorted(source.rglob("*")):
-                dest = directory / "workspace" / path.relative_to(source)
-                if stat.S_ISDIR(path.lstat().st_mode):
-                    dest.mkdir()
-                else:
-                    content = _owned_regular(source, path, MAX_DIAGNOSTIC_BYTES)
-                    with dest.open("xb") as stream:
-                        stream.write(content)
+            if case["input"].get("readOnlyAlias"):
+                source.rename(directory / "workspace")
+            else:
+                (directory / "workspace").mkdir()
+                for path in sorted(source.rglob("*")):
+                    dest = directory / "workspace" / path.relative_to(source)
+                    if stat.S_ISDIR(path.lstat().st_mode):
+                        dest.mkdir()
+                    else:
+                        content = _owned_regular(source, path, MAX_DIAGNOSTIC_BYTES)
+                        with dest.open("xb") as stream:
+                            stream.write(content)
             progress = _owned_regular(self.root, evidence.parent / "native-progress.json", MAX_DIAGNOSTIC_BYTES)
             (directory / "native-progress.json").write_bytes(progress)
             for trace in entry_trace_files:

@@ -60,7 +60,7 @@ def test_transcript_archive_extends_the_frozen_catalog_by_one_exact_case():
 
 
 def test_interrupted_turns_extend_the_previous_122_without_changing_its_definitions():
-    cases = build_cases()
+    cases = build_cases()[:1667]
     historical = definition_authority(cases[:1663], fif_version="v6")
     actual = definition_authority(cases, fif_version="v6")
     suffix = actual.pop("interruptedTurnRecoveryAppend")
@@ -69,6 +69,19 @@ def test_interrupted_turns_extend_the_previous_122_without_changing_its_definiti
         (index, case["id"]) for index, case in enumerate(cases[1663:], 1663)]
     cases[-1]["input"]["cut"] = "after-write"
     with pytest.raises(ValueError, match="four registered interrupted-turn"):
+        definition_authority(cases, fif_version="v6")
+
+
+def test_flush_boundaries_preserve_the_previous_123_and_freeze_the_target_alias():
+    cases = build_cases()
+    previous = definition_authority(cases[:1667], fif_version="v6")
+    current = definition_authority(cases, fif_version="v6")
+    suffix = current.pop("flushPlanTargetBoundaryAppend")
+    assert current == {**previous, "registeredCases": 1670}
+    assert [receipt["index"] for receipt in suffix] == [1667, 1668, 1669]
+    assert [receipt["id"] for receipt in suffix] == [case["id"] for case in cases[1667:]]
+    del cases[1667]["input"]["readOnlyAlias"]
+    with pytest.raises(ValueError, match="three registered flush plan"):
         definition_authority(cases, fif_version="v6")
 
 

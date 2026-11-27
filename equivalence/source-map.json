@@ -52,7 +52,7 @@
           "path": "memory_core/workspace.py",
           "symbol": "MemoryWorkspace.discover_indexable_files",
           "anchor": "    def discover_indexable_files(",
-          "line": 619
+          "line": 624
         },
         {
           "path": "memory_core/workspace.py",
@@ -137,7 +137,7 @@
           "path": "memory_core/workspace.py",
           "symbol": "MemoryWorkspace.resolve_memory_read_path",
           "anchor": "    def resolve_memory_read_path(self, raw_path: str) -> tuple[str, Path | None]:",
-          "line": 672
+          "line": 677
         },
         {
           "path": "memory_core/tools/get_paths.py",
@@ -161,7 +161,7 @@
           "path": "memory_core/workspace.py",
           "symbol": "MemoryWorkspace.resolve_memory_path",
           "anchor": "    def resolve_memory_path(self, rel_path: str) -> Path:",
-          "line": 663
+          "line": 668
         },
         {
           "path": "memory_core/workspace.py",
@@ -230,7 +230,7 @@
           "path": "memory_core/workspace.py",
           "symbol": "append_daily_memory_file",
           "anchor": "def append_daily_memory_file(",
-          "line": 365
+          "line": 370
         },
         {
           "path": "memory_core/workspace.py",
@@ -1129,7 +1129,7 @@
           "path": "memory_core/workspace.py",
           "symbol": "MemoryWorkspace.discover_indexable_files",
           "anchor": "    def discover_indexable_files(",
-          "line": 619
+          "line": 624
         },
         {
           "path": "memory_core/index/sqlite_store.py",
@@ -1147,7 +1147,7 @@
           "path": "memory_core/workspace.py",
           "symbol": "MemoryWorkspace.discover_session_transcript_files",
           "anchor": "    def discover_session_transcript_files(",
-          "line": 575
+          "line": 580
         },
         {
           "path": "memory_core/index/publication.py",
@@ -3292,7 +3292,7 @@
           "path": "memory_core/workspace.py",
           "symbol": "MemoryWorkspace.discover_session_transcript_files",
           "anchor": "    def discover_session_transcript_files(",
-          "line": 575
+          "line": 580
         },
         {
           "path": "memory_core/session_corpus.py",
@@ -3358,7 +3358,7 @@
           "path": "memory_core/workspace.py",
           "symbol": "MemoryWorkspace.discover_indexable_files",
           "anchor": "    def discover_indexable_files(",
-          "line": 619
+          "line": 624
         },
         {
           "path": "memory_core/consolidation/session_ingestion.py",
@@ -3574,7 +3574,7 @@
           "path": "memory_core/workspace.py",
           "symbol": "MemoryFile",
           "anchor": "class MemoryFile:",
-          "line": 515
+          "line": 520
         },
         {
           "path": "memory_core/index/sqlite_store.py",
@@ -4821,7 +4821,7 @@
           "path": "memory_core/workspace.py",
           "symbol": "append_memory_flush_file",
           "anchor": "def append_memory_flush_file(",
-          "line": 392
+          "line": 397
         }
       ],
       "implementation": "partial",
@@ -5667,7 +5667,7 @@
           "path": "memory_core/workspace.py",
           "symbol": "MemoryWorkspace",
           "anchor": "class MemoryWorkspace:",
-          "line": 536
+          "line": 541
         },
         {
           "path": "memory_core/consolidation/promotion.py",

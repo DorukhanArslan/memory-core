@@ -405,6 +405,8 @@ def build_cases(*, include_prospective: bool = False) -> list[dict[str, Any]]:
     cases.append(transcript_archive_case())
     from equivalence.interrupted_turn_acceptance import build_cases as build_interrupted_turns
     cases.extend(build_interrupted_turns())
+    from equivalence.flush_plan_target import build_boundary_cases as build_flush_plan_boundaries
+    cases.extend(build_flush_plan_boundaries())
 
     if include_prospective:
         from equivalence.flush_contract import build_prospective_flush_contract_cases

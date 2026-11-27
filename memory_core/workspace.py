@@ -343,6 +343,12 @@ def check_writable_memory_file(root: Path, rel_path: str) -> None:
     symlink or not a directory, or when the target exists as a symlink, a non-regular file or a
     file with more than one hard link. Writes never follow or repair such entries.
     """
+    if has_multiple_memory_file_links(root, rel_path):
+        raise UnsafeMemoryPathError(f"{rel_path} has more than one hard link")
+
+
+def has_multiple_memory_file_links(root: Path, rel_path: str) -> bool:
+    """Inspect the target without opening it. Reject unsafe parents and non-regular files."""
     current = root
     for part in rel_path.split("/")[:-1]:
         current = current / part
@@ -352,14 +358,13 @@ def check_writable_memory_file(root: Path, rel_path: str) -> None:
             raise UnsafeMemoryPathError(f"{part} is not a directory")
     target = root / rel_path
     if not os.path.lexists(target):
-        return
+        return False
     info = os.lstat(target)
     if stat.S_ISLNK(info.st_mode):
         raise UnsafeMemoryPathError(f"{rel_path} is a symlink; memory writes never follow symlinks")
     if not stat.S_ISREG(info.st_mode):
         raise UnsafeMemoryPathError(f"{rel_path} is not a regular file")
-    if info.st_nlink > 1:
-        raise UnsafeMemoryPathError(f"{rel_path} has more than one hard link")
+    return info.st_nlink > 1
 
 
 def append_daily_memory_file(

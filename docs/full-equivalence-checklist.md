@@ -57,17 +57,23 @@ Comparisons must not normalize away behavior. A platform-specific path, generate
 Entries remain pending until their complete acceptance conditions are verified against `v2026.9.9`. Their detailed acceptance points and stable identifiers are in [scope.json](../equivalence/scope.json). A helper that already exists in Python still needs the new differential evidence. A known difference must stay visible until its implementation and tests agree. Bounded passing subsets are recorded below without closing the containing contract.
 
 <!-- CURRENT-VERIFICATION-START -->
-On 27 November, independent review verified **123/128 conditions (+1)** on product `4a65fc2` against OpenClaw v2026.9.9 (`bcfc888`). All 122 previously verified conditions passed again. Of 1,667 cases, 1,663 matched and four differed. All 1,663 previously registered cases kept their status. The run recorded zero blocked cases and zero engine errors. Five conditions lack coverage and zero registered conditions remain unresolved. The full scope gate returned `fullScopePassed: false` and exit code 1. [Full comparison](https://github.com/DorukhanArslan/memory-core/actions/runs/45987128881) · [Independent recount](https://github.com/DorukhanArslan/memory-core/blob/95b108408409255cdf36c92ef627b50b0062440b/independent-review/interrupted-turn/README.md)
+On 27 November, independent review verified **124/128 conditions (+1)** on product `44b4eb2` against OpenClaw v2026.9.9 (`bcfc888`). All 123 earlier conditions passed again, and all 1,667 previously registered cases kept their status. Of 1,670 cases, 1,666 matched and four differed. The run recorded zero blocked cases and zero engine errors. Four conditions still lack coverage. Zero registered conditions remain unresolved. The full scope gate returned `fullScopePassed: false` and exit code 1. [Full comparison](https://github.com/DorukhanArslan/memory-core/actions/runs/46020719989) · [Independent recount](https://github.com/DorukhanArslan/memory-core/blob/c78885231cf01a498bfeaa0fc6c4d0508d070c15/independent-review/read-only-flush/README.md)
 
-**Newly verified condition.** `recovery.failure-publication.boundaries` covers what the next turn sees when a host stops during a write. Four paired cases matched in the SDK’s OpenClaw compatibility mode. Reopening the chat preserved the original note or the user’s later edit. When the host stopped before writing, the original note stayed absent. The model received an error for the missing result. A new request could save a separate note to its explicitly requested date without running the interrupted write again.
+`flush.plan-target.boundaries` covers how the host prepares its daily note before asking the model what to save. With one filename, and with two local names for the same regular file, both systems called the model once. It returned `NO_REPLY`, and the note kept its original bytes. When a directory containing an agenda occupied the daily note’s path, both systems stopped before calling the model and preserved the agenda. The full prompts and reserved token counts matched in all three cases. The SDK keeps its stricter checks on writes to files with multiple names.
 
-Four diagnostic cases still differ. In the first search after a flush (F03), OpenClaw returned one result for `obsoletekiwi` in the 26 November run and zero in this run. F03 differed from the SDK in both runs. Both engines reproduced their previous full outputs for tool-result redaction (F08 and F09) and legacy date parsing (F15). The tracker lists the remaining conditions and release requirements. [Completion tracker](parity-completion-checklist.md)
+Four diagnostic cases still differ. In F03, the first OpenClaw search after a flush returned one old note for `obsoletekiwi`, compared with zero at 123/128. The SDK returned the same full response in both runs. Tool-result redaction (F08 and F09) and legacy date parsing (F15) retained their previous differing outputs. The tracker lists the remaining conditions and release requirements. [Completion tracker](parity-completion-checklist.md)
 
 **Earlier measurements**
 
+Earlier on 27 November, independent review verified **123/128 conditions (+1)** on product `4a65fc2` against OpenClaw v2026.9.9 (`bcfc888`). All 122 previously verified conditions passed again. Of 1,667 cases, 1,663 matched and four differed. All 1,663 previously registered cases kept their status. The run recorded zero blocked cases and zero engine errors. Five conditions lack coverage and zero registered conditions remain unresolved. The full scope gate returned `fullScopePassed: false` and exit code 1. [Full comparison](https://github.com/DorukhanArslan/memory-core/actions/runs/45987128881) · [Independent recount](https://github.com/DorukhanArslan/memory-core/blob/95b108408409255cdf36c92ef627b50b0062440b/independent-review/interrupted-turn/README.md) · [PR #34](https://github.com/DorukhanArslan/memory-core/pull/34)
+
+The 123rd condition, `recovery.failure-publication.boundaries`, covers what the next turn sees when a host stops during a write. Four paired cases matched in the SDK’s OpenClaw compatibility mode. Reopening the chat preserved the original note or the user’s later edit. When the host stopped before writing, the original note stayed absent. The model received an error for the missing result. A new request could save a separate note to its explicitly requested date without running the interrupted write again.
+
+At 123/128, the first OpenClaw search after a flush (F03) returned zero results for `obsoletekiwi`, compared with one result on 26 November. F03 remained open in both runs.
+
 On 26 November, independent review verified **122/128 conditions (+3)** on product `bb40b5c` against OpenClaw v2026.9.9 (`bcfc888`). All 119 previously verified conditions passed again. Of 1,663 cases, 1,659 matched and four differed. No cases were blocked and neither engine reported an error. Six conditions still lack coverage. No covered condition remains unresolved. The full scope gate returned `fullScopePassed: false` and exit code 1. [Full comparison](https://github.com/DorukhanArslan/memory-core/actions/runs/45840190038) · [Independent recount](https://github.com/DorukhanArslan/memory-core/blob/45ac3284219ac82bcec99353c5d5b896bdbae5d7/independent-review/remaining-memory-conditions/README.md)
 
-| Newly verified condition | What matched |
+| Condition verified on 26 November | What matched |
 | --- | --- |
 | `sessions.transcript-filtering.boundaries` | All nine archive and transcript cases matched. In OpenClaw compatibility mode, replacing a compressed archive with one of equal size in the same millisecond returned the cached text. Changing the revision refreshed it, and deleting the archive made it unavailable. |
 | `prompt.bootstrap-discovery.boundaries` | All eleven cases matched. The default selection omitted the optional preferences file. In the legacy workspace, setup reported that migration was required and prompt selection returned an empty file list. |
@@ -358,10 +364,10 @@ reaching 66/128 before the update/isolation and natural next-turn packages.
 
 | Contract status | Contracts | Verified conditions | Remaining conditions |
 | --- | ---: | ---: | ---: |
-| Complete | 59 | 118 | 0 |
-| Partial | 5 | 5 | 5 |
+| Complete | 60 | 120 | 0 |
+| Partial | 4 | 4 | 4 |
 | Pending verification | 0 | 0 | 0 |
-| Total | 64 | 123 | 5 |
+| Total | 64 | 124 | 4 |
 
 Pending verification can include existing implementation. Partial contracts retain one open
 condition. Infrastructure sections 1–3 remain **20/22 tasks completed**; infrastructure and
@@ -406,7 +412,7 @@ Current status of all 64 contracts:
 | 32 | `prompt.bootstrap-budget` | Complete | 2/2 |
 | 33 | `prompt.runtime-context` | Complete | 2/2 |
 | 34 | `prompt.history-repair` | Complete | 2/2 |
-| 35 | `flush.plan-target` | Partial | 1/2 |
+| 35 | `flush.plan-target` | Complete | 2/2 |
 | 36 | `flush.trigger-usage` | Complete | 2/2 |
 | 37 | `flush.execute-finalize` | Partial | 1/2 |
 | 38 | `compaction.memory-budget` | Complete | 2/2 |
@@ -506,7 +512,7 @@ pre-open race authority, full raw filesystem evidence and broader SDK-only limit
 
 ### Flush and compaction
 
-- [ ] **`flush.plan-target` — Match flush plan and target selection.** Compare enabled/disabled configuration, model selection, timezone and daily target validation. Compare prompts, reserve terms and failure before a target can be safely prepared.
+- [x] **`flush.plan-target` — Match flush plan and target selection.** Compare enabled/disabled configuration, model selection, timezone and daily target validation. Compare prompts, reserve terms and failure before a target can be safely prepared.
 - [x] **`flush.trigger-usage` — Match flush trigger accounting.** Feed fresh/stale usage, missing usage, transcript byte limits and compaction counters. Compare trigger decisions, heartbeat exclusions and retry/exhaustion state.
 - [ ] **`flush.execute-finalize` — Match flush execution and finalization.** Run the same labelled model/tool sequence through both hosts. Compare append-only writes, index readiness, provenance and successful or failed cycle stamps.
 - [x] **`compaction.memory-budget` — Match curated memory budget compaction.** Exercise promotion sections mixed with user text and exact size/loss limits. Compare preserved bytes, removed sections, deferral and reconciliation markers.

@@ -25,6 +25,10 @@ Sayımda 128 koşul tek tek değerlendirildi. 34 grupta 227 karşılaştırmanı
 | Bu koşunun özet ZIP'i | 371.448 bayt, SHA-256 `900423902b6e82ed897e4a79d5d8a15156e9816a801614581818b040c62851bb` |
 | Önceki koşunun özet ZIP'i | 367.469 bayt, SHA-256 `e83f1927874b2388a18551c3dfbe704c933f6f3c9974054e2673becf734a7333` |
 
+## Birleşme sonrası ana dal
+
+PR #34 birleştirildikten sonra ana dalın `1b9055d7b3ca10a59626fb6969599cb5501ecf8e` commit'i yeniden alındı. Ölçüm ile bu commit'in `memory_core` Git ağacı aynı. `git diff --exit-code 524a260 1b9055d -- memory_core` fark bulmadan tamamlandı. [Ana daldaki takip listesi](https://github.com/DorukhanArslan/memory-core/blob/1b9055d7b3ca10a59626fb6969599cb5501ecf8e/docs/parity-completion-checklist.md) · [Birleşen PR](https://github.com/DorukhanArslan/memory-core/pull/34)
+
 ## Sayımı yeniden üretmek
 
 Bu klasör iki özgün GitHub özetini, kimlik kayıtlarını ve sayım programını içerir. Aşağıdaki komutlar bu denetim dalının depo kökünde, Git geçmişi ve uzak denetim dalları alınmış bir klonda çalışır. Git nesneleri eksikse önce uzak dalları alın. Bağımlılıklar ölçümün kilitli Python ortamından yüklenir.

@@ -254,7 +254,7 @@ class HostTurn:
                  publication_turn_id: str | None = None,
                  projection_messages: Sequence[Mapping[str, Any]] | None = None,
                  model_prompt: ModelPrompt | None = None, context_window_tokens: int | None = None,
-                 responses: bool = False) -> None:
+                 responses: bool = False, dated_daily_notes: bool = False) -> None:
         self._runner = runner
         self.turn_id = turn_id
         self._publication_turn_id = publication_turn_id or turn_id
@@ -278,16 +278,17 @@ class HostTurn:
         self._completed_calls: set[str] = set()
         self._counter = 0
         if flush is None:
-            self._publication_tools = frozenset(spec["name"] for spec in runner.kit.tools()
+            specs = runner.kit.tools(dated_daily_notes=dated_daily_notes)
+            self._publication_tools = frozenset(spec["name"] for spec in specs
                 if spec["name"] in CURATION_OPERATIONS)
             observer = trust.write_observer(store=runner.artifact_provenance,
                 mutation_root=runner.kit.memory.workspace.root, workspace_dir=runner.kit.memory.workspace.root,
                 session_id=session.session_id, session_key=session.session_key, now=runner._clock)
             tools = [TurnTool(spec["name"], lambda _id, args, name=spec["name"]:
-                runner.kit.dispatch(name, args, session=session, write_provenance=observer))
-                for spec in runner.kit.tools()]
+                runner.kit.dispatch(name, args, session=session, write_provenance=observer,
+                                    dated_daily_notes=dated_daily_notes)) for spec in specs]
             tools.extend(runner.extra_tools)
-            self.tools = tuple(deepcopy(runner.kit.tools()))
+            self.tools = tuple(deepcopy(specs))
         else:
             self._publication_tools = frozenset()
             tools = [TurnTool(spec["name"], lambda _id, args, name=spec["name"]: flush.dispatch(name, args))
@@ -1329,7 +1330,8 @@ class HostSessionRunner:
                 if not guarded_admission:
                     self._persist(state, needs_index=not published, turn_id=turn_id)
             phase = "before-turn"
-            context = self.kit.before_turn(state)
+            dated_daily_notes = self.interrupted_publication == "openclaw"
+            context = self.kit.before_turn(state, dated_daily_notes=dated_daily_notes)
             state = context.session
             capture.state = state
             user = {"role": "user", "content": user_message} if isinstance(user_message, str) else deepcopy(dict(user_message))
@@ -1428,7 +1430,7 @@ class HostSessionRunner:
                 self._append_model_snapshot(prompt_owner)
             turn = HostTurn(self, turn_id, state, context, model_messages, trust,
                 projection_messages=projection_messages, model_prompt=prompt_owner,
-                context_window_tokens=context_window_tokens, responses=responses)
+                context_window_tokens=context_window_tokens, responses=responses, dated_daily_notes=dated_daily_notes)
             self._active_turn = turn
             phase = "model"
             try:

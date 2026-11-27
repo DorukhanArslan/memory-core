@@ -72,6 +72,7 @@ jobs:
           uv run --frozen python -m pytest -q
           'tests/unit/test_host_publication_settlement.py::test_openclaw_continuation_restores_missing_result_only_for_model_and_keeps_old_write[intent]'
           tests/unit/test_host_publication_settlement.py::test_fresh_runner_blocks_until_current_state_acknowledgment_indexes_without_replaying_write
+          'tests/unit/test_host_session_lifecycle.py::test_daily_note_date_in_model_request_and_file[leap-day]'
       - name: Verify current source locations
         run: uv run --frozen python -m equivalence.source_map --reference .reference/openclaw
       - name: Prepare authenticated source dependencies

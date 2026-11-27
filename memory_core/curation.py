@@ -834,12 +834,16 @@ class MemoryCurator:
             return ()
         return tuple(op for op in CURATION_OPERATIONS if self.policy.files_for(op))
 
-    def tool_definitions(self, *, memory_flush: bool = False) -> list[dict]:
+    def tool_definitions(self, *, memory_flush: bool = False, dated_daily_notes: bool = False) -> list[dict]:
         """``{"name", "description", "parameters"}`` specs for the offered operations."""
         specs = _tool_specs(self.policy.file_caps.get(USER_FILENAME))
         definitions = []
         for operation in self.available_operations(memory_flush=memory_flush):
             description, properties, required = specs[operation]
+            if operation == APPEND_DAILY_NOTE and dated_daily_notes:
+                description = "Append a note to a daily log (memory/YYYY-MM-DD.md)."
+                properties = {**properties, "date": {"type": "string", "format": "date",
+                    "description": "Calendar date in YYYY-MM-DD form. Defaults to today."}}
             definitions.append(
                 {
                     "name": operation,
@@ -861,6 +865,7 @@ class MemoryCurator:
         *,
         memory_flush: bool = False,
         write_provenance: MemoryWriteProvenanceObserver | None = None,
+        dated_daily_notes: bool = False,
     ) -> dict:
         """Run one tool call; ``arguments`` is a mapping or its JSON text.
 
@@ -882,7 +887,8 @@ class MemoryCurator:
         args = _parse_arguments(arguments, tool=name)
         token = _dispatch_write_provenance.set((self, write_provenance))
         try:
-            result = self._dispatch_call(name, args, memory_flush=memory_flush)
+            result = self._dispatch_call(name, args, memory_flush=memory_flush,
+                                         dated_daily_notes=dated_daily_notes)
         except CurationUnavailableError:
             raise
         except MemoryAtomicPublicationError as exc:
@@ -901,7 +907,8 @@ class MemoryCurator:
         current = _dispatch_write_provenance.get()
         return current[1] if current is not None and current[0] is self else None
 
-    def _dispatch_call(self, name: str, args: dict, *, memory_flush: bool) -> CurationResult:
+    def _dispatch_call(self, name: str, args: dict, *, memory_flush: bool,
+                       dated_daily_notes: bool) -> CurationResult:
         if name == ADD_MEMORY_ENTRY:
             return self.add_memory_entry(
                 _required_arg(args, "section", tool=name),
@@ -935,9 +942,13 @@ class MemoryCurator:
                 _required_arg(args, "text", tool=name, allow_blank=True),
                 memory_flush=memory_flush,
             )
-        return self.append_daily_note(
-            _required_arg(args, "text", tool=name), memory_flush=memory_flush
-        )
+        day = None
+        if dated_daily_notes and "date" in args:
+            day = args["date"]
+            if not isinstance(day, str) or not day.isascii() or day != day.strip():
+                raise CurationError("date must be a YYYY-MM-DD date")
+        return self.append_daily_note(_required_arg(args, "text", tool=name),
+                                      date=day, memory_flush=memory_flush)
 
     def _target_for(self, operation: str) -> str:
         if operation in MEMORY_ENTRY_OPERATIONS:

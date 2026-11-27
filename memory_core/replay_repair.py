@@ -313,6 +313,29 @@ def sanitize_tool_use_result_pairing(
     ).messages
 
 
+def missing_tool_result_insertions(
+    messages: list[AgentMessage], *, now_ms: int | float, responses: bool = False,
+) -> Iterable[tuple[AgentMessage, AgentMessage]]:
+    """Yield missing results with the original message each should follow.
+
+    The caller supplies one interrupted turn. Actual results, including a
+    late result or two occurrences of the same call id, use the normal replay
+    classifier. The recovery view leaves all original messages in place.
+    """
+    for frame in _classify_tool_use_result_pairing(messages).frames:
+        if frame.failed:
+            continue
+        previous = frame.assistant
+        for call in frame.occurrences:
+            if call.source_result is not None:
+                previous = call.source_result
+            elif call.result is None:
+                yield previous, _make_missing_tool_result(
+                    tool_call_id=call.id, tool_name=call.name,
+                    text="aborted" if responses else None, now_ms=now_ms,
+                )
+
+
 def sanitize_tool_use_result_pairing_for_model(
     messages: list[AgentMessage], is_openai_responses_api: bool, *, now_ms: int | float | None = None
 ) -> list[AgentMessage]:

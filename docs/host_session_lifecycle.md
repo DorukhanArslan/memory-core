@@ -216,8 +216,9 @@ A checked publisher can report `publication="committed"` after its rename succee
 later verification failed. The outcome preserves that historical fact, reports the failure
 and indexes the actual current file; the file may already contain an external replacement.
 `publication="uncertain"` means the dispatched mutation cannot be resolved from its receipt.
-It does not mean no write occurred. The runner preserves that state in the catalog before
-indexing and refuses further dispatches and subsequent admissions, including after reopening.
+The write may already have happened. The runner preserves that state in the catalog before
+indexing and refuses further dispatches in that turn. By default it also refuses subsequent
+admissions, including after reopening.
 Successful indexing alone cannot clear it, and optional memory maintenance does not run.
 The original trust quarantine remains attached to either dispatched publication state.
 
@@ -229,8 +230,29 @@ operations and ordinary chat/read-only turns do not leave unresolved intents. Th
 intent stays through all accepted writes and private flush work, and known final settlement
 clears it. An actual uncertain replacement records `stage="uncertain"`; an ambiguous append
 error keeps `stage="intent"`. If final catalog settlement fails or the process stops, the
-prior intent survives for a fresh runner to refuse admission until acknowledgment. This
-does not resume or repeat the interrupted model/provider operation.
+prior intent survives for the next runner to inspect.
+
+The default `interrupted_publication="require-acknowledgment"` waits for the host to
+inspect the files. To allow a new user message after an interruption, open the runner
+with `interrupted_publication="openclaw"`. Both `HostSessionRunner.open(...)` and
+`ManagedHostSession.open(...)` accept this option.
+
+For example, a process can stop after writing a preference but before saving the tool's
+reply. In OpenClaw mode the next user can ask “What is 2 + 2?” or save a separate daily
+note. The runner preserves the current preference file, including any edits made while
+it was closed. It records the old request as interrupted and admits the new request in
+the same catalog transaction. The model sees a missing-result error for the unfinished
+call. The durable transcript retains the original call, and retrying its request ID cannot
+run the old write a second time. When the catalog records the writer's process identity,
+a writer that may still be running keeps the session blocked. Older catalogs lack that
+identity, so stop the old host process before opting in. The host can acknowledge the
+interrupted request later using its own turn ID.
+
+In the OpenClaw profile, `append_daily_note` accepts an optional `date` for an
+explicitly requested calendar day. For example, if today is November 10 and the user
+asks for the November 27 log, pass `date="2026-11-27"` to append to
+`memory/2026-11-27.md`. Omitting the date uses today in the host's configured time zone.
+An invalid date returns a tool error before writing.
 
 After the host has inspected and accepted the **current** files, acknowledge the exact pending
 turn explicitly:

@@ -784,6 +784,7 @@ class MemorySessionCatalog:
     def upsert_session(
         self, session_key: str, entry: Mapping[str, Any], *,
         provenance_known: bool = True, acp_owned: bool = False,
+        _expected_host_entry: Any = UNSET,
     ) -> None:
         """Replace one current metadata row, retaining earlier transcript windows."""
         if not isinstance(session_key, str) or not isinstance(entry, Mapping):
@@ -792,6 +793,7 @@ class MemorySessionCatalog:
         if catalog is not self:
             return catalog.upsert_session(
                 session_key, entry, provenance_known=provenance_known, acp_owned=acp_owned,
+                _expected_host_entry=_expected_host_entry,
             )
         session_key = self._session_key(session_key)
         data = json.loads(_json(dict(entry)))
@@ -808,6 +810,10 @@ class MemorySessionCatalog:
             ).fetchone()
             previous_entry = json.loads(previous[0]) if previous is not None else {}
             previous_id = previous_entry.get("sessionId")
+            if _expected_host_entry is not UNSET and (
+                previous_id != session_id or previous_entry != _expected_host_entry
+            ):
+                raise RuntimeError("The current host lifecycle state changed during this turn")
             if previous is not None:
                 _clear_rotated_session_generation_fields(previous_entry, data)
             if self._memory_uri is not None and is_incognito_session_key(session_key) and "createdAt" not in data:
@@ -1037,6 +1043,7 @@ class MemorySessionCatalog:
         cwd: str | None = None, append_intent: str | None = None,
         expected_mutation_at: Any = UNSET, logging_config: LoggingConfig | None = None,
         detach_queued_user: str | None = None, admission_compactions: Sequence[Mapping[str, Any]] = (),
+        _host_admission: tuple[Mapping[str, Any], Mapping[str, Any]] | None = None,
     ) -> dict[str, Any]:
         """Append one ordinary JSON agent message in a single durable transaction.
 
@@ -1053,7 +1060,7 @@ class MemorySessionCatalog:
                 session_id, message, session_key=session_key, event_id=event_id,
                 parent_id=parent_id, now_ms=now_ms, cwd=cwd, append_intent=append_intent,
                 expected_mutation_at=expected_mutation_at, logging_config=logging_config, detach_queued_user=detach_queued_user,
-                admission_compactions=admission_compactions,
+                admission_compactions=admission_compactions, _host_admission=_host_admission,
             )
         if parent_id is not UNSET and parent_id is not None and not isinstance(parent_id, str):
             raise TypeError("parent_id must be a string, null, or omitted")
@@ -1103,6 +1110,23 @@ class MemorySessionCatalog:
                     if "message" not in event:
                         raise RuntimeError(f"SQLite transcript append did not insert message {identifier}.")
                     return replay(index, admission_key or f"event:{identifier}")
+
+            if _host_admission is not None:
+                # The interrupt record and its successor's *new* durable user
+                # share one commit. Replayed admission keys above never consume it.
+                expected, updated = _host_admission
+                node = db.execute("SELECT entry_json FROM memory_session_nodes WHERE agent=? AND session_key=?",
+                                  (self.agent_id, session_key)).fetchone()
+                current = json.loads(node[0]) if node else {}
+                retained = json.loads(window["entry_json"])
+                if (current.get("sessionId") != session_id or retained.get("sessionId") != session_id
+                        or any(row.get("sdkHostLifecycle", {}) != expected for row in (current, retained))):
+                    raise RuntimeError("The current host lifecycle state changed before admission")
+                current["sdkHostLifecycle"] = retained["sdkHostLifecycle"] = updated
+                db.execute("UPDATE memory_session_nodes SET entry_json=? WHERE agent=? AND session_key=?",
+                           (_json(current), self.agent_id, session_key))
+                db.execute("UPDATE memory_session_windows SET entry_json=? WHERE agent=? AND session_id=?",
+                           (_json(retained), self.agent_id, session_id))
 
             state = db.execute(
                 "SELECT generation,projection_dirty FROM memory_session_transcript_state WHERE agent=? AND session_id=?",

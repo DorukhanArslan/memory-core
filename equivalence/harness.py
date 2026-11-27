@@ -23,6 +23,7 @@ import time
 from typing import Any, Callable
 
 from equivalence import flush_plan_target, heartbeat_scratch_acceptance, secret_boundary_evidence, secret_boundary_inputs
+from equivalence import interrupted_turn_acceptance as interrupted_turns
 from equivalence import transcript_boundary_acceptance as transcript_family
 from equivalence.configured_redaction import IDS as CONFIGURED_IDS, RESOLVED_IDS as CONFIGURED_RESOLVED
 from equivalence.configured_redaction_evidence import retain_capture as retain_configured_capture
@@ -331,6 +332,7 @@ def _validate_scope(scope: Any, cases: Any) -> tuple[list[dict], dict[str, set[s
         validate_heartbeat_outcomes(cases)
         heartbeat_scratch_acceptance.validate_registration(cases)
         transcript_family.validate_registration(cases)
+        interrupted_turns.validate_registration(cases)
         validate_provider_overflow(cases)
         validate_jobs_registration(cases)
         validate_job_outcomes(cases)
@@ -1402,8 +1404,10 @@ def run_suite(*, checkout: Path, node: Path, smoke: bool = False,
             python_runner = run_python if python_runner is None else python_runner
         requirements, _ = _validate_scope(scope, cases)
         if default_smoke:
-            cases = [case for case in cases if case["operation"] != heartbeat_scratch_acceptance.OPERATION]
+            cases = [case for case in cases if case["operation"] not in
+                     (heartbeat_scratch_acceptance.OPERATION, interrupted_turns.OPERATION)]
         scratch_cases = [case for case in cases if case["operation"] == heartbeat_scratch_acceptance.OPERATION]
+        interrupted_cases = [case for case in cases if case["operation"] == interrupted_turns.OPERATION]
         runtime_operations = {
             "index-lifecycle-runtime", "flush-trigger-runtime", "flush-execution-runtime",
             "exact-path-runtime",
@@ -1443,7 +1447,7 @@ def run_suite(*, checkout: Path, node: Path, smoke: bool = False,
         }
         runtime_cases = [case for case in cases if case["operation"] in runtime_operations]
         source_cases = [case for case in cases if case["operation"] not in runtime_operations
-                        and case["operation"] != heartbeat_scratch_acceptance.OPERATION]
+                        and case["operation"] not in (heartbeat_scratch_acceptance.OPERATION, interrupted_turns.OPERATION)]
         policy_source_cases = [case for case in source_cases if case["operation"] == "redaction-policy-source"]
         ordinary_source_cases = [case for case in source_cases if case["operation"] != "redaction-policy-source"]
         report["manifestSha256"] = {"reference": _digest(reference_path), "scope": _digest(scope_path)}
@@ -2073,7 +2077,7 @@ def run_suite(*, checkout: Path, node: Path, smoke: bool = False,
                                 for c in scratch_cases}
         report["referenceExecution"] = {
             "trackedTypeScriptCaseIds": [case["id"] for case in source_cases],
-            "compiledReleaseCaseIds": [case["id"] for case in (*runtime_cases, *scratch_cases)],
+            "compiledReleaseCaseIds": [case["id"] for case in (*runtime_cases, *scratch_cases, *interrupted_cases)],
         }
         if dependencies is not None:
             from equivalence.dependencies import validate_dependency_sources
@@ -2155,10 +2159,16 @@ def run_suite(*, checkout: Path, node: Path, smoke: bool = False,
             report["sourceDiagnostics"] = [{"side": "native", **entry}
                                            for entry in diagnostics]
         native_rows = {row["id"]: row for row in oracle["results"]}
+        interrupted_rows = interrupted_turns.run_batch(
+            interrupted_cases, ROOT / ".equivalence-results" / "interrupted-turn-recovery",
+            checkout=checkout, node=node, runtime=release_runtime_root)
         python_diagnostic_cases = [*runtime_cases, *source_diagnostic_cases, *policy_source_cases]
         python_diagnostics = (Path(resources.enter_context(tempfile.TemporaryDirectory(
             prefix="memory-python-runtime-evidence-"))) if python_diagnostic_cases else None)
         for case in cases:
+            if case["operation"] == interrupted_turns.OPERATION:
+                report["cases"].append(interrupted_rows[case["id"]])
+                continue
             if case["operation"] == heartbeat_scratch_acceptance.OPERATION:
                 report["cases"].append(scratch_rows[case["id"]])
                 continue
@@ -2730,6 +2740,8 @@ def run_suite(*, checkout: Path, node: Path, smoke: bool = False,
 
         heartbeat_outcomes = heartbeat_outcomes_complete(report["cases"])
         report["heartbeatTurnOutcomesComplete"] = heartbeat_outcomes
+        interrupted_complete = interrupted_turns.family_complete(report["cases"])
+        report["interruptedTurnRecoveryComplete"] = interrupted_complete
         transcript_complete = transcript_family.family_complete(report["cases"])
         report["transcriptBoundariesComplete"] = transcript_complete
         scratch_complete = heartbeat_scratch_acceptance.family_complete(report["cases"])
@@ -2828,6 +2840,7 @@ def run_suite(*, checkout: Path, node: Path, smoke: bool = False,
                                                       and (point["id"] not in secret_boundary_inputs.POINTS or secret_boundaries_complete)
                                                       and (point["id"] != heartbeat_outcome or heartbeat_outcomes)
                                                       and (point["id"] != transcript_family.POINT or transcript_complete)
+                                                      and (point["id"] != interrupted_turns.POINT or interrupted_complete)
                                                       and (point["id"] != heartbeat_scratch_acceptance.POINT or scratch_complete)
                                                       and (point["id"] != active_history_point or active_history_verified)
                                                       and (point["id"] not in overflow_points or overflow)

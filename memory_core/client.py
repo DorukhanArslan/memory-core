@@ -46,13 +46,13 @@ class _IndexedMemoryCurator(MemoryCurator):
     _index_after_write: Callable[[CurationResult], None] | None = None
 
     def dispatch(self, name: str, arguments: Mapping[str, object] | str | None = None, *,
-                 memory_flush: bool = False,
+                 memory_flush: bool = False, dated_daily_notes: bool = False,
                  write_provenance: MemoryWriteProvenanceObserver | None = None) -> dict:
         pending = {"pending": False}
         token = _curation_index_pending.set((self, pending))
         try:
             result = super().dispatch(name, arguments, memory_flush=memory_flush,
-                                      write_provenance=write_provenance)
+                                      write_provenance=write_provenance, dated_daily_notes=dated_daily_notes)
             if pending["pending"]:
                 result["indexStatus"] = "pending"
             return result

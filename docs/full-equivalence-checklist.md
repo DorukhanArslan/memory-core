@@ -57,6 +57,14 @@ Comparisons must not normalize away behavior. A platform-specific path, generate
 Entries remain pending until their complete acceptance conditions are verified against `v2026.9.9`. Their detailed acceptance points and stable identifiers are in [scope.json](../equivalence/scope.json). A helper that already exists in Python still needs the new differential evidence. A known difference must stay visible until its implementation and tests agree. Bounded passing subsets are recorded below without closing the containing contract.
 
 <!-- CURRENT-VERIFICATION-START -->
+On 27 November, independent review verified **123/128 conditions (+1)** on product `4a65fc2` against OpenClaw v2026.9.9 (`bcfc888`). All 122 previously verified conditions passed again. Of 1,667 cases, 1,663 matched and four differed. All 1,663 previously registered cases kept their status. The run recorded zero blocked cases and zero engine errors. Five conditions lack coverage and zero registered conditions remain unresolved. The full scope gate returned `fullScopePassed: false` and exit code 1. [Full comparison](https://github.com/DorukhanArslan/memory-core/actions/runs/45987128881) · [Independent recount](https://github.com/DorukhanArslan/memory-core/blob/95b108408409255cdf36c92ef627b50b0062440b/independent-review/interrupted-turn/README.md)
+
+**Newly verified condition.** `recovery.failure-publication.boundaries` covers what the next turn sees when a host stops during a write. Four paired cases matched in the SDK’s OpenClaw compatibility mode. Reopening the chat preserved the original note or the user’s later edit. When the host stopped before writing, the original note stayed absent. The model received an error for the missing result. A new request could save a separate note to its explicitly requested date without running the interrupted write again.
+
+Four diagnostic cases still differ. In the first search after a flush (F03), OpenClaw returned one result for `obsoletekiwi` in the 26 November run and zero in this run. F03 differed from the SDK in both runs. Both engines reproduced their previous full outputs for tool-result redaction (F08 and F09) and legacy date parsing (F15). The tracker lists the remaining conditions and release requirements. [Completion tracker](parity-completion-checklist.md)
+
+**Earlier measurements**
+
 On 26 November, independent review verified **122/128 conditions (+3)** on product `bb40b5c` against OpenClaw v2026.9.9 (`bcfc888`). All 119 previously verified conditions passed again. Of 1,663 cases, 1,659 matched and four differed. No cases were blocked and neither engine reported an error. Six conditions still lack coverage. No covered condition remains unresolved. The full scope gate returned `fullScopePassed: false` and exit code 1. [Full comparison](https://github.com/DorukhanArslan/memory-core/actions/runs/45840190038) · [Independent recount](https://github.com/DorukhanArslan/memory-core/blob/45ac3284219ac82bcec99353c5d5b896bdbae5d7/independent-review/remaining-memory-conditions/README.md)
 
 | Newly verified condition | What matched |
@@ -64,10 +72,6 @@ On 26 November, independent review verified **122/128 conditions (+3)** on produ
 | `sessions.transcript-filtering.boundaries` | All nine archive and transcript cases matched. In OpenClaw compatibility mode, replacing a compressed archive with one of equal size in the same millisecond returned the cached text. Changing the revision refreshed it, and deleting the archive made it unavailable. |
 | `prompt.bootstrap-discovery.boundaries` | All eleven cases matched. The default selection omitted the optional preferences file. In the legacy workspace, setup reported that migration was required and prompt selection returned an empty file list. |
 | `promotion.ranking-gates.boundaries` | All sixteen ranking cases matched. Both previews returned one candidate when its stored provenance was a number. The SDK still requires trusted provenance to publish the note. |
-
-Four registered examples still differ. They cover the first search after a flush (F03), reuse of a tool result after redaction (F08 and F09), and legacy date parsing (F15). The separate six open conditions and the release requirements are listed in the [completion tracker](parity-completion-checklist.md).
-
-**Earlier measurements**
 
 On 23 November the independent recount verified **119/128 conditions (+1)** on product `fc4aad3`. All 8 query synchronization boundary cases and all 39 heartbeat storage and migration cases matched. The warm retry used one index revision for the query and its stale-index warning. The next search found the note. Of 1,662 cases, 1,654 matched and 8 differed, with zero blocked cases or engine errors. 7 conditions lack coverage and 2 have unresolved comparisons. The full scope gate remains open (`fullScopePassed: false`, process exit 1). [Full comparison](https://github.com/DorukhanArslan/memory-core/actions/runs/45153594838) · [Independent recount](https://github.com/DorukhanArslan/memory-core/blob/9430a2cb23a6660f281adbeadb0fb1b926687fa4/independent-review/search-retry/README.md)
 
@@ -354,10 +358,10 @@ reaching 66/128 before the update/isolation and natural next-turn packages.
 
 | Contract status | Contracts | Verified conditions | Remaining conditions |
 | --- | ---: | ---: | ---: |
-| Complete | 58 | 116 | 0 |
-| Partial | 6 | 6 | 6 |
+| Complete | 59 | 118 | 0 |
+| Partial | 5 | 5 | 5 |
 | Pending verification | 0 | 0 | 0 |
-| Total | 64 | 122 | 6 |
+| Total | 64 | 123 | 5 |
 
 Pending verification can include existing implementation. Partial contracts retain one open
 condition. Infrastructure sections 1–3 remain **20/22 tasks completed**; infrastructure and
@@ -425,7 +429,7 @@ Current status of all 64 contracts:
 | 55 | `automation.job-state` | Complete | 2/2 |
 | 56 | `concurrency.workspace-locks` | Complete | 2/2 |
 | 57 | `recovery.repair-diagnostics` | Complete | 2/2 |
-| 58 | `recovery.failure-publication` | Partial | 1/2 |
+| 58 | `recovery.failure-publication` | Complete | 2/2 |
 | 59 | `engine.numeric-boundaries` | Complete | 2/2 |
 | 60 | `engine.unicode-collation` | Complete | 2/2 |
 | 61 | `engine.datetime-regex` | Complete | 2/2 |
@@ -543,7 +547,7 @@ pre-open race authority, full raw filesystem evidence and broader SDK-only limit
 
 - [x] **`concurrency.workspace-locks` — Match workspace lock semantics.** Exercise simultaneous writers in separate processes, lock timeout, owner death and stale recovery. Compare exclusion, lease/reclaim behavior and absence of cross-workspace interference.
 - [x] **`recovery.repair-diagnostics` — Match audit and repair outcomes.** Corrupt recall stores, indexes, provenance and lock artifacts independently. Compare diagnostic codes, retained valid state and repair effects without silently resetting data.
-- [ ] **`recovery.failure-publication` — Match interrupted operation recovery.** Interrupt write, index, flush, consolidation, forget and diary publication at defined boundaries. Compare next-open behavior, partial outcomes, unknown operations and retry policy.
+- [x] **`recovery.failure-publication` — Match interrupted operation recovery.** Interrupt write, index, flush, consolidation, forget and diary publication at defined boundaries. Compare next-open behavior, partial outcomes, unknown operations and retry policy.
 
 ### Cross-language boundaries
 

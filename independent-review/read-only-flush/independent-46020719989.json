@@ -1,0 +1,2140 @@
+{
+  "kind": "independent-full-scope-recount",
+  "run": 46020719989,
+  "measurement": "232aa039a89ee84075eeca8d713817e8b8f6517c",
+  "product": "44b4eb2a95dfab2daacf43bd08c9c9f12dc6074c",
+  "reference": {
+    "tag": "v2026.9.9",
+    "commit": "bcfc88812a35243893585dbeca87ca41b48272ca",
+    "tree": "702b8f6a50264e8de42f105992aff6406b073275",
+    "nodeVersion": "v24.16.0",
+    "packageVersion": "2026.9.9",
+    "packageSha256": "09f313df5a3b93723c7f408bba1887e9978156bbcfd4fa0b3c3bccb61c4779c8"
+  },
+  "sdk": {
+    "sourceSha256": "a9a9c030ef3c63428e540948e2dd47a3ce2f070facab5933ecb7c73addf2cdd9",
+    "sourceFiles": 185
+  },
+  "sdkTree": "3cff7b7f57c222f960ec162dd144bcb2695ad3f1",
+  "scopeSha256": "a8e066e63970dd0be734485d62a5932640894b8c0a42f47ac3eb67f784cbc7b9",
+  "catalogSha256": "468d7a01efc95c1c75cfb102e029f2b55a31c170fd41b08e42ff37f1a5ebde59",
+  "archive": {
+    "id": 15222490229,
+    "sha256": "73339d91421c91cf78c82775560b16f2fd7dce8bb77ad7cb5117e3b39dc16e85",
+    "bytes": 381755
+  },
+  "report": {
+    "path": "/home/runner/work/memory-core/memory-core/.equivalence-results/full.json",
+    "bytes": 1921734814,
+    "sha256": "3237726cc9e37ceb4c8cff50830c9750857c8536899e59a017f8696d139c3c05"
+  },
+  "conditions": 128,
+  "registeredCases": 1670,
+  "unchangedPrefix": 1667,
+  "verified": 124,
+  "remaining": 4,
+  "uncovered": 4,
+  "registeredUnresolved": 0,
+  "contracts": {
+    "complete": 60,
+    "partial": 4
+  },
+  "cases": {
+    "matched": 1666,
+    "mismatched": 4,
+    "blocked": 0
+  },
+  "families": {
+    "deep-consolidation-runtime": true,
+    "embed-cache-lifecycle-runtime": true,
+    "engine.numeric-boundaries": true,
+    "forget-boundaries-runtime": true,
+    "forget-index-fence-v6-runtime": true,
+    "forget-lineage-runtime": true,
+    "host-restart-session-runtime": true,
+    "host-turn-barrier-boundaries-runtime": true,
+    "host-turn-barrier-v4-runtime": true,
+    "host-update-isolation-runtime": true,
+    "index-identity-boundaries-runtime": true,
+    "prompt-history-repair-runtime": true,
+    "prompt-runtime-context-runtime": true,
+    "query-sync-boundaries-runtime": true,
+    "query-sync-outcomes-runtime": true,
+    "recall-signals-runtime": true,
+    "session-reset-boundaries-runtime": true,
+    "interrupted-turn-recovery-runtime": true,
+    "transcript-boundary-runtime": true,
+    "heartbeat-scratch-outcomes-runtime": true,
+    "engine.datetime-regex.boundaries": true,
+    "trust.configured-redaction.outcomes": true,
+    "trust.secret-redaction.boundaries": true,
+    "engine-unicode-collation": true,
+    "recovery-forget-interruption-runtime": true,
+    "engine.datetime-regex": true,
+    "provider-overflow-host-runtime": true,
+    "flush-plan-target-runtime": true,
+    "flush.plan-target.boundaries": true,
+    "recovery.repair-diagnostics": true,
+    "heartbeat-turn-outcomes-runtime": true,
+    "heartbeat.turn-decisions.boundaries": true,
+    "dream-light-runtime": true,
+    "dream-rem-runtime": true,
+    "dream-deep-runtime": true,
+    "dream-diary-publication-runtime": true,
+    "automation-job-state-runtime": true,
+    "automation-job-outcomes-runtime": true,
+    "compaction.context-assembly.outcomes": true,
+    "compaction-assembly-restart-runtime": true,
+    "workspace-lock-process-runtime": true
+  },
+  "points": [
+    {
+      "id": "storage.discovery.outcomes",
+      "verified": true
+    },
+    {
+      "id": "storage.discovery.boundaries",
+      "verified": true
+    },
+    {
+      "id": "storage.path-safety.outcomes",
+      "verified": true
+    },
+    {
+      "id": "storage.path-safety.boundaries",
+      "verified": true
+    },
+    {
+      "id": "storage.atomic-writes.outcomes",
+      "verified": true
+    },
+    {
+      "id": "storage.atomic-writes.boundaries",
+      "verified": true
+    },
+    {
+      "id": "storage.workspace-isolation.outcomes",
+      "verified": true
+    },
+    {
+      "id": "storage.workspace-isolation.boundaries",
+      "verified": true
+    },
+    {
+      "id": "lexical.tokenization.tokens",
+      "verified": true
+    },
+    {
+      "id": "lexical.tokenization.generated",
+      "verified": true
+    },
+    {
+      "id": "lexical.fts-query.query",
+      "verified": true
+    },
+    {
+      "id": "lexical.fts-query.generated",
+      "verified": true
+    },
+    {
+      "id": "lexical.bm25.ranks",
+      "verified": true
+    },
+    {
+      "id": "lexical.bm25.boundaries",
+      "verified": true
+    },
+    {
+      "id": "chunking.markdown-boundaries.outcomes",
+      "verified": true
+    },
+    {
+      "id": "chunking.markdown-boundaries.boundaries",
+      "verified": true
+    },
+    {
+      "id": "chunking.utf16-cjk-budget.outcomes",
+      "verified": true
+    },
+    {
+      "id": "chunking.utf16-cjk-budget.boundaries",
+      "verified": true
+    },
+    {
+      "id": "chunking.entry-provenance.outcomes",
+      "verified": true
+    },
+    {
+      "id": "chunking.entry-provenance.boundaries",
+      "verified": true
+    },
+    {
+      "id": "indexing.identity.outcomes",
+      "verified": true
+    },
+    {
+      "id": "indexing.identity.boundaries",
+      "verified": true
+    },
+    {
+      "id": "indexing.incremental-sync.outcomes",
+      "verified": true
+    },
+    {
+      "id": "indexing.incremental-sync.boundaries",
+      "verified": true
+    },
+    {
+      "id": "indexing.transaction-publication.outcomes",
+      "verified": true
+    },
+    {
+      "id": "indexing.transaction-publication.boundaries",
+      "verified": true
+    },
+    {
+      "id": "indexing.embedding-cache.outcomes",
+      "verified": true
+    },
+    {
+      "id": "indexing.embedding-cache.boundaries",
+      "verified": true
+    },
+    {
+      "id": "indexing.query-sync.outcomes",
+      "verified": true
+    },
+    {
+      "id": "indexing.query-sync.boundaries",
+      "verified": true
+    },
+    {
+      "id": "retrieval.vector-scoring.outcomes",
+      "verified": true
+    },
+    {
+      "id": "retrieval.vector-scoring.boundaries",
+      "verified": true
+    },
+    {
+      "id": "retrieval.hybrid-scoring.outcomes",
+      "verified": true
+    },
+    {
+      "id": "retrieval.hybrid-scoring.boundaries",
+      "verified": true
+    },
+    {
+      "id": "retrieval.exact-path-priority.outcomes",
+      "verified": true
+    },
+    {
+      "id": "retrieval.exact-path-priority.boundaries",
+      "verified": true
+    },
+    {
+      "id": "retrieval.mmr.order",
+      "verified": true
+    },
+    {
+      "id": "retrieval.mmr.text-boundaries",
+      "verified": true
+    },
+    {
+      "id": "retrieval.temporal-decay.time-inputs",
+      "verified": true
+    },
+    {
+      "id": "retrieval.temporal-decay.sources",
+      "verified": true
+    },
+    {
+      "id": "retrieval.importance-project.outcomes",
+      "verified": true
+    },
+    {
+      "id": "retrieval.importance-project.boundaries",
+      "verified": true
+    },
+    {
+      "id": "tools.search-contract.outcomes",
+      "verified": true
+    },
+    {
+      "id": "tools.search-contract.boundaries",
+      "verified": true
+    },
+    {
+      "id": "tools.get-contract.outcomes",
+      "verified": true
+    },
+    {
+      "id": "tools.get-contract.boundaries",
+      "verified": true
+    },
+    {
+      "id": "tools.deadline-cooldown.outcomes",
+      "verified": true
+    },
+    {
+      "id": "tools.deadline-cooldown.boundaries",
+      "verified": true
+    },
+    {
+      "id": "tools.unavailable-partial.outcomes",
+      "verified": true
+    },
+    {
+      "id": "tools.unavailable-partial.boundaries",
+      "verified": true
+    },
+    {
+      "id": "sessions.corpus-admission.outcomes",
+      "verified": true
+    },
+    {
+      "id": "sessions.corpus-admission.boundaries",
+      "verified": true
+    },
+    {
+      "id": "sessions.transcript-filtering.outcomes",
+      "verified": true
+    },
+    {
+      "id": "sessions.transcript-filtering.boundaries",
+      "verified": true
+    },
+    {
+      "id": "sessions.visibility-lineage.outcomes",
+      "verified": true
+    },
+    {
+      "id": "sessions.visibility-lineage.boundaries",
+      "verified": true
+    },
+    {
+      "id": "sessions.reset-hook.outcomes",
+      "verified": false
+    },
+    {
+      "id": "sessions.reset-hook.boundaries",
+      "verified": true
+    },
+    {
+      "id": "sessions.durable-context.outcomes",
+      "verified": true
+    },
+    {
+      "id": "sessions.durable-context.boundaries",
+      "verified": true
+    },
+    {
+      "id": "prompt.bootstrap-discovery.outcomes",
+      "verified": true
+    },
+    {
+      "id": "prompt.bootstrap-discovery.boundaries",
+      "verified": true
+    },
+    {
+      "id": "prompt.bootstrap-budget.outcomes",
+      "verified": true
+    },
+    {
+      "id": "prompt.bootstrap-budget.boundaries",
+      "verified": true
+    },
+    {
+      "id": "prompt.runtime-context.outcomes",
+      "verified": true
+    },
+    {
+      "id": "prompt.runtime-context.boundaries",
+      "verified": true
+    },
+    {
+      "id": "prompt.history-repair.outcomes",
+      "verified": true
+    },
+    {
+      "id": "prompt.history-repair.boundaries",
+      "verified": true
+    },
+    {
+      "id": "flush.plan-target.outcomes",
+      "verified": true
+    },
+    {
+      "id": "flush.plan-target.boundaries",
+      "verified": true
+    },
+    {
+      "id": "flush.trigger-usage.outcomes",
+      "verified": true
+    },
+    {
+      "id": "flush.trigger-usage.boundaries",
+      "verified": true
+    },
+    {
+      "id": "flush.execute-finalize.outcomes",
+      "verified": true
+    },
+    {
+      "id": "flush.execute-finalize.boundaries",
+      "verified": false
+    },
+    {
+      "id": "compaction.memory-budget.outcomes",
+      "verified": true
+    },
+    {
+      "id": "compaction.memory-budget.boundaries",
+      "verified": true
+    },
+    {
+      "id": "compaction.context-assembly.outcomes",
+      "verified": true
+    },
+    {
+      "id": "compaction.context-assembly.boundaries",
+      "verified": true
+    },
+    {
+      "id": "compaction.provider-overflow.outcomes",
+      "verified": true
+    },
+    {
+      "id": "compaction.provider-overflow.boundaries",
+      "verified": true
+    },
+    {
+      "id": "promotion.recall-signals.outcomes",
+      "verified": true
+    },
+    {
+      "id": "promotion.recall-signals.boundaries",
+      "verified": true
+    },
+    {
+      "id": "promotion.ranking-gates.outcomes",
+      "verified": true
+    },
+    {
+      "id": "promotion.ranking-gates.boundaries",
+      "verified": true
+    },
+    {
+      "id": "promotion.apply-reconcile.outcomes",
+      "verified": true
+    },
+    {
+      "id": "promotion.apply-reconcile.boundaries",
+      "verified": true
+    },
+    {
+      "id": "promotion.deep-consolidation.outcomes",
+      "verified": true
+    },
+    {
+      "id": "promotion.deep-consolidation.boundaries",
+      "verified": true
+    },
+    {
+      "id": "dreaming.light.outcomes",
+      "verified": true
+    },
+    {
+      "id": "dreaming.light.boundaries",
+      "verified": true
+    },
+    {
+      "id": "dreaming.rem.outcomes",
+      "verified": true
+    },
+    {
+      "id": "dreaming.rem.boundaries",
+      "verified": true
+    },
+    {
+      "id": "dreaming.deep.outcomes",
+      "verified": true
+    },
+    {
+      "id": "dreaming.deep.boundaries",
+      "verified": true
+    },
+    {
+      "id": "dreaming.diary-provenance.outcomes",
+      "verified": true
+    },
+    {
+      "id": "dreaming.diary-provenance.boundaries",
+      "verified": true
+    },
+    {
+      "id": "forget.lineage-tombstones.outcomes",
+      "verified": true
+    },
+    {
+      "id": "forget.lineage-tombstones.boundaries",
+      "verified": true
+    },
+    {
+      "id": "forget.index-fence.outcomes",
+      "verified": true
+    },
+    {
+      "id": "forget.index-fence.boundaries",
+      "verified": true
+    },
+    {
+      "id": "trust.secret-redaction.outcomes",
+      "verified": false
+    },
+    {
+      "id": "trust.secret-redaction.boundaries",
+      "verified": true
+    },
+    {
+      "id": "trust.configured-redaction.outcomes",
+      "verified": true
+    },
+    {
+      "id": "trust.configured-redaction.boundaries",
+      "verified": true
+    },
+    {
+      "id": "heartbeat.scratch.outcomes",
+      "verified": true
+    },
+    {
+      "id": "heartbeat.scratch.boundaries",
+      "verified": false
+    },
+    {
+      "id": "heartbeat.turn-decisions.outcomes",
+      "verified": true
+    },
+    {
+      "id": "heartbeat.turn-decisions.boundaries",
+      "verified": true
+    },
+    {
+      "id": "automation.job-state.outcomes",
+      "verified": true
+    },
+    {
+      "id": "automation.job-state.boundaries",
+      "verified": true
+    },
+    {
+      "id": "concurrency.workspace-locks.outcomes",
+      "verified": true
+    },
+    {
+      "id": "concurrency.workspace-locks.boundaries",
+      "verified": true
+    },
+    {
+      "id": "recovery.repair-diagnostics.outcomes",
+      "verified": true
+    },
+    {
+      "id": "recovery.repair-diagnostics.boundaries",
+      "verified": true
+    },
+    {
+      "id": "recovery.failure-publication.outcomes",
+      "verified": true
+    },
+    {
+      "id": "recovery.failure-publication.boundaries",
+      "verified": true
+    },
+    {
+      "id": "engine.numeric-boundaries.outcomes",
+      "verified": true
+    },
+    {
+      "id": "engine.numeric-boundaries.boundaries",
+      "verified": true
+    },
+    {
+      "id": "engine.unicode-collation.outcomes",
+      "verified": true
+    },
+    {
+      "id": "engine.unicode-collation.boundaries",
+      "verified": true
+    },
+    {
+      "id": "engine.datetime-regex.outcomes",
+      "verified": true
+    },
+    {
+      "id": "engine.datetime-regex.boundaries",
+      "verified": true
+    },
+    {
+      "id": "host.turn-barrier.outcomes",
+      "verified": true
+    },
+    {
+      "id": "host.turn-barrier.boundaries",
+      "verified": true
+    },
+    {
+      "id": "host.restart-recall.outcomes",
+      "verified": true
+    },
+    {
+      "id": "host.restart-recall.boundaries",
+      "verified": true
+    },
+    {
+      "id": "host.update-isolation.outcomes",
+      "verified": true
+    },
+    {
+      "id": "host.update-isolation.boundaries",
+      "verified": true
+    }
+  ],
+  "netChange": 1,
+  "gained": [
+    "flush.plan-target.boundaries"
+  ],
+  "lost": [],
+  "uncoveredIds": [
+    "sessions.reset-hook.outcomes",
+    "flush.execute-finalize.boundaries",
+    "trust.secret-redaction.outcomes",
+    "heartbeat.scratch.boundaries"
+  ],
+  "unresolvedIds": [],
+  "changedOriginalCaseStatuses": {},
+  "previousMismatchWholeValues": {
+    "flush-execution-warm-index-first-recall": {
+      "status": "mismatched",
+      "before": {
+        "openclaw": "4cdb2aa71ea06ed46a094e47e3739276fae9238c4480d82a6eee896d6451b569",
+        "python": "f5f748474b212ead4420d77fe1a6c3ba3425db777e1f15c318be567057925802"
+      },
+      "after": {
+        "openclaw": "208c57d0be33f822c949bc0dd3a4136e11593b56d6e07a91f32f665cb5cdcf3f",
+        "python": "f5f748474b212ead4420d77fe1a6c3ba3425db777e1f15c318be567057925802"
+      },
+      "wholeValuesRead": true
+    },
+    "model-tool-complete-tool-result": {
+      "status": "mismatched",
+      "before": {
+        "openclaw": "a3135c0aa970596a5ce0fe2abb7ab26d5a0f0f5db784e56549d10627f04ca45f",
+        "python": "b2c845eacfc95324d39fabc14b082805f624a507990628553ae73af2d092255c"
+      },
+      "after": {
+        "openclaw": "a3135c0aa970596a5ce0fe2abb7ab26d5a0f0f5db784e56549d10627f04ca45f",
+        "python": "b2c845eacfc95324d39fabc14b082805f624a507990628553ae73af2d092255c"
+      },
+      "wholeValuesRead": true
+    },
+    "model-tool-utf16-redaction-truncation-order": {
+      "status": "mismatched",
+      "before": {
+        "openclaw": "da86e568f2f9e385369483a11979d9ee6999c1bd41fdd7f7f6bded6ac6182129",
+        "python": "07d49892bce1b138d57f27e57cc122ae1765ad76666c47a8983c3d2359086d1d"
+      },
+      "after": {
+        "openclaw": "da86e568f2f9e385369483a11979d9ee6999c1bd41fdd7f7f6bded6ac6182129",
+        "python": "07d49892bce1b138d57f27e57cc122ae1765ad76666c47a8983c3d2359086d1d"
+      },
+      "wholeValuesRead": true
+    },
+    "engine-datetime-unverified-legacy-grammar": {
+      "status": "mismatched",
+      "before": {
+        "openclaw": "2894a4e3507c76c6ae0262b13b5627903bcb966471bcd7df529f0a1c81afdb49",
+        "python": "6e70c4b4022bb834969d2d37855927adbeab4cd06c4503907cf57a8156941fe7"
+      },
+      "after": {
+        "openclaw": "2894a4e3507c76c6ae0262b13b5627903bcb966471bcd7df529f0a1c81afdb49",
+        "python": "6e70c4b4022bb834969d2d37855927adbeab4cd06c4503907cf57a8156941fe7"
+      },
+      "wholeValuesRead": true
+    }
+  },
+  "resolvedHistoricalWholeValues": {
+    "transcript-boundary-compressed-same-size-mtime-cache-diagnostic": {
+      "status": "matched",
+      "before": {
+        "openclaw": "8f6db98b6ee9e807a5441407b35092d7b29a42d09d4745212a8f343b80044ad2",
+        "python": "8f6db98b6ee9e807a5441407b35092d7b29a42d09d4745212a8f343b80044ad2"
+      },
+      "after": {
+        "openclaw": "8f6db98b6ee9e807a5441407b35092d7b29a42d09d4745212a8f343b80044ad2",
+        "python": "8f6db98b6ee9e807a5441407b35092d7b29a42d09d4745212a8f343b80044ad2"
+      }
+    },
+    "bootstrap-discovery-memory-core-layout-extension": {
+      "status": "matched",
+      "before": {
+        "openclaw": "46c3d401bd850bbfb4fa529e3bef93680d0f88c0d8c1df9832a2fbb68f4043a9",
+        "python": "46c3d401bd850bbfb4fa529e3bef93680d0f88c0d8c1df9832a2fbb68f4043a9"
+      },
+      "after": {
+        "openclaw": "46c3d401bd850bbfb4fa529e3bef93680d0f88c0d8c1df9832a2fbb68f4043a9",
+        "python": "46c3d401bd850bbfb4fa529e3bef93680d0f88c0d8c1df9832a2fbb68f4043a9"
+      }
+    },
+    "bootstrap-discovery-legacy-state-gate": {
+      "status": "matched",
+      "before": {
+        "openclaw": "0c17c9620066864fed5e7643e4cb638e91b6691dfa3f4a4156d37abc2890dcb1",
+        "python": "0c17c9620066864fed5e7643e4cb638e91b6691dfa3f4a4156d37abc2890dcb1"
+      },
+      "after": {
+        "openclaw": "0c17c9620066864fed5e7643e4cb638e91b6691dfa3f4a4156d37abc2890dcb1",
+        "python": "0c17c9620066864fed5e7643e4cb638e91b6691dfa3f4a4156d37abc2890dcb1"
+      }
+    },
+    "promotion-ranking-primitive-provenance-safety-diagnostic": {
+      "status": "matched",
+      "before": {
+        "openclaw": "ce9199b6cadbcca42e7b2e918271317c69a6cffdd0d6ca542227ca2457c94715",
+        "python": "927ce8e454c1461128cff26390cfcbcdd1ceaf19925b7fcaaeb90d6494394403"
+      },
+      "after": {
+        "openclaw": "ce9199b6cadbcca42e7b2e918271317c69a6cffdd0d6ca542227ca2457c94715",
+        "python": "927ce8e454c1461128cff26390cfcbcdd1ceaf19925b7fcaaeb90d6494394403"
+      }
+    }
+  },
+  "appendedCases": [
+    {
+      "id": "flush-plan-boundary-two-names-read-only",
+      "status": "matched",
+      "covers": [
+        "flush.plan-target.boundaries"
+      ]
+    },
+    {
+      "id": "flush-plan-boundary-single-name-read-only",
+      "status": "matched",
+      "covers": [
+        "flush.plan-target.boundaries"
+      ]
+    },
+    {
+      "id": "flush-plan-boundary-occupied-daily-directory",
+      "status": "matched",
+      "covers": [
+        "flush.plan-target.boundaries"
+      ]
+    }
+  ],
+  "flushPrerequisites": {
+    "diagnostics": {
+      "matched": 92
+    },
+    "automatic": {
+      "matched": 13
+    },
+    "diagnosticDefinitionsSha256": "dc23c90f17528f6e93699bcf884a61d234dd7a0a25fc535ce8be4395d72243cd",
+    "automaticDefinitionsSha256": "9f267bf12f48571239cffdc724b3e85e5e5f6dd9ca7267eaedde170e0d2ab36c",
+    "diagnosticWholeResultPairsRead": 92,
+    "automaticWholeResultPairsRead": 13,
+    "diagnosticWholeResultDigestsSha256": "6297348aad7c9186c832c6fad339a52e52fee732b32ed9ecd0ecfd0ab4909363",
+    "automaticWholeResultDigestsSha256": "b62181b0212690f691487743d58c573b0460249432def7851e71ce1d6e09c2ab"
+  },
+  "flushBoundaryObservations": {
+    "flush-plan-boundary-two-names-read-only": {
+      "status": "matched",
+      "verifiedBoundary": {
+        "openclaw": true,
+        "python": true
+      },
+      "publicValueSha256": {
+        "openclaw": "4b171090364e681026d65504a8f931e324d8a666f635586b93c53684722a99eb",
+        "python": "4b171090364e681026d65504a8f931e324d8a666f635586b93c53684722a99eb"
+      },
+      "receipt": {
+        "id": "flush-plan-boundary-two-names-read-only",
+        "publicMatch": true,
+        "validated": true,
+        "nativeRawSha256": "a20e55918a4f3ea2b7dbcdb465555619bde0c355bc7c6f38af62aba275fe60e3",
+        "sdkRawSha256": "1f0fbba2ae4b1c9da8400a6c3dad3e3924ecf76d4b651897cc5463b9b6369a3a",
+        "nativeRawFileBytes": 22154,
+        "sdkRawFileBytes": 22836,
+        "outcome": "completed",
+        "nativeWorkspaceEntries": 3,
+        "sdkWorkspaceEntries": 9,
+        "selectedModelCandidates": 1,
+        "nativeModelAttempts": 1,
+        "protectedWorkerThreads": 3,
+        "fixtureSourceCaptures": 2,
+        "originalStdoutSha256": "2a8c0f924b0dfeac7a7f6dbbed57e3d863685eef761cfe331638ec85d3e0fd73",
+        "originalStderrSha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+        "aliasWitnesses": {
+          "openclaw": [
+            {
+              "target": {
+                "dev": "2049",
+                "ino": "9033541",
+                "nlink": 2
+              },
+              "alias": {
+                "dev": "2049",
+                "ino": "9033541",
+                "nlink": 2
+              }
+            },
+            {
+              "target": {
+                "dev": "2049",
+                "ino": "9033541",
+                "nlink": 2
+              },
+              "alias": {
+                "dev": "2049",
+                "ino": "9033541",
+                "nlink": 2
+              }
+            },
+            {
+              "target": {
+                "dev": "2049",
+                "ino": "9033541",
+                "nlink": 2
+              },
+              "alias": {
+                "dev": "2049",
+                "ino": "9033541",
+                "nlink": 2
+              }
+            }
+          ],
+          "python": [
+            {
+              "target": {
+                "dev": "2049",
+                "ino": "9039397",
+                "nlink": 2
+              },
+              "alias": {
+                "dev": "2049",
+                "ino": "9039397",
+                "nlink": 2
+              }
+            },
+            {
+              "target": {
+                "dev": "2049",
+                "ino": "9039397",
+                "nlink": 2
+              },
+              "alias": {
+                "dev": "2049",
+                "ino": "9039397",
+                "nlink": 2
+              }
+            },
+            {
+              "target": {
+                "dev": "2049",
+                "ino": "9039397",
+                "nlink": 2
+              },
+              "alias": {
+                "dev": "2049",
+                "ino": "9039397",
+                "nlink": 2
+              }
+            }
+          ]
+        },
+        "modelReplies": {
+          "openclaw": [
+            {
+              "role": "assistant",
+              "content": [
+                {
+                  "type": "text",
+                  "text": "NO_REPLY"
+                }
+              ],
+              "api": "openai-completions",
+              "provider": "fixture-memory-model",
+              "model": "scripted-model",
+              "stopReason": "stop",
+              "timestamp": 1795797775237,
+              "usage": {
+                "input": 1,
+                "output": 1,
+                "cacheRead": 0,
+                "cacheWrite": 0,
+                "totalTokens": 2,
+                "cost": {
+                  "input": 0,
+                  "output": 0,
+                  "cacheRead": 0,
+                  "cacheWrite": 0,
+                  "total": 0
+                }
+              }
+            }
+          ],
+          "python": [
+            {
+              "role": "assistant",
+              "content": [
+                {
+                  "type": "text",
+                  "text": "NO_REPLY"
+                }
+              ]
+            }
+          ]
+        },
+        "toolResults": {
+          "openclaw": [],
+          "python": []
+        }
+      },
+      "public": {
+        "openclaw": {
+          "provider": "none",
+          "plans": [
+            {
+              "softThresholdTokens": 30000,
+              "forceFlushTranscriptBytes": 2097152,
+              "reserveTokensFloor": 19999,
+              "prompt": "Pre-compaction memory flush. Store durable memories only in memory/2026-01-01.md (create memory/ if needed). Treat workspace bootstrap/reference files such as MEMORY.md, DREAMS.md, SOUL.md, and AGENTS.md as read-only during this flush; never overwrite, replace, or edit them. If memory/2026-01-01.md already exists, APPEND new content only and do not overwrite existing entries. Do NOT create timestamped variant files (e.g., 2026-01-01-HHMM.md); always use the canonical 2026-01-01.md filename. If nothing to store, reply with NO_REPLY.\nCurrent time: Thursday, January 1st, 2026 - 10:05 PM (UTC)\nReference UTC: 2026-01-01 22:05 UTC",
+              "systemPrompt": "Pre-compaction memory flush turn. The session is near auto-compaction; capture durable memories to disk. Store durable memories only in memory/2026-01-01.md (create memory/ if needed). Treat workspace bootstrap/reference files such as MEMORY.md, DREAMS.md, SOUL.md, and AGENTS.md as read-only during this flush; never overwrite, replace, or edit them. If memory/2026-01-01.md already exists, APPEND new content only and do not overwrite existing entries. You may reply, but usually NO_REPLY is correct.",
+              "relativePath": "memory/2026-01-01.md"
+            },
+            {
+              "softThresholdTokens": 30000,
+              "forceFlushTranscriptBytes": 2097152,
+              "reserveTokensFloor": 19999,
+              "prompt": "Pre-compaction memory flush. Store durable memories only in memory/2026-01-01.md (create memory/ if needed). Treat workspace bootstrap/reference files such as MEMORY.md, DREAMS.md, SOUL.md, and AGENTS.md as read-only during this flush; never overwrite, replace, or edit them. If memory/2026-01-01.md already exists, APPEND new content only and do not overwrite existing entries. Do NOT create timestamped variant files (e.g., 2026-01-01-HHMM.md); always use the canonical 2026-01-01.md filename. If nothing to store, reply with NO_REPLY.\nCurrent time: Thursday, January 1st, 2026 - 10:05 PM (UTC)\nReference UTC: 2026-01-01 22:05 UTC",
+              "systemPrompt": "Pre-compaction memory flush turn. The session is near auto-compaction; capture durable memories to disk. Store durable memories only in memory/2026-01-01.md (create memory/ if needed). Treat workspace bootstrap/reference files such as MEMORY.md, DREAMS.md, SOUL.md, and AGENTS.md as read-only during this flush; never overwrite, replace, or edit them. If memory/2026-01-01.md already exists, APPEND new content only and do not overwrite existing entries. You may reply, but usually NO_REPLY is correct.",
+              "relativePath": "memory/2026-01-01.md"
+            }
+          ],
+          "selection": {
+            "provider": "fixture-memory-model",
+            "model": "scripted-model",
+            "requestedRouteResolution": {
+              "kind": "undefined"
+            },
+            "fallbacksOverride": {
+              "kind": "undefined"
+            }
+          },
+          "candidates": [
+            {
+              "provider": "fixture-memory-model",
+              "model": "scripted-model"
+            }
+          ],
+          "replies": [
+            "NO_REPLY"
+          ],
+          "outcome": "completed",
+          "stamp": {
+            "kind": "succeeded",
+            "compactionCount": 0
+          },
+          "files": {
+            "memory": {
+              "kind": "directory"
+            },
+            "memory/2026-01-01.md": {
+              "kind": "file",
+              "base64": "Q2FtcHVzIG5vdGUg4oCTIGZpcnN0IGxpbmUuClNlY29uZCBsaW5lIHN0YXlzIGhlcmUuCg==",
+              "linkedAs": [
+                "memory/2026-01-01.md",
+                "memory/campus-notes.md"
+              ]
+            },
+            "memory/campus-notes.md": {
+              "kind": "file",
+              "base64": "Q2FtcHVzIG5vdGUg4oCTIGZpcnN0IGxpbmUuClNlY29uZCBsaW5lIHN0YXlzIGhlcmUuCg==",
+              "linkedAs": [
+                "memory/2026-01-01.md",
+                "memory/campus-notes.md"
+              ]
+            }
+          }
+        },
+        "python": {
+          "provider": "none",
+          "plans": [
+            {
+              "softThresholdTokens": 30000,
+              "forceFlushTranscriptBytes": 2097152,
+              "reserveTokensFloor": 19999,
+              "prompt": "Pre-compaction memory flush. Store durable memories only in memory/2026-01-01.md (create memory/ if needed). Treat workspace bootstrap/reference files such as MEMORY.md, DREAMS.md, SOUL.md, and AGENTS.md as read-only during this flush; never overwrite, replace, or edit them. If memory/2026-01-01.md already exists, APPEND new content only and do not overwrite existing entries. Do NOT create timestamped variant files (e.g., 2026-01-01-HHMM.md); always use the canonical 2026-01-01.md filename. If nothing to store, reply with NO_REPLY.\nCurrent time: Thursday, January 1st, 2026 - 10:05 PM (UTC)\nReference UTC: 2026-01-01 22:05 UTC",
+              "systemPrompt": "Pre-compaction memory flush turn. The session is near auto-compaction; capture durable memories to disk. Store durable memories only in memory/2026-01-01.md (create memory/ if needed). Treat workspace bootstrap/reference files such as MEMORY.md, DREAMS.md, SOUL.md, and AGENTS.md as read-only during this flush; never overwrite, replace, or edit them. If memory/2026-01-01.md already exists, APPEND new content only and do not overwrite existing entries. You may reply, but usually NO_REPLY is correct.",
+              "relativePath": "memory/2026-01-01.md"
+            },
+            {
+              "softThresholdTokens": 30000,
+              "forceFlushTranscriptBytes": 2097152,
+              "reserveTokensFloor": 19999,
+              "prompt": "Pre-compaction memory flush. Store durable memories only in memory/2026-01-01.md (create memory/ if needed). Treat workspace bootstrap/reference files such as MEMORY.md, DREAMS.md, SOUL.md, and AGENTS.md as read-only during this flush; never overwrite, replace, or edit them. If memory/2026-01-01.md already exists, APPEND new content only and do not overwrite existing entries. Do NOT create timestamped variant files (e.g., 2026-01-01-HHMM.md); always use the canonical 2026-01-01.md filename. If nothing to store, reply with NO_REPLY.\nCurrent time: Thursday, January 1st, 2026 - 10:05 PM (UTC)\nReference UTC: 2026-01-01 22:05 UTC",
+              "systemPrompt": "Pre-compaction memory flush turn. The session is near auto-compaction; capture durable memories to disk. Store durable memories only in memory/2026-01-01.md (create memory/ if needed). Treat workspace bootstrap/reference files such as MEMORY.md, DREAMS.md, SOUL.md, and AGENTS.md as read-only during this flush; never overwrite, replace, or edit them. If memory/2026-01-01.md already exists, APPEND new content only and do not overwrite existing entries. You may reply, but usually NO_REPLY is correct.",
+              "relativePath": "memory/2026-01-01.md"
+            }
+          ],
+          "selection": {
+            "provider": "fixture-memory-model",
+            "model": "scripted-model",
+            "fallbacksOverride": {
+              "kind": "undefined"
+            },
+            "requestedRouteResolution": {
+              "kind": "undefined"
+            }
+          },
+          "candidates": [
+            {
+              "provider": "fixture-memory-model",
+              "model": "scripted-model"
+            }
+          ],
+          "files": {
+            "memory": {
+              "kind": "directory"
+            },
+            "memory/2026-01-01.md": {
+              "kind": "file",
+              "base64": "Q2FtcHVzIG5vdGUg4oCTIGZpcnN0IGxpbmUuClNlY29uZCBsaW5lIHN0YXlzIGhlcmUuCg==",
+              "linkedAs": [
+                "memory/2026-01-01.md",
+                "memory/campus-notes.md"
+              ]
+            },
+            "memory/campus-notes.md": {
+              "kind": "file",
+              "base64": "Q2FtcHVzIG5vdGUg4oCTIGZpcnN0IGxpbmUuClNlY29uZCBsaW5lIHN0YXlzIGhlcmUuCg==",
+              "linkedAs": [
+                "memory/2026-01-01.md",
+                "memory/campus-notes.md"
+              ]
+            }
+          },
+          "outcome": "completed",
+          "stamp": {
+            "kind": "succeeded",
+            "compactionCount": 0
+          },
+          "replies": [
+            "NO_REPLY"
+          ]
+        }
+      }
+    },
+    "flush-plan-boundary-single-name-read-only": {
+      "status": "matched",
+      "verifiedBoundary": {
+        "openclaw": true,
+        "python": true
+      },
+      "publicValueSha256": {
+        "openclaw": "8ff6b8eb4551826b882c4454376c5fe791bf7c01b550b727db0f8387459965de",
+        "python": "8ff6b8eb4551826b882c4454376c5fe791bf7c01b550b727db0f8387459965de"
+      },
+      "receipt": {
+        "id": "flush-plan-boundary-single-name-read-only",
+        "publicMatch": true,
+        "validated": true,
+        "nativeRawSha256": "ed5944b086e7f509cc669e345d41016716f9b6c0ca82f71bd964dadffde831ca",
+        "sdkRawSha256": "65506e16b42f25278017b94538e3e3120e55c213536f757f89356f44c1be1d64",
+        "nativeRawFileBytes": 20374,
+        "sdkRawFileBytes": 20951,
+        "outcome": "completed",
+        "nativeWorkspaceEntries": 2,
+        "sdkWorkspaceEntries": 8,
+        "selectedModelCandidates": 1,
+        "nativeModelAttempts": 1,
+        "protectedWorkerThreads": 3,
+        "fixtureSourceCaptures": 2,
+        "originalStdoutSha256": "88978c95fb93456e0733bbed7db4c91f02310110371f7dc1005ba76dc55dd7a3",
+        "originalStderrSha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+        "aliasWitnesses": {
+          "openclaw": [],
+          "python": []
+        },
+        "modelReplies": {
+          "openclaw": [
+            {
+              "role": "assistant",
+              "content": [
+                {
+                  "type": "text",
+                  "text": "NO_REPLY"
+                }
+              ],
+              "api": "openai-completions",
+              "provider": "fixture-memory-model",
+              "model": "scripted-model",
+              "stopReason": "stop",
+              "timestamp": 1795797789314,
+              "usage": {
+                "input": 1,
+                "output": 1,
+                "cacheRead": 0,
+                "cacheWrite": 0,
+                "totalTokens": 2,
+                "cost": {
+                  "input": 0,
+                  "output": 0,
+                  "cacheRead": 0,
+                  "cacheWrite": 0,
+                  "total": 0
+                }
+              }
+            }
+          ],
+          "python": [
+            {
+              "role": "assistant",
+              "content": [
+                {
+                  "type": "text",
+                  "text": "NO_REPLY"
+                }
+              ]
+            }
+          ]
+        },
+        "toolResults": {
+          "openclaw": [],
+          "python": []
+        }
+      },
+      "public": {
+        "openclaw": {
+          "provider": "none",
+          "plans": [
+            {
+              "softThresholdTokens": 30000,
+              "forceFlushTranscriptBytes": 2097152,
+              "reserveTokensFloor": 20000,
+              "prompt": "Pre-compaction memory flush. Store durable memories only in memory/2026-01-01.md (create memory/ if needed). Treat workspace bootstrap/reference files such as MEMORY.md, DREAMS.md, SOUL.md, and AGENTS.md as read-only during this flush; never overwrite, replace, or edit them. If memory/2026-01-01.md already exists, APPEND new content only and do not overwrite existing entries. Do NOT create timestamped variant files (e.g., 2026-01-01-HHMM.md); always use the canonical 2026-01-01.md filename. If nothing to store, reply with NO_REPLY.\nCurrent time: Thursday, January 1st, 2026 - 10:05 PM (UTC)\nReference UTC: 2026-01-01 22:05 UTC",
+              "systemPrompt": "Pre-compaction memory flush turn. The session is near auto-compaction; capture durable memories to disk. Store durable memories only in memory/2026-01-01.md (create memory/ if needed). Treat workspace bootstrap/reference files such as MEMORY.md, DREAMS.md, SOUL.md, and AGENTS.md as read-only during this flush; never overwrite, replace, or edit them. If memory/2026-01-01.md already exists, APPEND new content only and do not overwrite existing entries. You may reply, but usually NO_REPLY is correct.",
+              "relativePath": "memory/2026-01-01.md"
+            },
+            {
+              "softThresholdTokens": 30000,
+              "forceFlushTranscriptBytes": 2097152,
+              "reserveTokensFloor": 20000,
+              "prompt": "Pre-compaction memory flush. Store durable memories only in memory/2026-01-01.md (create memory/ if needed). Treat workspace bootstrap/reference files such as MEMORY.md, DREAMS.md, SOUL.md, and AGENTS.md as read-only during this flush; never overwrite, replace, or edit them. If memory/2026-01-01.md already exists, APPEND new content only and do not overwrite existing entries. Do NOT create timestamped variant files (e.g., 2026-01-01-HHMM.md); always use the canonical 2026-01-01.md filename. If nothing to store, reply with NO_REPLY.\nCurrent time: Thursday, January 1st, 2026 - 10:05 PM (UTC)\nReference UTC: 2026-01-01 22:05 UTC",
+              "systemPrompt": "Pre-compaction memory flush turn. The session is near auto-compaction; capture durable memories to disk. Store durable memories only in memory/2026-01-01.md (create memory/ if needed). Treat workspace bootstrap/reference files such as MEMORY.md, DREAMS.md, SOUL.md, and AGENTS.md as read-only during this flush; never overwrite, replace, or edit them. If memory/2026-01-01.md already exists, APPEND new content only and do not overwrite existing entries. You may reply, but usually NO_REPLY is correct.",
+              "relativePath": "memory/2026-01-01.md"
+            }
+          ],
+          "selection": {
+            "provider": "fixture-memory-model",
+            "model": "scripted-model",
+            "requestedRouteResolution": {
+              "kind": "undefined"
+            },
+            "fallbacksOverride": {
+              "kind": "undefined"
+            }
+          },
+          "candidates": [
+            {
+              "provider": "fixture-memory-model",
+              "model": "scripted-model"
+            }
+          ],
+          "replies": [
+            "NO_REPLY"
+          ],
+          "outcome": "completed",
+          "stamp": {
+            "kind": "succeeded",
+            "compactionCount": 0
+          },
+          "files": {
+            "memory": {
+              "kind": "directory"
+            },
+            "memory/2026-01-01.md": {
+              "kind": "file",
+              "base64": "Q2FtcHVzIG5vdGUg4oCTIGZpcnN0IGxpbmUuClNlY29uZCBsaW5lIHN0YXlzIGhlcmUuCg=="
+            }
+          }
+        },
+        "python": {
+          "provider": "none",
+          "plans": [
+            {
+              "softThresholdTokens": 30000,
+              "forceFlushTranscriptBytes": 2097152,
+              "reserveTokensFloor": 20000,
+              "prompt": "Pre-compaction memory flush. Store durable memories only in memory/2026-01-01.md (create memory/ if needed). Treat workspace bootstrap/reference files such as MEMORY.md, DREAMS.md, SOUL.md, and AGENTS.md as read-only during this flush; never overwrite, replace, or edit them. If memory/2026-01-01.md already exists, APPEND new content only and do not overwrite existing entries. Do NOT create timestamped variant files (e.g., 2026-01-01-HHMM.md); always use the canonical 2026-01-01.md filename. If nothing to store, reply with NO_REPLY.\nCurrent time: Thursday, January 1st, 2026 - 10:05 PM (UTC)\nReference UTC: 2026-01-01 22:05 UTC",
+              "systemPrompt": "Pre-compaction memory flush turn. The session is near auto-compaction; capture durable memories to disk. Store durable memories only in memory/2026-01-01.md (create memory/ if needed). Treat workspace bootstrap/reference files such as MEMORY.md, DREAMS.md, SOUL.md, and AGENTS.md as read-only during this flush; never overwrite, replace, or edit them. If memory/2026-01-01.md already exists, APPEND new content only and do not overwrite existing entries. You may reply, but usually NO_REPLY is correct.",
+              "relativePath": "memory/2026-01-01.md"
+            },
+            {
+              "softThresholdTokens": 30000,
+              "forceFlushTranscriptBytes": 2097152,
+              "reserveTokensFloor": 20000,
+              "prompt": "Pre-compaction memory flush. Store durable memories only in memory/2026-01-01.md (create memory/ if needed). Treat workspace bootstrap/reference files such as MEMORY.md, DREAMS.md, SOUL.md, and AGENTS.md as read-only during this flush; never overwrite, replace, or edit them. If memory/2026-01-01.md already exists, APPEND new content only and do not overwrite existing entries. Do NOT create timestamped variant files (e.g., 2026-01-01-HHMM.md); always use the canonical 2026-01-01.md filename. If nothing to store, reply with NO_REPLY.\nCurrent time: Thursday, January 1st, 2026 - 10:05 PM (UTC)\nReference UTC: 2026-01-01 22:05 UTC",
+              "systemPrompt": "Pre-compaction memory flush turn. The session is near auto-compaction; capture durable memories to disk. Store durable memories only in memory/2026-01-01.md (create memory/ if needed). Treat workspace bootstrap/reference files such as MEMORY.md, DREAMS.md, SOUL.md, and AGENTS.md as read-only during this flush; never overwrite, replace, or edit them. If memory/2026-01-01.md already exists, APPEND new content only and do not overwrite existing entries. You may reply, but usually NO_REPLY is correct.",
+              "relativePath": "memory/2026-01-01.md"
+            }
+          ],
+          "selection": {
+            "provider": "fixture-memory-model",
+            "model": "scripted-model",
+            "fallbacksOverride": {
+              "kind": "undefined"
+            },
+            "requestedRouteResolution": {
+              "kind": "undefined"
+            }
+          },
+          "candidates": [
+            {
+              "provider": "fixture-memory-model",
+              "model": "scripted-model"
+            }
+          ],
+          "files": {
+            "memory": {
+              "kind": "directory"
+            },
+            "memory/2026-01-01.md": {
+              "kind": "file",
+              "base64": "Q2FtcHVzIG5vdGUg4oCTIGZpcnN0IGxpbmUuClNlY29uZCBsaW5lIHN0YXlzIGhlcmUuCg=="
+            }
+          },
+          "outcome": "completed",
+          "stamp": {
+            "kind": "succeeded",
+            "compactionCount": 0
+          },
+          "replies": [
+            "NO_REPLY"
+          ]
+        }
+      }
+    },
+    "flush-plan-boundary-occupied-daily-directory": {
+      "status": "matched",
+      "verifiedBoundary": {
+        "openclaw": true,
+        "python": true
+      },
+      "publicValueSha256": {
+        "openclaw": "4250588acc0bb9488ffb3fe78dde729bb656cb69a2943b18ad5c48f510e2c537",
+        "python": "4250588acc0bb9488ffb3fe78dde729bb656cb69a2943b18ad5c48f510e2c537"
+      },
+      "receipt": {
+        "id": "flush-plan-boundary-occupied-daily-directory",
+        "publicMatch": true,
+        "validated": true,
+        "nativeRawSha256": "ab37c62147c5f5a48dd5bbdc74453b0fe689979668ea3e172f3bfb88bf8813f5",
+        "sdkRawSha256": "999c61ebac4dcb112715f3b7dc9fc261669fe81c3671c515c477c3dadeffd49c",
+        "nativeRawFileBytes": 11376,
+        "sdkRawFileBytes": 17800,
+        "outcome": "failed",
+        "nativeWorkspaceEntries": 3,
+        "sdkWorkspaceEntries": 9,
+        "selectedModelCandidates": 0,
+        "nativeModelAttempts": 0,
+        "protectedWorkerThreads": 2,
+        "fixtureSourceCaptures": 1,
+        "originalStdoutSha256": "149606e0b4c1c712464ce8f5ef42dd561cc6f2c46b99be7de17ad1f752f721d3",
+        "originalStderrSha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+        "aliasWitnesses": {
+          "openclaw": [],
+          "python": []
+        },
+        "modelReplies": {
+          "openclaw": [],
+          "python": []
+        },
+        "toolResults": {
+          "openclaw": [],
+          "python": []
+        }
+      },
+      "public": {
+        "openclaw": {
+          "provider": "none",
+          "plans": [
+            {
+              "softThresholdTokens": 30000,
+              "forceFlushTranscriptBytes": 2097152,
+              "reserveTokensFloor": 20000,
+              "prompt": "Pre-compaction memory flush. Store durable memories only in memory/2026-01-01.md (create memory/ if needed). Treat workspace bootstrap/reference files such as MEMORY.md, DREAMS.md, SOUL.md, and AGENTS.md as read-only during this flush; never overwrite, replace, or edit them. If memory/2026-01-01.md already exists, APPEND new content only and do not overwrite existing entries. Do NOT create timestamped variant files (e.g., 2026-01-01-HHMM.md); always use the canonical 2026-01-01.md filename. If nothing to store, reply with NO_REPLY.\nCurrent time: Thursday, January 1st, 2026 - 10:05 PM (UTC)\nReference UTC: 2026-01-01 22:05 UTC",
+              "systemPrompt": "Pre-compaction memory flush turn. The session is near auto-compaction; capture durable memories to disk. Store durable memories only in memory/2026-01-01.md (create memory/ if needed). Treat workspace bootstrap/reference files such as MEMORY.md, DREAMS.md, SOUL.md, and AGENTS.md as read-only during this flush; never overwrite, replace, or edit them. If memory/2026-01-01.md already exists, APPEND new content only and do not overwrite existing entries. You may reply, but usually NO_REPLY is correct.",
+              "relativePath": "memory/2026-01-01.md"
+            },
+            {
+              "softThresholdTokens": 30000,
+              "forceFlushTranscriptBytes": 2097152,
+              "reserveTokensFloor": 20000,
+              "prompt": "Pre-compaction memory flush. Store durable memories only in memory/2026-01-01.md (create memory/ if needed). Treat workspace bootstrap/reference files such as MEMORY.md, DREAMS.md, SOUL.md, and AGENTS.md as read-only during this flush; never overwrite, replace, or edit them. If memory/2026-01-01.md already exists, APPEND new content only and do not overwrite existing entries. Do NOT create timestamped variant files (e.g., 2026-01-01-HHMM.md); always use the canonical 2026-01-01.md filename. If nothing to store, reply with NO_REPLY.\nCurrent time: Thursday, January 1st, 2026 - 10:05 PM (UTC)\nReference UTC: 2026-01-01 22:05 UTC",
+              "systemPrompt": "Pre-compaction memory flush turn. The session is near auto-compaction; capture durable memories to disk. Store durable memories only in memory/2026-01-01.md (create memory/ if needed). Treat workspace bootstrap/reference files such as MEMORY.md, DREAMS.md, SOUL.md, and AGENTS.md as read-only during this flush; never overwrite, replace, or edit them. If memory/2026-01-01.md already exists, APPEND new content only and do not overwrite existing entries. You may reply, but usually NO_REPLY is correct.",
+              "relativePath": "memory/2026-01-01.md"
+            }
+          ],
+          "selection": null,
+          "candidates": [],
+          "replies": [],
+          "outcome": "failed",
+          "stamp": {
+            "kind": "failed",
+            "failureCount": 1
+          },
+          "files": {
+            "memory": {
+              "kind": "directory"
+            },
+            "memory/2026-01-01.md": {
+              "kind": "directory"
+            },
+            "memory/2026-01-01.md/agenda.txt": {
+              "kind": "file",
+              "base64": "RXhpc3RpbmcgbWVldGluZyBhZ2VuZGEuCg=="
+            }
+          }
+        },
+        "python": {
+          "provider": "none",
+          "plans": [
+            {
+              "softThresholdTokens": 30000,
+              "forceFlushTranscriptBytes": 2097152,
+              "reserveTokensFloor": 20000,
+              "prompt": "Pre-compaction memory flush. Store durable memories only in memory/2026-01-01.md (create memory/ if needed). Treat workspace bootstrap/reference files such as MEMORY.md, DREAMS.md, SOUL.md, and AGENTS.md as read-only during this flush; never overwrite, replace, or edit them. If memory/2026-01-01.md already exists, APPEND new content only and do not overwrite existing entries. Do NOT create timestamped variant files (e.g., 2026-01-01-HHMM.md); always use the canonical 2026-01-01.md filename. If nothing to store, reply with NO_REPLY.\nCurrent time: Thursday, January 1st, 2026 - 10:05 PM (UTC)\nReference UTC: 2026-01-01 22:05 UTC",
+              "systemPrompt": "Pre-compaction memory flush turn. The session is near auto-compaction; capture durable memories to disk. Store durable memories only in memory/2026-01-01.md (create memory/ if needed). Treat workspace bootstrap/reference files such as MEMORY.md, DREAMS.md, SOUL.md, and AGENTS.md as read-only during this flush; never overwrite, replace, or edit them. If memory/2026-01-01.md already exists, APPEND new content only and do not overwrite existing entries. You may reply, but usually NO_REPLY is correct.",
+              "relativePath": "memory/2026-01-01.md"
+            },
+            {
+              "softThresholdTokens": 30000,
+              "forceFlushTranscriptBytes": 2097152,
+              "reserveTokensFloor": 20000,
+              "prompt": "Pre-compaction memory flush. Store durable memories only in memory/2026-01-01.md (create memory/ if needed). Treat workspace bootstrap/reference files such as MEMORY.md, DREAMS.md, SOUL.md, and AGENTS.md as read-only during this flush; never overwrite, replace, or edit them. If memory/2026-01-01.md already exists, APPEND new content only and do not overwrite existing entries. Do NOT create timestamped variant files (e.g., 2026-01-01-HHMM.md); always use the canonical 2026-01-01.md filename. If nothing to store, reply with NO_REPLY.\nCurrent time: Thursday, January 1st, 2026 - 10:05 PM (UTC)\nReference UTC: 2026-01-01 22:05 UTC",
+              "systemPrompt": "Pre-compaction memory flush turn. The session is near auto-compaction; capture durable memories to disk. Store durable memories only in memory/2026-01-01.md (create memory/ if needed). Treat workspace bootstrap/reference files such as MEMORY.md, DREAMS.md, SOUL.md, and AGENTS.md as read-only during this flush; never overwrite, replace, or edit them. If memory/2026-01-01.md already exists, APPEND new content only and do not overwrite existing entries. You may reply, but usually NO_REPLY is correct.",
+              "relativePath": "memory/2026-01-01.md"
+            }
+          ],
+          "selection": null,
+          "candidates": [],
+          "files": {
+            "memory": {
+              "kind": "directory"
+            },
+            "memory/2026-01-01.md": {
+              "kind": "directory"
+            },
+            "memory/2026-01-01.md/agenda.txt": {
+              "kind": "file",
+              "base64": "RXhpc3RpbmcgbWVldGluZyBhZ2VuZGEuCg=="
+            }
+          },
+          "outcome": "failed",
+          "stamp": {
+            "kind": "failed",
+            "failureCount": 1
+          },
+          "replies": []
+        }
+      }
+    }
+  },
+  "interruptedTurnObservations": {
+    "interrupted-turn-reopen-unchanged-chat": {
+      "receipt": {
+        "id": "interrupted-turn-reopen-unchanged-chat",
+        "publicMatch": true,
+        "nativeSha256": "60df3ad3e741dcf01b1bc1a68ad40515e1e81d8c72d224bb210dc6b8f566d771",
+        "sdkSha256": "d737b002ce3f2fbe29f0bb171f7a8ae2ce24ad613ef4b7fab0382a5820eee7d6",
+        "directory": "interrupted-turn-reopen-unchanged-chat-114o62y7"
+      },
+      "publicValueSha256": {
+        "openclaw": "b9bc57c92a62c539480ba24fa1db4d21634d557b1e0c7f1cb94e886b4a0a4b2a",
+        "python": "b9bc57c92a62c539480ba24fa1db4d21634d557b1e0c7f1cb94e886b4a0a4b2a"
+      },
+      "verifiedBoundary": {
+        "openclaw": true,
+        "python": true
+      },
+      "public": {
+        "openclaw": {
+          "cut": {
+            "files": {
+              "original": "## Preferences\n\n- My drink preference is marblekumquat-416 tea without sugar.\n",
+              "independent": null
+            },
+            "originalCalls": [
+              "tbbsave0"
+            ],
+            "originalResults": []
+          },
+          "reopen": {
+            "files": {
+              "original": "## Preferences\n\n- My drink preference is marblekumquat-416 tea without sugar.\n",
+              "independent": null
+            },
+            "originalCalls": [
+              "tbbsave0"
+            ],
+            "originalResults": []
+          },
+          "firstModelOriginalResults": [
+            {
+              "id": "tbbsave0",
+              "isError": true,
+              "content": [
+                {
+                  "type": "text",
+                  "text": "[openclaw] missing tool result in session history; inserted synthetic error result for transcript repair."
+                }
+              ]
+            }
+          ],
+          "newTurnToolCalls": [],
+          "replies": [
+            "Four."
+          ],
+          "final": {
+            "files": {
+              "original": "## Preferences\n\n- My drink preference is marblekumquat-416 tea without sugar.\n",
+              "independent": null
+            },
+            "originalCalls": [
+              "tbbsave0"
+            ],
+            "originalResults": []
+          }
+        },
+        "python": {
+          "cut": {
+            "files": {
+              "original": "## Preferences\n\n- My drink preference is marblekumquat-416 tea without sugar.\n",
+              "independent": null
+            },
+            "originalCalls": [
+              "tbbsave0"
+            ],
+            "originalResults": []
+          },
+          "reopen": {
+            "files": {
+              "original": "## Preferences\n\n- My drink preference is marblekumquat-416 tea without sugar.\n",
+              "independent": null
+            },
+            "originalCalls": [
+              "tbbsave0"
+            ],
+            "originalResults": []
+          },
+          "final": {
+            "files": {
+              "original": "## Preferences\n\n- My drink preference is marblekumquat-416 tea without sugar.\n",
+              "independent": null
+            },
+            "originalCalls": [
+              "tbbsave0"
+            ],
+            "originalResults": []
+          },
+          "firstModelOriginalResults": [
+            {
+              "id": "tbbsave0",
+              "isError": true,
+              "content": [
+                {
+                  "type": "text",
+                  "text": "[openclaw] missing tool result in session history; inserted synthetic error result for transcript repair."
+                }
+              ]
+            }
+          ],
+          "newTurnToolCalls": [],
+          "replies": [
+            "Four."
+          ]
+        }
+      }
+    },
+    "interrupted-turn-reopen-edited-chat": {
+      "receipt": {
+        "id": "interrupted-turn-reopen-edited-chat",
+        "publicMatch": true,
+        "nativeSha256": "22f37334824b87308dc4c027f3227d9bb5361d11a7bf0dde535f0631415a80a3",
+        "sdkSha256": "e71ba73a4e3e2fe1398846690d334e22c1bf34933fd5839578097b4d538da358",
+        "directory": "interrupted-turn-reopen-edited-chat-qg2xkk6t"
+      },
+      "publicValueSha256": {
+        "openclaw": "4dabb14abd955ab33d578781647fac494cbdeea0cb049ce73e052316edeb2dfb",
+        "python": "4dabb14abd955ab33d578781647fac494cbdeea0cb049ce73e052316edeb2dfb"
+      },
+      "verifiedBoundary": {
+        "openclaw": true,
+        "python": true
+      },
+      "public": {
+        "openclaw": {
+          "cut": {
+            "files": {
+              "original": "## Preferences\n\n- My drink preference is marblekumquat-416 tea without sugar.\n",
+              "independent": null
+            },
+            "originalCalls": [
+              "tbbsave0"
+            ],
+            "originalResults": []
+          },
+          "reopen": {
+            "files": {
+              "original": "A local edit kept after the interrupted turn.\n",
+              "independent": null
+            },
+            "originalCalls": [
+              "tbbsave0"
+            ],
+            "originalResults": []
+          },
+          "firstModelOriginalResults": [
+            {
+              "id": "tbbsave0",
+              "isError": true,
+              "content": [
+                {
+                  "type": "text",
+                  "text": "[openclaw] missing tool result in session history; inserted synthetic error result for transcript repair."
+                }
+              ]
+            }
+          ],
+          "newTurnToolCalls": [],
+          "replies": [
+            "Four."
+          ],
+          "final": {
+            "files": {
+              "original": "A local edit kept after the interrupted turn.\n",
+              "independent": null
+            },
+            "originalCalls": [
+              "tbbsave0"
+            ],
+            "originalResults": []
+          }
+        },
+        "python": {
+          "cut": {
+            "files": {
+              "original": "## Preferences\n\n- My drink preference is marblekumquat-416 tea without sugar.\n",
+              "independent": null
+            },
+            "originalCalls": [
+              "tbbsave0"
+            ],
+            "originalResults": []
+          },
+          "reopen": {
+            "files": {
+              "original": "A local edit kept after the interrupted turn.\n",
+              "independent": null
+            },
+            "originalCalls": [
+              "tbbsave0"
+            ],
+            "originalResults": []
+          },
+          "final": {
+            "files": {
+              "original": "A local edit kept after the interrupted turn.\n",
+              "independent": null
+            },
+            "originalCalls": [
+              "tbbsave0"
+            ],
+            "originalResults": []
+          },
+          "firstModelOriginalResults": [
+            {
+              "id": "tbbsave0",
+              "isError": true,
+              "content": [
+                {
+                  "type": "text",
+                  "text": "[openclaw] missing tool result in session history; inserted synthetic error result for transcript repair."
+                }
+              ]
+            }
+          ],
+          "newTurnToolCalls": [],
+          "replies": [
+            "Four."
+          ]
+        }
+      }
+    },
+    "interrupted-turn-reopen-edited-new-write": {
+      "receipt": {
+        "id": "interrupted-turn-reopen-edited-new-write",
+        "publicMatch": true,
+        "nativeSha256": "acfdfb8849b94d1bf05e3db12a0c6f2bb6459f1d8f25a85d4cd3e82b2d3cb316",
+        "sdkSha256": "d46336661da65a999fc40def573adfaf441aee61c3125b58d4adab9f21e56b1e",
+        "directory": "interrupted-turn-reopen-edited-new-write-komagp54"
+      },
+      "publicValueSha256": {
+        "openclaw": "7ca37720a709ce60860be51d2b0edd2ee2cc03c3a4698acb58c1fb03b941cad0",
+        "python": "7ca37720a709ce60860be51d2b0edd2ee2cc03c3a4698acb58c1fb03b941cad0"
+      },
+      "verifiedBoundary": {
+        "openclaw": true,
+        "python": true
+      },
+      "public": {
+        "openclaw": {
+          "cut": {
+            "files": {
+              "original": "## Preferences\n\n- My drink preference is marblekumquat-416 tea without sugar.\n",
+              "independent": null
+            },
+            "originalCalls": [
+              "tbbsave0"
+            ],
+            "originalResults": []
+          },
+          "reopen": {
+            "files": {
+              "original": "A local edit kept after the interrupted turn.\n",
+              "independent": null
+            },
+            "originalCalls": [
+              "tbbsave0"
+            ],
+            "originalResults": []
+          },
+          "firstModelOriginalResults": [
+            {
+              "id": "tbbsave0",
+              "isError": true,
+              "content": [
+                {
+                  "type": "text",
+                  "text": "[openclaw] missing tool result in session history; inserted synthetic error result for transcript repair."
+                }
+              ]
+            }
+          ],
+          "newTurnToolCalls": [
+            "followupindependent"
+          ],
+          "replies": [
+            "Separate note saved."
+          ],
+          "final": {
+            "files": {
+              "original": "A local edit kept after the interrupted turn.\n",
+              "independent": "A separate note written during this new turn.\n"
+            },
+            "originalCalls": [
+              "tbbsave0"
+            ],
+            "originalResults": []
+          }
+        },
+        "python": {
+          "cut": {
+            "files": {
+              "original": "## Preferences\n\n- My drink preference is marblekumquat-416 tea without sugar.\n",
+              "independent": null
+            },
+            "originalCalls": [
+              "tbbsave0"
+            ],
+            "originalResults": []
+          },
+          "reopen": {
+            "files": {
+              "original": "A local edit kept after the interrupted turn.\n",
+              "independent": null
+            },
+            "originalCalls": [
+              "tbbsave0"
+            ],
+            "originalResults": []
+          },
+          "final": {
+            "files": {
+              "original": "A local edit kept after the interrupted turn.\n",
+              "independent": "A separate note written during this new turn.\n"
+            },
+            "originalCalls": [
+              "tbbsave0"
+            ],
+            "originalResults": []
+          },
+          "firstModelOriginalResults": [
+            {
+              "id": "tbbsave0",
+              "isError": true,
+              "content": [
+                {
+                  "type": "text",
+                  "text": "[openclaw] missing tool result in session history; inserted synthetic error result for transcript repair."
+                }
+              ]
+            }
+          ],
+          "newTurnToolCalls": [
+            "followupindependent"
+          ],
+          "replies": [
+            "Separate note saved."
+          ]
+        }
+      }
+    },
+    "interrupted-turn-reopen-unwritten-new-write": {
+      "receipt": {
+        "id": "interrupted-turn-reopen-unwritten-new-write",
+        "publicMatch": true,
+        "nativeSha256": "6d456aaf5ac513811aee27eb76b8cb62ed26f534a1a012082831507fee2ba701",
+        "sdkSha256": "0166a6cea4c718a839ae98f63e9f8de9bb800e26b18e350d7faf70bcbad9ac99",
+        "directory": "interrupted-turn-reopen-unwritten-new-write-9yk8wz1q"
+      },
+      "publicValueSha256": {
+        "openclaw": "7614da6b1788da602238ef24f8ba598c82812a1a0a3fa52a5063f3b1d90dd15a",
+        "python": "7614da6b1788da602238ef24f8ba598c82812a1a0a3fa52a5063f3b1d90dd15a"
+      },
+      "verifiedBoundary": {
+        "openclaw": true,
+        "python": true
+      },
+      "public": {
+        "openclaw": {
+          "cut": {
+            "files": {
+              "original": null,
+              "independent": null
+            },
+            "originalCalls": [
+              "tbbsave0"
+            ],
+            "originalResults": []
+          },
+          "reopen": {
+            "files": {
+              "original": null,
+              "independent": null
+            },
+            "originalCalls": [
+              "tbbsave0"
+            ],
+            "originalResults": []
+          },
+          "firstModelOriginalResults": [
+            {
+              "id": "tbbsave0",
+              "isError": true,
+              "content": [
+                {
+                  "type": "text",
+                  "text": "[openclaw] missing tool result in session history; inserted synthetic error result for transcript repair."
+                }
+              ]
+            }
+          ],
+          "newTurnToolCalls": [
+            "followupindependent"
+          ],
+          "replies": [
+            "Separate note saved."
+          ],
+          "final": {
+            "files": {
+              "original": null,
+              "independent": "A separate note written during this new turn.\n"
+            },
+            "originalCalls": [
+              "tbbsave0"
+            ],
+            "originalResults": []
+          }
+        },
+        "python": {
+          "cut": {
+            "files": {
+              "original": null,
+              "independent": null
+            },
+            "originalCalls": [
+              "tbbsave0"
+            ],
+            "originalResults": []
+          },
+          "reopen": {
+            "files": {
+              "original": null,
+              "independent": null
+            },
+            "originalCalls": [
+              "tbbsave0"
+            ],
+            "originalResults": []
+          },
+          "final": {
+            "files": {
+              "original": null,
+              "independent": "A separate note written during this new turn.\n"
+            },
+            "originalCalls": [
+              "tbbsave0"
+            ],
+            "originalResults": []
+          },
+          "firstModelOriginalResults": [
+            {
+              "id": "tbbsave0",
+              "isError": true,
+              "content": [
+                {
+                  "type": "text",
+                  "text": "[openclaw] missing tool result in session history; inserted synthetic error result for transcript repair."
+                }
+              ]
+            }
+          ],
+          "newTurnToolCalls": [
+            "followupindependent"
+          ],
+          "replies": [
+            "Separate note saved."
+          ]
+        }
+      }
+    }
+  },
+  "mismatchedCaseIds": [
+    "flush-execution-warm-index-first-recall",
+    "model-tool-complete-tool-result",
+    "model-tool-utf16-redaction-truncation-order",
+    "engine-datetime-unverified-legacy-grammar"
+  ],
+  "blockedCaseIds": [],
+  "fullScopePassed": false,
+  "terminalStatus": "mismatched",
+  "engineErrors": [],
+  "actualReturnCode": 1,
+  "elapsedSeconds": 9347.643799224,
+  "physicalReplayCounts": {
+    "host-turn-barrier-v4-runtime": 4,
+    "forget-lineage-runtime": 3,
+    "forget-boundaries-runtime": 1,
+    "recall-signals-runtime": 6,
+    "embed-cache-lifecycle-runtime": 8,
+    "session-reset-boundaries-runtime": 7,
+    "prompt-runtime-context-runtime": 10,
+    "prompt-history-repair-runtime": 8,
+    "engine.numeric-boundaries": 4,
+    "deep-consolidation-runtime": 7,
+    "forget-index-fence-v6-runtime": 13,
+    "interrupted-turn-recovery-runtime": 4,
+    "transcript-boundary-runtime": 9,
+    "heartbeat-scratch-outcomes-runtime": 39,
+    "engine.datetime-regex.boundaries": 5,
+    "trust.configured-redaction.outcomes": 2,
+    "trust.secret-redaction.boundaries": 4,
+    "engine-unicode-collation": 3,
+    "recovery-forget-interruption-runtime": 2,
+    "engine.datetime-regex": 5,
+    "provider-overflow-host-runtime": 7,
+    "flush-plan-target-runtime": 13,
+    "flush.plan-target.boundaries": 3,
+    "recovery.repair-diagnostics": 9,
+    "heartbeat-turn-outcomes-runtime": 4,
+    "heartbeat.turn-decisions.boundaries": 4,
+    "dream-light-runtime": 7,
+    "dream-rem-runtime": 8,
+    "dream-deep-runtime": 7,
+    "dream-diary-publication-runtime": 7,
+    "automation-job-state-runtime": 1,
+    "automation-job-outcomes-runtime": 3,
+    "compaction.context-assembly.outcomes": 3,
+    "compaction-assembly-restart-runtime": 3,
+    "workspace-lock-process-runtime": 7
+  },
+  "originalRecoveryModes": {
+    "flush-execution-cancel-before-write": "authenticated-official-release",
+    "flush-execution-cancel-after-write": "authenticated-official-release",
+    "storage.atomic-writes.temp-file-fsync-eio": "authenticated-official-release",
+    "storage.atomic-writes.rename-mutates-then-rejects": "authenticated-official-release",
+    "deep-consolidation-concurrent-edit": "authenticated-official-release",
+    "dream-diary-publisher-failure": "authenticated-official-release",
+    "dream-deep-report-publication-failure": "authenticated-official-release",
+    "recovery-forget-before-marker": "authenticated-official-release",
+    "recovery-forget-after-note": "authenticated-official-release"
+  },
+  "historicalRuntimeChecks": {
+    "bootstrap-discovery-memory-core-layout-extension": {
+      "nativeRawSha256": "e3cd9958cca350da9192dd6df0d7f451bb135dfad4180a4f6855760d040f2900",
+      "sdkRawSha256": "66ee1176a7a0b05c1ff64a214c541a50beb009c086991c87bb19d48622ec2a75",
+      "rawWireHashesReproduced": true,
+      "nativeOnDiskRawReopened": false,
+      "protectedWorkerThreads": 1,
+      "observed": {
+        "workspaceInventories": {
+          "native": [
+            {
+              "label": "default-layout",
+              "workspace": [
+                "AGENTS.md",
+                "BOOTSTRAP.md",
+                "IDENTITY.md",
+                "PROACTIVE_PREFERENCES.md",
+                "SOUL.md",
+                "USER.md"
+              ],
+              "outside": [],
+              "snapshotSha256": "0465ac17ba97b60b223c58bc4c1abf9fc4f5d9f886cac9f39aa4c777e52d6e69"
+            }
+          ],
+          "sdk": [
+            {
+              "label": "default-layout",
+              "workspace": [
+                "SOUL.md",
+                "BOOTSTRAP.md",
+                "PROACTIVE_PREFERENCES.md",
+                "IDENTITY.md",
+                "AGENTS.md",
+                ".memory-core",
+                "USER.md",
+                ".memory-core/workspace-state.json"
+              ],
+              "outside": [],
+              "snapshotSha256": "b26d83b1ebf408ddb4dd7263960d3acf2c1474ffb6fe0e6fa28ea495a30e3992"
+            }
+          ]
+        },
+        "steps": {
+          "openclaw": [
+            {
+              "label": "default-layout",
+              "ensure": {
+                "bootstrapPending": true
+              },
+              "bootstrapStatus": "pending",
+              "setupCompleted": false,
+              "runs": [
+                {
+                  "files": [
+                    "AGENTS.md",
+                    "SOUL.md",
+                    "IDENTITY.md",
+                    "USER.md",
+                    "BOOTSTRAP.md"
+                  ],
+                  "error": null
+                },
+                {
+                  "files": [
+                    "AGENTS.md"
+                  ],
+                  "error": null
+                },
+                {
+                  "files": [
+                    "AGENTS.md",
+                    "SOUL.md",
+                    "IDENTITY.md",
+                    "USER.md"
+                  ],
+                  "error": null
+                }
+              ]
+            }
+          ],
+          "python": [
+            {
+              "label": "default-layout",
+              "ensure": {
+                "bootstrapPending": true
+              },
+              "bootstrapStatus": "pending",
+              "setupCompleted": false,
+              "runs": [
+                {
+                  "files": [
+                    "AGENTS.md",
+                    "SOUL.md",
+                    "IDENTITY.md",
+                    "USER.md",
+                    "BOOTSTRAP.md"
+                  ],
+                  "error": null
+                },
+                {
+                  "files": [
+                    "AGENTS.md"
+                  ],
+                  "error": null
+                },
+                {
+                  "files": [
+                    "AGENTS.md",
+                    "SOUL.md",
+                    "IDENTITY.md",
+                    "USER.md"
+                  ],
+                  "error": null
+                }
+              ]
+            }
+          ]
+        }
+      }
+    },
+    "bootstrap-discovery-legacy-state-gate": {
+      "nativeRawSha256": "fa7cec17b67fde0b1bc10cef0dfbe5cc3ddb9f5661d50744a2a3a696379689c6",
+      "sdkRawSha256": "3c6e05a078c765536d329c2772715d0f0a6484a1cb38b8f74fefdccf33608379",
+      "rawWireHashesReproduced": true,
+      "nativeOnDiskRawReopened": false,
+      "protectedWorkerThreads": 0,
+      "observed": {
+        "workspaceInventories": {
+          "native": [
+            {
+              "label": "legacy",
+              "workspace": [
+                "openclaw-workspace-state.json"
+              ],
+              "outside": [],
+              "snapshotSha256": "c24ff6782c65d9ade17e005197dcc376631290d0e2975bd3a66f467f0aef1f94"
+            }
+          ],
+          "sdk": [
+            {
+              "label": "legacy",
+              "workspace": [
+                "openclaw-workspace-state.json"
+              ],
+              "outside": [],
+              "snapshotSha256": "e87e290abb45ece78cd0b5e7229a6ae8a59f35777d11028b3d888360a7deba91"
+            }
+          ]
+        },
+        "steps": {
+          "openclaw": [
+            {
+              "label": "legacy",
+              "ensure": {
+                "error": {
+                  "name": "StartupMaintenanceRequiredError",
+                  "message": "Legacy workspace setup state requires migration for $FIXTURE/workspace; run openclaw doctor --fix.",
+                  "kind": "legacy-workspace",
+                  "code": "gateway.maintenance_required"
+                }
+              },
+              "bootstrapStatus": {
+                "error": {
+                  "name": "StartupMaintenanceRequiredError",
+                  "message": "Legacy workspace setup state requires migration for $FIXTURE/workspace; run openclaw doctor --fix.",
+                  "kind": "legacy-workspace",
+                  "code": "gateway.maintenance_required"
+                }
+              },
+              "setupCompleted": {
+                "error": {
+                  "name": "StartupMaintenanceRequiredError",
+                  "message": "Legacy workspace setup state requires migration for $FIXTURE/workspace; run openclaw doctor --fix.",
+                  "kind": "legacy-workspace",
+                  "code": "gateway.maintenance_required"
+                }
+              },
+              "runs": [
+                {
+                  "files": [],
+                  "error": null
+                }
+              ]
+            }
+          ],
+          "python": [
+            {
+              "label": "legacy",
+              "ensure": {
+                "error": {
+                  "name": "StartupMaintenanceRequiredError",
+                  "message": "Legacy workspace setup state requires migration for $FIXTURE/workspace; run openclaw doctor --fix.",
+                  "code": "gateway.maintenance_required",
+                  "kind": "legacy-workspace"
+                }
+              },
+              "bootstrapStatus": {
+                "error": {
+                  "name": "StartupMaintenanceRequiredError",
+                  "message": "Legacy workspace setup state requires migration for $FIXTURE/workspace; run openclaw doctor --fix.",
+                  "code": "gateway.maintenance_required",
+                  "kind": "legacy-workspace"
+                }
+              },
+              "setupCompleted": {
+                "error": {
+                  "name": "StartupMaintenanceRequiredError",
+                  "message": "Legacy workspace setup state requires migration for $FIXTURE/workspace; run openclaw doctor --fix.",
+                  "code": "gateway.maintenance_required",
+                  "kind": "legacy-workspace"
+                }
+              },
+              "runs": [
+                {
+                  "files": [],
+                  "error": null
+                }
+              ]
+            }
+          ]
+        }
+      }
+    },
+    "promotion-ranking-primitive-provenance-safety-diagnostic": {
+      "nativeRawSha256": "af4627881d0b479c904d4aca4fdebd7f5580c4e234004e3ae64e19dc066d3615",
+      "sdkRawSha256": "1bd94b6de01f11e45f438f9f7447822b2a0f46785faa8ed2a67ad6653f0cc79e",
+      "rawWireHashesReproduced": true,
+      "nativeOnDiskRawReopened": false,
+      "protectedWorkerThreads": 1,
+      "observed": {
+        "candidateCounts": {
+          "openclaw": [
+            1
+          ],
+          "python": [
+            1
+          ]
+        },
+        "sdkFilePhases": {
+          "before": {
+            "workspace/memory/.dreams/phase-signals.json": "f618b85105845fda4b261ff9e9078cd34ad1e65016448a337650f2c69e4f6055",
+            "workspace/memory/.dreams/short-term-recall.json": "8ef50bfea296079ea08b63f1e83f117b5a242a79501a125ffb98312d33a25a49"
+          },
+          "after": {
+            "workspace/memory/.dreams/phase-signals.json": "f618b85105845fda4b261ff9e9078cd34ad1e65016448a337650f2c69e4f6055",
+            "workspace/memory/.dreams/short-term-recall.json": "8ef50bfea296079ea08b63f1e83f117b5a242a79501a125ffb98312d33a25a49"
+          }
+        }
+      }
+    }
+  },
+  "assessmentStatus": "assessed",
+  "assessmentErrors": [],
+  "baselineDecision": "95b108408409255cdf36c92ef627b50b0062440b",
+  "reviewerSha256": "a14644c95212b4529ac8c0477fff55aeca1d3425590a2351962ccb73d8f3e074"
+}

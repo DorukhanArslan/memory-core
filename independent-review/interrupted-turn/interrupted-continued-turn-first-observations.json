@@ -1,0 +1,123 @@
+{
+  "kind": "focused-interrupted-turn-physical-observations",
+  "authority": "local SDK and authenticated official OpenClaw release, first development attempt",
+  "condition": "recovery.failure-publication.boundaries",
+  "frozenDefinitionsSha256": "665bbc6c7f1c1576b95e7826e5a92bc098b056f9dddd926f22e34ea60f6c1d37",
+  "focusedTerminalStatus": "blocked",
+  "focusedTerminalErrors": [
+    {
+      "code": "implementation-changed",
+      "message": "Python implementation changed during comparison."
+    }
+  ],
+  "matched": 2,
+  "mismatched": 2,
+  "pointsAwarded": 0,
+  "matchedHistoricalPrerequisiteRows": 15,
+  "currentFullGate": false,
+  "fullScoreFromMostRecentHostedMeasurement": "122/128",
+  "archive": {
+    "file": "interrupted-continued-turn-first-observations.zip",
+    "sha256": "9089df59080c9c8f5ea75993320701f7e22b8270945a377fdcfde14f5568e2d2",
+    "bytes": 2548693,
+    "contains": "Original full focused report, every manifest-bound native and SDK file, plus directly observed SDK bytes at the separately returned dated path."
+  },
+  "cases": [
+    {
+      "id": "interrupted-turn-reopen-unchanged-chat",
+      "status": "matched",
+      "frozenCut": "after-write",
+      "hostClockUtc": "2026-11-10T00:00:00+00:00",
+      "frozenOriginalPath": "MEMORY.md",
+      "requestedPath": null,
+      "originalFileAtFinal": {
+        "openclaw": "## Preferences\n\n- My drink preference is marblekumquat-416 tea without sugar.\n",
+        "python": "## Preferences\n\n- My drink preference is marblekumquat-416 tea without sugar.\n"
+      },
+      "requestedPathContentAtFinal": {
+        "openclaw": null,
+        "python": null
+      },
+      "actualSdkToolResponse": null,
+      "sourceManifestSha256": {
+        "nativeSha256": "41e22bcdbd6353d212f9eddc1b6685f14f222a381e85781426340491c20d09a3",
+        "sdkSha256": "3bdc9d1cd40cd9356edf64b827c8212680a8ea7a2ee1dc15498b8b91162cc93a"
+      }
+    },
+    {
+      "id": "interrupted-turn-reopen-edited-chat",
+      "status": "matched",
+      "frozenCut": "after-write",
+      "hostClockUtc": "2026-11-10T00:00:00+00:00",
+      "frozenOriginalPath": "MEMORY.md",
+      "requestedPath": null,
+      "originalFileAtFinal": {
+        "openclaw": "A local edit kept after the interrupted turn.\n",
+        "python": "A local edit kept after the interrupted turn.\n"
+      },
+      "requestedPathContentAtFinal": {
+        "openclaw": null,
+        "python": null
+      },
+      "actualSdkToolResponse": null,
+      "sourceManifestSha256": {
+        "nativeSha256": "ce449252e19450aa4995ac4685734b403930d33a217e05fccfd29eda0ef805ab",
+        "sdkSha256": "742abfaaa3c5be28d6d0c59cd5e6dd46e501ded70b1d821c8c29e71518ac7174"
+      }
+    },
+    {
+      "id": "interrupted-turn-reopen-edited-new-write",
+      "status": "mismatched",
+      "frozenCut": "after-write",
+      "hostClockUtc": "2026-11-10T00:00:00+00:00",
+      "frozenOriginalPath": "MEMORY.md",
+      "requestedPath": "memory/2026-11-27.md",
+      "originalFileAtFinal": {
+        "openclaw": "A local edit kept after the interrupted turn.\n",
+        "python": "A local edit kept after the interrupted turn.\n"
+      },
+      "requestedPathContentAtFinal": {
+        "openclaw": "A separate note written during this new turn.\n",
+        "python": null
+      },
+      "actualSdkToolResponse": {
+        "status": "ok",
+        "tool": "append_daily_note",
+        "path": "memory/2026-11-10.md",
+        "action": "appended"
+      },
+      "sourceManifestSha256": {
+        "nativeSha256": "4b9aa081382787bdd7229d2c128f4aa3b47a3e2275434fecd5a58dd6de2a72e9",
+        "sdkSha256": "58720f43ad791d95dfc43624cba4329a8d1a473e89372a9063a53c85b8a80c03"
+      },
+      "actualSdkPathContent": "A separate note written during this new turn.\n"
+    },
+    {
+      "id": "interrupted-turn-reopen-unwritten-new-write",
+      "status": "mismatched",
+      "frozenCut": "before-write",
+      "hostClockUtc": "2026-11-10T00:00:00+00:00",
+      "frozenOriginalPath": "MEMORY.md",
+      "requestedPath": "memory/2026-11-27.md",
+      "originalFileAtFinal": {
+        "openclaw": null,
+        "python": null
+      },
+      "requestedPathContentAtFinal": {
+        "openclaw": "A separate note written during this new turn.\n",
+        "python": null
+      },
+      "actualSdkToolResponse": {
+        "status": "ok",
+        "tool": "append_daily_note",
+        "path": "memory/2026-11-10.md",
+        "action": "appended"
+      },
+      "sourceManifestSha256": {
+        "nativeSha256": "2d40c5812b3ba28e34a7fd8b33dc45253d5e96de280ddc2f787fb4918564d4aa",
+        "sdkSha256": "ddfcb439d750b368895904e12d5528d83fdf0432e43ec9aac662fdc0d8d08554"
+      },
+      "actualSdkPathContent": "A separate note written during this new turn.\n"
+    }
+  ]
+}

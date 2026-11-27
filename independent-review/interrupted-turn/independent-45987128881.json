@@ -1,0 +1,1631 @@
+{
+  "kind": "independent-full-scope-recount",
+  "run": 45987128881,
+  "measurement": "524a2603bf45d48f099cc319b8b55517963b68c4",
+  "product": "4a65fc22c5c8259f87fbfe8dfe73e1122891d777",
+  "reference": {
+    "tag": "v2026.9.9",
+    "commit": "bcfc88812a35243893585dbeca87ca41b48272ca",
+    "tree": "702b8f6a50264e8de42f105992aff6406b073275",
+    "nodeVersion": "v24.16.0",
+    "packageVersion": "2026.9.9",
+    "packageSha256": "09f313df5a3b93723c7f408bba1887e9978156bbcfd4fa0b3c3bccb61c4779c8"
+  },
+  "sdk": {
+    "sourceSha256": "907e354fc12740fd4b5a401dd6bcebb911ad5b8f409878f68fe22d8fe0373009",
+    "sourceFiles": 185
+  },
+  "sdkTree": "f0ce0c93c3049d07eb1f015e6d77ad8d129c7620",
+  "scopeSha256": "a8e066e63970dd0be734485d62a5932640894b8c0a42f47ac3eb67f784cbc7b9",
+  "catalogSha256": "3f8ceb713d0da159aa2a3b6d52b46b057f6131a3213721c2b515af7c7e44162b",
+  "archive": {
+    "id": 15202883144,
+    "sha256": "900423902b6e82ed897e4a79d5d8a15156e9816a801614581818b040c62851bb",
+    "bytes": 371448
+  },
+  "report": {
+    "path": "/home/runner/work/memory-core/memory-core/.equivalence-results/full.json",
+    "bytes": 1915320935,
+    "sha256": "e2b2d2a1e1255e5977c271020e5dcb805fa9ea1931021bd9f160a1fcf8cdc1b0"
+  },
+  "conditions": 128,
+  "registeredCases": 1667,
+  "unchangedPrefix": 1663,
+  "verified": 123,
+  "remaining": 5,
+  "uncovered": 5,
+  "registeredUnresolved": 0,
+  "contracts": {
+    "complete": 59,
+    "partial": 5
+  },
+  "cases": {
+    "matched": 1663,
+    "mismatched": 4,
+    "blocked": 0
+  },
+  "families": {
+    "deep-consolidation-runtime": true,
+    "embed-cache-lifecycle-runtime": true,
+    "engine.numeric-boundaries": true,
+    "forget-boundaries-runtime": true,
+    "forget-index-fence-v6-runtime": true,
+    "forget-lineage-runtime": true,
+    "host-restart-session-runtime": true,
+    "host-turn-barrier-boundaries-runtime": true,
+    "host-turn-barrier-v4-runtime": true,
+    "host-update-isolation-runtime": true,
+    "index-identity-boundaries-runtime": true,
+    "prompt-history-repair-runtime": true,
+    "prompt-runtime-context-runtime": true,
+    "query-sync-boundaries-runtime": true,
+    "query-sync-outcomes-runtime": true,
+    "recall-signals-runtime": true,
+    "session-reset-boundaries-runtime": true,
+    "interrupted-turn-recovery-runtime": true,
+    "transcript-boundary-runtime": true,
+    "heartbeat-scratch-outcomes-runtime": true,
+    "engine.datetime-regex.boundaries": true,
+    "trust.configured-redaction.outcomes": true,
+    "trust.secret-redaction.boundaries": true,
+    "engine-unicode-collation": true,
+    "recovery-forget-interruption-runtime": true,
+    "engine.datetime-regex": true,
+    "provider-overflow-host-runtime": true,
+    "flush-plan-target-runtime": true,
+    "recovery.repair-diagnostics": true,
+    "heartbeat-turn-outcomes-runtime": true,
+    "heartbeat.turn-decisions.boundaries": true,
+    "dream-light-runtime": true,
+    "dream-rem-runtime": true,
+    "dream-deep-runtime": true,
+    "dream-diary-publication-runtime": true,
+    "automation-job-state-runtime": true,
+    "automation-job-outcomes-runtime": true,
+    "compaction.context-assembly.outcomes": true,
+    "compaction-assembly-restart-runtime": true,
+    "workspace-lock-process-runtime": true
+  },
+  "points": [
+    {
+      "id": "storage.discovery.outcomes",
+      "verified": true
+    },
+    {
+      "id": "storage.discovery.boundaries",
+      "verified": true
+    },
+    {
+      "id": "storage.path-safety.outcomes",
+      "verified": true
+    },
+    {
+      "id": "storage.path-safety.boundaries",
+      "verified": true
+    },
+    {
+      "id": "storage.atomic-writes.outcomes",
+      "verified": true
+    },
+    {
+      "id": "storage.atomic-writes.boundaries",
+      "verified": true
+    },
+    {
+      "id": "storage.workspace-isolation.outcomes",
+      "verified": true
+    },
+    {
+      "id": "storage.workspace-isolation.boundaries",
+      "verified": true
+    },
+    {
+      "id": "lexical.tokenization.tokens",
+      "verified": true
+    },
+    {
+      "id": "lexical.tokenization.generated",
+      "verified": true
+    },
+    {
+      "id": "lexical.fts-query.query",
+      "verified": true
+    },
+    {
+      "id": "lexical.fts-query.generated",
+      "verified": true
+    },
+    {
+      "id": "lexical.bm25.ranks",
+      "verified": true
+    },
+    {
+      "id": "lexical.bm25.boundaries",
+      "verified": true
+    },
+    {
+      "id": "chunking.markdown-boundaries.outcomes",
+      "verified": true
+    },
+    {
+      "id": "chunking.markdown-boundaries.boundaries",
+      "verified": true
+    },
+    {
+      "id": "chunking.utf16-cjk-budget.outcomes",
+      "verified": true
+    },
+    {
+      "id": "chunking.utf16-cjk-budget.boundaries",
+      "verified": true
+    },
+    {
+      "id": "chunking.entry-provenance.outcomes",
+      "verified": true
+    },
+    {
+      "id": "chunking.entry-provenance.boundaries",
+      "verified": true
+    },
+    {
+      "id": "indexing.identity.outcomes",
+      "verified": true
+    },
+    {
+      "id": "indexing.identity.boundaries",
+      "verified": true
+    },
+    {
+      "id": "indexing.incremental-sync.outcomes",
+      "verified": true
+    },
+    {
+      "id": "indexing.incremental-sync.boundaries",
+      "verified": true
+    },
+    {
+      "id": "indexing.transaction-publication.outcomes",
+      "verified": true
+    },
+    {
+      "id": "indexing.transaction-publication.boundaries",
+      "verified": true
+    },
+    {
+      "id": "indexing.embedding-cache.outcomes",
+      "verified": true
+    },
+    {
+      "id": "indexing.embedding-cache.boundaries",
+      "verified": true
+    },
+    {
+      "id": "indexing.query-sync.outcomes",
+      "verified": true
+    },
+    {
+      "id": "indexing.query-sync.boundaries",
+      "verified": true
+    },
+    {
+      "id": "retrieval.vector-scoring.outcomes",
+      "verified": true
+    },
+    {
+      "id": "retrieval.vector-scoring.boundaries",
+      "verified": true
+    },
+    {
+      "id": "retrieval.hybrid-scoring.outcomes",
+      "verified": true
+    },
+    {
+      "id": "retrieval.hybrid-scoring.boundaries",
+      "verified": true
+    },
+    {
+      "id": "retrieval.exact-path-priority.outcomes",
+      "verified": true
+    },
+    {
+      "id": "retrieval.exact-path-priority.boundaries",
+      "verified": true
+    },
+    {
+      "id": "retrieval.mmr.order",
+      "verified": true
+    },
+    {
+      "id": "retrieval.mmr.text-boundaries",
+      "verified": true
+    },
+    {
+      "id": "retrieval.temporal-decay.time-inputs",
+      "verified": true
+    },
+    {
+      "id": "retrieval.temporal-decay.sources",
+      "verified": true
+    },
+    {
+      "id": "retrieval.importance-project.outcomes",
+      "verified": true
+    },
+    {
+      "id": "retrieval.importance-project.boundaries",
+      "verified": true
+    },
+    {
+      "id": "tools.search-contract.outcomes",
+      "verified": true
+    },
+    {
+      "id": "tools.search-contract.boundaries",
+      "verified": true
+    },
+    {
+      "id": "tools.get-contract.outcomes",
+      "verified": true
+    },
+    {
+      "id": "tools.get-contract.boundaries",
+      "verified": true
+    },
+    {
+      "id": "tools.deadline-cooldown.outcomes",
+      "verified": true
+    },
+    {
+      "id": "tools.deadline-cooldown.boundaries",
+      "verified": true
+    },
+    {
+      "id": "tools.unavailable-partial.outcomes",
+      "verified": true
+    },
+    {
+      "id": "tools.unavailable-partial.boundaries",
+      "verified": true
+    },
+    {
+      "id": "sessions.corpus-admission.outcomes",
+      "verified": true
+    },
+    {
+      "id": "sessions.corpus-admission.boundaries",
+      "verified": true
+    },
+    {
+      "id": "sessions.transcript-filtering.outcomes",
+      "verified": true
+    },
+    {
+      "id": "sessions.transcript-filtering.boundaries",
+      "verified": true
+    },
+    {
+      "id": "sessions.visibility-lineage.outcomes",
+      "verified": true
+    },
+    {
+      "id": "sessions.visibility-lineage.boundaries",
+      "verified": true
+    },
+    {
+      "id": "sessions.reset-hook.outcomes",
+      "verified": false
+    },
+    {
+      "id": "sessions.reset-hook.boundaries",
+      "verified": true
+    },
+    {
+      "id": "sessions.durable-context.outcomes",
+      "verified": true
+    },
+    {
+      "id": "sessions.durable-context.boundaries",
+      "verified": true
+    },
+    {
+      "id": "prompt.bootstrap-discovery.outcomes",
+      "verified": true
+    },
+    {
+      "id": "prompt.bootstrap-discovery.boundaries",
+      "verified": true
+    },
+    {
+      "id": "prompt.bootstrap-budget.outcomes",
+      "verified": true
+    },
+    {
+      "id": "prompt.bootstrap-budget.boundaries",
+      "verified": true
+    },
+    {
+      "id": "prompt.runtime-context.outcomes",
+      "verified": true
+    },
+    {
+      "id": "prompt.runtime-context.boundaries",
+      "verified": true
+    },
+    {
+      "id": "prompt.history-repair.outcomes",
+      "verified": true
+    },
+    {
+      "id": "prompt.history-repair.boundaries",
+      "verified": true
+    },
+    {
+      "id": "flush.plan-target.outcomes",
+      "verified": true
+    },
+    {
+      "id": "flush.plan-target.boundaries",
+      "verified": false
+    },
+    {
+      "id": "flush.trigger-usage.outcomes",
+      "verified": true
+    },
+    {
+      "id": "flush.trigger-usage.boundaries",
+      "verified": true
+    },
+    {
+      "id": "flush.execute-finalize.outcomes",
+      "verified": true
+    },
+    {
+      "id": "flush.execute-finalize.boundaries",
+      "verified": false
+    },
+    {
+      "id": "compaction.memory-budget.outcomes",
+      "verified": true
+    },
+    {
+      "id": "compaction.memory-budget.boundaries",
+      "verified": true
+    },
+    {
+      "id": "compaction.context-assembly.outcomes",
+      "verified": true
+    },
+    {
+      "id": "compaction.context-assembly.boundaries",
+      "verified": true
+    },
+    {
+      "id": "compaction.provider-overflow.outcomes",
+      "verified": true
+    },
+    {
+      "id": "compaction.provider-overflow.boundaries",
+      "verified": true
+    },
+    {
+      "id": "promotion.recall-signals.outcomes",
+      "verified": true
+    },
+    {
+      "id": "promotion.recall-signals.boundaries",
+      "verified": true
+    },
+    {
+      "id": "promotion.ranking-gates.outcomes",
+      "verified": true
+    },
+    {
+      "id": "promotion.ranking-gates.boundaries",
+      "verified": true
+    },
+    {
+      "id": "promotion.apply-reconcile.outcomes",
+      "verified": true
+    },
+    {
+      "id": "promotion.apply-reconcile.boundaries",
+      "verified": true
+    },
+    {
+      "id": "promotion.deep-consolidation.outcomes",
+      "verified": true
+    },
+    {
+      "id": "promotion.deep-consolidation.boundaries",
+      "verified": true
+    },
+    {
+      "id": "dreaming.light.outcomes",
+      "verified": true
+    },
+    {
+      "id": "dreaming.light.boundaries",
+      "verified": true
+    },
+    {
+      "id": "dreaming.rem.outcomes",
+      "verified": true
+    },
+    {
+      "id": "dreaming.rem.boundaries",
+      "verified": true
+    },
+    {
+      "id": "dreaming.deep.outcomes",
+      "verified": true
+    },
+    {
+      "id": "dreaming.deep.boundaries",
+      "verified": true
+    },
+    {
+      "id": "dreaming.diary-provenance.outcomes",
+      "verified": true
+    },
+    {
+      "id": "dreaming.diary-provenance.boundaries",
+      "verified": true
+    },
+    {
+      "id": "forget.lineage-tombstones.outcomes",
+      "verified": true
+    },
+    {
+      "id": "forget.lineage-tombstones.boundaries",
+      "verified": true
+    },
+    {
+      "id": "forget.index-fence.outcomes",
+      "verified": true
+    },
+    {
+      "id": "forget.index-fence.boundaries",
+      "verified": true
+    },
+    {
+      "id": "trust.secret-redaction.outcomes",
+      "verified": false
+    },
+    {
+      "id": "trust.secret-redaction.boundaries",
+      "verified": true
+    },
+    {
+      "id": "trust.configured-redaction.outcomes",
+      "verified": true
+    },
+    {
+      "id": "trust.configured-redaction.boundaries",
+      "verified": true
+    },
+    {
+      "id": "heartbeat.scratch.outcomes",
+      "verified": true
+    },
+    {
+      "id": "heartbeat.scratch.boundaries",
+      "verified": false
+    },
+    {
+      "id": "heartbeat.turn-decisions.outcomes",
+      "verified": true
+    },
+    {
+      "id": "heartbeat.turn-decisions.boundaries",
+      "verified": true
+    },
+    {
+      "id": "automation.job-state.outcomes",
+      "verified": true
+    },
+    {
+      "id": "automation.job-state.boundaries",
+      "verified": true
+    },
+    {
+      "id": "concurrency.workspace-locks.outcomes",
+      "verified": true
+    },
+    {
+      "id": "concurrency.workspace-locks.boundaries",
+      "verified": true
+    },
+    {
+      "id": "recovery.repair-diagnostics.outcomes",
+      "verified": true
+    },
+    {
+      "id": "recovery.repair-diagnostics.boundaries",
+      "verified": true
+    },
+    {
+      "id": "recovery.failure-publication.outcomes",
+      "verified": true
+    },
+    {
+      "id": "recovery.failure-publication.boundaries",
+      "verified": true
+    },
+    {
+      "id": "engine.numeric-boundaries.outcomes",
+      "verified": true
+    },
+    {
+      "id": "engine.numeric-boundaries.boundaries",
+      "verified": true
+    },
+    {
+      "id": "engine.unicode-collation.outcomes",
+      "verified": true
+    },
+    {
+      "id": "engine.unicode-collation.boundaries",
+      "verified": true
+    },
+    {
+      "id": "engine.datetime-regex.outcomes",
+      "verified": true
+    },
+    {
+      "id": "engine.datetime-regex.boundaries",
+      "verified": true
+    },
+    {
+      "id": "host.turn-barrier.outcomes",
+      "verified": true
+    },
+    {
+      "id": "host.turn-barrier.boundaries",
+      "verified": true
+    },
+    {
+      "id": "host.restart-recall.outcomes",
+      "verified": true
+    },
+    {
+      "id": "host.restart-recall.boundaries",
+      "verified": true
+    },
+    {
+      "id": "host.update-isolation.outcomes",
+      "verified": true
+    },
+    {
+      "id": "host.update-isolation.boundaries",
+      "verified": true
+    }
+  ],
+  "netChange": 1,
+  "gained": [
+    "recovery.failure-publication.boundaries"
+  ],
+  "lost": [],
+  "uncoveredIds": [
+    "sessions.reset-hook.outcomes",
+    "flush.plan-target.boundaries",
+    "flush.execute-finalize.boundaries",
+    "trust.secret-redaction.outcomes",
+    "heartbeat.scratch.boundaries"
+  ],
+  "unresolvedIds": [],
+  "changedOriginalCaseStatuses": {},
+  "previousMismatchWholeValues": {
+    "flush-execution-warm-index-first-recall": {
+      "status": "mismatched",
+      "before": {
+        "openclaw": "208c57d0be33f822c949bc0dd3a4136e11593b56d6e07a91f32f665cb5cdcf3f",
+        "python": "f5f748474b212ead4420d77fe1a6c3ba3425db777e1f15c318be567057925802"
+      },
+      "after": {
+        "openclaw": "4cdb2aa71ea06ed46a094e47e3739276fae9238c4480d82a6eee896d6451b569",
+        "python": "f5f748474b212ead4420d77fe1a6c3ba3425db777e1f15c318be567057925802"
+      },
+      "wholeValuesRead": true
+    },
+    "model-tool-complete-tool-result": {
+      "status": "mismatched",
+      "before": {
+        "openclaw": "a3135c0aa970596a5ce0fe2abb7ab26d5a0f0f5db784e56549d10627f04ca45f",
+        "python": "b2c845eacfc95324d39fabc14b082805f624a507990628553ae73af2d092255c"
+      },
+      "after": {
+        "openclaw": "a3135c0aa970596a5ce0fe2abb7ab26d5a0f0f5db784e56549d10627f04ca45f",
+        "python": "b2c845eacfc95324d39fabc14b082805f624a507990628553ae73af2d092255c"
+      },
+      "wholeValuesRead": true
+    },
+    "model-tool-utf16-redaction-truncation-order": {
+      "status": "mismatched",
+      "before": {
+        "openclaw": "da86e568f2f9e385369483a11979d9ee6999c1bd41fdd7f7f6bded6ac6182129",
+        "python": "07d49892bce1b138d57f27e57cc122ae1765ad76666c47a8983c3d2359086d1d"
+      },
+      "after": {
+        "openclaw": "da86e568f2f9e385369483a11979d9ee6999c1bd41fdd7f7f6bded6ac6182129",
+        "python": "07d49892bce1b138d57f27e57cc122ae1765ad76666c47a8983c3d2359086d1d"
+      },
+      "wholeValuesRead": true
+    },
+    "engine-datetime-unverified-legacy-grammar": {
+      "status": "mismatched",
+      "before": {
+        "openclaw": "2894a4e3507c76c6ae0262b13b5627903bcb966471bcd7df529f0a1c81afdb49",
+        "python": "6e70c4b4022bb834969d2d37855927adbeab4cd06c4503907cf57a8156941fe7"
+      },
+      "after": {
+        "openclaw": "2894a4e3507c76c6ae0262b13b5627903bcb966471bcd7df529f0a1c81afdb49",
+        "python": "6e70c4b4022bb834969d2d37855927adbeab4cd06c4503907cf57a8156941fe7"
+      },
+      "wholeValuesRead": true
+    }
+  },
+  "resolvedHistoricalWholeValues": {
+    "transcript-boundary-compressed-same-size-mtime-cache-diagnostic": {
+      "status": "matched",
+      "before": {
+        "openclaw": "8f6db98b6ee9e807a5441407b35092d7b29a42d09d4745212a8f343b80044ad2",
+        "python": "8f6db98b6ee9e807a5441407b35092d7b29a42d09d4745212a8f343b80044ad2"
+      },
+      "after": {
+        "openclaw": "8f6db98b6ee9e807a5441407b35092d7b29a42d09d4745212a8f343b80044ad2",
+        "python": "8f6db98b6ee9e807a5441407b35092d7b29a42d09d4745212a8f343b80044ad2"
+      }
+    },
+    "bootstrap-discovery-memory-core-layout-extension": {
+      "status": "matched",
+      "before": {
+        "openclaw": "46c3d401bd850bbfb4fa529e3bef93680d0f88c0d8c1df9832a2fbb68f4043a9",
+        "python": "46c3d401bd850bbfb4fa529e3bef93680d0f88c0d8c1df9832a2fbb68f4043a9"
+      },
+      "after": {
+        "openclaw": "46c3d401bd850bbfb4fa529e3bef93680d0f88c0d8c1df9832a2fbb68f4043a9",
+        "python": "46c3d401bd850bbfb4fa529e3bef93680d0f88c0d8c1df9832a2fbb68f4043a9"
+      }
+    },
+    "bootstrap-discovery-legacy-state-gate": {
+      "status": "matched",
+      "before": {
+        "openclaw": "0c17c9620066864fed5e7643e4cb638e91b6691dfa3f4a4156d37abc2890dcb1",
+        "python": "0c17c9620066864fed5e7643e4cb638e91b6691dfa3f4a4156d37abc2890dcb1"
+      },
+      "after": {
+        "openclaw": "0c17c9620066864fed5e7643e4cb638e91b6691dfa3f4a4156d37abc2890dcb1",
+        "python": "0c17c9620066864fed5e7643e4cb638e91b6691dfa3f4a4156d37abc2890dcb1"
+      }
+    },
+    "promotion-ranking-primitive-provenance-safety-diagnostic": {
+      "status": "matched",
+      "before": {
+        "openclaw": "ce9199b6cadbcca42e7b2e918271317c69a6cffdd0d6ca542227ca2457c94715",
+        "python": "927ce8e454c1461128cff26390cfcbcdd1ceaf19925b7fcaaeb90d6494394403"
+      },
+      "after": {
+        "openclaw": "ce9199b6cadbcca42e7b2e918271317c69a6cffdd0d6ca542227ca2457c94715",
+        "python": "927ce8e454c1461128cff26390cfcbcdd1ceaf19925b7fcaaeb90d6494394403"
+      }
+    }
+  },
+  "appendedCases": [
+    {
+      "id": "interrupted-turn-reopen-unchanged-chat",
+      "status": "matched",
+      "covers": [
+        "recovery.failure-publication.boundaries"
+      ]
+    },
+    {
+      "id": "interrupted-turn-reopen-edited-chat",
+      "status": "matched",
+      "covers": [
+        "recovery.failure-publication.boundaries"
+      ]
+    },
+    {
+      "id": "interrupted-turn-reopen-edited-new-write",
+      "status": "matched",
+      "covers": [
+        "recovery.failure-publication.boundaries"
+      ]
+    },
+    {
+      "id": "interrupted-turn-reopen-unwritten-new-write",
+      "status": "matched",
+      "covers": [
+        "recovery.failure-publication.boundaries"
+      ]
+    }
+  ],
+  "interruptedTurnPrerequisites": {
+    "write": {
+      "storage.atomic-writes.temp-file-fsync-eio": {
+        "verified": true,
+        "status": "matched",
+        "referenceMode": "authenticated-official-release",
+        "definitionSha256": "267a123ed0a7afbd06972ee2efe85803f3fb3b1d73b07affccecf67b1e02065e"
+      },
+      "storage.atomic-writes.rename-mutates-then-rejects": {
+        "verified": true,
+        "status": "matched",
+        "referenceMode": "authenticated-official-release",
+        "definitionSha256": "407a01622c2bab12832f14ff836e844208310a59f4f5a6ed9126c7abd941bc37"
+      }
+    },
+    "index": {
+      "publication-commit-failure-reader-snapshot": {
+        "verified": true,
+        "status": "matched",
+        "referenceMode": null,
+        "definitionSha256": "c73939fab1468a2e5162cc286de334fd52c2dd70045ba2b4f5cb5f54583ea3e3"
+      },
+      "publication-post-commit-failure": {
+        "verified": true,
+        "status": "matched",
+        "referenceMode": null,
+        "definitionSha256": "036938a280d58f1bc3d47aabd05b68ed427dd67a8bda889efc363d49267aa2d9"
+      },
+      "query-sync-boundaries-joined-failure-persistent-cold-recovery": {
+        "verified": true,
+        "status": "matched",
+        "referenceMode": "authenticated-official-release",
+        "definitionSha256": "031d589d652a60cf7923958b677562a49e3b209b9402ddab32a829d597b9643d"
+      },
+      "query-sync-boundaries-warm-failure-natural-retry": {
+        "verified": true,
+        "status": "matched",
+        "referenceMode": "authenticated-official-release",
+        "definitionSha256": "c6af5cb8488332a63c423c0c83057ffd2f668fad713510c196e5967baf3f5de8"
+      }
+    },
+    "flush": {
+      "flush-execution-cancel-before-write": {
+        "verified": true,
+        "status": "matched",
+        "referenceMode": "authenticated-official-release",
+        "definitionSha256": "b4282e2df3421240297bc8763f6e8d6038f472de67e3a7cd0e1245dcbe0f3fec"
+      },
+      "flush-execution-cancel-after-write": {
+        "verified": true,
+        "status": "matched",
+        "referenceMode": "authenticated-official-release",
+        "definitionSha256": "9a3fbb83f3b493546c176d44594967a5bde118a2cbd1b0d178cbbe0dfec03287"
+      },
+      "flush-execution-model-failure-exhaustion": {
+        "verified": true,
+        "status": "matched",
+        "referenceMode": "authenticated-official-release",
+        "definitionSha256": "d12a8b782febc569e9fe695e7890156c9ace9c6c70022d3fec4b9164fdeb184a"
+      },
+      "flush-runtime-retry-exhaustion-and-next-cycle": {
+        "verified": true,
+        "status": "matched",
+        "referenceMode": "authenticated-official-release",
+        "definitionSha256": "ba759190dc07f4b5235152c1a903d7af2cc3f4a42b1042ab2a7802d67d5141b7"
+      }
+    },
+    "consolidation": {
+      "deep-consolidation-concurrent-edit": {
+        "verified": true,
+        "status": "matched",
+        "referenceMode": "authenticated-official-release",
+        "definitionSha256": "dca9c810666db373f9b97946bb50789fd5554af91be43754cb7d4966c7ab3de3"
+      },
+      "dream-deep-report-publication-failure": {
+        "verified": true,
+        "status": "matched",
+        "referenceMode": "authenticated-official-release",
+        "definitionSha256": "5a2f5a37a6f1e0408eccd822260053d3594052261859eac2a3276d4b3e41a5a2"
+      }
+    },
+    "diary": {
+      "dream-diary-publisher-failure": {
+        "verified": true,
+        "status": "matched",
+        "referenceMode": "authenticated-official-release",
+        "definitionSha256": "3d6bbccafb7912f2cbddf1694db36efd6e6e2262ce30d4d0b696b8cfba969cd9"
+      }
+    },
+    "forget": {
+      "recovery-forget-before-marker": {
+        "verified": true,
+        "status": "matched",
+        "referenceMode": "authenticated-official-release",
+        "definitionSha256": "2de3d11957c11d8e04f440e6080421eaaf59c86f074baab5dfb0aab7daae80ce"
+      },
+      "recovery-forget-after-note": {
+        "verified": true,
+        "status": "matched",
+        "referenceMode": "authenticated-official-release",
+        "definitionSha256": "3dc39617c6bef2bf2b5155359dd0d7b8069a29d01e30cbe73da8b85379caaff7"
+      }
+    }
+  },
+  "interruptedTurnObservations": {
+    "interrupted-turn-reopen-unchanged-chat": {
+      "receipt": {
+        "id": "interrupted-turn-reopen-unchanged-chat",
+        "publicMatch": true,
+        "nativeSha256": "66b1aea6b30160c9b2b2af8d84c8331273db2ff7bec1fdbe4944f8058131c1df",
+        "sdkSha256": "7e4683e1387ca2239e8e8b89e082464f8913475eff8bd4882d871c2475883a5e",
+        "directory": "interrupted-turn-reopen-unchanged-chat-7e474e_m"
+      },
+      "publicValueSha256": {
+        "openclaw": "b9bc57c92a62c539480ba24fa1db4d21634d557b1e0c7f1cb94e886b4a0a4b2a",
+        "python": "b9bc57c92a62c539480ba24fa1db4d21634d557b1e0c7f1cb94e886b4a0a4b2a"
+      },
+      "verifiedBoundary": {
+        "openclaw": true,
+        "python": true
+      },
+      "public": {
+        "openclaw": {
+          "cut": {
+            "files": {
+              "original": "## Preferences\n\n- My drink preference is marblekumquat-416 tea without sugar.\n",
+              "independent": null
+            },
+            "originalCalls": [
+              "tbbsave0"
+            ],
+            "originalResults": []
+          },
+          "reopen": {
+            "files": {
+              "original": "## Preferences\n\n- My drink preference is marblekumquat-416 tea without sugar.\n",
+              "independent": null
+            },
+            "originalCalls": [
+              "tbbsave0"
+            ],
+            "originalResults": []
+          },
+          "firstModelOriginalResults": [
+            {
+              "id": "tbbsave0",
+              "isError": true,
+              "content": [
+                {
+                  "type": "text",
+                  "text": "[openclaw] missing tool result in session history; inserted synthetic error result for transcript repair."
+                }
+              ]
+            }
+          ],
+          "newTurnToolCalls": [],
+          "replies": [
+            "Four."
+          ],
+          "final": {
+            "files": {
+              "original": "## Preferences\n\n- My drink preference is marblekumquat-416 tea without sugar.\n",
+              "independent": null
+            },
+            "originalCalls": [
+              "tbbsave0"
+            ],
+            "originalResults": []
+          }
+        },
+        "python": {
+          "cut": {
+            "files": {
+              "original": "## Preferences\n\n- My drink preference is marblekumquat-416 tea without sugar.\n",
+              "independent": null
+            },
+            "originalCalls": [
+              "tbbsave0"
+            ],
+            "originalResults": []
+          },
+          "reopen": {
+            "files": {
+              "original": "## Preferences\n\n- My drink preference is marblekumquat-416 tea without sugar.\n",
+              "independent": null
+            },
+            "originalCalls": [
+              "tbbsave0"
+            ],
+            "originalResults": []
+          },
+          "final": {
+            "files": {
+              "original": "## Preferences\n\n- My drink preference is marblekumquat-416 tea without sugar.\n",
+              "independent": null
+            },
+            "originalCalls": [
+              "tbbsave0"
+            ],
+            "originalResults": []
+          },
+          "firstModelOriginalResults": [
+            {
+              "id": "tbbsave0",
+              "isError": true,
+              "content": [
+                {
+                  "type": "text",
+                  "text": "[openclaw] missing tool result in session history; inserted synthetic error result for transcript repair."
+                }
+              ]
+            }
+          ],
+          "newTurnToolCalls": [],
+          "replies": [
+            "Four."
+          ]
+        }
+      }
+    },
+    "interrupted-turn-reopen-edited-chat": {
+      "receipt": {
+        "id": "interrupted-turn-reopen-edited-chat",
+        "publicMatch": true,
+        "nativeSha256": "f76286cc815482a7247297b2ae228de65ac3fc5385a730ed7e83e2e5efade767",
+        "sdkSha256": "40cb0ce4c8558e5e0b9cc9fe33174ee289789bdaf36b86a60ede6432bb921c7b",
+        "directory": "interrupted-turn-reopen-edited-chat-4pf19p_o"
+      },
+      "publicValueSha256": {
+        "openclaw": "4dabb14abd955ab33d578781647fac494cbdeea0cb049ce73e052316edeb2dfb",
+        "python": "4dabb14abd955ab33d578781647fac494cbdeea0cb049ce73e052316edeb2dfb"
+      },
+      "verifiedBoundary": {
+        "openclaw": true,
+        "python": true
+      },
+      "public": {
+        "openclaw": {
+          "cut": {
+            "files": {
+              "original": "## Preferences\n\n- My drink preference is marblekumquat-416 tea without sugar.\n",
+              "independent": null
+            },
+            "originalCalls": [
+              "tbbsave0"
+            ],
+            "originalResults": []
+          },
+          "reopen": {
+            "files": {
+              "original": "A local edit kept after the interrupted turn.\n",
+              "independent": null
+            },
+            "originalCalls": [
+              "tbbsave0"
+            ],
+            "originalResults": []
+          },
+          "firstModelOriginalResults": [
+            {
+              "id": "tbbsave0",
+              "isError": true,
+              "content": [
+                {
+                  "type": "text",
+                  "text": "[openclaw] missing tool result in session history; inserted synthetic error result for transcript repair."
+                }
+              ]
+            }
+          ],
+          "newTurnToolCalls": [],
+          "replies": [
+            "Four."
+          ],
+          "final": {
+            "files": {
+              "original": "A local edit kept after the interrupted turn.\n",
+              "independent": null
+            },
+            "originalCalls": [
+              "tbbsave0"
+            ],
+            "originalResults": []
+          }
+        },
+        "python": {
+          "cut": {
+            "files": {
+              "original": "## Preferences\n\n- My drink preference is marblekumquat-416 tea without sugar.\n",
+              "independent": null
+            },
+            "originalCalls": [
+              "tbbsave0"
+            ],
+            "originalResults": []
+          },
+          "reopen": {
+            "files": {
+              "original": "A local edit kept after the interrupted turn.\n",
+              "independent": null
+            },
+            "originalCalls": [
+              "tbbsave0"
+            ],
+            "originalResults": []
+          },
+          "final": {
+            "files": {
+              "original": "A local edit kept after the interrupted turn.\n",
+              "independent": null
+            },
+            "originalCalls": [
+              "tbbsave0"
+            ],
+            "originalResults": []
+          },
+          "firstModelOriginalResults": [
+            {
+              "id": "tbbsave0",
+              "isError": true,
+              "content": [
+                {
+                  "type": "text",
+                  "text": "[openclaw] missing tool result in session history; inserted synthetic error result for transcript repair."
+                }
+              ]
+            }
+          ],
+          "newTurnToolCalls": [],
+          "replies": [
+            "Four."
+          ]
+        }
+      }
+    },
+    "interrupted-turn-reopen-edited-new-write": {
+      "receipt": {
+        "id": "interrupted-turn-reopen-edited-new-write",
+        "publicMatch": true,
+        "nativeSha256": "870904eab62663cbb6b63e85772c0f94daec45c59d8fdb72c8d0b5684a12f8a0",
+        "sdkSha256": "df8a0803d5c58b0a577b11ac65fdba58a1685cb825d3d06953f7494be62564ab",
+        "directory": "interrupted-turn-reopen-edited-new-write-s13nd3c1"
+      },
+      "publicValueSha256": {
+        "openclaw": "7ca37720a709ce60860be51d2b0edd2ee2cc03c3a4698acb58c1fb03b941cad0",
+        "python": "7ca37720a709ce60860be51d2b0edd2ee2cc03c3a4698acb58c1fb03b941cad0"
+      },
+      "verifiedBoundary": {
+        "openclaw": true,
+        "python": true
+      },
+      "public": {
+        "openclaw": {
+          "cut": {
+            "files": {
+              "original": "## Preferences\n\n- My drink preference is marblekumquat-416 tea without sugar.\n",
+              "independent": null
+            },
+            "originalCalls": [
+              "tbbsave0"
+            ],
+            "originalResults": []
+          },
+          "reopen": {
+            "files": {
+              "original": "A local edit kept after the interrupted turn.\n",
+              "independent": null
+            },
+            "originalCalls": [
+              "tbbsave0"
+            ],
+            "originalResults": []
+          },
+          "firstModelOriginalResults": [
+            {
+              "id": "tbbsave0",
+              "isError": true,
+              "content": [
+                {
+                  "type": "text",
+                  "text": "[openclaw] missing tool result in session history; inserted synthetic error result for transcript repair."
+                }
+              ]
+            }
+          ],
+          "newTurnToolCalls": [
+            "followupindependent"
+          ],
+          "replies": [
+            "Separate note saved."
+          ],
+          "final": {
+            "files": {
+              "original": "A local edit kept after the interrupted turn.\n",
+              "independent": "A separate note written during this new turn.\n"
+            },
+            "originalCalls": [
+              "tbbsave0"
+            ],
+            "originalResults": []
+          }
+        },
+        "python": {
+          "cut": {
+            "files": {
+              "original": "## Preferences\n\n- My drink preference is marblekumquat-416 tea without sugar.\n",
+              "independent": null
+            },
+            "originalCalls": [
+              "tbbsave0"
+            ],
+            "originalResults": []
+          },
+          "reopen": {
+            "files": {
+              "original": "A local edit kept after the interrupted turn.\n",
+              "independent": null
+            },
+            "originalCalls": [
+              "tbbsave0"
+            ],
+            "originalResults": []
+          },
+          "final": {
+            "files": {
+              "original": "A local edit kept after the interrupted turn.\n",
+              "independent": "A separate note written during this new turn.\n"
+            },
+            "originalCalls": [
+              "tbbsave0"
+            ],
+            "originalResults": []
+          },
+          "firstModelOriginalResults": [
+            {
+              "id": "tbbsave0",
+              "isError": true,
+              "content": [
+                {
+                  "type": "text",
+                  "text": "[openclaw] missing tool result in session history; inserted synthetic error result for transcript repair."
+                }
+              ]
+            }
+          ],
+          "newTurnToolCalls": [
+            "followupindependent"
+          ],
+          "replies": [
+            "Separate note saved."
+          ]
+        }
+      }
+    },
+    "interrupted-turn-reopen-unwritten-new-write": {
+      "receipt": {
+        "id": "interrupted-turn-reopen-unwritten-new-write",
+        "publicMatch": true,
+        "nativeSha256": "ae1e5ca1b2bca5282a465b19a7ac15317714e510b5547c307949a0d13e4631f2",
+        "sdkSha256": "eb39b1fe6813222272a081840c92ce08a6ee51fe0b9baf34a54a8bb0de48b328",
+        "directory": "interrupted-turn-reopen-unwritten-new-write-7tbr2wf3"
+      },
+      "publicValueSha256": {
+        "openclaw": "7614da6b1788da602238ef24f8ba598c82812a1a0a3fa52a5063f3b1d90dd15a",
+        "python": "7614da6b1788da602238ef24f8ba598c82812a1a0a3fa52a5063f3b1d90dd15a"
+      },
+      "verifiedBoundary": {
+        "openclaw": true,
+        "python": true
+      },
+      "public": {
+        "openclaw": {
+          "cut": {
+            "files": {
+              "original": null,
+              "independent": null
+            },
+            "originalCalls": [
+              "tbbsave0"
+            ],
+            "originalResults": []
+          },
+          "reopen": {
+            "files": {
+              "original": null,
+              "independent": null
+            },
+            "originalCalls": [
+              "tbbsave0"
+            ],
+            "originalResults": []
+          },
+          "firstModelOriginalResults": [
+            {
+              "id": "tbbsave0",
+              "isError": true,
+              "content": [
+                {
+                  "type": "text",
+                  "text": "[openclaw] missing tool result in session history; inserted synthetic error result for transcript repair."
+                }
+              ]
+            }
+          ],
+          "newTurnToolCalls": [
+            "followupindependent"
+          ],
+          "replies": [
+            "Separate note saved."
+          ],
+          "final": {
+            "files": {
+              "original": null,
+              "independent": "A separate note written during this new turn.\n"
+            },
+            "originalCalls": [
+              "tbbsave0"
+            ],
+            "originalResults": []
+          }
+        },
+        "python": {
+          "cut": {
+            "files": {
+              "original": null,
+              "independent": null
+            },
+            "originalCalls": [
+              "tbbsave0"
+            ],
+            "originalResults": []
+          },
+          "reopen": {
+            "files": {
+              "original": null,
+              "independent": null
+            },
+            "originalCalls": [
+              "tbbsave0"
+            ],
+            "originalResults": []
+          },
+          "final": {
+            "files": {
+              "original": null,
+              "independent": "A separate note written during this new turn.\n"
+            },
+            "originalCalls": [
+              "tbbsave0"
+            ],
+            "originalResults": []
+          },
+          "firstModelOriginalResults": [
+            {
+              "id": "tbbsave0",
+              "isError": true,
+              "content": [
+                {
+                  "type": "text",
+                  "text": "[openclaw] missing tool result in session history; inserted synthetic error result for transcript repair."
+                }
+              ]
+            }
+          ],
+          "newTurnToolCalls": [
+            "followupindependent"
+          ],
+          "replies": [
+            "Separate note saved."
+          ]
+        }
+      }
+    }
+  },
+  "mismatchedCaseIds": [
+    "flush-execution-warm-index-first-recall",
+    "model-tool-complete-tool-result",
+    "model-tool-utf16-redaction-truncation-order",
+    "engine-datetime-unverified-legacy-grammar"
+  ],
+  "blockedCaseIds": [],
+  "fullScopePassed": false,
+  "terminalStatus": "mismatched",
+  "engineErrors": [],
+  "actualReturnCode": 1,
+  "elapsedSeconds": 9098.21341704,
+  "physicalReplayCounts": {
+    "host-turn-barrier-v4-runtime": 4,
+    "forget-lineage-runtime": 3,
+    "forget-boundaries-runtime": 1,
+    "recall-signals-runtime": 6,
+    "embed-cache-lifecycle-runtime": 8,
+    "session-reset-boundaries-runtime": 7,
+    "prompt-runtime-context-runtime": 10,
+    "prompt-history-repair-runtime": 8,
+    "engine.numeric-boundaries": 4,
+    "deep-consolidation-runtime": 7,
+    "forget-index-fence-v6-runtime": 13,
+    "interrupted-turn-recovery-runtime": 4,
+    "transcript-boundary-runtime": 9,
+    "heartbeat-scratch-outcomes-runtime": 39,
+    "engine.datetime-regex.boundaries": 5,
+    "trust.configured-redaction.outcomes": 2,
+    "trust.secret-redaction.boundaries": 4,
+    "engine-unicode-collation": 3,
+    "recovery-forget-interruption-runtime": 2,
+    "engine.datetime-regex": 5,
+    "provider-overflow-host-runtime": 7,
+    "flush-plan-target-runtime": 13,
+    "recovery.repair-diagnostics": 9,
+    "heartbeat-turn-outcomes-runtime": 4,
+    "heartbeat.turn-decisions.boundaries": 4,
+    "dream-light-runtime": 7,
+    "dream-rem-runtime": 8,
+    "dream-deep-runtime": 7,
+    "dream-diary-publication-runtime": 7,
+    "automation-job-state-runtime": 1,
+    "automation-job-outcomes-runtime": 3,
+    "compaction.context-assembly.outcomes": 3,
+    "compaction-assembly-restart-runtime": 3,
+    "workspace-lock-process-runtime": 7
+  },
+  "originalRecoveryModes": {
+    "flush-execution-cancel-before-write": "authenticated-official-release",
+    "flush-execution-cancel-after-write": "authenticated-official-release",
+    "storage.atomic-writes.temp-file-fsync-eio": "authenticated-official-release",
+    "storage.atomic-writes.rename-mutates-then-rejects": "authenticated-official-release",
+    "deep-consolidation-concurrent-edit": "authenticated-official-release",
+    "dream-diary-publisher-failure": "authenticated-official-release",
+    "dream-deep-report-publication-failure": "authenticated-official-release",
+    "recovery-forget-before-marker": "authenticated-official-release",
+    "recovery-forget-after-note": "authenticated-official-release"
+  },
+  "historicalRuntimeChecks": {
+    "bootstrap-discovery-memory-core-layout-extension": {
+      "nativeRawSha256": "37d26693263ea0825db18562cc37ae91f6bbc0aa3320f22194288d63869a11b0",
+      "sdkRawSha256": "727839a24984138aa5f3a52b9bdd53aab8e8e8a215957665efda4b670dcfebee",
+      "rawWireHashesReproduced": true,
+      "nativeOnDiskRawReopened": false,
+      "protectedWorkerThreads": 1,
+      "observed": {
+        "workspaceInventories": {
+          "native": [
+            {
+              "label": "default-layout",
+              "workspace": [
+                "AGENTS.md",
+                "BOOTSTRAP.md",
+                "IDENTITY.md",
+                "PROACTIVE_PREFERENCES.md",
+                "SOUL.md",
+                "USER.md"
+              ],
+              "outside": [],
+              "snapshotSha256": "ac4be4789ea6b33f0148dc965c3b91ac05471289b848db0b5ccf3a8fe3a51ffd"
+            }
+          ],
+          "sdk": [
+            {
+              "label": "default-layout",
+              "workspace": [
+                "SOUL.md",
+                "BOOTSTRAP.md",
+                "PROACTIVE_PREFERENCES.md",
+                "IDENTITY.md",
+                "AGENTS.md",
+                ".memory-core",
+                "USER.md",
+                ".memory-core/workspace-state.json"
+              ],
+              "outside": [],
+              "snapshotSha256": "7ba653d1bd042e2ca95d776de385d231a3adfe7464c7371a801860c09cec3b8a"
+            }
+          ]
+        },
+        "steps": {
+          "openclaw": [
+            {
+              "label": "default-layout",
+              "ensure": {
+                "bootstrapPending": true
+              },
+              "bootstrapStatus": "pending",
+              "setupCompleted": false,
+              "runs": [
+                {
+                  "files": [
+                    "AGENTS.md",
+                    "SOUL.md",
+                    "IDENTITY.md",
+                    "USER.md",
+                    "BOOTSTRAP.md"
+                  ],
+                  "error": null
+                },
+                {
+                  "files": [
+                    "AGENTS.md"
+                  ],
+                  "error": null
+                },
+                {
+                  "files": [
+                    "AGENTS.md",
+                    "SOUL.md",
+                    "IDENTITY.md",
+                    "USER.md"
+                  ],
+                  "error": null
+                }
+              ]
+            }
+          ],
+          "python": [
+            {
+              "label": "default-layout",
+              "ensure": {
+                "bootstrapPending": true
+              },
+              "bootstrapStatus": "pending",
+              "setupCompleted": false,
+              "runs": [
+                {
+                  "files": [
+                    "AGENTS.md",
+                    "SOUL.md",
+                    "IDENTITY.md",
+                    "USER.md",
+                    "BOOTSTRAP.md"
+                  ],
+                  "error": null
+                },
+                {
+                  "files": [
+                    "AGENTS.md"
+                  ],
+                  "error": null
+                },
+                {
+                  "files": [
+                    "AGENTS.md",
+                    "SOUL.md",
+                    "IDENTITY.md",
+                    "USER.md"
+                  ],
+                  "error": null
+                }
+              ]
+            }
+          ]
+        }
+      }
+    },
+    "bootstrap-discovery-legacy-state-gate": {
+      "nativeRawSha256": "7548d48b85b67a296ffb0932ca344c0e497077888467bac17d8cd0e91e781e1e",
+      "sdkRawSha256": "85899a42f77dab93bcfb87eab82749a5a3f5fbbad78e962044993771475af959",
+      "rawWireHashesReproduced": true,
+      "nativeOnDiskRawReopened": false,
+      "protectedWorkerThreads": 0,
+      "observed": {
+        "workspaceInventories": {
+          "native": [
+            {
+              "label": "legacy",
+              "workspace": [
+                "openclaw-workspace-state.json"
+              ],
+              "outside": [],
+              "snapshotSha256": "29674ac773956efa6b3115389766e844f20da370a806406de1ec3a5bb5a43a5c"
+            }
+          ],
+          "sdk": [
+            {
+              "label": "legacy",
+              "workspace": [
+                "openclaw-workspace-state.json"
+              ],
+              "outside": [],
+              "snapshotSha256": "ef98caca5c17ab5a86dcf6f021f1498b7e3d069522f1d665bdd5c63b43999af8"
+            }
+          ]
+        },
+        "steps": {
+          "openclaw": [
+            {
+              "label": "legacy",
+              "ensure": {
+                "error": {
+                  "name": "StartupMaintenanceRequiredError",
+                  "message": "Legacy workspace setup state requires migration for $FIXTURE/workspace; run openclaw doctor --fix.",
+                  "kind": "legacy-workspace",
+                  "code": "gateway.maintenance_required"
+                }
+              },
+              "bootstrapStatus": {
+                "error": {
+                  "name": "StartupMaintenanceRequiredError",
+                  "message": "Legacy workspace setup state requires migration for $FIXTURE/workspace; run openclaw doctor --fix.",
+                  "kind": "legacy-workspace",
+                  "code": "gateway.maintenance_required"
+                }
+              },
+              "setupCompleted": {
+                "error": {
+                  "name": "StartupMaintenanceRequiredError",
+                  "message": "Legacy workspace setup state requires migration for $FIXTURE/workspace; run openclaw doctor --fix.",
+                  "kind": "legacy-workspace",
+                  "code": "gateway.maintenance_required"
+                }
+              },
+              "runs": [
+                {
+                  "files": [],
+                  "error": null
+                }
+              ]
+            }
+          ],
+          "python": [
+            {
+              "label": "legacy",
+              "ensure": {
+                "error": {
+                  "name": "StartupMaintenanceRequiredError",
+                  "message": "Legacy workspace setup state requires migration for $FIXTURE/workspace; run openclaw doctor --fix.",
+                  "code": "gateway.maintenance_required",
+                  "kind": "legacy-workspace"
+                }
+              },
+              "bootstrapStatus": {
+                "error": {
+                  "name": "StartupMaintenanceRequiredError",
+                  "message": "Legacy workspace setup state requires migration for $FIXTURE/workspace; run openclaw doctor --fix.",
+                  "code": "gateway.maintenance_required",
+                  "kind": "legacy-workspace"
+                }
+              },
+              "setupCompleted": {
+                "error": {
+                  "name": "StartupMaintenanceRequiredError",
+                  "message": "Legacy workspace setup state requires migration for $FIXTURE/workspace; run openclaw doctor --fix.",
+                  "code": "gateway.maintenance_required",
+                  "kind": "legacy-workspace"
+                }
+              },
+              "runs": [
+                {
+                  "files": [],
+                  "error": null
+                }
+              ]
+            }
+          ]
+        }
+      }
+    },
+    "promotion-ranking-primitive-provenance-safety-diagnostic": {
+      "nativeRawSha256": "f27a4163b6e2e672ef2cb37046a472642dfc99aaeacaf759d3d5a8cac0c671b1",
+      "sdkRawSha256": "8db0e747fa6f0f769bf4eff0ac3f7172b933eb469b9fa7522f17005043643543",
+      "rawWireHashesReproduced": true,
+      "nativeOnDiskRawReopened": false,
+      "protectedWorkerThreads": 1,
+      "observed": {
+        "candidateCounts": {
+          "openclaw": [
+            1
+          ],
+          "python": [
+            1
+          ]
+        },
+        "sdkFilePhases": {
+          "before": {
+            "workspace/memory/.dreams/phase-signals.json": "f618b85105845fda4b261ff9e9078cd34ad1e65016448a337650f2c69e4f6055",
+            "workspace/memory/.dreams/short-term-recall.json": "8ef50bfea296079ea08b63f1e83f117b5a242a79501a125ffb98312d33a25a49"
+          },
+          "after": {
+            "workspace/memory/.dreams/phase-signals.json": "f618b85105845fda4b261ff9e9078cd34ad1e65016448a337650f2c69e4f6055",
+            "workspace/memory/.dreams/short-term-recall.json": "8ef50bfea296079ea08b63f1e83f117b5a242a79501a125ffb98312d33a25a49"
+          }
+        }
+      }
+    }
+  },
+  "assessmentStatus": "assessed",
+  "assessmentErrors": [],
+  "baselineDecision": "45ac3284219ac82bcec99353c5d5b896bdbae5d7",
+  "reviewerSha256": "b08c3af0626db5711365cbc200daad45c35c66ec7c18486be747029664a82cc1"
+}
